@@ -1,0 +1,54 @@
+# Godot
+.godot/
+.import/
+*.translation
+export_presets.cfg
+
+# .NET 构建产物
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.et/
+.gen/
+.pv/
+
+# 运行时数据（体积大，不入库）
+assets/
+dist/
+dist2/
+extensions/
+_shots/
+decks/
+
+# 临时与备份
+.tmp*
+tmp_*
+_backup*/
+_data_backup/
+_old_*/
+_pending_ui/
+*.log
+*.png
+*.jpg
+*.uid
+
+# 一次性调试脚本
+*.py
+
+# 语料导出（由 tools/ 重新生成）
+_corpus_*.json
+_v3_*.txt
+_fail_*.txt
+_errs.txt
+_for_gemini_*.txt
+all_sentences.txt
+
+# V2 归档：不参与编译，也不上传
+src/_v2_archive/
+
+# 密钥
+.env
+*.key
+*.token

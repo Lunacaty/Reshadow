@@ -1,0 +1,70 @@
+using System;
+using System.Collections.Generic;
+using ShadowverseFan.KernelV3.Core;
+
+namespace ShadowverseFan.KernelV3.Vm;
+
+// ============================================================================
+// 世界接口 —— VM 与具体战斗状态之间的契约
+//
+// VM 只依赖这个接口，不依赖任何具体的 BattleState 实现。
+// 这样做的三个好处：
+//   · 单测时可以塞一个假世界，不需要跑完整对局
+//   · 联机时服务端只要实现同一接口即可
+//   · 未来换状态存储（内存 / 数据库）不需要动 VM
+// ============================================================================
+
+public interface IVmWorld
+{
+    /// <summary>随机源。联机时必须由服务端播种，不能各自 new Random()。</summary>
+    Random Rng { get; }
+
+    /// <summary>
+    /// 按「身份 + 流水号」取活体实体。
+    /// 已离场或流水号已变（回手再打出）则返回 null。
+    /// 这是「不鞭尸」的唯一开关。
+    /// </summary>
+    RuntimeEntity GetLive(int entityId, int entrySerial);
+
+    /// <summary>枚举某区域的实体。</summary>
+    IEnumerable<RuntimeEntity> EnumerateZone(ZoneRef zone, ZoneScope owner);
+
+    /// <summary>按卡号找实体（用于「召唤某张具体卡」）。</summary>
+    IEnumerable<RuntimeEntity> FindByCardId(ZoneRef zone, ZoneScope owner, int cardId);
+
+    /// <summary>读计数器（PP / 墓地 / 连击 / 玩家自定义资源）。</summary>
+    int ReadCounter(ZoneScope owner, SymbolId<CounterTag> counter);
+
+    /// <summary>写计数器。</summary>
+    void WriteCounter(ZoneScope owner, SymbolId<CounterTag> counter, int value);
+
+    /// <summary>检查牌库规则。</summary>
+    bool CheckDeckRule(ZoneScope owner, DeckRule rule);
+
+    /// <summary>分配一个新的实体 id。</summary>
+    int AllocateEntityId();
+
+    /// <summary>把实体放进某区域（会触发 EntrySerial++）。</summary>
+    void MoveEntity(RuntimeEntity e, ZoneRef toZone, ZoneScope toOwner);
+
+    /// <summary>把实体移出游戏（破坏 / 放逐后的最终去向）。</summary>
+    void RemoveEntity(RuntimeEntity e);
+
+    /// <summary>产生一个事件，供触发器系统收集。</summary>
+    void EmitEvent(VmEvent ev);
+
+    /// <summary>按卡号生成一张新卡并放进指定区域。</summary>
+    RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, ZoneScope toOwner);
+
+    /// <summary>按快照生成一个复制体（用于「复制一份」）。</summary>
+    RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, ZoneScope toOwner);
+
+    /// <summary>把实体变形为另一张卡。</summary>
+    void TransformEntity(RuntimeEntity e, int intoCardId);
+
+    /// <summary>给实体附加一段能力。</summary>
+    void GrantAbility(RuntimeEntity e, Ast.AbilityDef ability);
+
+    /// <summary>展开机制宏为动作序列（Reanimate / Spellboost / 玩家自定义）。</summary>
+    IReadOnlyList<Ast.EffectNode> ExpandMacro(SymbolId<MacroTag> macro, IReadOnlyList<int> args, VmScope scope);
+}

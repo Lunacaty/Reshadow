@@ -1,0 +1,14 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <!-- V3 重写期：旧版 KernelV2 整体归档，不参与编译 -->
+  <ItemGroup>
+    <Compile Remove="src/_v2_archive/**/*.cs" />
+    <None Remove="src/_v2_archive/**/*" />
+  </ItemGroup>
+</Project>
