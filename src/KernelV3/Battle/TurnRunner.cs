@@ -37,6 +37,10 @@ public sealed class TurnRunner
         _state.ActivePlayer = playerId;
         if (playerId == 0) _state.TurnNumber++;
 
+        // 触发器的回合归属与每回合计数必须跟着换
+        vm?.CurrentTurnOwner = playerId;
+        vm?.ResetTriggerCounts();
+
         var p = _state.Players[playerId];
 
         // 1. 只涨当前玩家的 MaxPP 与 PP（上限 10）

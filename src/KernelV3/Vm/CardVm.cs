@@ -69,6 +69,9 @@ public sealed partial class CardVm
     }
 
     /// <summary>把事件放进触发队列。</summary>
+    /// <summary>新回合开始：清空每回合触发计数。</summary>
+    public void ResetTriggerCounts() => _triggerCounts.Clear();
+
     public void EnqueueEvent(VmEvent ev)
     {
         if (ev != null) _triggerQueue.Enqueue(ev);
@@ -254,8 +257,17 @@ public sealed partial class CardVm
         // 候选能力 = 印制在卡上的 + 运行时授予的
         var byEntity = new Dictionary<int, List<(RuntimeEntity e, Ast.AbilityDef ab)>>();
 
-        foreach (var e in _world.EnumerateZone(ZoneRef.Board, -1).ToList()
-                              .Concat(_world.EnumerateZone(ZoneRef.ExArea, -1).ToList()))
+        // 必须扫描所有「能力可能生效」的区域：
+        //   场上、EX 区、手牌（魔力增幅）、牌库（瞬念召唤）、纹章区、墓地（部分谢幕曲）
+        // 只扫 Board + ExArea 会让 ActiveZone=Hand 的能力永远收不到事件。
+        var candidates = _world.EnumerateZone(ZoneRef.Board, -1)
+            .Concat(_world.EnumerateZone(ZoneRef.ExArea, -1))
+            .Concat(_world.EnumerateZone(ZoneRef.Hand, -1))
+            .Concat(_world.EnumerateZone(ZoneRef.Deck, -1))
+            .Concat(_world.EnumerateZone(ZoneRef.CrestArea, -1))
+            .ToList();
+
+        foreach (var e in candidates)
         {
             if (e.Def == null) { }
             if (e.Def != null)
@@ -308,16 +320,87 @@ public sealed partial class CardVm
     }
 
     /// <summary>判断一次事件是否满足某个触发器的过滤条件。</summary>
+    /// <summary>
+    /// 判断一次事件是否满足某个触发器。
+    ///
+    /// 四个过滤维度都必须生效：
+    ///   ActiveZone          —— 只有卡在监听区域时才响应（手牌里的卡不该响应场面事件）
+    ///   DuringTurn          —— 只在指定回合归属时生效
+    ///   SubjectFilter       —— 事件主体过滤
+    ///   SecondaryFilter     —— 事件副体过滤（Follower Strike 要求攻击目标是随从）
+    ///   MaxTriggersPerTurn  —— 每回合触发上限
+    /// </summary>
     private bool MatchesTrigger(TriggerSpec trig, VmEvent ev, RuntimeEntity owner)
     {
-        // 主体过滤：null 表示「本卡自己」
+        // 1. 区域：卡必须位于它声明的监听区域
+        var need = trig.ActiveZone switch
+        {
+            ActiveZoneScope.Hand => ZoneRef.Hand,
+            ActiveZoneScope.Deck => ZoneRef.Deck,
+            ActiveZoneScope.ExArea => ZoneRef.ExArea,
+            _ => ZoneRef.Board,
+        };
+        if (owner.Zone != need) return false;
+
+        // 2. 回合归属
+        if (trig.DuringTurn != TurnOwnerScope.Any)
+        {
+            bool isMyTurn = _currentTurnOwner == owner.PlayerId;
+            if (trig.DuringTurn == TurnOwnerScope.Self && !isMyTurn) return false;
+            if (trig.DuringTurn == TurnOwnerScope.Opponent && isMyTurn) return false;
+        }
+
+        // 3. 主体过滤：null 表示「本卡自己」
+        // 没有主体的全局事件（TurnStart / TurnEnd）视为「本卡」，
+        // 否则「At the start of your turn, ...」这类能力永远收不到。
         if (trig.SubjectFilter == null)
         {
-            if (ev.Subject == null) return false;
-            if (ev.Subject.Value.EntityId != owner.EntityId) return false;
+            if (ev.Subject != null && ev.Subject.Value.EntityId != owner.EntityId) return false;
         }
+        else
+        {
+            if (ev.Subject == null) return false;
+            var scope0 = new VmScope { Owner = ZoneScope.Self, Controller = owner.PlayerId };
+            var pool0 = _eval.ResolveRef(trig.SubjectFilter, scope0);
+            if (!pool0.Any(r => r.EntityId == ev.Subject.Value.EntityId)) return false;
+        }
+
+        // 4. 副体过滤：Follower Strike 要求「攻击目标是随从」
+        if (trig.SecondaryFilter != null)
+        {
+            if (ev.Object == null) return false;
+            var scope1 = new VmScope { Owner = ZoneScope.Self, Controller = owner.PlayerId };
+            var pool = _eval.ResolveRef(trig.SecondaryFilter, scope1);
+            if (!pool.Any(r => r.EntityId == ev.Object.Value.EntityId)) return false;
+        }
+
+        // 5. 每回合触发上限
+        if (trig.MaxTriggersPerTurn > 0)
+        {
+            int key = owner.EntityId;
+            int used = _triggerCounts.GetValueOrDefault(key);
+            if (used >= trig.MaxTriggersPerTurn) return false;
+            _triggerCounts[key] = used + 1;
+        }
+
         return true;
     }
+
+    /// <summary>把主体过滤表达式套到事件主体上求值。</summary>
+
+
+    /// <summary>用快照判断已离场实体是否满足过滤（谢幕曲读 LKI 时用）。</summary>
+
+    private readonly Dictionary<int, int> _triggerCounts = new();
+
+    /// <summary>当前回合归属的玩家编号，由 Battle 层每回合设置。</summary>
+    public int CurrentTurnOwner
+    {
+        get => _currentTurnOwner;
+        set => _currentTurnOwner = value;
+    }
+
+    private int _currentTurnOwner;
 
     public VmEval Eval => _eval;
 }

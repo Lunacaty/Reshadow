@@ -304,18 +304,37 @@ public sealed class BattleState : IVmWorld
         return e;
     }
 
+    /// <summary>
+    /// 变身：把实体换成另一张卡。
+    ///
+    /// 官方术语表有独立的「变身」条目，语义是**变成另一张卡**，
+    /// 而不只是换个名字 —— 旧卡的关键词、计数器、进化状态、
+    /// 临时修正都必须清掉，否则新卡会带着旧卡的全部状态。
+    ///
+    /// 变形不算破坏：不触发 OnDestroy，不加 shadow。
+    /// </summary>
     public void TransformEntity(RuntimeEntity e, int intoCardId)
     {
         if (e == null) return;
-        if (_cardPool.TryGetValue(intoCardId, out var d))
-        {
-            e.Def = d;
-            e.Attack = d.BaseAttack;
-            e.Life = d.BaseLife;
-            e.MaxLife = d.BaseLife;
-            e.Cost = d.BaseCost;
-        }
-        // 变形不算破坏：不触发 OnDestroy，不加 shadow
+        if (!_cardPool.TryGetValue(intoCardId, out var d)) return;
+
+        e.Def = d;
+        e.Attack = d.BaseAttack;
+        e.Life = d.BaseLife;
+        e.MaxLife = d.BaseLife;
+        e.Cost = d.BaseCost;
+
+        // 旧卡的状态一律不继承
+        e.Keywords.Clear();
+        e.KeywordValues.Clear();
+        e.Counters.Clear();
+        e.TempModifiers.Clear();
+        e.IsEvolved = false;
+        e.IsSuperEvolved = false;
+        e.IsSilenced = false;
+        e.AttacksThisTurn = 0;
+        e.AttackedThisTurn = false;
+        e.AttackedLeaderLastTurn = false;
     }
 
     public void GrantAbility(RuntimeEntity e, AbilityDef ability)
