@@ -147,6 +147,8 @@ public sealed class MemoryWorld : IVmWorld
 
     public readonly List<(RuntimeEntity e, AbilityDef ab)> GrantedAbilities = new();
 
+    IReadOnlyList<(RuntimeEntity e, AbilityDef ab)> IVmWorld.GrantedAbilities => GrantedAbilities;
+
     public void GrantAbility(RuntimeEntity e, AbilityDef ability)
         => GrantedAbilities.Add((e, ability));
 

@@ -241,11 +241,82 @@ public sealed partial class CardVm
     // ---------- 事件转帧 ----------
 
     /// <summary>从触发队列取一个事件，转成执行帧。</summary>
+    /// <summary>
+    /// 从触发队列取一个事件，扫描所有在场能力的 TriggerSpec，匹配上的压入执行帧。
+    ///
+    /// 之前这里只是把事件重新 Emit 一次，什么也不匹配 ——
+    /// 「每当 X 时，Y」类能力永远不会触发。
+    /// </summary>
     private void FlushNextTrigger()
     {
         var ev = _triggerQueue.Dequeue();
-        _world.EmitEvent(ev);
-        // 真正的触发器匹配由 Battle 层完成；VM 只负责「有帧就执行」
+
+        // 候选能力 = 印制在卡上的 + 运行时授予的
+        var byEntity = new Dictionary<int, List<(RuntimeEntity e, Ast.AbilityDef ab)>>();
+
+        foreach (var e in _world.EnumerateZone(ZoneRef.Board, -1).ToList()
+                              .Concat(_world.EnumerateZone(ZoneRef.ExArea, -1).ToList()))
+        {
+            if (e.Def == null) { }
+            if (e.Def != null)
+            {
+                foreach (var ab in e.Def.Abilities)
+                    AddCandidate(byEntity, e, ab);
+            }
+
+            // 运行时授予的能力（GrantAbility）不写在 CardDef 里，必须单独扫
+            foreach (var (ge, gab) in _world.GrantedAbilities)
+            {
+                if (ge != null && ge.EntityId == e.EntityId) AddCandidate(byEntity, ge, gab);
+            }
+        }
+
+        foreach (var kv in byEntity)
+        {
+            var e = kv.Value[0].e;
+            foreach (var (_, ab) in kv.Value)
+            {
+                if (ab.Trigger == null) continue;
+                if (ab.Trigger.Event != ev.Kind) continue;
+                if (!MatchesTrigger(ab.Trigger, ev, e)) continue;
+                if (_eval.EvalBool(ab.Condition, new VmScope { Controller = e.PlayerId }) == false) continue;
+
+                var scope = new VmScope
+                {
+                    Owner = ZoneScope.Self,
+                    Controller = e.PlayerId,
+                    Source = EntityRef.From(e),
+                    Trigger = ev.Subject,
+                    Event = ev,
+                };
+                PushBody(ab.Body, scope);
+            }
+        }
+    }
+
+    private static void AddCandidate(
+        Dictionary<int, List<(RuntimeEntity e, Ast.AbilityDef ab)>> map,
+        RuntimeEntity e, Ast.AbilityDef ab)
+    {
+        if (ab == null) return;
+        if (!map.TryGetValue(e.EntityId, out var list))
+        {
+            list = new List<(RuntimeEntity, Ast.AbilityDef)>();
+            map[e.EntityId] = list;
+        }
+        list.Add((e, ab));
+    }
+
+    /// <summary>判断一次事件是否满足某个触发器的过滤条件。</summary>
+    private bool MatchesTrigger(TriggerSpec trig, VmEvent ev, RuntimeEntity owner)
+    {
+        // 主体过滤：null 表示「本卡自己」
+        if (trig.SubjectFilter == null)
+        {
+            if (ev.Subject == null) return false;
+            if (ev.Subject.Value.EntityId != owner.EntityId) return false;
+        }
+        return true;
     }
 
     public VmEval Eval => _eval;

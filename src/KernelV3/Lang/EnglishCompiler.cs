@@ -335,6 +335,11 @@ public sealed class EnglishCompiler
             });
         }
 
+        // 替代语义：把 "... Deal 2 damage. Combo (3) - Deal 4 damage instead."
+        // 合成为 ConditionalNode(cond, Then: 后一句, Else: 前一句)。
+        // 之前 instead 被当空气吃掉，导致两句都执行（合打 6 点）。
+        result = InsteadWeaver.Weave(result, _lex);
+
         // 收尾：把剩余的模式选项落成 BranchModeNode
         if (modeOptions.Count > 0)
         {

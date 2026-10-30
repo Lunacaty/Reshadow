@@ -303,7 +303,12 @@ public sealed partial class CardVm
             _world.MoveEntity(t, n.ToZone, t.PlayerId);
             moved.Add(t);
         }
-        scope.Bind(n.OutSlot, moved);
+
+        // $created 只应记录「进入场上/手牌」的新对象。
+        // 送去墓地或放逐时若也写入，后续的 "it" 会指向一具尸体，
+        // 导致 "destroy it, then banish it" 里第二句指向错误。
+        if (n.ToZone == ZoneRef.Board || n.ToZone == ZoneRef.Hand || n.ToZone == ZoneRef.ExArea)
+            scope.Bind(n.OutSlot, moved);
         return false;
     }
 

@@ -236,8 +236,13 @@ public sealed class ActionParser
             case "fully": return ParseFully(cur);
             case "it": return ParseItCosts(cur);
             case "replicate": return ParseReplicate(cur);
-            // instead 是修饰词，语义由 InsteadWeaver 在装配层处理；这里消费掉
-            case "instead": { cur.Advance(); return new List<EffectNode>(); }
+            // instead 是「替代」语义：留一个占位标记，由 InsteadWeaver 在装配层合成条件分支。
+            // 直接返回空列表会让前后两句都执行（Deal 2 + Deal 4 = 合打 6 点）。
+            case "instead":
+            {
+                cur.Advance();
+                return new List<EffectNode> { new MacroNode { Macro = _lex.Macro("instead_marker") } };
+            }
             // Whenever / When / At the ... —— 事件触发句不归 ActionParser 管。
             // 直接返回 null，让 CompileSegment 的 SplitCondition 处理；
             // 绝不能在这里把剩余词吞掉（那是 V2 的兜底病）。
@@ -438,24 +443,43 @@ public sealed class ActionParser
         var n = ParseNumExpr(cur);
         cur.TryMatchAnyWord("card", "cards");
         var filter = _target.TryParse(cur);
-        var from = filter != null
-            ? new TargetSpec
+
+        // 定向检索必须继承 filter 的 CardId / CardName / Mode：
+        //   "Draw all copies of Rusty"  -> Mode=All + CardId
+        //   "Draw a Swordcraft follower" -> Mode=Random + Trait 过滤
+        // 之前把这些全丢了、Mode 硬写成 First，
+        // 结果变成了「无条件抽牌库顶第 1 张」。
+        TargetSpec from;
+        if (filter != null)
+        {
+            from = new TargetSpec
             {
-                SourceKind = TargetSourceKind.Zone,
+                SourceKind = filter.SourceKind,
                 Zone = ZoneRef.Deck,
                 Owner = ZoneScope.Self,
+                CardId = filter.CardId,
+                CardName = filter.CardName,
                 Where = filter.Where,
-                Mode = SelectMode.First,
-                Count = n,
-            }
-            : new TargetSpec
+                // "all copies" 保留 All；其余无明确模式时按随机检索
+                Mode = filter.Mode == SelectMode.All ? SelectMode.All : SelectMode.Random,
+                Count = filter.Mode == SelectMode.All ? null : n,
+                DistinctByName = filter.DistinctByName,
+                Sort = filter.Sort,
+                SortDescending = filter.SortDescending,
+                Slot = filter.Slot,
+            };
+        }
+        else
+        {
+            from = new TargetSpec
             {
                 SourceKind = TargetSourceKind.Zone,
                 Zone = ZoneRef.Deck,
                 Owner = ZoneScope.Self,
-                Mode = SelectMode.First,
+                Mode = SelectMode.First,   // 普通抽牌：牌库顶
                 Count = n,
             };
+        }
         return new List<EffectNode>
         {
             new MoveZoneNode { Target = from, ToZone = ZoneRef.Hand, OutSlot = TargetSpec.SlotCreated },
@@ -1273,15 +1297,24 @@ public sealed class ActionParser
             else
             {
                 // 语料可能把带 "vs." 的卡名截断（"Istyndet vs."），
-                // 此时按剩余 token 拼成残名，交给运行时按前缀匹配。
+                // 此时按 token 拼成残名，交给运行时按前缀匹配。
+                // 但必须在 and / 逗号 / 下一个动词处停下 —— 否则会把
+                // "... gain Crest: Sandalphon and return this card to hand."
+                // 里的 "and return this card to hand" 当成纹章名字吞掉。
                 var sbCrest = new System.Text.StringBuilder();
-                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
+                while (!cur.IsAtEnd
+                       && cur.Current.Kind != TokKind.Period
+                       && cur.Current.Kind != TokKind.Comma
+                       && !cur.Current.IsAnyWord("and", "then", "return", "draw", "deal",
+                                                 "destroy", "give", "summon", "banish", "restore"))
                 {
                     if (sbCrest.Length > 0) sbCrest.Append(' ');
                     sbCrest.Append(cur.Current.Text);
                     cur.Advance();
                 }
                 crestName = sbCrest.ToString();
+                // 丢掉紧跟着的分隔符，让后续动作能接上
+                if (cur.Current.Kind == TokKind.Comma) cur.Advance();
             }
             return new List<EffectNode>
             {

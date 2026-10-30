@@ -76,6 +76,9 @@ public interface IVmWorld
     /// <summary>给实体附加一段能力。</summary>
     void GrantAbility(RuntimeEntity e, Ast.AbilityDef ability);
 
+    /// <summary>运行时授予的能力（不写在 CardDef 上），触发器扫描时必须一并检查。</summary>
+    IReadOnlyList<(RuntimeEntity e, Ast.AbilityDef ab)> GrantedAbilities { get; }
+
     /// <summary>给一个资源计数器挂载能力（如 faith 的"每当友方随从进化"）。</summary>
     void GrantCounterAbility(int playerId, SymbolId<CounterTag> counter, Ast.AbilityDef ability);
 
