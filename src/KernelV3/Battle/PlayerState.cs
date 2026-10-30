@@ -56,6 +56,15 @@ public sealed class PlayerState
     // ---------- 回合内限额 ----------
 
     /// <summary>本回合是否已手动进化过（每回合限 1 次）。</summary>
+    /// <summary>牌组抽空判负。官方：牌组为 0 张时抽牌即失败。</summary>
+    public bool LostByDeckOut { get; set; }
+
+    /// <summary>牌组底部已有「胜利的卡牌」。</summary>
+    public bool HasVictoryCard { get; set; }
+
+    /// <summary>抽空牌组时持有胜利的卡牌 —— 改为胜利。</summary>
+    public bool WonByVictoryCard { get; set; }
+
     public bool ManualEvolvedThisTurn { get; set; }
 
     /// <summary>本回合已启动过的护符（Engage 每回合限 1 次）。</summary>

@@ -336,15 +336,38 @@ public sealed class BattleState : IVmWorld
 
     // ---------- 抽牌 ----------
 
+    /// <summary>
+    /// 抽牌。
+    ///
+    /// 官方规则：牌组为 0 张时抽牌即失败 ——
+    /// 但若自己牌组底部已有「胜利的卡牌」，则改为胜利。
+    /// 之前这里只是 continue，抽空牌组不会有任何后果。
+    /// </summary>
     public void DrawCards(int playerId, int count)
     {
         var p = Players[playerId];
         for (int i = 0; i < count; i++)
         {
-            if (p.Deck.Count == 0) continue;
+            if (p.Deck.Count == 0)
+            {
+                if (p.HasVictoryCard)
+                    p.WonByVictoryCard = true;
+                else
+                    p.LostByDeckOut = true;
+                EmitEvent(new VmEvent { Kind = CoreEvent.OnDeckOut });
+                return;
+            }
+
             var card = p.Deck[0];
             MoveEntity(card, ZoneRef.Hand, playerId);
             EmitEvent(new VmEvent { Kind = CoreEvent.OnDraw, Subject = EntityRef.From(card) });
         }
+    }
+
+    /// <summary>把牌组底部的卡变成「胜利的卡牌」（官方「胜利的卡牌」机制）。</summary>
+    public void SetVictoryCard(int playerId)
+    {
+        if (playerId is < 0 or > 1) return;
+        Players[playerId].HasVictoryCard = true;
     }
 }

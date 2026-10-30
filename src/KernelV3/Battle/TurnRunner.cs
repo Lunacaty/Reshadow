@@ -203,15 +203,32 @@ public sealed class TurnRunner
     // ---------- 胜负 ----------
 
     /// <summary>返回获胜方，-1 表示未结束，-2 表示平局（双方同时到 0）。</summary>
+    /// <summary>
+    /// 胜负判定：返回获胜方（0/1），-1 未结束，-2 平局。
+    ///
+    /// 三条判负来源：
+    ///   1. 主战者生命归零
+    ///   2. 牌组抽空（且牌组底部没有「胜利的卡牌」）
+    ///   3. 抽空时持有「胜利的卡牌」-> 反而获胜
+    /// </summary>
     public int Winner()
     {
-        var a = _state.Players[0].Leader;
-        var b = _state.Players[1].Leader;
-        bool aDead = a != null && a.Life <= 0;
-        bool bDead = b != null && b.Life <= 0;
-        if (aDead && bDead) return -2;
-        if (bDead) return 0;
-        if (aDead) return 1;
+        var p0 = _state.Players[0];
+        var p1 = _state.Players[1];
+
+        bool p0Lose = IsLoser(p0);
+        bool p1Lose = IsLoser(p1);
+
+        // 「胜利的卡牌」优先于抽空判负
+        if (p0.WonByVictoryCard) p1Lose = true;
+        if (p1.WonByVictoryCard) p0Lose = true;
+
+        if (p0Lose && p1Lose) return -2;
+        if (p1Lose) return 0;
+        if (p0Lose) return 1;
         return -1;
     }
+
+    private static bool IsLoser(PlayerState p)
+        => (p.Leader != null && p.Leader.Life <= 0) || p.LostByDeckOut;
 }

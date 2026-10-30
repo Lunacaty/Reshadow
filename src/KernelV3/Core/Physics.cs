@@ -89,6 +89,9 @@ public enum CoreEvent
     OnSpellboost,
     OnCountdownExpire,
 
+    // 判负条件
+    OnDeckOut,
+
     // 计数变化
     OnCounterChange,
 }
