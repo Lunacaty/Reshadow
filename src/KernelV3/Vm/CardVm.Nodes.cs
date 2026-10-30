@@ -364,9 +364,22 @@ public sealed partial class CardVm
             }
             else
             {
+                bool fromHand = t.Zone == ZoneRef.Hand;
                 if (t.Zone == ZoneRef.Board && n.ToZone != ZoneRef.Board)
                     _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(t) });
                 _world.MoveEntity(t, n.ToZone, t.PlayerId);
+
+                // 弃牌（Hand → Cemetery，且不是 Destroy）要发 OnDiscard 并加墓场。
+                // 官方：弃牌不触发谢幕曲、不进 DestroyedThisMatch，但 shadow +1。
+                // 之前这里只做了 MoveEntity，所以所有「弃一张牌」法术
+                // 既不会触发 Whenever you discard，也不加墓场。
+                if (fromHand && n.ToZone == ZoneRef.Cemetery)
+                {
+                    var shadowKey = Schema.Counter("shadow");
+                    var owner = t.PlayerId;
+                    _world.WriteCounter(owner, shadowKey, _world.ReadCounter(owner, shadowKey) + 1);
+                    _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnDiscard, Subject = EntityRef.From(t) });
+                }
             }
             moved.Add(t);
         }

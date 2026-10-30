@@ -124,7 +124,7 @@ public sealed class ActionParser
             case "add": return ParseAdd(cur);
             case "destroy": return ParseMove(cur, ZoneRef.Cemetery, isDestroy: true);
             case "banish": return ParseMove(cur, ZoneRef.Banished);
-            case "discard": return ParseMove(cur, ZoneRef.Cemetery, isDestroy: false);
+            case "discard": return ParseMove(cur, ZoneRef.Cemetery, isDestroy: false, fromZone: ZoneRef.Hand);
             case "return": return ParseMove(cur, ZoneRef.Hand);
             case "evolve": return ParseEvolve(cur, false);
             case "super-evolve": return ParseEvolve(cur, true);
@@ -1160,7 +1160,13 @@ public sealed class ActionParser
 
     // ---------- 移区 ----------
 
-    private List<EffectNode> ParseMove(TokenCursor cur, ZoneRef to, bool isDestroy = false)
+    /// <summary>
+    /// 移动动作。fromZone 非 null 时，若 TargetParser 没给出明确区域，
+    /// 则用它作为来源区域。
+    /// 例："Discard a card" 的弃牌来自手牌，不是战场。
+    /// </summary>
+    private List<EffectNode> ParseMove(TokenCursor cur, ZoneRef to, bool isDestroy = false,
+                                      ZoneRef? fromZone = null)
     {
         var verb = cur.Current.Text.ToLowerInvariant();
         cur.Advance();   // 动词
@@ -1235,6 +1241,23 @@ public sealed class ActionParser
         }
 
         var target = _target.TryParse(cur) ?? TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent);
+
+        // 弃牌 / 回洗这类动作的来源区域是固定的，不能默认成战场。
+        if (fromZone != null && target != null
+            && target.SourceKind == TargetSourceKind.Zone
+            && target.Zone == ZoneRef.Board)
+        {
+            target = new TargetSpec
+            {
+                SourceKind = target.SourceKind,
+                Owner = ZoneScope.Self,
+                Zone = fromZone.Value,
+                Mode = target.Mode,
+                Count = target.Count,
+                Where = target.Where,
+            };
+        }
+
         if (leadCount != null)
         {
             target = new TargetSpec

@@ -169,43 +169,176 @@ public sealed class TurnRunner
     /// 从手牌打出一张卡。
     /// Fanfare(OnPlay) 只有这条路径才触发 —— 召唤/复活拉进来的随从不会触发。
     /// </summary>
+    /// <summary>
+    /// 从手牌打出一张牌（R-2.3 操作 A）。
+    /// </summary>
     public bool PlayCard(int playerId, RuntimeEntity card, CardVm vm)
     {
         if (playerId != _state.ActivePlayer) return false;
+        if (card == null || card.Def == null) return false;
 
         var p = _state.Players[playerId];
         if (!p.Hand.Contains(card)) return false;
 
+        // ── 1. 限制与费用 ──
+        // "Can't be played"（融合专用配件卡）禁止打出
+        if (card.Keywords.Contains(_schema.Keyword("cannot_be_played"))) return false;
+
+        // 随从与护符：战场已满 5 张时禁止打出
+        bool isFollowerOrAmulet = card.Def.Kind == Ast.CardKind.Follower
+                                  || card.Def.Kind == Ast.CardKind.Amulet;
+        if (isFollowerOrAmulet && p.Board.Count >= PlayerState.MaxBoard) return false;
+
         var ppKey = _schema.Counter("pp");
         int pp = _state.ReadCounter(playerId, ppKey);
-        if (pp < card.Cost) return false;
 
-        // 爆能强化：先用**本次打出前**的 PP 判定能不能走高档，
-        // 再一次性扣陣。之前先扣基础费再让 EnhanceWeaver 判 pp >= N，
-        // 已经扣掉基础费的 pp 永远达不到高档。
-        // 这里只记录“本次打出时可用 PP”，供 VM 内的分支判定使用。
-        // 记下打出前的 PP：Enhance 分支靠它判定能走哪一档。
+        // ── 爆能强化强制铁律 ──
+        // pp >= N 时必须按最高可支付档付费，不能选择只付原费。
+        int pay = card.Cost;
+        int bestTier = 0;
+        foreach (var tier in EnhanceTiers(card)) if (pp >= tier && tier > bestTier) bestTier = tier;
+        if (bestTier > pay) pay = bestTier;
+
+        if (pp < pay) return false;
+
+        // ── 2. 法术的手选目标预检（随从/护符不受限）──
+        if (card.Def.Kind == Ast.CardKind.Spell && !HasLegalTargetForSpell(card)) return false;
+
+        // ── 扣费──
+        // pp_at_play 记录打出前的 PP，供 Enhance 分支判定能走哪一档
         _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), pp);
-        _state.WriteCounter(playerId, ppKey, pp - card.Cost);
+        _state.WriteCounter(playerId, ppKey, pp - pay);
         card.EnteredTurn = _state.TurnNumber;
 
-        bool isFollowerOrAmulet = card.Def != null
-            && (card.Def.Kind == Ast.CardKind.Follower || card.Def.Kind == Ast.CardKind.Amulet);
-
-        if (isFollowerOrAmulet)
-            _state.MoveEntity(card, ZoneRef.Board, playerId);
-        else
-            _state.MoveEntity(card, ZoneRef.Cemetery, playerId);   // 法术结算后进墓地
-
-        // 连击计数
+        // ── 3. 连击 +1（包含当前这张）──
         var comboKey = _schema.Counter("combo");
         _state.WriteCounter(playerId, comboKey, _state.ReadCounter(playerId, comboKey) + 1);
 
-        // 只有主动打出才触发 OnPlay
-        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
-        vm?.StepUntilBlocked();
+        // ── 4. 入场 ──
+        if (isFollowerOrAmulet)
+        {
+            _state.MoveEntity(card, ZoneRef.Board, playerId);
+
+            // 「当随从进入战场时」全场监听
+            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEnterField, Subject = EntityRef.From(card) });
+
+            // 自身【入场曲】（优先级 10）
+            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            vm?.StepUntilBlocked();
+
+            // 协作（Rally）：入场曲结算完之后才 +1，
+            // 所以当前这张在它自己的入场曲里不算进 rally。
+            if (card.Def.Kind == Ast.CardKind.Follower)
+            {
+                var rallyKey = _schema.Counter("rally");
+                _state.WriteCounter(playerId, rallyKey, _state.ReadCounter(playerId, rallyKey) + 1);
+            }
+        }
+        else
+        {
+            // 法术：结算效果 → 进墓场 → shadow +1
+            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            vm?.StepUntilBlocked();
+
+            _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
+            var shadowKey = _schema.Counter("shadow");
+            _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
+
+            // 手牌里带魔力增幅的卡计数 +1 并触发 OnSpellboost
+            BumpSpellboost(playerId, vm);
+        }
+
         return true;
     }
+
+    /// <summary>
+    /// 法术是否有合法目标。
+    /// 只检查「需要玩家手选（Choose）」的目标：
+    /// 自动取（All / Random）永远合法，只有 Choose 在池子为空时才会卡住。
+    /// </summary>
+    private bool HasLegalTargetForSpell(RuntimeEntity card)
+    {
+        if (card.Def?.Abilities == null) return true;
+        foreach (var ab in card.Def.Abilities)
+        {
+            if (ab?.Body == null) continue;
+            foreach (var node in ab.Body)
+            {
+                var spec = GetChooseTarget(node);
+                if (spec == null) continue;
+                if (CountLegalTargets(spec, card.PlayerId) > 0) return true;
+            }
+        }
+        return true;
+    }
+
+    private static Ast.TargetSpec GetChooseTarget(Ast.EffectNode n) => n switch
+    {
+        Ast.SelectTargetNode st => st.Target,
+        Ast.DealDamageNode d => d.Target,
+        Ast.MoveZoneNode m => m.Target,
+        Ast.ModifyStatsNode ms => ms.Target,
+        Ast.ModifyKeywordNode mk => mk.Target,
+        _ => null,
+    };
+
+    private int CountLegalTargets(Ast.TargetSpec spec, int playerId)
+    {
+        if (spec == null || spec.Mode != SelectMode.Choose) return 1;
+        int owner = spec.Owner switch
+        {
+            ZoneScope.Self => playerId,
+            ZoneScope.Opponent => 1 - playerId,
+            _ => -1,
+        };
+        var pool = _state.EnumerateZone(spec.Zone, owner).ToList();
+        var ambush = _schema.Keyword("ambush");
+        var aura = _schema.Keyword("aura");
+        pool = pool.Where(e =>
+        {
+            if (e.Zone != ZoneRef.Board) return true;
+            if (e.PlayerId == playerId) return true;
+            return !e.Keywords.Contains(ambush) && !e.Keywords.Contains(aura);
+        }).ToList();
+        return pool.Count;
+    }
+
+    /// <summary>该卡声明了哪些 Enhance (N) 档位。</summary>
+    private static IEnumerable<int> EnhanceTiers(RuntimeEntity card)
+    {
+        if (card.Def?.Abilities == null) yield break;
+        foreach (var ab in card.Def.Abilities)
+        {
+            if (ab?.Costs == null) continue;
+            foreach (var c in ab.Costs)
+            {
+                if (c.Kind != Ast.CostKind.UsePp) continue;
+                if (c.Label == null || !c.Label.Equals("enhance", StringComparison.OrdinalIgnoreCase)) continue;
+                if (c.Amount?.Op == Ast.NumOp.Const) yield return c.Amount.Value;
+            }
+        }
+    }
+
+    /// <summary>法术打出后：手牌中带魔力增幅的卡计数 +1，并触发 OnSpellboost。</summary>
+    private void BumpSpellboost(int playerId, CardVm vm)
+    {
+        var sbKey = _schema.Counter("spellboost");
+        bool any = false;
+        foreach (var e in _state.Players[playerId].Hand)
+        {
+            if (e.Def?.Abilities == null) continue;
+            bool has = false;
+            foreach (var ab in e.Def.Abilities)
+                if (ab?.Trigger != null && ab.Trigger.Event == CoreEvent.OnSpellboost) { has = true; break; }
+            if (!has) continue;
+
+            e.Counters.TryGetValue(sbKey, out var cur);
+            e.Counters[sbKey] = cur + 1;
+            any = true;
+        }
+        if (any) vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnSpellboost });
+    }
+
 
     /// <summary>
     /// 手牌中所有带【奥义】的卡，奥义槽 +1。

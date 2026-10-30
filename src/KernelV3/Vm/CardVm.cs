@@ -335,8 +335,9 @@ public sealed partial class CardVm
                 // 之前这里完全没有判定，所以 Enhance / Necromancy 等代价形同虚设。
                 var ppKey = Schema.Counter("pp");
                 var shadowKey = Schema.Counter("shadow");
-                if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey)) continue;
-                CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey);
+                var earthKey = Schema.Counter("earth_sigil");
+                if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey)) continue;
+                CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey);
 
                 var scope = new VmScope
                 {

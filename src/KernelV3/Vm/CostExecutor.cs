@@ -27,7 +27,8 @@ public static class CostExecutor
     /// <summary>某类代价在当前状态下能不能支付。</summary>
     public static bool CanPay(
         IVmWorld world, int playerId, RuntimeEntity source,
-        IReadOnlyList<CostSpec> costs, SymbolId<CounterTag> ppKey, SymbolId<CounterTag> shadowKey)
+        IReadOnlyList<CostSpec> costs, SymbolId<CounterTag> ppKey, SymbolId<CounterTag> shadowKey,
+        SymbolId<CounterTag> earthSigilKey)
     {
         if (costs == null || costs.Count == 0) return true;
         foreach (var c in costs)
@@ -50,9 +51,11 @@ public static class CostExecutor
 
                 // Earth Rite 需要破坏自己 N 个护符，裁判交给调用方（需要选择目标）
                 case CostKind.DestroyAlly:
-                    if (world.EnumerateZone(ZoneRef.Board, playerId)
-                             .Count(e => e.Def != null && e.Def.Kind == CardKind.Amulet) < need)
-                        return false;
+                    // 土之秘术消耗的是「土之印层数」，不是场上护符个数。
+                    // 条件层 AndCosts 已经写成 ctr:earth_sigil >= N，
+                    // 这里必须用同一个计数器，否则两层判定互相矛盾：
+                    // 有 10 层土之印但场上只有 1 个护符时，条件通过而这里拦住。
+                    if (world.ReadCounter(playerId, earthSigilKey) < need) return false;
                     break;
 
                 case CostKind.Countdown:
@@ -65,7 +68,8 @@ public static class CostExecutor
     /// <summary>扣除消耗型代价。调用前必须先过 CanPay。</summary>
     public static void Pay(
         IVmWorld world, int playerId, RuntimeEntity source,
-        IReadOnlyList<CostSpec> costs, SymbolId<CounterTag> ppKey, SymbolId<CounterTag> shadowKey)
+        IReadOnlyList<CostSpec> costs, SymbolId<CounterTag> ppKey, SymbolId<CounterTag> shadowKey,
+        SymbolId<CounterTag> earthSigilKey)
     {
         if (costs == null) return;
         foreach (var c in costs)
@@ -78,6 +82,13 @@ public static class CostExecutor
                     break;
                 case CostKind.Necromance:
                     world.WriteCounter(playerId, shadowKey, world.ReadCounter(playerId, shadowKey) - need);
+                    break;
+
+                case CostKind.DestroyAlly:
+                    // 与 CanPay 对称：扣除土之印层数。
+                    // 之前这里什么都不做，所以土之秘术是白嫖。
+                    world.WriteCounter(playerId, earthSigilKey,
+                        world.ReadCounter(playerId, earthSigilKey) - need);
                     break;
                 // DestroyAlly 的精确目标选择需要 UI，在此不自动执行
                 default:

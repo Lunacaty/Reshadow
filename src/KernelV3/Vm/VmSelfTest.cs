@@ -57,6 +57,10 @@ public static class VmSelfTest
         GateFaithEntity();
         GateFaithGrantedAbility();
         GatePronounScope();
+        GateHandOverflow();
+        GateDiscardEvent();
+        GatePlayCardLimits();
+        GateNegativeStatsKill();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -980,6 +984,112 @@ public static class VmSelfTest
         bool ok = b1.Contains("$trigger") && b2.Contains("$selected");
         Check("门禁17 代词槽位随上下文变化", ok,
               "whenever=" + b1 + " select=" + b2);
+    }
+
+    /// <summary>门禁18：手牌满 9 张时第 10 张进墓地且 shadow +1（与满场直接消失不同）。</summary>
+    private static void GateHandOverflow()
+    {
+        var st = new Battle.BattleState(seed: 13);
+        var shadowKey = st.Schema.Counter("shadow");
+        st.RegisterCard(new CardDef { CardId = 400, Name = "C", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+
+        for (int i = 0; i < 9; i++) st.SpawnCard(400, ZoneRef.Hand, 0);
+        int handBefore = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+        int shadowBefore = st.ReadCounter(0, shadowKey);
+
+        var tenth = st.SpawnCard(400, ZoneRef.Hand, 0);
+
+        bool handFull = handBefore == 9;
+        bool wentCemetery = tenth.Zone == ZoneRef.Cemetery;
+        bool shadowUp = st.ReadCounter(0, shadowKey) == shadowBefore + 1;
+
+        // 满场对比：应当直接消失，不进墓地
+        for (int i = 0; i < 5; i++) st.SpawnCard(400, ZoneRef.Board, 0);
+        int shadowB2 = st.ReadCounter(0, shadowKey);
+        var sixth = st.SpawnCard(400, ZoneRef.Board, 0);
+        bool boardVanish = sixth.Zone == ZoneRef.None && st.ReadCounter(0, shadowKey) == shadowB2;
+
+        Check("门禁18 手牌爆牌进墓地+1 / 满场直接消失",
+              handFull && wentCemetery && shadowUp && boardVanish,
+              "hand=" + handFull + " cemetery=" + wentCemetery + " shadow=" + shadowUp + " board=" + boardVanish);
+    }
+
+    /// <summary>门禁19：弃牌（Hand → Cemetery）要发 OnDiscard 并加墓场。</summary>
+    private static void GateDiscardEvent()
+    {
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+        CardVm.Schema = w.Schema;
+        var lex = new Lang.Lexicon();
+        foreach (var kw in new[] { "ward", "rush", "storm" }) lex.AddKeyword(kw);
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+
+        w.RegisterCard(new CardDef { CardId = 500, Name = "DiscardMe", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+        var card = w.SpawnCard(500, ZoneRef.Hand, 0);
+        int shadowBefore = w.ReadCounter(0, w.Schema.Counter("shadow"));
+
+        var r = comp.Compile("Fanfare: Discard a card.");
+        vm.PushAbility(r.Abilities[0], new VmScope { Owner = ZoneScope.Self, Controller = 0 });
+        vm.StepUntilBlocked();
+
+        bool discarded = w.EventLog.Any(e => e.Kind == CoreEvent.OnDiscard);
+        bool shadowUp = w.ReadCounter(0, w.Schema.Counter("shadow")) > shadowBefore;
+
+        Check("门禁19 弃牌发 OnDiscard 并加墓场", discarded && shadowUp,
+              "discard=" + discarded + " shadow=" + shadowUp);
+    }
+
+    /// <summary>门禁20：PlayCard 的限制（Can't be played / 满场 / 启动费）。</summary>
+    private static void GatePlayCardLimits()
+    {
+        var st = new Battle.BattleState(seed: 14);
+        var tr = new Battle.TurnRunner(st, st.Schema);
+        var vm = new CardVm(st);
+        CardVm.Schema = st.Schema;
+
+        st.ActivePlayer = 0;
+        st.TurnNumber = 3;
+        st.WriteCounter(0, st.Schema.Counter("pp"), 10);
+        st.WriteCounter(0, st.Schema.Counter("max_pp"), 10);
+
+        // (a) "Can't be played"
+        st.RegisterCard(new CardDef { CardId = 600, Name = "NoPlay", Kind = CardKind.Follower, BaseCost = 1, BaseAttack = 1, BaseLife = 1 });
+        var noPlay = st.SpawnCard(600, ZoneRef.Hand, 0);
+        noPlay.Keywords.Add(st.Schema.Keyword("cannot_be_played"));
+        bool blocked = !tr.PlayCard(0, noPlay, vm);
+
+        // (b) 满场禁止打出
+        st.RegisterCard(new CardDef { CardId = 601, Name = "F", Kind = CardKind.Follower, BaseCost = 1, BaseAttack = 1, BaseLife = 1 });
+        for (int i = 0; i < 5; i++) st.SpawnCard(601, ZoneRef.Board, 0);
+        var full = st.SpawnCard(601, ZoneRef.Hand, 0);
+        bool blockedFull = !tr.PlayCard(0, full, vm);
+
+        Check("门禁20 PlayCard 限制生效", blocked && blockedFull,
+              "cannotPlay=" + blocked + " boardFull=" + blockedFull);
+    }
+
+    /// <summary>门禁21：生命归零的破坏不受超进化免破坏保护（Give -0/-N 能打死它）。</summary>
+    private static void GateNegativeStatsKill()
+    {
+        var st = new Battle.BattleState(seed: 15);
+        st.RegisterCard(new CardDef { CardId = 700, Name = "SE", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 6 });
+        var e = st.SpawnCard(700, ZoneRef.Board, 0);
+        e.IsSuperEvolved = true;
+        e.IsEvolved = true;
+        st.ActivePlayer = 0;
+
+        // 能力破坏应被免疫拦住
+        st.DestroyEntity(e);
+        bool immune = e.Zone == ZoneRef.Board;
+
+        // 但属性修正把生命扣到 0，状态结算必须把它破坏
+        e.Life = 0;
+        st.ProcessStateBasedActions();
+        bool diesByLife = e.Zone == ZoneRef.Cemetery;
+
+        Check("门禁21 属性归零能破坏超进化随从", immune && diesByLife,
+              "immune=" + immune + " diesByLife=" + diesByLife);
     }
 
     private static void Check(string name, bool ok, string detail)

@@ -331,14 +331,30 @@ public sealed class BattleState : IVmWorld
         int cap = PlayerState.Capacity(zone);
         if (cap >= 0 && list.Count >= cap)
         {
-            // 铁律 2：满场/满手时新实体直接消失，不触发入场与破坏事件。
-            // 它既不是被破坏也不是被弃牌，所以不能进 Cemetery，
-            // 否则墓地、shadow、DestroyedThisMatch 都会被凭空打爆。
-            // 用 ZoneRef.None 表示「从未存在于任何区域」。
-            if (zone == ZoneRef.Board || zone == ZoneRef.Hand)
+            // 两条溢出铁律完全不同，不能合并处理：
+            //
+            // · 满场（Board ≥ 5）：新卡**直接凭空消失**。
+            //   不进墓地、shadow 不变、不进 DestroyedThisMatch、
+            //   不触发入场与消失时能力，也不能被亡者召还。
+            //
+            // · 爆牌（Hand ≥ 9）：第 10 张**进墓地**，shadow +1，
+            //   但不触发谢幕曲、不触发 OnDiscard、不进 DestroyedThisMatch。
+            //   之前把爆牌也当成凭空消失，墓场数就少加了。
+            if (zone == ZoneRef.Board)
             {
                 e.Zone = ZoneRef.None;
                 _all.Remove(e);
+                return;
+            }
+            if (zone == ZoneRef.Hand)
+            {
+                e.Zone = ZoneRef.Cemetery;
+                e.EntrySerial++;
+                p.Cemetery.Add(e);
+                var shadowKey = Schema.Counter("shadow");
+                var pid = playerId;
+                Players[pid].Counters[shadowKey.Id] =
+                    Schema.ClampCounter(shadowKey, ReadCounter(pid, shadowKey) + 1);
                 return;
             }
         }
@@ -433,6 +449,14 @@ public sealed class BattleState : IVmWorld
     /// 把 Life &lt;= 0 的场上实体破坏掉。
     /// 必须在每条原子指令后调用，否则死亡随从会留在场上继续挨刀。
     /// </summary>
+    /// <summary>
+    /// 状态基础行为：生命值 ≤ 0 的场上实体破坏。
+    ///
+    /// 注意与能力破坏的区别：
+    /// 这里是「已经死了」的收尾，不是「能否破坏」的判定。
+    /// 超进化免破坏只拦能力破坏，拦不住生命归零——
+    /// 否则 Give -0/-3 这类属性修正把超进化随从打到 0 血也死不了。
+    /// </summary>
     public int ProcessStateBasedActions()
     {
         int n = 0;
@@ -441,11 +465,33 @@ public sealed class BattleState : IVmWorld
             foreach (var e in p.Board.ToList())
             {
                 if (e.Life > 0) continue;
-                DestroyEntity(e);
+                DestroyByState(e);
                 n++;
             }
         }
         return n;
+    }
+
+    /// <summary>生命归零的破坏：不受超进化免破坏保护。</summary>
+    private void DestroyByState(RuntimeEntity e)
+    {
+        if (e == null || e.Zone != ZoneRef.Board) return;
+
+        int owner = e.PlayerId;
+        var snap = e.TakeSnapshot();
+
+        Detach(e);
+        e.EntrySerial++;
+        PlaceInZone(e, ZoneRef.Cemetery, owner);
+
+        Players[owner].DestroyedThisMatch.Add(snap);
+        Players[owner].DestroyedThisTurn.Add(snap);
+
+        var shadow = Schema.Counter("shadow");
+        WriteCounter(owner, shadow, ReadCounter(owner, shadow) + 1);
+
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
     }
 
     // ---------- 生成 / 变形 / 授予 ----------

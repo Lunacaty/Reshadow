@@ -84,6 +84,9 @@ public sealed class GameSchema
         ("X", 0, 999), ("Y", 0, 999), ("Z", 0, 999),
         ("turn_play", 0, 99),
         ("match_play", 0, 999),
+        // 协作（Rally）：本局对战中已进入过战场的己方随从总数。
+        // 不含当前正在上场的这张（入场曲结算完才 +1），护符不算。
+        ("rally", 0, 999),
         ("evolve_count", 0, 99),
         // 融合：fuse_count 记融合次数，fuse_cost 记累计材料费用
         ("fuse_count", 0, 99),
