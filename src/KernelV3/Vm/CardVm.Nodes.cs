@@ -119,7 +119,7 @@ public sealed partial class CardVm
             t.Life = Math.Min(t.MaxLife, t.Life + amt);
             _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnHealed, Subject = EntityRef.From(t), Amount = amt });
         }
-        if (targets.Count > 0) scope.Bind(TargetSpec.SlotSelected, targets);
+        // 不覆写 $selected（只有 SelectTargetNode / SpawnCardNode 可以写槽位）
     }
 
     // ---------- 属性 / 费用 ----------
@@ -237,7 +237,7 @@ public sealed partial class CardVm
                 Subject = EntityRef.From(t),
             });
         }
-        if (targets.Count > 0) scope.Bind(TargetSpec.SlotSelected, targets);
+        // 不覆写 $selected（只有 SelectTargetNode / SpawnCardNode 可以写槽位）
     }
 
     private void DoTransform(TransformNode n, VmScope scope)
@@ -303,7 +303,9 @@ public sealed partial class CardVm
                 return false;
             }
             case ModeDispatchKind.Sequence:
-                foreach (var o in opts) PushBody(o, frame.Scope.Derive());
+                // 帧栈是后进先出，必须倒序压入才能正序执行
+                for (int i = opts.Count - 1; i >= 0; i--)
+                    PushBody(opts[i], frame.Scope.Derive());
                 return false;
 
             default:

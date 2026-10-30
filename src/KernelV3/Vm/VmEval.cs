@@ -35,6 +35,9 @@ public sealed class VmEval
             case NumOp.Property:
             {
                 var t = e.Of ?? TargetSpec.Self;
+                // 优先走快照：实体已离场/死亡时仍能读到它生前的数值（LKI）
+                var refsP = ResolveRef(t, scope);
+                if (refsP.Count > 0) return ReadStatFromSnapshot(refsP[0].Snapshot, e.Stat);
                 var ents = Resolve(t, scope);
                 if (ents.Count == 0) return 0;
                 return ReadStat(ents[0], e.Stat);
@@ -174,6 +177,8 @@ public sealed class VmEval
                 var t = ne.Of ?? TargetSpec.Item;
                 var ents = Resolve(t, scope);
                 var excluded = scope.Read(ne.ExcludeSlot);
+                if (excluded.Count == 0 && ne.ExcludeSlot == TargetSpec.SlotSelf && scope.Source != null)
+                    excluded = new List<EntityRef> { scope.Source.Value };
                 if (excluded.Count == 0) return ents.Count > 0;
                 // 排除自己：候选里至少有一个 EntityId 不在排除集合中
                 var bad = new HashSet<int>();
@@ -240,6 +245,23 @@ public sealed class VmEval
         UnitState.AttackedThisTurn => e.AttackedThisTurn,
         _ => false,
     };
+
+    /// <summary>从快照读属性（实体已死后仍有效）。</summary>
+    private static int ReadStatFromSnapshot(EntitySnapshot sn, StatKey k)
+    {
+        if (sn == null) return 0;
+        return k switch
+        {
+            StatKey.Attack => sn.Attack,
+            StatKey.Life => sn.Life,
+            StatKey.MaxLife => sn.MaxLife,
+            StatKey.Cost => sn.Cost,
+            StatKey.BaseAttack => sn.BaseAttack,
+            StatKey.BaseLife => sn.BaseLife,
+            StatKey.BaseCost => sn.BaseCost,
+            _ => 0,
+        };
+    }
 
     private static int ReadStat(RuntimeEntity e, StatKey k) => k switch
     {

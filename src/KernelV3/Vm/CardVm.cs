@@ -130,6 +130,13 @@ public sealed partial class CardVm
 
                 // 节点执行成功才推进 Ip（挂起时不推进，恢复后重跑本节点）
                 frame.Ip++;
+
+                // 状态结算：把 Life <= 0 的场上实体移入墓地并触发 OnDestroy。
+                // 不循环到底是为了让每次只处理一层，避免事件风暴。
+                if (_world.ProcessStateBasedActions() > 0)
+                {
+                    if (++StepsExecuted > _faultBudget) return Fault("状态结算次数超过上限");
+                }
             }
         }
         catch (VmFaultException ex)
@@ -188,6 +195,28 @@ public sealed partial class CardVm
 
         var frame = _frames.Count > 0 ? _frames[^1] : null;
         if (frame == null) throw new VmFaultException("没有可恢复的帧");
+
+        // ---- 模式抉择：候选是模式下标，不是实体 ID ----
+        if (Pending.Kind == ChoiceKind.SelectMode)
+        {
+            var branchNode = frame.Ip < frame.Code.Count ? frame.Code[frame.Ip] as Ast.BranchModeNode : null;
+            frame.Ip++;
+            var chosenModes = selectedEntityIds ?? Array.Empty<int>();
+            Pending = null;
+            Status = VmStatus.Running;
+
+            if (branchNode != null)
+            {
+                // 帧栈后进先出，倒序压入才能正序执行
+                for (int i = chosenModes.Count - 1; i >= 0; i--)
+                {
+                    int idx = chosenModes[i];
+                    if (idx >= 0 && idx < branchNode.Options.Count)
+                        PushBody(branchNode.Options[idx], frame.Scope.Derive());
+                }
+            }
+            return;
+        }
 
         var refs = new List<EntityRef>();
         foreach (var id in selectedEntityIds ?? Array.Empty<int>())

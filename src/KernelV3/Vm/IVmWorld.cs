@@ -68,6 +68,13 @@ public interface IVmWorld
     /// <summary>给一个资源计数器挂载能力（如 faith 的"每当友方随从进化"）。</summary>
     void GrantCounterAbility(ZoneScope owner, SymbolId<CounterTag> counter, Ast.AbilityDef ability);
 
+    /// <summary>
+    /// 状态结算（State-Based Actions）：把场上 Life &lt;= 0 的实体移入墓地并触发 OnDestroy。
+    /// 必须在每条原子指令执行后调用，否则死亡随从会继续留在场上挨刀。
+    /// 返回本次结算产生的事件数（便于循环直到稳定）。
+    /// </summary>
+    int ProcessStateBasedActions();
+
     /// <summary>展开机制宏为动作序列（Reanimate / Spellboost / 玩家自定义）。</summary>
     IReadOnlyList<Ast.EffectNode> ExpandMacro(SymbolId<MacroTag> macro, IReadOnlyList<int> args, VmScope scope);
 }

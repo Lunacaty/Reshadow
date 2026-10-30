@@ -30,6 +30,8 @@ public static class VmSelfTest
         TestLoopGuard();              // ★ 防死循环
         TestBranchRandom();
         TestConditional();
+        TestSequenceOrder();      // ★ Bug2：帧栈顺序
+        TestModeChoice();         // ★ Bug3：模式抉择执行
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -98,18 +100,30 @@ public static class VmSelfTest
 
     private static void TestNoCorpseHit()
     {
+        // 真正的「不鞭尸」验证：
+        //   1) 伤害把目标打到 0 以下
+        //   2) SBA 必须立刻把它移入墓地并递增 EntrySerial
+        //   3) 第二刀即使指向同一区域，也找不到它
         var w = new MemoryWorld();
         var vm = new CardVm(w);
         var t = w.Create(1, ZoneRef.Board, ZoneScope.Opponent, life: 1);
+        int serial0 = t.EntrySerial;
 
         vm.PushBody(new EffectNode[]
         {
-            new DealDamageNode { Target = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent), Amount = NumExpr.Const(3) },
-            new DealDamageNode { Target = TargetSpec.Previous, Amount = NumExpr.Const(3) },
+            new DealDamageNode { Target = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent), Amount = NumExpr.Const(3), IsAbility = false },
+            // 第二刀仍然指向 Board；如果 SBA 生效，这里已经找不到任何目标
+            new DealDamageNode { Target = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent), Amount = NumExpr.Const(3), IsAbility = false },
         }, new VmScope { Owner = ZoneScope.Self });
         vm.StepUntilBlocked();
 
-        Check("已死亡不重复受伤", t.Life == -2, $"期望 -2（只挨一次），实际 {t.Life}");
+        bool movedToGrave = t.Zone == ZoneRef.Cemetery;
+        bool serialBumped = t.EntrySerial > serial0;
+        bool onlyOneHit = t.Life == -2;   // 第一刀 1-3=-2，第二刀找不到目标
+
+        Check("低于 0 生命立刻进墓地（SBA）", movedToGrave, $"实际区域 {t.Zone}");
+        Check("进墓地后 EntrySerial 递增", serialBumped, $"{serial0} -> {t.EntrySerial}");
+        Check("已死亡不重复受伤", onlyOneHit, $"期望 -2，实际 {t.Life}");
     }
 
     private static void TestSnapshotAfterDestroy()
@@ -290,6 +304,70 @@ public static class VmSelfTest
         vm.StepUntilBlocked();
 
         Check("条件分支", t.Life == 3, $"期望 3，实际 {t.Life}");
+    }
+
+    private static void TestSequenceOrder()
+    {
+        // Sequence 必须按 1,2,3 的顺序执行；帧栈是后进先出，压栈必须倒序
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+        var log = new List<string>();
+        w.OnCounterWrite = (name, val) => log.Add(name + "=" + val);
+
+        vm.PushBody(new EffectNode[]
+        {
+            new BranchModeNode
+            {
+                Kind = ModeDispatchKind.Sequence,
+                PickCount = NumExpr.Const(3),
+                Options = new List<IReadOnlyList<EffectNode>>
+                {
+                    new List<EffectNode> { new ModifyCounterNode { Counter = Ctr("s1"), Op = CounterOp.Add, Delta = NumExpr.Const(1) } },
+                    new List<EffectNode> { new ModifyCounterNode { Counter = Ctr("s2"), Op = CounterOp.Add, Delta = NumExpr.Const(1) } },
+                    new List<EffectNode> { new ModifyCounterNode { Counter = Ctr("s3"), Op = CounterOp.Add, Delta = NumExpr.Const(1) } },
+                },
+            },
+        }, new VmScope { Owner = ZoneScope.Self });
+        vm.StepUntilBlocked();
+
+        Check("Sequence 正序执行（Bug2）",
+            log.Count == 3 && log[0] == "s1=1" && log[1] == "s2=1" && log[2] == "s3=1",
+            "实际顺序: " + string.Join(",", log));
+    }
+
+    private static void TestModeChoice()
+    {
+        // 玩家选模式后，被选中的分支必须真正执行（Bug3）
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+
+        vm.PushBody(new EffectNode[]
+        {
+            new BranchModeNode
+            {
+                Kind = ModeDispatchKind.Choose,
+                PickCount = NumExpr.Const(1),
+                Options = new List<IReadOnlyList<EffectNode>>
+                {
+                    new List<EffectNode> { new ModifyCounterNode { Counter = Ctr("modeA"), Op = CounterOp.Add, Delta = NumExpr.Const(1) } },
+                    new List<EffectNode> { new ModifyCounterNode { Counter = Ctr("modeB"), Op = CounterOp.Add, Delta = NumExpr.Const(1) } },
+                },
+            },
+        }, new VmScope { Owner = ZoneScope.Self });
+
+        var st = vm.StepUntilBlocked();
+        bool blocked = st == VmStatus.WaitingForInput && vm.Pending != null;
+        Check("模式抉择会挂起（Bug3）", blocked, $"状态={st}");
+
+        if (blocked)
+        {
+            // 选第 2 个模式（下标 1）
+            vm.SubmitChoice(vm.Pending.ChoiceId, new[] { 1 });
+            vm.StepUntilBlocked();
+            int a = w.ReadCounter(ZoneScope.Self, Ctr("modeA"));
+            int b = w.ReadCounter(ZoneScope.Self, Ctr("modeB"));
+            Check("选中的模式分支真正执行（Bug3）", a == 0 && b == 1, $"modeA={a} modeB={b}");
+        }
     }
 
     // ---------- 工具 ----------

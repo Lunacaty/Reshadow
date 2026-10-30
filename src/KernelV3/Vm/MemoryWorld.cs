@@ -67,8 +67,14 @@ public sealed class MemoryWorld : IVmWorld
     public int ReadCounter(ZoneScope owner, SymbolId<CounterTag> counter)
         => _counters.TryGetValue((owner, counter.Id), out var v) ? v : 0;
 
+    /// <summary>测试用：计数器写入回调（验证执行顺序）。</summary>
+    public Action<string, int> OnCounterWrite;
+
     public void WriteCounter(ZoneScope owner, SymbolId<CounterTag> counter, int value)
-        => _counters[(owner, counter.Id)] = value;
+    {
+        _counters[(owner, counter.Id)] = value;
+        OnCounterWrite?.Invoke(counter.Name, value);
+    }
 
     public bool CheckDeckRule(ZoneScope owner, DeckRule rule)
     {
@@ -138,6 +144,20 @@ public sealed class MemoryWorld : IVmWorld
 
     public void GrantCounterAbility(ZoneScope owner, SymbolId<CounterTag> counter, AbilityDef ability)
         => GrantedCounterAbilities.Add((owner, counter, ability));
+
+    public int ProcessStateBasedActions()
+    {
+        int n = 0;
+        var dead = _entities.Where(e => e.Zone == ZoneRef.Board && e.Life <= 0).ToList();
+        foreach (var e in dead)
+        {
+            e.Zone = ZoneRef.Cemetery;
+            e.EntrySerial++;   // 换区，旧引用失效
+            EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
+            n++;
+        }
+        return n;
+    }
 
     public IReadOnlyList<EffectNode> ExpandMacro(SymbolId<MacroTag> macro, IReadOnlyList<int> args, VmScope scope)
         => Array.Empty<EffectNode>();   // 宏由 Battle 层注册，自测里不展开
