@@ -294,17 +294,23 @@ public sealed class TurnRunner
     private bool HasLegalTargetForSpell(RuntimeEntity card)
     {
         if (card.Def?.Abilities == null) return true;
+
+        // 关键：「没有 Choose 目标」与「Choose 目标全部无效」必须区分开。
+        // 之前循环结束后无条件 return true，
+        // 于是敌方空场时「Select an enemy follower」的法术照样能打出。
+        bool sawChoose = false;
         foreach (var ab in card.Def.Abilities)
         {
             if (ab?.Body == null) continue;
             foreach (var node in ab.Body)
             {
                 var spec = GetChooseTarget(node);
-                if (spec == null) continue;
+                if (spec == null || spec.Mode != SelectMode.Choose) continue;
+                sawChoose = true;
                 if (CountLegalTargets(spec, card.PlayerId) > 0) return true;
             }
         }
-        return true;
+        return !sawChoose;
     }
 
     private static Ast.TargetSpec GetChooseTarget(Ast.EffectNode n) => n switch

@@ -527,14 +527,14 @@ public sealed class TargetParser
         else if (cur.Current.IsAnyWord("enemies", "enemy") && !cur.Peek().IsAnyWord("follower", "followers"))
         {
             cur.Advance();
-            if (!ownerSet) owner = ZoneScope.Opponent;
+            if (!ownerSet) { owner = ZoneScope.Opponent; ownerSet = true; }
             includeLeader = true;
             matched = true;
         }
         else if (cur.Current.IsAnyWord("allies", "ally"))
         {
             cur.Advance();
-            if (!ownerSet) owner = ZoneScope.Self;
+            if (!ownerSet) { owner = ZoneScope.Self; ownerSet = true; }
             includeLeader = true;
             matched = true;
         }

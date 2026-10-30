@@ -88,27 +88,8 @@ public static class EnhanceWeaver
             {
                 var body = new List<EffectNode>();
 
-                // 先补扣爆能费。
-                // TurnRunner.PlayCard 只扣了基础费（如 2），
-                // 但 Enhance (8) 意味着这张卡要花 8 费，不是 2+8=10。
-                // 所以补扣的差额是 (目标价 - 基础费)。
-                int tierAmount = tiers[maxIdx].amount;
-                int baseCost = baseAb?.Costs != null
-                    ? baseAb.Costs.Where(c => c.Kind == CostKind.UsePp)
-                                  .Select(c => c.Amount?.Op == NumOp.Const ? c.Amount.Value : 0)
-                                  .DefaultIfEmpty(0).Max()
-                    : 0;
-                int extra = tierAmount - baseCost;
-                if (extra > 0)
-                {
-                    body.Add(new ModifyCounterNode
-                    {
-                        Counter = lex.Counter("pp"),
-                        Op = CounterOp.Add,
-                        Delta = NumExpr.Const(-extra),
-                    });
-                }
-
+                // 爆能费已由 TurnRunner.PlayCard 统一扣除（它会取最高可支付档）。
+                // 这里不能再补扣，否则同一笔费扣两次。
                 if (baseAb != null) body.AddRange(baseAb.Body);
                 for (int k = 0; k <= maxIdx; k++) body.AddRange(tiers[k].ab.Body);
                 return body;
@@ -142,7 +123,17 @@ public static class EnhanceWeaver
                 Trigger = a.Trigger,
                 // 分支已含条件，外层不再挂条件（否则 pp<7 时整条能力不生效）
                 Condition = BoolExpr.True,
-                Costs = Array.Empty<CostSpec>(),
+                // 把各个 Enhance 档位写回 Costs。
+                // 运行时 TurnRunner 靠它算出本次实付最高档；
+                // 清成空的话付费永远停在基础费，爆能变成白孪。
+                Costs = tiers
+                    .Select(t => new CostSpec
+                    {
+                        Kind = CostKind.UsePp,
+                        Label = "enhance",
+                        Amount = NumExpr.Const(t.amount),
+                    })
+                    .ToArray(),
                 Body = new List<EffectNode> { new ConditionalNode { Condition = BoolExpr.True, Then = elseBody } },
             });
 
