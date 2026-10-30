@@ -67,6 +67,8 @@ public static class VmSelfTest
         GateInvokeSummon();
         GateSigilProtection();
         GateDrawSemantics();
+        GateCrestShape();
+        GateCrestCounter();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -1273,6 +1275,89 @@ public static class VmSelfTest
 
         Check("门禁27 抽牌语义（牌库顶 / 指定卡）", topOfDeck && allCopies,
               "top=" + topOfDeck + " all=" + allCopies);
+    }
+
+    /// <summary>门禁28：纹章的独立形状。同名唯一 + 区域上限 5 + 走自己的集成点。</summary>
+    private static void GateCrestShape()
+    {
+        var st = new Battle.BattleState(seed: 20);
+        var lex = new Lang.Lexicon();
+        foreach (var kw in new[] { "ward", "rush", "storm" }) lex.AddKeyword(kw);
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+
+        // (a) 同名唯一：同一个纹章获得两次只算 1 个
+        var r1 = comp.Compile("Fanfare: Gain Crest: Alpha.");
+        st.RegisterCard(new CardDef { CardId = 950, Name = "Alpha", Kind = CardKind.Crest });
+        var w = new MemoryWorld();
+        var vm = new CardVm(st);
+        CardVm.Schema = st.Schema;
+
+        var e1 = st.GainCrest(950, "Alpha", 0);
+        var e2 = st.GainCrest(950, "Alpha", 0);
+        bool uniqueOk = e1 != null && e2 == null
+                        && st.EnumerateZone(ZoneRef.CrestArea, 0).Count() == 1;
+
+        // (b) 区域上限 5：第 6 个起失效
+        for (int i = 0; i < 6; i++)
+        {
+            int id = 960 + i;
+            st.RegisterCard(new CardDef { CardId = id, Name = "C" + i, Kind = CardKind.Crest });
+            st.GainCrest(id, "C" + i, 0);
+        }
+        int count = st.EnumerateZone(ZoneRef.CrestArea, 0).Count();
+        bool capOk = count == 5;
+
+        // (c) 走自己的集成点：不进墓地、shadow 不变
+        int shadowBefore = st.ReadCounter(0, st.Schema.Counter("shadow"));
+        st.GainCrest(950, "Alpha", 0);   // 已有同名 + 已满
+        bool quietFail = st.ReadCounter(0, st.Schema.Counter("shadow")) == shadowBefore
+                         && st.EnumerateZone(ZoneRef.Cemetery, 0).Count() == 0;
+
+        Check("门禁28 纹章独立形状（唯一/上限/安静失败）",
+              uniqueOk && capOk && quietFail,
+              "unique=" + uniqueOk + " cap=" + count + " quiet=" + quietFail);
+    }
+
+    /// <summary>
+    /// 门禁29：「Delay the counts of all your crests」作用在每个纹章实体上，
+    /// 而不是玩家级的「你有几个纹章」计数器。
+    /// </summary>
+    private static void GateCrestCounter()
+    {
+        var st = new Battle.BattleState(seed: 21);
+        var vm = new CardVm(st);
+        CardVm.Schema = st.Schema;
+        var key = st.Schema.Counter("crest");
+
+        st.RegisterCard(new CardDef { CardId = 710, Name = "Alpha", Kind = CardKind.Crest });
+        st.RegisterCard(new CardDef { CardId = 711, Name = "Beta", Kind = CardKind.Crest });
+        var a = st.GainCrest(710, "Alpha", 0);
+        var b = st.GainCrest(711, "Beta", 0);
+
+        bool initOk = st.ReadEntityCounter(a, key) == 1 && st.ReadEntityCounter(b, key) == 1;
+        bool playerOk = st.ReadCounter(0, key) == 2;   // 玩家级 = 纹章实体个数
+
+        vm.PushBody(new Ast.EffectNode[]
+        {
+            new Ast.ModifyCounterNode
+            {
+                Counter = key, Op = Ast.CounterOp.Add, Delta = Ast.NumExpr.Const(1),
+                Target = new Ast.TargetSpec
+                {
+                    SourceKind = Ast.TargetSourceKind.Zone, Zone = ZoneRef.CrestArea,
+                    Owner = ZoneScope.Self, Mode = SelectMode.All,
+                },
+            },
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
+        vm.StepUntilBlocked();
+
+        bool eachUp = st.ReadEntityCounter(a, key) == 2 && st.ReadEntityCounter(b, key) == 2;
+        bool playerSame = st.ReadCounter(0, key) == 2;   // 测序不应改变纹章个数
+
+        Check("门禁29 纹章实体计数器独立于玩家级",
+              initOk && playerOk && eachUp && playerSame,
+              "init=" + initOk + " player=" + playerOk + " eachUp=" + eachUp + " same=" + playerSame);
     }
 
     private static void Check(string name, bool ok, string detail)

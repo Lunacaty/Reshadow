@@ -161,6 +161,10 @@ public sealed class BattleState : IVmWorld
             var clue = FindClue(playerId);
             if (clue != null) return clue.Counters.TryGetValue(counter, out var cv) ? cv : 0;
         }
+        // crest 作为玩家级读取时，语义是「你有几个纹章」——
+        // 以纹章区里的实体个数为准，不读那个镜像计数器。
+        if (counter.Name == "crest")
+            return Players[playerId].CrestArea.Count;
 
         return Players[playerId].Counters.TryGetValue(counter.Id, out var v) ? v : 0;
     }
@@ -213,6 +217,57 @@ public sealed class BattleState : IVmWorld
 
     /// <summary>信仰实体的卡 ID 偏移量，避免与真实卡冲突。</summary>
     public const int FaithEntityIdBase = 900000;
+
+    /// <summary>
+    /// 获得一个纹章（R-6.2）。
+    /// 纹章不是普通召唤：它自有同名唯一与区域上限两道门槛，
+    /// 而且两道都是「安静失败」——不进墓地、不触发任何事件。
+    /// </summary>
+    public RuntimeEntity GainCrest(int cardId, string cardName, int playerId)
+    {
+        if (playerId is < 0 or > 1) return null;
+
+        CardDef def = null;
+        if (cardId > 0) _cardPool.TryGetValue(cardId, out def);
+        if (def == null && !string.IsNullOrEmpty(cardName))
+        {
+            foreach (var kv in _cardPool)
+            {
+                if (kv.Value != null && kv.Value.Name == cardName) { def = kv.Value; cardId = kv.Key; break; }
+            }
+        }
+        if (def == null)
+        {
+            // 卡池里没有这张纹章：用名字合成一个，保证同名唯一能生效。
+            cardId = CrestEntityIdBase + (cardName ?? "crest").GetHashCode() % 100000;
+            if (cardId < 0) cardId = -cardId;
+            if (!_cardPool.ContainsKey(cardId))
+            {
+                _cardPool[cardId] = new CardDef
+                {
+                    CardId = cardId,
+                    Name = cardName ?? "Crest",
+                    Kind = CardKind.Crest,
+                };
+            }
+            _cardPool.TryGetValue(cardId, out def);
+        }
+
+        // 纹章必须以 Crest 卡种进入纹章区。
+        var e = CreateEntity(cardId, ZoneRef.CrestArea, playerId);
+        if (e == null) return null;
+        if (e.Zone != ZoneRef.CrestArea) return null;   // 同名或满员：安静失败
+
+        // 纹章带自己的计数器（初始 1）。
+        // "Delay the counts of all your crests by 1" 改的就是它，
+        // 而不是玩家级的 crest 计数器（那个是「你有几个纹章」）。
+        var crestKey = Schema.Counter("crest");
+        e.Counters[crestKey] = 1;
+        return e;
+    }
+
+    /// <summary>纹章实体的卡 ID 偏移量。</summary>
+    public const int CrestEntityIdBase = 970000;
 
     /// <summary>
     /// 土之印与 Clue 护符的保护（R-6.2）：
@@ -492,6 +547,17 @@ public sealed class BattleState : IVmWorld
                 var pid = playerId;
                 Players[pid].Counters[shadowKey.Id] =
                     Schema.ClampCounter(shadowKey, ReadCounter(pid, shadowKey) + 1);
+                return;
+            }
+
+            // 纹章区满 5 个：新纹章直接失效忽略，
+            // 不顶替旧纹章、不进墓地、不触发任何事件（R-6.2）。
+            // 之前这里没有 CrestArea 分支，两个 if 都不匹配，
+            // 代码直接往下走执行 list.Add(e)，纹章可以无限塞入。
+            if (zone == ZoneRef.CrestArea)
+            {
+                e.Zone = ZoneRef.None;
+                _all.Remove(e);
                 return;
             }
         }

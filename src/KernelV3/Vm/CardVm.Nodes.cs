@@ -434,6 +434,14 @@ public sealed partial class CardVm
                 if (prevId <= 0) break;
                 e = _world.SpawnCard(prevId, n.ToZone, scope.ResolvePlayer(n.ToOwner));
             }
+            else if (n.IsCrest)
+            {
+                // 纹章走自己的集成点：同名唯一与区域上限都在 GainCrest 里处理，
+                // 而且失败时安静返回 null（不进墓地、不触发事件）。
+                e = _world is Battle.BattleState bsc
+                    ? bsc.GainCrest(n.CardId, n.CardName, scope.ResolvePlayer(n.ToOwner))
+                    : null;
+            }
             else
             {
                 e = _world.SpawnCard(n.CardId, n.ToZone, scope.ResolvePlayer(n.ToOwner));
