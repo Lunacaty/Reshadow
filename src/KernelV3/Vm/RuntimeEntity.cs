@@ -67,6 +67,12 @@ public sealed class RuntimeEntity
     public bool IsSuperEvolved { get; set; }
     public bool IsSilenced { get; set; }
     public bool AttackedThisTurn { get; set; }
+
+    /// <summary>本回合已攻击次数（受 max_attacks_per_turn 限制）。</summary>
+    public int AttacksThisTurn { get; set; }
+
+    /// <summary>上一次攻击是否打的是主战者（部分卡牌以此为条件）。</summary>
+    public bool AttackedLeaderLastTurn { get; set; }
     public int EnteredTurn { get; set; }
 
     public HashSet<SymbolId<KeywordTag>> Keywords { get; } = new();
