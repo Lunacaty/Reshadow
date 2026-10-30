@@ -315,7 +315,7 @@ public sealed class EnglishCompiler
                 result.Add(new AbilityDef
                 {
                     Trigger = hb.BuildTrigger(),
-                    Condition = AndZone(zone, hb.Condition),
+                    Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs)),
                     Costs = hb.Costs,
                     Body = Array.Empty<EffectNode>(),
                 });
@@ -329,7 +329,7 @@ public sealed class EnglishCompiler
             result.Add(new AbilityDef
             {
                 Trigger = hb.BuildTrigger(),
-                Condition = AndZone(zone, hb.Condition),
+                Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs)),
                 Costs = hb.Costs,
                 Body = body,
             });
@@ -804,6 +804,43 @@ public sealed class EnglishCompiler
     /// &lt;ev&gt; 段落的能力必须附加 Evolved 状态，否则未进化时就会生效。
     /// OnEvolve 触发器本身已隐含进化，不重复附加。
     /// </summary>
+    /// <summary>
+    /// 把**条件型代价**折进 Condition。
+    ///
+    /// Necromancy (6) / Combo (3) / Rally (10) 不是「付费」，而是「满足条件才生效」：
+    ///   Necromancy (6): Deal 6 damage  ==  若墓地 >= 6，则打 6 点
+    /// 之前它们只进 Costs，而 VM 从不检查 Costs ——
+    /// 效果于是在条件不满足时也照常触发。
+    ///
+    /// 真代价（UsePp / DestroyAlly）不折进来，那是另一个语义。
+    /// </summary>
+    private BoolExpr AndCosts(BoolExpr cond, IReadOnlyList<CostSpec> costs)
+    {
+        if (costs == null || costs.Count == 0) return cond;
+
+        BoolExpr acc = cond ?? BoolExpr.True;
+        foreach (var c in costs)
+        {
+            var counterName = c.Kind switch
+            {
+                CostKind.TurnPlayCount => "combo",
+                CostKind.MatchPlayCount => "match_play",
+                CostKind.Necromance => "shadow",
+                _ => null,
+            };
+            if (counterName == null) continue;
+
+            var cmp = new CompareExpr
+            {
+                Left = NumExpr.Ctr(_lex.Counter(counterName)),
+                Op = CompareOp.Ge,
+                Right = c.Amount,
+            };
+            acc = BoolExpr.And(acc, cmp);
+        }
+        return acc;
+    }
+
     private static BoolExpr AndZone(SectionZone zone, BoolExpr cond)
     {
         if (zone == SectionZone.Normal) return cond;

@@ -1635,10 +1635,29 @@ public sealed class ActionParser
                 cur.Advance();
                 cur.TryMatch(TokKind.CloseParen);
             }
-            result.Add(new MacroNode
+            // Reanimate (N)：从墓地召唤一个费用 <= N 的随从。
+            // 之前这里是 MacroNode 占位，运行时 ExpandMacro 返回空 -> 什么也不做。
+            result.Add(new SpawnCardNode
             {
-                Macro = _lex.Macro("reanimate"),
-                Args = new[] { NumExpr.Const(n) },
+                SourceKind = CardSourceKind.CopyOfTarget,
+                CopyFrom = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Zone,
+                    Zone = ZoneRef.Cemetery,
+                    Owner = ZoneScope.Self,
+                    Mode = SelectMode.Choose,
+                    Count = NumExpr.Const(1),
+                    History = HistoryScope.DestroyedThisMatch,
+                    Where = new CompareExpr
+                    {
+                        Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
+                        Op = CompareOp.Le,
+                        Right = NumExpr.Const(n),
+                    },
+                },
+                ToZone = ZoneRef.Board,
+                ToOwner = ZoneScope.Self,
+                Count = NumExpr.Const(1),
             });
             if (!cur.TryMatchAnyWord("and")) break;
         }
