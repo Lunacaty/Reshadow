@@ -364,6 +364,60 @@ public sealed class BattleState : IVmWorld
         }
     }
 
+    /// <summary>
+    /// 撤销到期的临时修正。
+    ///
+    /// 官方术语表: until the end of the turn = 本回合结束撤销;
+    /// until the end of your opponents turn = 到对手回合结束才撤销。
+    ///
+    /// 之前 Duration 只写进 AST, 运行时从不处理, 所有限时效果都永久生效。
+    /// </summary>
+    public int ExpireTemporaryModifiers(int endingPlayer)
+    {
+        int n = 0;
+        foreach (var p in Players)
+        {
+            foreach (var list in new[] { p.Board, p.Hand, p.CrestArea, p.ExArea })
+            {
+                foreach (var e in list) n += ExpireOn(e, endingPlayer);
+            }
+        }
+        return n;
+    }
+
+    private static int ExpireOn(RuntimeEntity e, int endingPlayer)
+    {
+        int n = 0;
+        for (int i = e.TempModifiers.Count - 1; i >= 0; i--)
+        {
+            var m = e.TempModifiers[i];
+            bool due = m.Duration switch
+            {
+                DurationKind.ThisTurn => true,
+                // 到对手回合结束才到期
+                DurationKind.UntilEndOfOpponentTurn => endingPlayer != e.PlayerId,
+                DurationKind.ThisMatch => false,
+                _ => false,
+            };
+            if (!due) continue;
+
+            if (m.IsKeywordGrant)
+            {
+                e.Keywords.Remove(m.Keyword);
+                e.KeywordValues.Remove(m.Keyword);
+            }
+            else if (!m.IsCounterMod)
+            {
+                e.Attack -= m.Attack;
+                e.Life -= m.Life;
+            }
+
+            e.TempModifiers.RemoveAt(i);
+            n++;
+        }
+        return n;
+    }
+
     /// <summary>把牌组底部的卡变成「胜利的卡牌」（官方「胜利的卡牌」机制）。</summary>
     public void SetVictoryCard(int playerId)
     {

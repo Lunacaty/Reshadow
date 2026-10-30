@@ -82,6 +82,13 @@ public sealed class RuntimeEntity
     public HashSet<SymbolId<TraitTag>> Traits { get; } = new();
     public Dictionary<SymbolId<CounterTag>, int> Counters { get; } = new();
 
+    /// <summary>
+    /// 临时修正登记（官方术语表：until the end of the turn）。
+    /// 每条记录一份「加了多少」，回合结束或对手回合结束时按 DurationKind 撤销。
+    /// 没有这个列表，所有限时效果都会永久生效。
+    /// </summary>
+    public List<TemporaryModifier> TempModifiers { get; } = new();
+
     public EntitySnapshot TakeSnapshot() => new()
     {
         EntityId = EntityId,
@@ -112,4 +119,18 @@ public sealed class RuntimeEntity
 public readonly record struct EntityRef(int EntityId, int EntrySerial, EntitySnapshot Snapshot)
 {
     public static EntityRef From(RuntimeEntity e) => new(e.EntityId, e.EntrySerial, e.TakeSnapshot());
+}
+
+/// <summary>一条可撤销的临时修正。</summary>
+public sealed class TemporaryModifier
+{
+    public Ast.DurationKind Duration { get; init; }
+    public int Attack { get; init; }
+    public int Life { get; init; }
+    public Core.SymbolId<Core.KeywordTag> Keyword { get; init; }
+    public bool IsKeywordGrant { get; init; }
+    public int Cost { get; init; }
+    public Core.SymbolId<Core.CounterTag> Counter { get; init; }
+    public int CounterDelta { get; init; }
+    public bool IsCounterMod { get; init; }
 }

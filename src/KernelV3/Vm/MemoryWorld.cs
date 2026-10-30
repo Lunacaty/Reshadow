@@ -143,6 +143,37 @@ public sealed class MemoryWorld : IVmWorld
         return e;
     }
 
+    public int ExpireTemporaryModifiers(int endingPlayer)
+    {
+        int n = 0;
+        foreach (var e in _entities) n += ExpireOn(e, endingPlayer);
+        return n;
+    }
+
+    private static int ExpireOn(RuntimeEntity e, int endingPlayer)
+    {
+        int n = 0;
+        for (int i = e.TempModifiers.Count - 1; i >= 0; i--)
+        {
+            var m = e.TempModifiers[i];
+            bool thisTurn = m.Duration == Ast.DurationKind.ThisTurn;
+            bool oppTurn = m.Duration == Ast.DurationKind.UntilEndOfOpponentTurn && endingPlayer != e.PlayerId;
+            if (!thisTurn && !oppTurn) continue;
+            if (m.IsKeywordGrant)
+            {
+                e.Keywords.Remove(m.Keyword);
+                e.KeywordValues.Remove(m.Keyword);
+            }
+            else if (!m.IsCounterMod)
+            {
+                e.Attack -= m.Attack;
+                e.Life -= m.Life;
+            }
+            e.TempModifiers.RemoveAt(i);
+            n++;
+        }
+        return n;
+    }
     public void TransformEntity(RuntimeEntity e, int intoCardId)
     {
         if (_cardPool.TryGetValue(intoCardId, out var d))

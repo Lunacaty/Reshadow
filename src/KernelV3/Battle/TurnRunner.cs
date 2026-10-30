@@ -93,8 +93,12 @@ public sealed class TurnRunner
         if (playerId != _state.ActivePlayer)
             throw new InvalidOperationException("只能结束当前回合玩家的回合");
 
+        // 先跑完回合结束触发（"At the end of your turn" 效果仍在本回合生效）
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnEnd });
         vm?.StepUntilBlocked();
+
+        // 再撤销到期的限时修正（官方：until the end of the turn）
+        _state.ExpireTemporaryModifiers(playerId);
     }
 
     // ---------- 出牌 ----------

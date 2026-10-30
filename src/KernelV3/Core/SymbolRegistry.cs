@@ -21,7 +21,7 @@ public sealed record SymbolEntry<T>(int Id, string Name, string Source);
 /// <summary>符号注册表（针对一种符号种类）。</summary>
 public sealed class SymbolRegistry<T>
 {
-    private readonly Dictionary<string, SymbolEntry<T>> _byName = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SymbolEntry<T>> _byName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, SymbolEntry<T>> _byId = new();
     private int _nextId;
 

@@ -97,6 +97,14 @@ public interface IVmWorld
     /// </summary>
     int ProcessStateBasedActions();
 
-    /// <summary>展开机制宏为动作序列（Reanimate / Spellboost / 玩家自定义）。</summary>
+    /// <summary>
+    /// 撤销到期的限时修正（until the end of the turn）。
+    /// 返回撤销的条目数。
+    /// </summary>
+    int ExpireTemporaryModifiers(int endingPlayer);
+
+    /// <summary>
+    /// 展开机制宏为动作序列（Reanimate / Spellboost / 玩家自定义）。
+    /// </summary>
     IReadOnlyList<Ast.EffectNode> ExpandMacro(SymbolId<MacroTag> macro, IReadOnlyList<int> args, VmScope scope);
 }

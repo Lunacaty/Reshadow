@@ -203,8 +203,16 @@ public sealed partial class CardVm
                 case StatModOp.Set: t.Attack = atk; t.Life = life; break;
                 case StatModOp.Swap: (t.Attack, t.Life) = (t.Life, t.Attack); break;
             }
+
+            // 限时修正必须登记，否则回合结束时无从撤销（会永久生效）
+            if (n.Duration != DurationKind.Permanent)
+                t.TempModifiers.Add(new TemporaryModifier
+                {
+                    Duration = n.Duration,
+                    Attack = n.Op == StatModOp.Set ? 0 : atk,
+                    Life = n.Op == StatModOp.Set ? 0 : life,
+                });
         }
-        // 不写槽位（同 DoDamage 的理由）
         return false;
     }
 
@@ -237,6 +245,13 @@ public sealed partial class CardVm
                     // 带参关键词把数值一并存下来，否则运行时不知道上限是多少
                     if (n.Value != null) t.KeywordValues[n.Keyword] = _eval.EvalNum(n.Value, scope);
                     else t.KeywordValues.Remove(n.Keyword);
+                    if (n.Duration != DurationKind.Permanent)
+                        t.TempModifiers.Add(new TemporaryModifier
+                        {
+                            Duration = n.Duration,
+                            Keyword = n.Keyword,
+                            IsKeywordGrant = true,
+                        });
                     break;
                 case KeywordOp.Remove:
                     t.Keywords.Remove(n.Keyword);
