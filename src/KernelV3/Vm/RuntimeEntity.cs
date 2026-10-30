@@ -68,6 +68,9 @@ public sealed class RuntimeEntity
     public int EnteredTurn { get; set; }
 
     public HashSet<SymbolId<KeywordTag>> Keywords { get; } = new();
+
+    /// <summary>带参关键词的数值（max_attacks_per_turn=2 / damage_cap=0 …）。</summary>
+    public Dictionary<SymbolId<KeywordTag>, int> KeywordValues { get; } = new();
     public HashSet<SymbolId<TraitTag>> Traits { get; } = new();
     public Dictionary<SymbolId<CounterTag>, int> Counters { get; } = new();
 

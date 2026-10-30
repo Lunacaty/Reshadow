@@ -32,6 +32,8 @@ public static class VmSelfTest
         TestConditional();
         TestSequenceOrder();      // ★ Bug2：帧栈顺序
         TestModeChoice();         // ★ Bug3：模式抉择执行
+        TestSingularTarget();     // ★ 单数目标只影响 1 个
+        TestPluralTarget();       // ★ 复数目标影响全部
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -368,6 +370,69 @@ public static class VmSelfTest
             int b = w.ReadCounter(ZoneScope.Self, Ctr("modeB"));
             Check("选中的模式分支真正执行（Bug3）", a == 0 && b == 1, $"modeA={a} modeB={b}");
         }
+    }
+
+    private static void TestSingularTarget()
+    {
+        // "Destroy an enemy follower" —— 单数，只应影响 1 个
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+        var foeDef = new CardDef { CardId = 100, Name = "Foe", Kind = CardKind.Follower };
+        w.RegisterCard(foeDef);
+        for (int i = 0; i < 3; i++) w.Create(100, ZoneRef.Board, ZoneScope.Opponent, life: 20);
+
+        vm.PushBody(new EffectNode[]
+        {
+            new MoveZoneNode
+            {
+                Target = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Zone,
+                    Owner = ZoneScope.Opponent, Zone = ZoneRef.Board,
+                    Mode = SelectMode.Choose, Count = NumExpr.Const(1),
+                },
+                ToZone = ZoneRef.Cemetery,
+            },
+        }, new VmScope { Owner = ZoneScope.Self });
+
+        var st = vm.StepUntilBlocked();
+        bool blocked = st == VmStatus.WaitingForInput && vm.Pending != null;
+        if (blocked)
+        {
+            vm.SubmitChoice(vm.Pending.ChoiceId, new[] { vm.Pending.Candidates[0] });
+            vm.StepUntilBlocked();
+        }
+        int dead = w.EnumerateZone(ZoneRef.Cemetery, ZoneScope.Opponent).Count();
+        Check("单数目标只影响 1 个", dead == 1, $"墓地={dead} 挂起={blocked}");
+    }
+
+    private static void TestPluralTarget()
+    {
+        // "all enemy followers" —— 复数，全部影响
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+        w.RegisterCard(new CardDef { CardId = 100, Name = "Foe", Kind = CardKind.Follower });
+        for (int i = 0; i < 3; i++) w.Create(100, ZoneRef.Board, ZoneScope.Opponent, life: 20);
+
+        vm.PushBody(new EffectNode[]
+        {
+            new ModifyStatsNode
+            {
+                Target = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Zone,
+                    Owner = ZoneScope.Opponent, Zone = ZoneRef.Board,
+                    Mode = SelectMode.All,
+                },
+                Op = StatModOp.Add,
+                Attack = NumExpr.Const(0),
+                Life = NumExpr.Const(-3),
+            },
+        }, new VmScope { Owner = ZoneScope.Self });
+        vm.StepUntilBlocked();
+
+        int hurt = w.EnumerateZone(ZoneRef.Board, ZoneScope.Opponent).Count(x => x.Life == 17);
+        Check("复数目标影响全部", hurt == 3, "受伤数=" + hurt);
     }
 
     // ---------- 工具 ----------

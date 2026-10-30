@@ -27,32 +27,93 @@ public sealed partial class CardVm
         switch (node)
         {
             case SelectTargetNode n: return DoSelect(n, frame);
-            case DealDamageNode n: DoDamage(n, scope); return false;
-            case RestoreLifeNode n: DoRestore(n, scope); return false;
-            case ModifyStatsNode n: DoModifyStats(n, scope); return false;
-            case ModifyCostNode n: DoModifyCost(n, scope); return false;
-            case ModifyKeywordNode n: DoModifyKeyword(n, scope); return false;
-            case ModifyCounterNode n: DoModifyCounter(n, scope); return false;
-            case MoveZoneNode n: DoMoveZone(n, scope); return false;
-            case SpawnCardNode n: DoSpawn(n, scope); return false;
-            case EvolveNode n: DoEvolve(n, scope); return false;
-            case TransformNode n: DoTransform(n, scope); return false;
+            case DealDamageNode n: return DoDamage(n, scope);
+            case RestoreLifeNode n: return DoRestore(n, scope);
+            case ModifyStatsNode n: return DoModifyStats(n, scope);
+            case ModifyCostNode n: return DoModifyCost(n, scope);
+            case ModifyKeywordNode n: return DoModifyKeyword(n, scope);
+            case ModifyCounterNode n: return DoModifyCounter(n, scope);
+            case MoveZoneNode n: return DoMoveZone(n, scope);
+            case SpawnCardNode n: return DoSpawn(n, scope);
+            case EvolveNode n: return DoEvolve(n, scope);
+            case TransformNode n: return DoTransform(n, scope);
             case ConditionalNode n: return DoConditional(n, scope);
             case LoopNode n: return DoLoop(n, frame);
             case BranchModeNode n: return DoBranch(n, frame);
-            case GrantAbilityNode n: DoGrant(n, scope); return false;
-            case GrantCounterAbilityNode n: DoGrantCounter(n, scope); return false;
-            case InvokeAbilityNode n: DoInvoke(n, scope); return false;
-            case MacroNode n: DoMacro(n, scope); return false;
+            case GrantAbilityNode n: return DoGrant(n, scope);
+            case GrantCounterAbilityNode n: return DoGrantCounter(n, scope);
+            case InvokeAbilityNode n: return DoInvoke(n, scope);
+            case MacroNode n: return DoMacro(n, scope);
             default:
                 throw new VmFaultException("未知的动作节点: " + node.GetType().Name);
         }
+    }
+
+    /// <summary>
+    /// 解析目标，若 Mode == Choose 则挂起等玩家选。
+    /// 返回 null 表示已挂起（调用方必须直接 return true，不要执行后续动作）。
+    /// </summary>
+    private List<RuntimeEntity> ResolveOrBlock(TargetSpec spec, VmScope scope, string slot)
+    {
+        if (spec == null) return new List<RuntimeEntity>();
+
+        if (spec.Mode == SelectMode.Choose)
+        {
+            // 若该槽位已经绑定了本次选择的实体，说明玩家已选过，直接取用
+            var chosenBefore = scope.Read(slot);
+            if (chosenBefore.Count > 0)
+            {
+                var liveChosen = new List<RuntimeEntity>();
+                foreach (var cr in chosenBefore)
+                {
+                    var lv = _world.GetLive(cr.EntityId, cr.EntrySerial);
+                    if (lv != null) liveChosen.Add(lv);
+                }
+                if (liveChosen.Count > 0) return liveChosen;
+            }
+
+            var pool = _eval.ResolveRef(spec, scope);
+            if (pool.Count == 0) return new List<RuntimeEntity>();
+
+            int min = 1;
+            int max = spec.Count != null ? _eval.EvalNum(spec.Count, scope) : 1;
+            if (max <= 0) max = 1;
+            if (max > pool.Count) max = pool.Count;
+            if (min > max) min = max;
+
+            // 只有一个候选且只选一个：直接确定，不必打扰玩家
+            if (pool.Count == 1 && max == 1)
+            {
+                var only = _world.GetLive(pool[0].EntityId, pool[0].EntrySerial);
+                if (only != null)
+                {
+                    scope.Bind(slot, new List<RuntimeEntity> { only });
+                    return new List<RuntimeEntity> { only };
+                }
+            }
+
+            Block(new PendingChoice
+            {
+                Player = scope.Owner,
+                Kind = ChoiceKind.SelectTarget,
+                Candidates = pool.Select(x => x.EntityId).ToList(),
+                MinSelect = min,
+                MaxSelect = max,
+                Slot = slot,
+            });
+            return null;   // 已挂起
+        }
+
+        return _eval.Resolve(spec, scope);
     }
 
     // ---------- 选择 ----------
 
     private bool DoSelect(SelectTargetNode n, VmFrame frame)
     {
+        // 玩家已经选过（槽位已被 SubmitChoice 绑定）—— 直接放行，不要再次挂起
+        if (frame.Scope.Read(n.OutSlot).Count > 0) return false;
+
         var candidates = _eval.Resolve(n.Target, frame.Scope);
         if (candidates.Count == 0) return false;   // 没得选就跳过
 
@@ -79,10 +140,11 @@ public sealed partial class CardVm
 
     // ---------- 伤害 / 恢复 ----------
 
-    private void DoDamage(DealDamageNode n, VmScope scope)
+    private bool DoDamage(DealDamageNode n, VmScope scope)
     {
-        var targets = _eval.Resolve(n.Target, scope);
-        if (targets.Count == 0) return;
+        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected);
+        if (targets == null) return true;   // 已挂起
+        if (targets.Count == 0) return false;
         int total = _eval.EvalNum(n.Amount, scope);
 
         if (n.IsSplit && targets.Count > 0)
@@ -96,6 +158,7 @@ public sealed partial class CardVm
         }
         // 注意：不写 $selected —— 槽位只能由 SelectTargetNode / SpawnCardNode 显式写入。
         // 否则 `Select X, deal 4 to it, boost self, banish it` 的最后一个 it 会指向 self。
+        return false;
     }
 
     private void ApplyDamage(RuntimeEntity t, int amount, bool isAbility)
@@ -110,9 +173,10 @@ public sealed partial class CardVm
         });
     }
 
-    private void DoRestore(RestoreLifeNode n, VmScope scope)
+    private bool DoRestore(RestoreLifeNode n, VmScope scope)
     {
-        var targets = _eval.Resolve(n.Target, scope);
+        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected);
+        if (targets == null) return true;   // 已挂起
         foreach (var t in targets)
         {
             int amt = n.FullRestore ? t.MaxLife : _eval.EvalNum(n.Amount, scope);
@@ -120,13 +184,15 @@ public sealed partial class CardVm
             _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnHealed, Subject = EntityRef.From(t), Amount = amt });
         }
         // 不覆写 $selected（只有 SelectTargetNode / SpawnCardNode 可以写槽位）
+        return false;
     }
 
     // ---------- 属性 / 费用 ----------
 
-    private void DoModifyStats(ModifyStatsNode n, VmScope scope)
+    private bool DoModifyStats(ModifyStatsNode n, VmScope scope)
     {
-        var targets = _eval.Resolve(n.Target, scope);
+        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected);
+        if (targets == null) return true;   // 已挂起
         int atk = _eval.EvalNum(n.Attack, scope);
         int life = _eval.EvalNum(n.Life, scope);
         foreach (var t in targets)
@@ -139,9 +205,10 @@ public sealed partial class CardVm
             }
         }
         // 不写槽位（同 DoDamage 的理由）
+        return false;
     }
 
-    private void DoModifyCost(ModifyCostNode n, VmScope scope)
+    private bool DoModifyCost(ModifyCostNode n, VmScope scope)
     {
         var targets = _eval.Resolve(n.Target, scope);
         int v = _eval.EvalNum(n.Value, scope);
@@ -155,23 +222,37 @@ public sealed partial class CardVm
                 _ => t.Cost,
             };
         }
+        return false;
     }
 
-    private void DoModifyKeyword(ModifyKeywordNode n, VmScope scope)
+    private bool DoModifyKeyword(ModifyKeywordNode n, VmScope scope)
     {
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets)
         {
             switch (n.Op)
             {
-                case KeywordOp.Grant: t.Keywords.Add(n.Keyword); break;
-                case KeywordOp.Remove: t.Keywords.Remove(n.Keyword); break;
-                case KeywordOp.SilenceAll: t.Keywords.Clear(); t.IsSilenced = true; break;
+                case KeywordOp.Grant:
+                    t.Keywords.Add(n.Keyword);
+                    // 带参关键词把数值一并存下来，否则运行时不知道上限是多少
+                    if (n.Value != null) t.KeywordValues[n.Keyword] = _eval.EvalNum(n.Value, scope);
+                    else t.KeywordValues.Remove(n.Keyword);
+                    break;
+                case KeywordOp.Remove:
+                    t.Keywords.Remove(n.Keyword);
+                    t.KeywordValues.Remove(n.Keyword);
+                    break;
+                case KeywordOp.SilenceAll:
+                    t.Keywords.Clear();
+                    t.KeywordValues.Clear();
+                    t.IsSilenced = true;
+                    break;
             }
         }
+        return false;
     }
 
-    private void DoModifyCounter(ModifyCounterNode n, VmScope scope)
+    private bool DoModifyCounter(ModifyCounterNode n, VmScope scope)
     {
         int delta = _eval.EvalNum(n.Delta, scope);
 
@@ -192,7 +273,7 @@ public sealed partial class CardVm
                 _world.WriteEntityCounter(e, n.Counter, nextE);
             }
             _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnCounterChange, Amount = delta });
-            return;
+            return false;
         }
 
         // Target == null：修改主战者级计数器
@@ -206,11 +287,13 @@ public sealed partial class CardVm
         };
         _world.WriteCounter(n.Owner, n.Counter, next);
         _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnCounterChange, Amount = delta });
+        return false;
     }
 
-    private void DoMoveZone(MoveZoneNode n, VmScope scope)
+    private bool DoMoveZone(MoveZoneNode n, VmScope scope)
     {
-        var targets = _eval.Resolve(n.Target, scope);
+        var targets = ResolveOrBlock(n.Target, scope, n.OutSlot);
+        if (targets == null) return true;   // 已挂起等玩家选
         var moved = new List<RuntimeEntity>();
         foreach (var t in targets)
         {
@@ -221,9 +304,10 @@ public sealed partial class CardVm
             moved.Add(t);
         }
         scope.Bind(n.OutSlot, moved);
+        return false;
     }
 
-    private void DoSpawn(SpawnCardNode n, VmScope scope)
+    private bool DoSpawn(SpawnCardNode n, VmScope scope)
     {
         int count = _eval.EvalNum(n.Count, scope);
         var created = new List<RuntimeEntity>();
@@ -243,9 +327,10 @@ public sealed partial class CardVm
             if (e != null) created.Add(e);
         }
         scope.Bind(n.OutSlot, created);
+        return false;
     }
 
-    private void DoEvolve(EvolveNode n, VmScope scope)
+    private bool DoEvolve(EvolveNode n, VmScope scope)
     {
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets)
@@ -258,15 +343,56 @@ public sealed partial class CardVm
             });
         }
         // 不覆写 $selected（只有 SelectTargetNode / SpawnCardNode 可以写槽位）
+        return false;
     }
 
-    private void DoTransform(TransformNode n, VmScope scope)
+    private bool DoTransform(TransformNode n, VmScope scope)
     {
         var targets = _eval.Resolve(n.Target, scope);
-        foreach (var t in targets) _world.TransformEntity(t, n.IntoCardId);
+        if (targets.Count == 0) return false;
+
+        // 变形源是具体卡名：直接变成该卡
+        if (n.IntoCardId > 0)
+        {
+            foreach (var t in targets) _world.TransformEntity(t, n.IntoCardId);
+            return false;
+        }
+
+        // 变形源是目标集合（"into exact copies of random followers in your deck"）
+        if (n.CopySource != null)
+        {
+            var refs = _eval.ResolveRef(n.CopySource, scope);
+            if (refs.Count == 0) return false;
+            for (int i = 0; i < targets.Count; i++)
+            {
+                var src = refs[Math.Min(i, refs.Count - 1)];
+                int intoId = src.Snapshot?.CardId ?? 0;
+                if (intoId > 0) _world.TransformEntity(targets[i], intoId);
+            }
+            return false;
+        }
+
+        // 都没有：交给 Battle 层按 CardName 解析
+        return false;
     }
 
     // ---------- 控制流 ----------
+
+    /// <summary>
+    /// 模式分支的子作用域。
+    /// "give this follower 3 random abilities from the following" 会把目标写进 GrantTarget，
+    /// 每个分支都应看到这个目标，因此先把它绑定到子作用域。
+    /// </summary>
+    private VmScope DeriveForBranch(BranchModeNode n, VmScope parent)
+    {
+        var sub = parent.Derive();
+        if (n.GrantTarget != null)
+        {
+            var ents = _eval.Resolve(n.GrantTarget, parent);
+            if (ents.Count > 0) sub.Bind(TargetSpec.SlotSelected, ents);
+        }
+        return sub;
+    }
 
     private bool DoConditional(ConditionalNode n, VmScope scope)
     {
@@ -319,13 +445,15 @@ public sealed partial class CardVm
             {
                 var idx = Enumerable.Range(0, opts.Count)
                     .OrderBy(_ => _world.Rng.Next()).Take(pick).ToList();
-                foreach (var i in idx) PushBody(opts[i], frame.Scope.Derive());
+                // 帧栈后进先出 —— 随机选项同样要倒序压栈
+                for (int k = idx.Count - 1; k >= 0; k--)
+                    PushBody(opts[idx[k]], DeriveForBranch(n, frame.Scope));
                 return false;
             }
             case ModeDispatchKind.Sequence:
                 // 帧栈是后进先出，必须倒序压入才能正序执行
                 for (int i = opts.Count - 1; i >= 0; i--)
-                    PushBody(opts[i], frame.Scope.Derive());
+                    PushBody(opts[i], DeriveForBranch(n, frame.Scope));
                 return false;
 
             default:
@@ -345,19 +473,21 @@ public sealed partial class CardVm
 
     // ---------- 授予 / 复刻 / 宏 ----------
 
-    private void DoGrant(GrantAbilityNode n, VmScope scope)
+    private bool DoGrant(GrantAbilityNode n, VmScope scope)
     {
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets) _world.GrantAbility(t, n.Granted);
+        return false;
     }
 
     /// <summary>给资源计数器挂载能力（faith 等）。</summary>
-    private void DoGrantCounter(GrantCounterAbilityNode n, VmScope scope)
+    private bool DoGrantCounter(GrantCounterAbilityNode n, VmScope scope)
     {
         _world.GrantCounterAbility(n.Owner, n.Counter, n.Granted);
+        return false;
     }
 
-    private void DoInvoke(InvokeAbilityNode n, VmScope scope)
+    private bool DoInvoke(InvokeAbilityNode n, VmScope scope)
     {
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets)
@@ -365,12 +495,14 @@ public sealed partial class CardVm
             var ab = t.Def?.Abilities?.FirstOrDefault(a => a.Trigger != null && a.Trigger.Event == n.Event);
             if (ab != null) PushBody(ab.Body, scope.Derive());
         }
+        return false;
     }
 
-    private void DoMacro(MacroNode n, VmScope scope)
+    private bool DoMacro(MacroNode n, VmScope scope)
     {
         var args = n.Args?.Select(a => _eval.EvalNum(a, scope)).ToList() ?? new List<int>();
         var body = _world.ExpandMacro(n.Macro, args, scope);
         if (body != null && body.Count > 0) PushBody(body, scope.Derive());
+        return false;
     }
 }

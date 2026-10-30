@@ -231,10 +231,9 @@ public sealed partial class CardVm
         frame.Scope.BindRefs(Pending.Slot, refs);
         frame.Scope.Chosen = refs.Count > 0 ? refs[0] : null;
 
-        // 选择完成 → 推进 Ip，让主循环执行下一条指令。
-        // 若不推进，DoSelect 会再次挂起（它不知道自己已经被满足了）。
-        frame.Ip++;
-
+        // 不推进 Ip：挂起时主循环没有前进，恢复后必须**重跑本节点**。
+        // 节点靠「槽位已绑定」判断玩家已经选过，从而继续执行而不是再次挂起。
+        // （DoSelect 同样依赖这一点：它检查槽位非空后直接放行）
         Pending = null;
         Status = VmStatus.Running;
     }

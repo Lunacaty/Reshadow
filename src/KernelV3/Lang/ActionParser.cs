@@ -286,15 +286,35 @@ public sealed class ActionParser
             case "can't": case "cant": case "can": case "cannot":
             {
                 var words = new List<string>();
+                int? numInClause = null;
                 while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
-                { words.Add(cur.Current.Text.ToLowerInvariant()); cur.Advance(); }
+                {
+                    if (cur.Current.Kind == TokKind.Number && numInClause == null)
+                        numInClause = cur.Current.Value;
+                    words.Add(cur.Current.Text.ToLowerInvariant());
+                    cur.Advance();
+                }
                 var j = string.Join(" ", words);
-                string kw =
-                    j.Contains("attack followers") || j.Contains("attack leaders") ? "cannot_attack"
-                  : j.Contains("be destroyed") ? "cannot_destroy"
-                  : j.Contains("attack") && j.Contains("time") ? "attack_limit"
-                  : j.Contains("take more than") ? "damage_cap"
-                  : "cannot_attack";
+
+                // 带参关键词必须把数值带上，否则运行时无法区分「最多受 0 点」和「最多受 3 点」
+                string kw;
+                NumExpr kwVal = null;
+                if (j.Contains("attack followers") || j.Contains("attack leaders"))
+                    kw = "cannot_attack";
+                else if (j.Contains("be destroyed"))
+                    kw = "cannot_destroy";
+                else if (j.Contains("attack") && j.Contains("time"))
+                {
+                    kw = "max_attacks_per_turn";
+                    kwVal = NumExpr.Const(numInClause ?? 1);
+                }
+                else if (j.Contains("take more than"))
+                {
+                    kw = "damage_cap";
+                    kwVal = NumExpr.Const(numInClause ?? 0);
+                }
+                else kw = "cannot_attack";
+
                 return new List<EffectNode>
                 {
                     new ModifyKeywordNode
@@ -302,6 +322,7 @@ public sealed class ActionParser
                         Target = TargetSpec.Self,
                         Op = KeywordOp.Grant,
                         Keyword = _lex.Keyword(kw),
+                        Value = kwVal,
                     },
                 };
             }
@@ -326,6 +347,8 @@ public sealed class ActionParser
                         Counter = _lex.Counter("countdown"),
                         Op = CounterOp.Set,
                         Delta = NumExpr.Const(n),
+                        // 倒计时是**这个护符自己**的计数器
+                        Target = TargetSpec.Self,
                     },
                 };
             }
@@ -1152,23 +1175,19 @@ public sealed class ActionParser
         cur.TryMatchAnyWord("an", "a");
         cur.TryMatchAnyWord("exact", "copies", "copy");
         cur.TryMatchAnyWord("of");
-        int id = 0;
-        string nm = "";
-        if (cur.Current.Kind == TokKind.CardName) { id = cur.Current.CardId; nm = cur.Current.Text; cur.Advance(); }
-        else
+        // 具体卡名 -> IntoCardId；否则是「复制某集合中的卡」-> CopySource
+        if (cur.Current.Kind == TokKind.CardName)
         {
-            var sb2 = new System.Text.StringBuilder();
-            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period && cur.Current.Kind != TokKind.Comma)
-            {
-                if (sb2.Length > 0) sb2.Append(' ');
-                sb2.Append(cur.Current.Text);
-                cur.Advance();
-            }
-            nm = sb2.ToString();
-            if (string.IsNullOrWhiteSpace(nm))
-                throw new LangException("transform into 后面没有目标");
+            int id = cur.Current.CardId;
+            string nm = cur.Current.Text;
+            cur.Advance();
+            return new List<EffectNode> { new TransformNode { Target = target, IntoCardId = id, IntoCardName = nm } };
         }
-        return new List<EffectNode> { new TransformNode { Target = target, IntoCardId = id, IntoCardName = nm } };
+
+        var copySrc = _target.TryParse(cur);
+        if (copySrc == null)
+            throw new LangException("transform into 后面既不是卡名也不是可解析的目标集合");
+        return new List<EffectNode> { new TransformNode { Target = target, CopySource = copySrc } };
     }
 
     // ---------- 计数器 ----------
@@ -1498,6 +1517,8 @@ public sealed class ActionParser
                 Counter = _lex.Counter("spellboost"),
                 Op = CounterOp.Add,
                 Delta = times,
+                // 魔力增幅是**手牌/实体自己**的计数器，不是主战者的
+                Target = target,
             },
         };
     }
