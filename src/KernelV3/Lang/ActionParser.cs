@@ -184,7 +184,6 @@ public sealed class ActionParser
             case "consume": return ParseConsume(cur);
             case "swap": return ParseSwap(cur);
             case "fully": return ParseFully(cur);
-            case "your": return ParseOpponentDraws(cur);
             case "it": return ParseItCosts(cur);
             case "replicate": return ParseReplicate(cur);
             // instead 是修饰词，语义由 InsteadWeaver 在装配层处理；这里消费掉
@@ -194,6 +193,20 @@ public sealed class ActionParser
             // 绝不能在这里把剩余词吞掉（那是 V2 的兜底病）。
             case "whenever": case "when": case "at":
                 return null;
+            case "your":
+            {
+                // "Your opponent can't select anything other than this card"
+                if (cur.MatchPhrase("your", "opponent"))
+                {
+                    while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
+                    return new List<EffectNode>
+                    {
+                        new ModifyKeywordNode { Target = TargetSpec.OpponentLeader, Op = KeywordOp.Grant, Keyword = _lex.Keyword("targeting_restriction") },
+                    };
+                }
+                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
+                return new List<EffectNode>();
+            }
             case "ignores":
             {
                 var kw2 = cur.Current.Text;
@@ -530,7 +543,7 @@ public sealed class ActionParser
                 if (cur.Current.IsWord("at") && cur.Peek().IsWord("random"))
                 {
                     cur.Advance(); cur.Advance();
-                    hadAnd = true;
+                    break;
                 }
                 if (!hadComma && !hadAnd) break;
                 if (!IsGrantStart(cur)) { cur.Seek(sepSave); break; }
@@ -560,6 +573,12 @@ public sealed class ActionParser
     }
 
     /// <summary>当前位置是否是授予项的起点。</summary>
+    private static readonly string[] KnownKeywords =
+    {
+        "ward", "rush", "storm", "bane", "drain", "ambush", "aura",
+        "intimidate", "barrier", "ignores ward",
+    };
+
     private static bool IsGrantStart(TokenCursor cur)
     {
         var t = cur.Current;
@@ -567,6 +586,8 @@ public sealed class ActionParser
         if (t.Kind == TokKind.Keyword) return true;
         if (t.Kind == TokKind.Quoted) return true;
         if (t.IsWord("crest")) return true;
+        // 词典未注册的关键词（Bane / Ward 等）也算授予项起点
+        foreach (var kw in KnownKeywords) if (t.IsWord(kw)) return true;
         return false;
     }
 
@@ -603,7 +624,9 @@ public sealed class ActionParser
             {
                 new ModifyKeywordNode { Target = TargetSpec.Previous, Op = KeywordOp.Remove, Keyword = _lex.Keyword("last words") },
             };
-        if (cur.Current.Kind == TokKind.Keyword)
+        bool isKwWord2 = false;
+        foreach (var kk in KnownKeywords) if (cur.Current.IsWord(kk)) { isKwWord2 = true; break; }
+        if (cur.Current.Kind == TokKind.Keyword || isKwWord2)
         {
             var kw = cur.Current.Text;
             cur.Advance();
@@ -654,6 +677,16 @@ public sealed class ActionParser
         }
 
         return null;
+    }
+
+    /// <summary>"X is the number of ..." / "X starts at 0" —— 变量声明句，不产生动作。</summary>
+    private static bool IsVariableDecl(IReadOnlyList<Token> sent)
+    {
+        if (sent.Count < 3) return false;
+        if (!sent[0].IsAnyWord("x", "y", "z", "x/y")) return false;
+        for (int i = 1; i < Math.Min(sent.Count, 8); i++)
+            if (sent[i].IsAnyWord("is", "are", "starts")) return true;
+        return false;
     }
 
     private static int ParseStatValue(string s)
@@ -829,9 +862,12 @@ public sealed class ActionParser
                 costs.Add(cur.Current.Value);
                 cur.Advance();
                 if (cur.Current.Kind == TokKind.Dash) cur.Advance();
-                if (cur.Current.Kind == TokKind.Comma) { cur.Advance(); continue; }
-                if (cur.Current.IsWord("and")) { cur.Advance(); continue; }
-                break;
+                // 分隔符可能是 "," 或 "and"，也可能两者都有
+                bool sawSep = false;
+                if (cur.Current.Kind == TokKind.Comma) { cur.Advance(); sawSep = true; }
+                if (cur.Current.IsWord("and")) { cur.Advance(); sawSep = true; }
+                if (!sawSep) break;
+                if (cur.Current.Kind != TokKind.Number) break;
             }
             if (costs.Count > 0 && cur.MatchWord("cost"))
             {
@@ -1236,8 +1272,25 @@ public sealed class ActionParser
         {
             var q = cur.Current;
             cur.Advance();
+
+            // 引号内按句号切分，剔除变量声明句（"X is ..."）后再逐句解析
+            var kept = new List<Token>();
+            var sentBuf = new List<Token>();
+            foreach (var tk2 in q.Inner)
+            {
+                if (tk2.Kind == TokKind.Period)
+                {
+                    if (sentBuf.Count > 0 && !IsVariableDecl(sentBuf)) kept.AddRange(sentBuf);
+                    if (sentBuf.Count > 0) kept.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = tk2.Pos });
+                    sentBuf = new List<Token>();
+                    continue;
+                }
+                sentBuf.Add(tk2);
+            }
+            if (sentBuf.Count > 0 && !IsVariableDecl(sentBuf)) kept.AddRange(sentBuf);
+
             var inner = new ActionParser(_lex, _compileQuotedAbility);
-            body = inner.ParseSequence(new TokenCursor(q.Inner));
+            body = inner.ParseSequence(new TokenCursor(kept));
         }
         return new List<EffectNode> { new LoopNode { Kind = LoopKind.Times, Count = n, Body = body } };
     }

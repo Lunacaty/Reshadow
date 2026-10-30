@@ -75,15 +75,35 @@ public sealed class EnglishCompiler
         var hb = new AbilityHeaderBuilder();
         _prefixes.ParseAll(cur, hb);
 
-        var body = cur.IsAtEnd
+        // 引号内可能包含 "X is the number of ..." 这类变量声明句，需先剔除
+        var kept = new List<Token>();
+        var sent = new List<Token>();
+        foreach (var t in inner)
+        {
+            if (t.Kind == TokKind.Period)
+            {
+                if (sent.Count > 0 && !IsVariableDeclaration(sent)) kept.AddRange(sent);
+                if (sent.Count > 0) kept.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
+                sent = new List<Token>();
+                continue;
+            }
+            sent.Add(t);
+        }
+        if (sent.Count > 0 && !IsVariableDeclaration(sent)) kept.AddRange(sent);
+
+        var cur2 = new TokenCursor(kept);
+        var hb2 = new AbilityHeaderBuilder();
+        _prefixes.ParseAll(cur2, hb2);
+
+        var body = cur2.IsAtEnd
             ? (IReadOnlyList<EffectNode>)Array.Empty<EffectNode>()
-            : _actions.ParseSequence(cur);
+            : _actions.ParseSequence(cur2);
 
         return new AbilityDef
         {
-            Trigger = hb.BuildTrigger(),
-            Condition = hb.Condition,
-            Costs = hb.Costs,
+            Trigger = hb2.BuildTrigger(),
+            Condition = hb2.Condition,
+            Costs = hb2.Costs,
             Body = body,
         };
     }

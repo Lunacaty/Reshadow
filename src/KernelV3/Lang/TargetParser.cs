@@ -419,9 +419,11 @@ public sealed class TargetParser
                 costs.Add(cur.Current.Value);
                 cur.Advance();
                 if (cur.Current.Kind == TokKind.Dash) cur.Advance();
-                if (cur.Current.Kind == TokKind.Comma) { cur.Advance(); continue; }
-                if (cur.Current.IsWord("and")) { cur.Advance(); continue; }
-                break;
+                bool sawSep = false;
+                if (cur.Current.Kind == TokKind.Comma) { cur.Advance(); sawSep = true; }
+                if (cur.Current.IsWord("and")) { cur.Advance(); sawSep = true; }
+                if (!sawSep) break;
+                if (cur.Current.Kind != TokKind.Number) break;
             }
             if (costs.Count > 0 && cur.MatchWord("cost"))
             {
