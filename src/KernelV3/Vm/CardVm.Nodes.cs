@@ -74,6 +74,20 @@ public sealed partial class CardVm
             }
 
             var pool = _eval.ResolveRef(spec, scope);
+            // 能力选目标时要过滤对手的潜行 / 灵气：
+            //   潜行(ambush)：既不能被攻击，也不能被能力选中
+            //   灵气(aura)：不能被能力选中（但可以被攻击）
+            //   威慑(intimidate)：只阻止攻击，不阻止能力选中
+            // 之前这里没有任何检查，敌方法术可以随意点选你的灵气随从。
+            var controller = scope.ResolvePlayer(Core.ZoneScope.Self);
+            var ambushKw = Schema.Keyword("ambush");
+            var auraKw = Schema.Keyword("aura");
+            pool = pool.Where(r => {
+                var sn = r.Snapshot;
+                if (sn == null || sn.Zone != ZoneRef.Board) return true;
+                if (sn.PlayerId == controller) return true;   // 己方目标不受限
+                return !sn.Keywords.Contains(ambushKw) && !sn.Keywords.Contains(auraKw);
+            }).ToList();
             if (pool.Count == 0) return new List<RuntimeEntity>();
 
             int min = 1;
@@ -116,6 +130,20 @@ public sealed partial class CardVm
         if (frame.Scope.Read(n.OutSlot).Count > 0) return false;
 
         var candidates = _eval.Resolve(n.Target, frame.Scope);
+
+        // 能力选目标必须过滤对手的潜行(ambush)与灵气(aura)。
+        // ResolveOrBlock 里已有同样的过滤，但 DoSelect 走的是 _eval.Resolve，
+        // 不经过那里，所以这条路径之前对 ambush / aura 完全不设防。
+        var controller = frame.Scope.ResolvePlayer(Core.ZoneScope.Self);
+        var ambushKw = Schema.Keyword("ambush");
+        var auraKw = Schema.Keyword("aura");
+        candidates = candidates.Where(c =>
+        {
+            if (c == null || c.Zone != ZoneRef.Board) return true;
+            if (c.PlayerId == controller) return true;
+            return !c.Keywords.Contains(ambushKw) && !c.Keywords.Contains(auraKw);
+        }).ToList();
+
         if (candidates.Count == 0) return false;   // 没得选就跳过
 
         if (n.Target.Mode == SelectMode.Choose)
@@ -314,9 +342,21 @@ public sealed partial class CardVm
         foreach (var t in targets)
         {
             if (t.Zone == n.ToZone) continue;
-            if (t.Zone == ZoneRef.Board && n.ToZone != ZoneRef.Board)
-                _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(t) });
-            _world.MoveEntity(t, n.ToZone, t.PlayerId);
+
+            // 破坏走 DestroyEntity（它会发 OnDestroy、加墓场、记入破坏池）；
+            // 弃牌 / 流放 / 回手走 MoveEntity（只移动）。
+            // 之前一律用 MoveEntity，所以法术破坏不触发谢幕曲、
+            // 也不加墓场，导致 Reanimate 找不到被法术解掉的随从。
+            if (n.IsDestroy && t.Zone == ZoneRef.Board && n.ToZone == ZoneRef.Cemetery)
+            {
+                _world.DestroyEntity(t);
+            }
+            else
+            {
+                if (t.Zone == ZoneRef.Board && n.ToZone != ZoneRef.Board)
+                    _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(t) });
+                _world.MoveEntity(t, n.ToZone, t.PlayerId);
+            }
             moved.Add(t);
         }
 
@@ -374,12 +414,14 @@ public sealed partial class CardVm
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets)
         {
-            if (n.IsSuperEvolve) t.IsSuperEvolved = true; else t.IsEvolved = true;
-            _world.EmitEvent(new VmEvent
-            {
-                Kind = n.IsSuperEvolve ? CoreEvent.OnSuperEvolve : CoreEvent.OnEvolve,
-                Subject = EntityRef.From(t),
-            });
+            if (n.IsSuperEvolve) { t.IsSuperEvolved = true; t.IsEvolved = true; } else t.IsEvolved = true;
+
+            // 超进化同时触发 Evolve 与 Super-Evolve。
+            // 且超进化必须把 IsEvolved 也置位——否则「if this follower is evolved」
+            // 这类条件在自动超进化后仍然为假。
+            _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnEvolve, Subject = EntityRef.From(t) });
+            if (n.IsSuperEvolve)
+                _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnSuperEvolve, Subject = EntityRef.From(t) });
         }
         // 不覆写 $selected（只有 SelectTargetNode / SpawnCardNode 可以写槽位）
         return false;

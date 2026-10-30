@@ -165,6 +165,36 @@ public sealed class BattleState : IVmWorld
             Cost = cost >= 0 ? cost : (def?.BaseCost ?? 0),
         };
         e.MaxLife = e.Life;
+
+        // 装配卡面自带的常驻属性。
+        // 裸关键词（Ward / Storm / Rush）与 Countdown (N) 在编译器里被编成
+        // PassiveAura 能力，但之前从来没有人在实体创建时把它们装进去，
+        // 所以一张印着 Ward 的随从被召唤上场后 Keywords 是空的。
+        if (def != null)
+        {
+            foreach (var ab in def.Abilities)
+            {
+                if (ab?.Trigger == null) continue;
+                if (ab.Trigger.Event != Core.CoreEvent.PassiveAura) continue;
+
+                foreach (var n in ab.Body ?? Array.Empty<Ast.EffectNode>())
+                {
+                    if (n is Ast.ModifyKeywordNode mk && mk.Op == Ast.KeywordOp.Grant)
+                        if (!e.Keywords.Contains(mk.Keyword)) e.Keywords.Add(mk.Keyword);
+                }
+
+                foreach (var c in ab.Costs ?? Array.Empty<Ast.CostSpec>())
+                {
+                    if (c.Kind != Ast.CostKind.Countdown) continue;
+                    if (c.Amount?.Op != Ast.NumOp.Const) continue;
+                    e.Counters[Schema.Counter("countdown")] = c.Amount.Value;
+                }
+            }
+
+            foreach (var k in def.InnateKeywords) if (!e.Keywords.Contains(k)) e.Keywords.Add(k);
+            foreach (var kv in def.InnateCounters) e.Counters[kv.Key] = kv.Value;
+        }
+
         _all.Add(e);
         PlaceInZone(e, zone, playerId);
         return e;
@@ -180,19 +210,14 @@ public sealed class BattleState : IVmWorld
         int cap = PlayerState.Capacity(zone);
         if (cap >= 0 && list.Count >= cap)
         {
-            // 铁律 2：满场/满手时新实体直接销毁，不触发入场与破坏事件
-            if (zone == ZoneRef.Board)
+            // 铁律 2：满场/满手时新实体直接消失，不触发入场与破坏事件。
+            // 它既不是被破坏也不是被弃牌，所以不能进 Cemetery，
+            // 否则墓地、shadow、DestroyedThisMatch 都会被凭空打爆。
+            // 用 ZoneRef.None 表示「从未存在于任何区域」。
+            if (zone == ZoneRef.Board || zone == ZoneRef.Hand)
             {
-                // 场上已满 -> 直接进墓地，不触发 OnEnterField / OnDestroy
-                e.Zone = ZoneRef.Cemetery;
-                p.Cemetery.Add(e);
-                return;
-            }
-            if (zone == ZoneRef.Hand)
-            {
-                // 手牌已满 -> 直接进墓地，不触发 OnDraw
-                e.Zone = ZoneRef.Cemetery;
-                p.Cemetery.Add(e);
+                e.Zone = ZoneRef.None;
+                _all.Remove(e);
                 return;
             }
         }
@@ -241,6 +266,10 @@ public sealed class BattleState : IVmWorld
     {
         if (e == null) return;
         if (e.Zone != ZoneRef.Board) return;
+
+        // 超进化铁律：自己的回合内，超进化随从不能被任何能力或效果破坏。
+        // 这条规则之前完全没有实现，法术可以直接炸死刚超进化的随从。
+        if (e.IsSuperEvolved && e.PlayerId == ActivePlayer) return;
 
         int owner = e.PlayerId;
         var snap = e.TakeSnapshot();

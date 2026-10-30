@@ -68,6 +68,9 @@ public sealed class GameSchema
     public static readonly (string name, int min, int max)[] BuiltinCounterDefs =
     {
         ("pp", 0, 10),
+        // 打出这张卡之前的 PP。Enhance 分支靠它判定能走哪一档，
+        // 因为基础费已经扣掉了。
+        ("pp_at_play", 0, 10),
         ("max_pp", 0, 10),
         ("ep", 0, 2),
         ("sep", 0, 2),

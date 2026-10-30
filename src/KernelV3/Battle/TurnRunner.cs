@@ -122,6 +122,12 @@ public sealed class TurnRunner
         int pp = _state.ReadCounter(playerId, ppKey);
         if (pp < card.Cost) return false;
 
+        // 爆能强化：先用**本次打出前**的 PP 判定能不能走高档，
+        // 再一次性扣陣。之前先扣基础费再让 EnhanceWeaver 判 pp >= N，
+        // 已经扣掉基础费的 pp 永远达不到高档。
+        // 这里只记录“本次打出时可用 PP”，供 VM 内的分支判定使用。
+        // 记下打出前的 PP：Enhance 分支靠它判定能走哪一档。
+        _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), pp);
         _state.WriteCounter(playerId, ppKey, pp - card.Cost);
         card.EnteredTurn = _state.TurnNumber;
 
@@ -203,7 +209,12 @@ public sealed class TurnRunner
             e.MaxLife += 2;
         }
 
+        // 超进化同时触发 Evolve 与 Super-Evolve 两种能力（官方铁律）。
+        // 之前无论普通还是超进化都只发 OnEvolve，
+        // 导致所有「Super-Evolve:」能力在手动超进化时永远不触发。
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEvolve, Subject = EntityRef.From(e) });
+        if (super)
+            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnSuperEvolve, Subject = EntityRef.From(e) });
         vm?.StepUntilBlocked();
         return true;
     }

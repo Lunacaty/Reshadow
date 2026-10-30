@@ -124,6 +124,20 @@ public sealed class MemoryWorld : IVmWorld
 
     public void RemoveEntity(RuntimeEntity e) => _entities.Remove(e);
 
+    /// <summary>
+    /// 破坏：进墓场，并补上 MoveEntity 不会做的三件事：
+    /// · 发 OnDestroy（谢幕曲）
+    /// · 墓场 +1（Necromancy 与 Reanimate 都靠它）
+    /// · 记入本局被破坏池（这就是为什么本场景要存在）
+    /// 只有真正的「被破坏」才调它；弃牌 / 流放 / 回手一律用 MoveEntity。
+    /// </summary>
+    public void DestroyEntity(RuntimeEntity e)
+    {
+        if (e == null || e.Zone != ZoneRef.Board) return;
+        MoveEntity(e, ZoneRef.Cemetery, e.PlayerId);
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
+    }
+
     public void EmitEvent(VmEvent ev) => EventLog.Add(ev);
 
     public RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId)

@@ -36,6 +36,14 @@ public static class VmSelfTest
         TestPluralTarget();       // ★ 复数目标影响全部
         TestPlayerPerspective();  // ★ 后手玩家的相对视角必须翻译成绝对身份
 
+        // ---- Phase 4 验收门禁 ----
+        GateBarrierAbsorb();
+        GateDestroyRules();
+        GateInnateKeyword();
+        GateAuraTargeting();
+        GateAuraNotSelectable();
+        GateFieldFullVanish();
+
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
         foreach (var l in _log) sb.AppendLine(l);
@@ -480,6 +488,157 @@ public static class VmSelfTest
     {
         var id = _ctrReg.TryGet(name);
         return id.IsValid ? id : _ctrReg.Register(name);
+    }
+
+    // ==================== Phase 4 验收门禁 ====================
+
+    /// <summary>门禁1：Deal 3 damage 打在带 Barrier 的随从上，伤害为 0 且 Barrier 消失。</summary>
+    private static void GateBarrierAbsorb()
+    {
+        var st = new Battle.BattleState();
+        var combat = new Battle.CombatResolver(st, st.Schema);
+        var t = st.CreateEntity(1, ZoneRef.Board, 1, life: 5);
+        t.Keywords.Add(st.Schema.Keyword("barrier"));
+        int before = t.Life;
+        combat.ApplyDamage(t, 3, 0);
+        Check("门禁1 Barrier 吸收伤害并消失",
+              t.Life == before && !t.Keywords.Contains(st.Schema.Keyword("barrier")),
+              "life " + before + "->" + t.Life);
+    }
+
+    /// <summary>门禁2：Destroy 的谢幕曲 / 墓场 / 超进化免疫。</summary>
+    private static void GateDestroyRules()
+    {
+        var st = new Battle.BattleState();
+        var shadowKey = st.Schema.Counter("shadow");
+
+        var a = st.CreateEntity(1, ZoneRef.Board, 1, life: 3);
+        int shadowBefore = st.ReadCounter(1, shadowKey);
+        st.DestroyEntity(a);
+        bool aOk = a.Zone == ZoneRef.Cemetery
+                   && st.ReadCounter(1, shadowKey) == shadowBefore + 1
+                   && st.EnumerateHistory(HistoryScope.DestroyedThisMatch, 1).Any(h => h.EntityId == a.EntityId)
+                   && st.EventLog.Any(e => e.Kind == CoreEvent.OnDestroy
+                                           && e.Subject.HasValue && e.Subject.Value.EntityId == a.EntityId);
+
+        var b = st.CreateEntity(2, ZoneRef.Board, 0, life: 3);
+        b.IsSuperEvolved = true;
+        st.ActivePlayer = 0;
+        st.DestroyEntity(b);
+        bool bOk = b.Zone == ZoneRef.Board;
+
+        Check("门禁2 Destroy 语义与超进化免疫", aOk && bOk, "aOk=" + aOk + " bOk=" + bOk);
+    }
+
+    /// <summary>门禁3：打出带 Ward 与 Countdown (2) 的卡，实体带对应属性。</summary>
+    private static void GateInnateKeyword()
+    {
+        var st = new Battle.BattleState();
+        var lex = new Lang.Lexicon();
+        lex.AddKeyword("ward");
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+        // 测试用例只需要「常驻属性 + 触发能力」的骨架，不依赖卡名词表。
+        var r = comp.Compile("Countdown (2) Last Words: Draw a card. Ward");
+
+        var def = new CardDef
+        {
+            CardId = 500, Name = "GateAmulet", Kind = CardKind.Amulet,
+            BaseAttack = 0, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities,
+        };
+        st.RegisterCard(def);
+        var e = st.SpawnCard(500, ZoneRef.Board, 0);
+
+        bool hasWard = e.Keywords.Contains(st.Schema.Keyword("ward"));
+        bool hasCd = e.Counters.TryGetValue(st.Schema.Counter("countdown"), out var cd) && cd == 2;
+        Check("门禁3 Ward 与 Countdown 装入实体", hasWard && hasCd,
+              "ward=" + hasWard + " countdown=" + (hasCd ? "2" : "缺"));
+    }
+
+    /// <summary>门禁4：Aura 不能被能力选中，但可以被随从攻击。</summary>
+    private static void GateAuraTargeting()
+    {
+        var st = new Battle.BattleState();
+        var combat = new Battle.CombatResolver(st, st.Schema);
+
+        var target = st.CreateEntity(1, ZoneRef.Board, 1, atk: 2, life: 5);
+        target.Keywords.Add(st.Schema.Keyword("aura"));
+        var attacker = st.CreateEntity(2, ZoneRef.Board, 0, atk: 3, life: 5);
+        // 先破除召唤失调：直接标记为本回合之前入场
+        attacker.EnteredTurn = -1;
+
+        bool ok = combat.CanAttack(attacker, target, out var reason);
+        Check("门禁4 Aura 可被攻击", ok, reason);
+    }
+
+    /// <summary>门禁5：满场 5 随从时召唤第 6 个，不进墓场、shadow 不变。</summary>
+    private static void GateFieldFullVanish()
+    {
+        var st = new Battle.BattleState();
+        var shadowKey = st.Schema.Counter("shadow");
+        for (int i = 0; i < 5; i++)
+        {
+            st.RegisterCard(new CardDef { CardId = 900 + i, Name = "F" + i, Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+            st.SpawnCard(900 + i, ZoneRef.Board, 0);
+        }
+        int shadowBefore = st.ReadCounter(0, shadowKey);
+        int cemeteryBefore = st.EnumerateZone(ZoneRef.Cemetery, 0).Count();
+
+        st.RegisterCard(new CardDef { CardId = 999, Name = "Sixth", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+        var sixth = st.SpawnCard(999, ZoneRef.Board, 0);
+
+        bool ok = sixth.Zone != ZoneRef.Cemetery
+                  && st.ReadCounter(0, shadowKey) == shadowBefore
+                  && st.EnumerateZone(ZoneRef.Cemetery, 0).Count() == cemeteryBefore
+                  && st.EnumerateZone(ZoneRef.Board, 0).Count() == 5;
+        Check("门禁5 满场召唤不进墓场", ok,
+              "zone=" + sixth.Zone + " shadow=" + st.ReadCounter(0, shadowKey));
+    }
+
+    /// <summary>门禁4 另一半：Aura / Ambush 不能被敌方能力选中。</summary>
+    private static void GateAuraNotSelectable()
+    {
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+        CardVm.Schema = GameSchema.CreateDefault();
+        var schema = CardVm.Schema;
+
+        var plain = w.Create(1, ZoneRef.Board, 1, atk: 0, life: 3);
+        var aura = w.Create(2, ZoneRef.Board, 1, atk: 0, life: 3);
+        aura.Keywords.Add(schema.Keyword("aura"));
+        var ambush = w.Create(3, ZoneRef.Board, 1, atk: 0, life: 3);
+        ambush.Keywords.Add(schema.Keyword("ambush"));
+
+        var spec = new Ast.TargetSpec
+        {
+            SourceKind = Ast.TargetSourceKind.Zone,
+            Owner = ZoneScope.Opponent,
+            Zone = ZoneRef.Board,
+            Mode = SelectMode.Choose,
+            Count = Ast.NumExpr.Const(1),
+            Where = Ast.BoolExpr.True,
+        };
+        var ab = new AbilityDef
+        {
+            Trigger = new Ast.TriggerSpec { Event = CoreEvent.OnPlay },
+            Body = new[] { new Ast.SelectTargetNode { Target = spec } },
+        };
+        var scope = new VmScope
+        {
+            Owner = ZoneScope.Self,
+            Controller = 0,
+            Source = EntityRef.From(plain),
+        };
+        vm.PushAbility(ab, scope);
+        vm.StepUntilBlocked();
+
+        var ids = vm.Pending?.Candidates ?? new System.Collections.Generic.List<int>();
+        bool ok = ids.Count == 1 && ids[0] == plain.EntityId
+                  && !ids.Contains(aura.EntityId)
+                  && !ids.Contains(ambush.EntityId);
+
+        Check("门禁4 Aura/Ambush 不可被能力选中", ok,
+              "candidates=" + string.Join(",", ids) + " plain=" + plain.EntityId);
     }
 
     private static void Check(string name, bool ok, string detail)

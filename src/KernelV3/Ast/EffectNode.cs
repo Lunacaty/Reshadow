@@ -166,6 +166,14 @@ public sealed class MoveZoneNode : EffectNode
     public TargetSpec Target { get; init; }
     public Core.ZoneRef ToZone { get; init; }
     public string OutSlot { get; init; } = TargetSpec.SlotCreated;
+
+    /// <summary>
+    /// 这是否是「破坏」。
+    /// Destroy 与弃牌 / 流放 / 回手都是「进墓场」，但只有 Destroy 会
+    /// 触发谢幕曲、加墓场、记入本局被破坏池。
+    /// 不分的话，弃牌会误触发谢幕曲，而法术破坏反而不触发。
+    /// </summary>
+    public bool IsDestroy { get; init; }
 }
 
 // ---------- 10. 变形 ----------

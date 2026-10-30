@@ -63,7 +63,8 @@ public sealed class CombatResolver
         {
             if (Has(defender, "ambush"))    { reason = "潜行(Ambush)的随从不能被攻击"; return false; }
             if (Has(defender, "intimidate")){ reason = "威慑(Intimidate)的随从不能被随从攻击"; return false; }
-            if (Has(defender, "aura"))      { reason = "灵气(Aura)的随从不能被对手能力选中"; return false; }
+            // 灵气(aura) 不在这里：它只阻止被对手能力选中，
+            // 随从仍然可以正常攻击它。写在这里会让灵气随从无法被打。
         }
 
         // 守护

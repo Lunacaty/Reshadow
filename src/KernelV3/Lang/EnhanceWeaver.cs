@@ -87,6 +87,28 @@ public static class EnhanceWeaver
             IReadOnlyList<EffectNode> Chain(int maxIdx)
             {
                 var body = new List<EffectNode>();
+
+                // 先补扣爆能费。
+                // TurnRunner.PlayCard 只扣了基础费（如 2），
+                // 但 Enhance (8) 意味着这张卡要花 8 费，不是 2+8=10。
+                // 所以补扣的差额是 (目标价 - 基础费)。
+                int tierAmount = tiers[maxIdx].amount;
+                int baseCost = baseAb?.Costs != null
+                    ? baseAb.Costs.Where(c => c.Kind == CostKind.UsePp)
+                                  .Select(c => c.Amount?.Op == NumOp.Const ? c.Amount.Value : 0)
+                                  .DefaultIfEmpty(0).Max()
+                    : 0;
+                int extra = tierAmount - baseCost;
+                if (extra > 0)
+                {
+                    body.Add(new ModifyCounterNode
+                    {
+                        Counter = lex.Counter("pp"),
+                        Op = CounterOp.Add,
+                        Delta = NumExpr.Const(-extra),
+                    });
+                }
+
                 if (baseAb != null) body.AddRange(baseAb.Body);
                 for (int k = 0; k <= maxIdx; k++) body.AddRange(tiers[k].ab.Body);
                 return body;
@@ -97,7 +119,10 @@ public static class EnhanceWeaver
             {
                 var cond = new CompareExpr
                 {
-                    Left = NumExpr.Ctr(lex.Counter("pp")),
+                    // 用「打出前」的 PP，不是当前 PP。
+                    // TurnRunner.PlayCard 会先扣掉基础费，若读当前 pp，
+                    // 4 费打「2 费 + Enhance (4)」的卡时已剩 2，永远进不了 Enhance 分支。
+                    Left = NumExpr.Ctr(lex.Counter("pp_at_play")),
                     Op = CompareOp.Ge,
                     Right = NumExpr.Const(tiers[k].amount),
                 };

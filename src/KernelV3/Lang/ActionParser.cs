@@ -118,9 +118,9 @@ public sealed class ActionParser
             case "give": return ParseGive(cur);
             case "summon": return ParseSummon(cur);
             case "add": return ParseAdd(cur);
-            case "destroy": return ParseMove(cur, ZoneRef.Cemetery);
+            case "destroy": return ParseMove(cur, ZoneRef.Cemetery, isDestroy: true);
             case "banish": return ParseMove(cur, ZoneRef.Banished);
-            case "discard": return ParseMove(cur, ZoneRef.Cemetery);
+            case "discard": return ParseMove(cur, ZoneRef.Cemetery, isDestroy: false);
             case "return": return ParseMove(cur, ZoneRef.Hand);
             case "evolve": return ParseEvolve(cur, false);
             case "super-evolve": return ParseEvolve(cur, true);
@@ -1125,7 +1125,7 @@ public sealed class ActionParser
 
     // ---------- 移区 ----------
 
-    private List<EffectNode> ParseMove(TokenCursor cur, ZoneRef to)
+    private List<EffectNode> ParseMove(TokenCursor cur, ZoneRef to, bool isDestroy = false)
     {
         var verb = cur.Current.Text.ToLowerInvariant();
         cur.Advance();   // 动词
@@ -1177,7 +1177,7 @@ public sealed class ActionParser
                     Mode = SelectMode.All,
                     Where = ors.Count == 1 ? ors[0] : BoolExpr.Or(ors.ToArray()),
                 };
-                return new List<EffectNode> { new MoveZoneNode { Target = spec, ToZone = to } };
+                return new List<EffectNode> { new MoveZoneNode { Target = spec, ToZone = to, IsDestroy = isDestroy } };
             }
             cur.Seek(se);
         }
@@ -1204,7 +1204,7 @@ public sealed class ActionParser
             };
         }
         ConsumeDestination(cur);
-        var moveNodes = new List<EffectNode> { new MoveZoneNode { Target = target, ToZone = to } };
+        var moveNodes = new List<EffectNode> { new MoveZoneNode { Target = target, ToZone = to, IsDestroy = isDestroy } };
         moveNodes.AddRange(ParseAndAllTargets(cur, to));
         return moveNodes;
     }
