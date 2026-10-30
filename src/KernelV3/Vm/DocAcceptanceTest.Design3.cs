@@ -42,6 +42,21 @@ public static partial class DocAcceptanceTest
                bm != null ? $"options={bm.Options.Count}" : "no BranchModeNode");
         }
 
+        {
+            // 情况 1 引号内嵌式：引号内自带编号选项块，必须递归构造内层模式树
+            var r = comp.Compile("Fanfare: Do this 2 times: \"Select a Mode to activate. 1. Draw a card. 2. Deal 2 damage to the enemy leader.\"");
+            string body = DumpDeep(r.Abilities);
+            bool nested = body.Contains("modes") && body.Contains("loop");
+            Ok("d3-S5.1.2", "引号内嵌式模式树（情况 1）", nested, body);
+        }
+        {
+            // 代表卡真实用例：Sagelight Teachings 的 Do this 2 times + 引号内模式
+            var r = comp.Compile("Do this 2 times: \"Select a Mode to activate. 1. Draw a card. 2. Restore 2 defense to your leader.\"");
+            bool ok2 = r.Abilities.Count > 0 && r.Errors.Count == 0;
+            string body = DumpDeep(r.Abilities);
+            Ok("d3-S5.1.2", "Do this N times + 引号模式可编译", ok2 && body.Contains("modes"), body);
+        }
+
         // ---- Stage 2：闭环词法分析器 ----
         {
             // 卡名最长前缀匹配（含句号的卡名）

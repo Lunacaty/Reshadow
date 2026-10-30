@@ -1978,25 +1978,95 @@ public sealed class ActionParser
             cur.Advance();
 
             // 引号内按句号切分，剔除变量声明句（"X is ..."）后再逐句解析
+            // OptionMark 是「新选项起点」，必须原样保留下来，
+            // 否则下面的编号块收集器看不到它，整段引号内容会被当成普通句子。
             var kept = new List<Token>();
             var sentBuf = new List<Token>();
+            void Flush()
+            {
+                if (sentBuf.Count > 0 && !IsVariableDecl(sentBuf)) kept.AddRange(sentBuf);
+                sentBuf.Clear();
+            }
             foreach (var tk2 in q.Inner)
             {
+                if (tk2.Kind == TokKind.OptionMark)
+                {
+                    Flush();
+                    kept.Add(tk2);
+                    continue;
+                }
                 if (tk2.Kind == TokKind.Period)
                 {
-                    if (sentBuf.Count > 0 && !IsVariableDecl(sentBuf)) kept.AddRange(sentBuf);
-                    if (sentBuf.Count > 0) kept.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = tk2.Pos });
-                    sentBuf = new List<Token>();
+                    if (sentBuf.Count > 0)
+                    {
+                        Flush();
+                        kept.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = tk2.Pos });
+                    }
                     continue;
                 }
                 sentBuf.Add(tk2);
             }
-            if (sentBuf.Count > 0 && !IsVariableDecl(sentBuf)) kept.AddRange(sentBuf);
+            Flush();
 
+            // 引号内可能自带编号选项块：
+            //   Do this 2 times: "Select a Mode to activate. 1. Draw a card. 2. Deal 2 damage."
+            // 设计3 5.1.2「情况 1 引号内嵌式」要求这里递归构造内层 SelectModesNode。
+            // 之前直接丢给 ParseSequence 逐句解析，选项头无人识别，
+            // 整段引号内容被吃掉，循环体变成空的。
             var inner = new ActionParser(_lex, _compileQuotedAbility, _target);
-            // 必须继承变量解析器：否则引号内的 X/Y/Z 在子解析器里无法解析。
             inner.VariableResolver = VariableResolver;
-            body = inner.ParseSequence(new TokenCursor(kept));
+            var innerCur = new TokenCursor(kept);
+
+            // 引号内通常先有一句模式引导语（"Select a Mode to activate." / 
+            // "Activate 2 random abilities from the following."），
+            // 真正的编号选项从它之后才开始。所以先把引导句整句跳过。
+            int optStart = -1;
+            for (int i = 0; i < kept.Count; i++)
+            {
+                if (kept[i].Kind == TokKind.OptionMark) { optStart = i; break; }
+            }
+            if (optStart > 0)
+            {
+                // 回退到引导句起点（上一个 Period 之后）
+                int lead = optStart;
+                while (lead > 0 && kept[lead - 1].Kind != TokKind.Period) lead--;
+                innerCur.Seek(optStart);
+            }
+
+            var opts = new List<IReadOnlyList<EffectNode>>();
+            while (!innerCur.IsAtEnd && innerCur.Current.Kind == TokKind.OptionMark)
+            {
+                innerCur.Advance();                       // 消费 "1."
+                var branch = new List<EffectNode>();
+                while (!innerCur.IsAtEnd && innerCur.Current.Kind != TokKind.OptionMark)
+                {
+                    branch.AddRange(inner.ParseSequence(innerCur));
+                    if (innerCur.IsAtEnd) break;
+                    // ParseSequence 遇 OptionMark 会自然停止，这里防止空转
+                    if (innerCur.Current.Kind == TokKind.OptionMark) break;
+                    innerCur.Advance();
+                }
+                opts.Add(branch);
+            }
+
+            if (opts.Count >= 2)
+            {
+                body = new List<EffectNode>
+                {
+                    new BranchModeNode
+                    {
+                        Kind = ModeDispatchKind.Choose,
+                        PickCount = NumExpr.Const(1),
+                        Options = opts,
+                    },
+                };
+            }
+            else
+            {
+                body = innerCur.Position > 0 && opts.Count == 0
+                    ? inner.ParseSequence(new TokenCursor(kept))
+                    : inner.ParseSequence(new TokenCursor(kept));
+            }
         }
         return new List<EffectNode> { new LoopNode { Kind = LoopKind.Times, Count = n, Body = body } };
     }
