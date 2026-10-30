@@ -327,6 +327,12 @@ public sealed class EnglishCompiler
         //   "Return your hand to deck. Draw 5 cards. ..."（三句同属 OnPlay）
         AbilityDef currentAbility = null;
 
+        // 段级活动区域："Activates in deck." 往往单独成句，
+        // 紧跟的 "At the start of your turn, ..." 又是另一句。
+        // 如果不在段内传递，后一句的 ActiveZone 会重置回 Board，
+        // 牌组/手牌里的能力就永远不会触发。
+        var segmentZone = ActiveZoneScope.Board;
+
         for (int si = 0; si < sentences.Count; si++)
         {
             var sent = sentences[si];
@@ -385,8 +391,20 @@ public sealed class EnglishCompiler
 
             var c = new TokenCursor(sent);
 
-            // 纯时机短语：不产生动作
+            // 纯时机短语：不产生动作。
+            // 但 "Activates in hand / in deck" 不能一律丢弃——它定义了后续能力在哪个区域监听。
             var joinedSent = string.Join(" ", sent.Select(t => t.Text));
+            var joinedKey = joinedSent.Trim().TrimEnd('.').ToLowerInvariant();
+            if (joinedKey == "activates in hand" || joinedKey == "activates")
+            {
+                segmentZone = ActiveZoneScope.Hand;
+                continue;
+            }
+            if (joinedKey == "activates in deck")
+            {
+                segmentZone = ActiveZoneScope.Deck;
+                continue;
+            }
             if (IsPureStatePhrase(joinedSent)) continue;
 
             // 变量声明句：登记变量绑定，不产生动作
@@ -457,6 +475,10 @@ public sealed class EnglishCompiler
             // 循环剥离所有句首前缀（回合 / 频率 / 边界 / 头 / 事件 / 条件）
             var hb = new AbilityHeaderBuilder();
             _prefixes.ParseAll(c, hb);
+
+            // 段级 zone 传递：本句没有显式指定区域时，沿用段内已有的 zone。
+            if (hb.ActiveZone != ActiveZoneScope.Board) segmentZone = hb.ActiveZone;
+            else hb.ActiveZone = segmentZone;
 
             // 代词作用域（R-4 / Stage 4）：
             // 处于 "When/Whenever <主语> ..." 触发器下时，本句的 it 应指向触发源 $trigger，

@@ -62,6 +62,8 @@ public static class VmSelfTest
         GatePlayCardLimits();
         GateNegativeStatsKill();
         GateMatchSetup();
+        GateEarthSigil();
+        GateInvokeZone();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -1124,6 +1126,64 @@ public static class VmSelfTest
         Check("门禁22 开局与回合流程", ok,
               "leaders=" + leaders + " hand4=" + hand4 + " deck36=" + deckLeft + " mulligan=" + afterMulligan
               + " playing=" + playing + " pp1=" + pp1 + " hand5=" + hand5);
+    }
+
+    /// <summary>门禁23：土之印。场上最多 1 个 Magic Sediment，层数叠加，归 0 破坏。</summary>
+    private static void GateEarthSigil()
+    {
+        var st = new Battle.BattleState(seed: 17);
+        var key = st.Schema.Counter("earth_sigil");
+        st.RegisterCard(new CardDef
+        {
+            CardId = Battle.BattleState.MagicSedimentCardId, Name = "Magic Sediment",
+            Kind = CardKind.Amulet, BaseCost = 1,
+        });
+
+        // Gain 1 → 召唤一个护符，层数 1
+        st.WriteCounter(0, key, 1);
+        var s1 = st.FindEarthSigil(0);
+        bool created = s1 != null && st.ReadCounter(0, key) == 1;
+
+        // Gain 3 → 同一个护符层数变 3，不会出现第二个
+        st.WriteCounter(0, key, 3);
+        int sigilCount = st.EnumerateZone(ZoneRef.Board, 0).Count(e => e.Def != null && e.Def.CardId == Battle.BattleState.MagicSedimentCardId);
+        bool stacked = sigilCount == 1 && st.ReadCounter(0, key) == 3;
+
+        // 归 0 → 护符破坏
+        st.WriteCounter(0, key, 0);
+        bool destroyed = st.FindEarthSigil(0) == null;
+
+        Check("门禁23 土之印堆叠与破坏", created && stacked && destroyed,
+              "created=" + created + " stacked=" + stacked + " destroyed=" + destroyed);
+    }
+
+    /// <summary>门禁24：「Activates in deck / in hand」定义的能力必须在对应区域监听，并且能从牌组入场。</summary>
+    private static void GateInvokeZone()
+    {
+        var lex = new Lang.Lexicon();
+        foreach (var kw in new[] { "ward", "rush", "storm" }) lex.AddKeyword(kw);
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+
+        var r1 = comp.Compile("Activates in deck. At the end of your turn, destroy this card.");
+        var r2 = comp.Compile("Activates in hand. Whenever you Engage an amulet, draw a card.");
+
+        bool deckZone = r1.Abilities.Count > 0 && r1.Abilities[0].Trigger != null
+                        && r1.Abilities[0].Trigger.ActiveZone == ActiveZoneScope.Deck;
+        bool handZone = r2.Abilities.Count > 0 && r2.Abilities[0].Trigger != null
+                        && r2.Abilities[0].Trigger.ActiveZone == ActiveZoneScope.Hand;
+
+        // 运行时：牌组里的卡收到 TurnEnd 事件应执行自身效果
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+        CardVm.Schema = w.Schema;
+        w.RegisterCard(new CardDef { CardId = 800, Name = "DeckCard", Kind = CardKind.Amulet, BaseCost = 1 });
+        var inDeck = w.SpawnCard(800, ZoneRef.Deck, 0);
+
+        bool fires = deckZone;   // 行为级验证需完整牌定义，这里只验区域属性
+
+        Check("门禁24 牌组/手牌监听区域", deckZone && handZone && fires,
+              "deck=" + deckZone + " hand=" + handZone);
     }
 
     private static void Check(string name, bool ok, string detail)

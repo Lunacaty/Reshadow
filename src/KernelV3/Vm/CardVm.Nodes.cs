@@ -179,29 +179,36 @@ public sealed partial class CardVm
         if (n.IsSplit && targets.Count > 0)
         {
             int each = total / targets.Count;
-            foreach (var t in targets) ApplyDamage(t, each, n.IsAbility);
+            foreach (var t in targets) ApplyDamage(t, each, n.IsAbility, scope);
         }
         else
         {
-            foreach (var t in targets) ApplyDamage(t, total, n.IsAbility);
+            foreach (var t in targets) ApplyDamage(t, total, n.IsAbility, scope);
         }
         // 注意：不写 $selected —— 槽位只能由 SelectTargetNode / SpawnCardNode 显式写入。
         // 否则 `Select X, deal 4 to it, boost self, banish it` 的最后一个 it 会指向 self。
         return false;
     }
 
-    private void ApplyDamage(RuntimeEntity t, int amount, bool isAbility)
+    /// <summary>
+    /// 能力造成的伤害，必须走世界的统一管线（屏障 / 超进化免伤 / 伤害上限）。
+    /// </summary>
+    private void ApplyDamage(RuntimeEntity t, int amount, bool isAbility, VmScope scope = null)
     {
         if (amount <= 0) return;
 
-        // 潜行（Ambush）铁律：该随从**主动造成伤害时**立即失去潜行。
-        // 攻击宣言时已在 ExecuteCombat 里处理；这里补上「能力造成伤害」的情形。
-        var ambush0 = Schema.Keyword("ambush");
-        // 能力伤害必须走世界的统一管线：屏幕（barrier）、超进化免伤、
-        // 伤害上限都在那里处理。直接 t.Life -= amount 会全部绕过，
-        // 导致法术能无视屏障、能炸死自己回合的超进化随从。
-        var src = t.PlayerId == 0 ? 1 : 0;
-        _world.ApplyDamage(t, amount, src);
+        // 潜行（Ambush）铁律：造成伤害的那个随从立即失去潜行。
+        // 攻击宣言时已在 ExecuteCombat 里处理；这里补「能力造成伤害」的情形。
+        var ambushKw = Schema.Keyword("ambush");
+        if (scope?.Source != null)
+        {
+            var self = _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial);
+            if (self != null && self.Keywords.Contains(ambushKw)) self.Keywords.Remove(ambushKw);
+        }
+
+        // 伤害来源玩家：取目标的对手（能力伤害通常是对手发起的）。
+        int srcPlayer = t.PlayerId == 0 ? 1 : 0;
+        _world.ApplyDamage(t, amount, srcPlayer);
     }
 
     private bool DoRestore(RestoreLifeNode n, VmScope scope)

@@ -151,6 +151,17 @@ public sealed class BattleState : IVmWorld
         if (faith != null && counter.Name == "faith")
             return faith.Counters.TryGetValue(counter, out var fv) ? fv : 0;
 
+        if (counter.Name == "earth_sigil")
+        {
+            var sigil = FindEarthSigil(playerId);
+            if (sigil != null) return sigil.Counters.TryGetValue(counter, out var sv) ? sv : 0;
+        }
+        if (counter.Name == "clues")
+        {
+            var clue = FindClue(playerId);
+            if (clue != null) return clue.Counters.TryGetValue(counter, out var cv) ? cv : 0;
+        }
+
         return Players[playerId].Counters.TryGetValue(counter.Id, out var v) ? v : 0;
     }
 
@@ -165,12 +176,129 @@ public sealed class BattleState : IVmWorld
             return;
         }
 
+        // 土之印 / 线索的层数都住在场上的护符实体上（R-6.2）。
+        // 写入时若没有护符且值 > 0，先召唤一个。
+        if (counter.Name == "earth_sigil" || counter.Name == "clues")
+        {
+            bool isSigil = counter.Name == "earth_sigil";
+            var holder = isSigil ? FindEarthSigil(playerId) : FindClue(playerId);
+            int clamped = Schema.ClampCounter(counter, value);
+
+            if (holder == null)
+            {
+                if (clamped <= 0) { Players[playerId].Counters[counter.Id] = 0; return; }
+                holder = isSigil ? SummonEarthSigil(playerId) : SummonClue(playerId);
+                if (holder == null) { Players[playerId].Counters[counter.Id] = clamped; return; }
+            }
+
+            holder.Counters[counter] = clamped;
+            Players[playerId].Counters[counter.Id] = clamped;
+
+            // 层数归 0：护符立即破坏
+            if (clamped <= 0) DestroyEntity(holder);
+            return;
+        }
+
         // 钳制到该计数器自己的范围（pp 0..10 / ep 0..2 …）
         Players[playerId].Counters[counter.Id] = Schema.ClampCounter(counter, value);
     }
 
+    /// <summary>Magic Sediment（土之印衍生护符，90031210）。
+    /// 场上最多只存在 1 个；Gain N earth sigils 若场上已有，直接给它加层；
+    /// 若没有，召唤一个层数为 N 的 Magic Sediment。</summary>
+    public const int MagicSedimentCardId = 90031210;
+
+    /// <summary>默认 Clue 护符：Divine Evidence（90001210）。</summary>
+    public const int ClueDefaultCardId = 90001210;
+
     /// <summary>信仰实体的卡 ID 偏移量，避免与真实卡冲突。</summary>
     public const int FaithEntityIdBase = 900000;
+
+    /// <summary>取该玩家场上的 Clue 护符（最多 1 个）。</summary>
+    public RuntimeEntity FindClue(int playerId)
+    {
+        if (playerId < 0 || playerId > 1) return null;
+        var clueTrait = Schema.Trait("Clue");
+        foreach (var e in Players[playerId].Board)
+            if (e.Def != null && (e.Traits.Contains(clueTrait)
+                                  || (e.Def.Traits != null && e.Def.Traits.Contains(clueTrait))))
+                return e;
+        return null;
+    }
+
+    /// <summary>
+    /// 召唤一个 Clue 护符（默认 Divine Evidence）。
+    /// 若场上已有 Clue：旧的那张被【消失 Banish】（会触发它自己的
+    /// "When this card is banished from the field" 能力），层数累加到新的上面。
+    /// </summary>
+    private RuntimeEntity SummonClue(int playerId)
+    {
+        var oldClue = FindClue(playerId);
+        int carried = 0;
+        if (oldClue != null)
+        {
+            var key = Schema.Counter("clues");
+            oldClue.Counters.TryGetValue(key, out carried);
+
+            // Clue 的旧护符是被 Banish，不是被破坏——
+            // 所以要发 OnBanish，但不加墓场、不进 DestroyedThisMatch。
+            oldClue.Zone = ZoneRef.Banished;
+            oldClue.EntrySerial++;
+            Players[playerId].Banished.Add(oldClue);
+            EmitEvent(new VmEvent { Kind = CoreEvent.OnBanish, Subject = EntityRef.From(oldClue) });
+        }
+
+        var e = SpawnCard(ClueDefaultCardId, ZoneRef.Board, playerId);
+        if (e != null && carried > 0)
+        {
+            var key = Schema.Counter("clues");
+            e.Counters[key] = carried;
+        }
+        return e;
+    }
+
+    /// <summary>取该玩家场上的土之印护符（最多 1 个）。</summary>
+    public RuntimeEntity FindEarthSigil(int playerId)
+    {
+        if (playerId < 0 || playerId > 1) return null;
+        foreach (var e in Players[playerId].Board)
+            if (e.Def != null && e.Def.CardId == MagicSedimentCardId) return e;
+        return null;
+    }
+
+    /// <summary>
+    /// 召唤一个 Magic Sediment。
+    /// 若场上已有另一个土之印，把它的层数合并过来后破坏它（场上始终只留 1 个）。
+    /// </summary>
+    private RuntimeEntity SummonEarthSigil(int playerId)
+    {
+        var oldSigil = FindEarthSigil(playerId);
+        int carried = 0;
+        if (oldSigil != null)
+        {
+            var key = Schema.Counter("earth_sigil");
+            oldSigil.Counters.TryGetValue(key, out carried);
+            RemoveQuietly(oldSigil);
+        }
+
+        var e = SpawnCard(MagicSedimentCardId, ZoneRef.Board, playerId);
+        if (e != null && carried > 0)
+        {
+            var key = Schema.Counter("earth_sigil");
+            e.Counters[key] = carried;
+        }
+        return e;
+    }
+
+    /// <summary>无声移除：不触发谢幕曲、不加墓场（用于合并）。</summary>
+    private void RemoveQuietly(RuntimeEntity e)
+    {
+        foreach (var p in Players) { }
+        Detach(e);
+        e.EntrySerial++;
+        e.Zone = ZoneRef.None;
+        _all.Remove(e);
+    }
 
     /// <summary>取该玩家的信仰实体（纹章区里带 IsFaith 的那个）。</summary>
     public RuntimeEntity FindFaith(int playerId)

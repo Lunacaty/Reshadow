@@ -257,8 +257,9 @@ public sealed class PrefixParser
         ("enhance",        CoreEvent.OnPlay,          null),
         ("fuse",           CoreEvent.OnFuse,          null),
         ("countdown",      CoreEvent.OnCountdownExpire,null),
-        ("activates in hand", CoreEvent.PassiveAura,  null),
-        ("activates",      CoreEvent.PassiveAura,     null),
+        ("activates in hand", CoreEvent.PassiveAura,  "zone_hand"),
+        ("activates in deck", CoreEvent.PassiveAura,  "zone_deck"),
+        ("activates",      CoreEvent.PassiveAura,     "zone_hand"),
         ("skybound art",   (CoreEvent)(-1),           "skybound_art"),
         ("super skybound art", (CoreEvent)(-1),       "super_skybound_art"),
         ("then",           CoreEvent.OnPlay,          null),
@@ -345,6 +346,12 @@ public sealed class PrefixParser
             if ((int)ev >= 0) { b.Event = ev; b.EventExplicit = true; }
             if (condFlag == "manual_evolve")
                 b.ManualEvolveOnly = true;
+
+            // "Activates in hand / in deck"：能力在哪个区域监听。
+            // 之前这两个头都不设 ActiveZone，于是全部默认在 Board，
+            // 牌组/手牌里的能力永远不会触发。
+            if (condFlag == "zone_hand") b.ActiveZone = ActiveZoneScope.Hand;
+            if (condFlag == "zone_deck") b.ActiveZone = ActiveZoneScope.Deck;
 
             // 【奥义 / 解放奥义】：条件头，不是事件头。
             //   Skybound Art        -> 奥义槽 >= 10
