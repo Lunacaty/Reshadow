@@ -221,10 +221,10 @@ public sealed partial class CardVm
         var refs = new List<EntityRef>();
         foreach (var id in selectedEntityIds ?? Array.Empty<int>())
         {
-            var live = _world.EnumerateZone(ZoneRef.Board, ZoneScope.Any)
-                .Concat(_world.EnumerateZone(ZoneRef.Hand, ZoneScope.Any))
-                .Concat(_world.EnumerateZone(ZoneRef.Deck, ZoneScope.Any))
-                .Concat(_world.EnumerateZone(ZoneRef.Cemetery, ZoneScope.Any))
+            var live = _world.EnumerateZone(ZoneRef.Board, -1)
+                .Concat(_world.EnumerateZone(ZoneRef.Hand, -1))
+                .Concat(_world.EnumerateZone(ZoneRef.Deck, -1))
+                .Concat(_world.EnumerateZone(ZoneRef.Cemetery, -1))
                 .FirstOrDefault(e => e.EntityId == id);
             if (live != null) refs.Add(EntityRef.From(live));
         }

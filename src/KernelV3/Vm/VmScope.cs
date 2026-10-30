@@ -21,8 +21,26 @@ namespace ShadowverseFan.KernelV3.Vm;
 
 public sealed class VmScope
 {
-    /// <summary>谁在发起这次效果。</summary>
+    /// <summary>
+    /// 谁在发起这次效果（AST 的相对视角：Self / Opponent）。
+    /// 注意：这不是玩家编号，不能直接传给世界。传给世界前必须经 ResolvePlayer()。
+    /// </summary>
     public ZoneScope Owner { get; init; }
+
+    /// <summary>
+    /// 绝对玩家编号：0 = 先手，1 = 后手。
+    /// AST 是相对视角（这张卡的拥有者 vs 他的对手），战斗世界是绝对身份。
+    /// 两者混用会导致「后手玩家打出的『伤害所有敌方随从』打在自己随从上」。
+    /// </summary>
+    public int Controller { get; init; }
+
+    /// <summary>把 AST 的相对视角翻译成世界的绝对玩家编号。</summary>
+    public int ResolvePlayer(ZoneScope relative) => relative switch
+    {
+        ZoneScope.Self => Controller,
+        ZoneScope.Opponent => 1 - Controller,
+        _ => -1,   // Any：双方
+    };
 
     /// <summary>来源卡（可能已离场，所以同时存快照）。</summary>
     public EntityRef? Source { get; set; }
@@ -73,6 +91,7 @@ public sealed class VmScope
         var s = new VmScope
         {
             Owner = Owner,
+            Controller = Controller,
             Source = Source,
             Trigger = Trigger,
             Event = Event,

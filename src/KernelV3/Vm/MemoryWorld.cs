@@ -16,7 +16,7 @@ namespace ShadowverseFan.KernelV3.Vm;
 public sealed class MemoryWorld : IVmWorld
 {
     private readonly List<RuntimeEntity> _entities = new();
-    private readonly Dictionary<(ZoneScope, int), int> _counters = new();
+    private readonly Dictionary<(int playerId, int counterId), int> _counters = new();
     private int _nextEntityId = 1;
     private readonly Dictionary<int, CardDef> _cardPool = new();
 
@@ -30,7 +30,7 @@ public sealed class MemoryWorld : IVmWorld
     public IReadOnlyList<RuntimeEntity> AllEntities => _entities;
 
     /// <summary>直接造一个实体放进指定区域（测试用）。</summary>
-    public RuntimeEntity Create(int cardId, ZoneRef zone, ZoneScope owner,
+    public RuntimeEntity Create(int cardId, ZoneRef zone, int playerId,
         int atk = 0, int life = 0, int cost = 0)
     {
         _cardPool.TryGetValue(cardId, out var def);
@@ -39,7 +39,7 @@ public sealed class MemoryWorld : IVmWorld
             EntityId = _nextEntityId++,
             EntrySerial = 1,
             Def = def,
-            Owner = owner,
+            PlayerId = playerId,
             Zone = zone,
             Attack = atk,
             Life = life,
@@ -58,14 +58,14 @@ public sealed class MemoryWorld : IVmWorld
         return e;
     }
 
-    public IEnumerable<RuntimeEntity> EnumerateZone(ZoneRef zone, ZoneScope owner)
-        => _entities.Where(e => e.Zone == zone && (owner == ZoneScope.Any || e.Owner == owner));
+    public IEnumerable<RuntimeEntity> EnumerateZone(ZoneRef zone, int playerId)
+        => _entities.Where(e => e.Zone == zone && (playerId < 0 || e.PlayerId == playerId));
 
-    public IEnumerable<RuntimeEntity> FindByCardId(ZoneRef zone, ZoneScope owner, int cardId)
-        => EnumerateZone(zone, owner).Where(e => (e.Def?.CardId ?? 0) == cardId);
+    public IEnumerable<RuntimeEntity> FindByCardId(ZoneRef zone, int playerId, int cardId)
+        => EnumerateZone(zone, playerId).Where(e => (e.Def?.CardId ?? 0) == cardId);
 
-    public int ReadCounter(ZoneScope owner, SymbolId<CounterTag> counter)
-        => _counters.TryGetValue((owner, counter.Id), out var v) ? v : 0;
+    public int ReadCounter(int playerId, SymbolId<CounterTag> counter)
+        => _counters.TryGetValue((playerId, counter.Id), out var v) ? v : 0;
 
     /// <summary>测试用：计数器写入回调（验证执行顺序）。</summary>
     public Action<string, int> OnCounterWrite;
@@ -80,15 +80,15 @@ public sealed class MemoryWorld : IVmWorld
         OnCounterWrite?.Invoke(counter.Name, value);
     }
 
-    public void WriteCounter(ZoneScope owner, SymbolId<CounterTag> counter, int value)
+    public void WriteCounter(int playerId, SymbolId<CounterTag> counter, int value)
     {
-        _counters[(owner, counter.Id)] = value;
+        _counters[(playerId, counter.Id)] = value;
         OnCounterWrite?.Invoke(counter.Name, value);
     }
 
-    public bool CheckDeckRule(ZoneScope owner, DeckRule rule)
+    public bool CheckDeckRule(int playerId, DeckRule rule)
     {
-        var deck = EnumerateZone(ZoneRef.Deck, owner).ToList();
+        var deck = EnumerateZone(ZoneRef.Deck, playerId).ToList();
         return rule switch
         {
             DeckRule.NoDuplicates => deck.Select(e => e.Def?.CardId ?? 0).Distinct().Count() == deck.Count,
@@ -100,11 +100,11 @@ public sealed class MemoryWorld : IVmWorld
 
     public int AllocateEntityId() => _nextEntityId++;
 
-    public void MoveEntity(RuntimeEntity e, ZoneRef toZone, ZoneScope toOwner)
+    public void MoveEntity(RuntimeEntity e, ZoneRef toZone, int toPlayerId)
     {
-        if (e.Zone == toZone && e.Owner == toOwner) return;
+        if (e.Zone == toZone && e.PlayerId == toPlayerId) return;
         e.Zone = toZone;
-        e.Owner = toOwner;
+        e.PlayerId = toPlayerId;
         e.EntrySerial++;      // ★ 每次换区流水号 +1
     }
 
@@ -112,9 +112,9 @@ public sealed class MemoryWorld : IVmWorld
 
     public void EmitEvent(VmEvent ev) => EventLog.Add(ev);
 
-    public RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, ZoneScope toOwner)
+    public RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId)
     {
-        var e = Create(cardId, toZone, toOwner);
+        var e = Create(cardId, toZone, toPlayerId);
         if (_cardPool.TryGetValue(cardId, out var d))
         {
             e.Attack = d.BaseAttack;
@@ -125,11 +125,11 @@ public sealed class MemoryWorld : IVmWorld
         return e;
     }
 
-    public RuntimeEntity SpawnCopy(EntityRef src, ZoneRef toZone, ZoneScope toOwner)
+    public RuntimeEntity SpawnCopy(EntityRef src, ZoneRef toZone, int toPlayerId)
     {
         var s = src.Snapshot;
         if (s == null) return null;
-        var e = Create(s.CardId, toZone, toOwner, s.Attack, s.Life, s.Cost);
+        var e = Create(s.CardId, toZone, toPlayerId, s.Attack, s.Life, s.Cost);
         return e;
     }
 
@@ -150,10 +150,10 @@ public sealed class MemoryWorld : IVmWorld
     public void GrantAbility(RuntimeEntity e, AbilityDef ability)
         => GrantedAbilities.Add((e, ability));
 
-    public readonly List<(ZoneScope owner, SymbolId<CounterTag> ctr, AbilityDef ab)> GrantedCounterAbilities = new();
+    public readonly List<(int playerId, SymbolId<CounterTag> ctr, AbilityDef ab)> GrantedCounterAbilities = new();
 
-    public void GrantCounterAbility(ZoneScope owner, SymbolId<CounterTag> counter, AbilityDef ability)
-        => GrantedCounterAbilities.Add((owner, counter, ability));
+    public void GrantCounterAbility(int playerId, SymbolId<CounterTag> counter, AbilityDef ability)
+        => GrantedCounterAbilities.Add((playerId, counter, ability));
 
     public int ProcessStateBasedActions()
     {

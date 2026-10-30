@@ -281,6 +281,22 @@ public sealed class PrefixParser
                 };
                 if (kind != CostKind.None)
                     b.Costs.Add(new CostSpec { Kind = kind, Amount = NumExpr.Const(param), Label = name });
+
+                // 带参头同时也是**事件**：Engage (N) 是启动式能力，不是 Fanfare。
+                // 之前这里直接 return，而 Event 默认是 OnPlay，
+                // 导致所有护符启动能力都被编译成「打出时」。
+                var evFromHead = name switch
+                {
+                    "engage" => CoreEvent.OnEngage,
+                    "enhance" => CoreEvent.OnPlay,
+                    "countdown" => CoreEvent.OnCountdownExpire,
+                    "necromancy" => CoreEvent.OnPlay,
+                    "combo" => CoreEvent.OnPlay,
+                    "rally" => CoreEvent.OnPlay,
+                    "earth rite" => CoreEvent.OnPlay,
+                    _ => (CoreEvent)(-1),
+                };
+                if ((int)evFromHead >= 0) { b.Event = evFromHead; b.EventExplicit = true; }
                 return true;
             }
             cur.Seek(save);

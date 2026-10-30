@@ -680,7 +680,13 @@ public sealed class ActionParser
                 throw new LangException("Give 在目标之后未找到可授予的内容，停在 " + cur.Current);
 
             // 4. 可选持续时间：until the end of ... turn
-            ConsumeDuration(cur);
+            // 授予节点已经生成了，只能回填 —— 用 ChangeDuration 重建带持续时间的副本。
+            var giveDur = ConsumeDuration(cur);
+            if (giveDur != DurationKind.Permanent)
+            {
+                for (int gi = 0; gi < result.Count; gi++)
+                    result[gi] = WithDuration(result[gi], giveDur);
+            }
 
             // 5. 是否还有第二组 "<T2> <G2>"
             int checkNext = cur.Position;
@@ -728,19 +734,19 @@ public sealed class ActionParser
         {
             var txt = cur.Current.Text;
             cur.Advance();
-            int atk = 0, life = 0;
+            NumExpr atkE = NumExpr.Const(0), lifeE = NumExpr.Const(0);
             var slash = txt.IndexOf('/');
             if (slash > 0)
             {
-                atk = ParseStatValue(txt.Substring(0, slash));
-                life = ParseStatValue(txt.Substring(slash + 1));
+                atkE = ParseStatValue(txt.Substring(0, slash));
+                lifeE = ParseStatValue(txt.Substring(slash + 1));
             }
-            else atk = ParseStatValue(txt);
+            else atkE = ParseStatValue(txt);
             foreach (var t in targets)
                 outNodes.Add(new ModifyStatsNode
                 {
                     Target = t, Op = StatModOp.Add,
-                    Attack = NumExpr.Const(atk), Life = NumExpr.Const(life),
+                    Attack = atkE, Life = lifeE,
                 });
             return outNodes;
         }
@@ -816,12 +822,30 @@ public sealed class ActionParser
         return false;
     }
 
-    private static int ParseStatValue(string s)
+    /// <summary>
+    /// 解析 +N / -N / +X / -X 形式的数值。
+    /// 之前返回 int，X/Y/Z 因为 TryParse 失败被静默变成 0，
+    /// 导致「+X/+0」被编译成「+0/+0」。
+    /// </summary>
+    private NumExpr ParseStatValue(string s)
     {
-        if (string.IsNullOrEmpty(s)) return 0;
-        var sign = s[0] == '-' ? -1 : 1;
+        if (string.IsNullOrEmpty(s)) return NumExpr.Const(0);
+
+        bool neg = s[0] == '-';
         var body = (s[0] == '+' || s[0] == '-') ? s.Substring(1) : s;
-        return int.TryParse(body, out var n) ? sign * n : 0;
+        body = body.Trim();
+
+        NumExpr mag;
+        if (int.TryParse(body, out var num))
+            mag = NumExpr.Const(num);
+        else if (body.Length > 0 && body.ToUpperInvariant() is "X" or "Y" or "Z")
+            mag = VariableResolver != null
+                ? VariableResolver(body.ToUpperInvariant())
+                : NumExpr.Ctr(_lex.Counter(body.ToUpperInvariant()));
+        else
+            throw new LangException("无法解析攻防数值：" + s);
+
+        return neg ? NumExpr.Sub(NumExpr.Const(0), mag) : mag;
     }
 
 
@@ -1387,7 +1411,7 @@ public sealed class ActionParser
 
         cur.TryMatchAnyWord("by");
         var amt = ParseNumExpr(cur);
-        ConsumeDuration(cur);
+        var durCost = ConsumeDuration(cur);
 
         return new List<EffectNode>
         {
@@ -1396,6 +1420,7 @@ public sealed class ActionParser
                 Target = target,
                 Op = CostModOp.Add,
                 Value = sign < 0 ? NumExpr.Sub(NumExpr.Const(0), amt) : amt,
+                Duration = durCost,
             },
         };
     }
@@ -1415,7 +1440,7 @@ public sealed class ActionParser
             {
                 cur.TryMatchAnyWord("to");
                 var maxDefV = ParseNumExpr(cur);
-                ConsumeDuration(cur);
+                var durDef = ConsumeDuration(cur);
                 return new List<EffectNode>
                 {
                     new ModifyStatsNode
@@ -1423,6 +1448,7 @@ public sealed class ActionParser
                         Target = leadOwner == ZoneScope.Self ? TargetSpec.SelfLeader : TargetSpec.OpponentLeader,
                         Op = StatModOp.Set,
                         Life = maxDefV,
+                        Duration = durDef,
                     },
                 };
             }
@@ -1492,10 +1518,10 @@ public sealed class ActionParser
             var tgt = _target.TryParse(cur) ?? TargetSpec.Self;
             cur.TryMatchAnyWord("to");
             var v0 = ParseNumExpr(cur);
-            ConsumeDuration(cur);
+            var durSet = ConsumeDuration(cur);
             return new List<EffectNode>
             {
-                new ModifyCostNode { Target = tgt, Op = CostModOp.Set, Value = v0 },
+                new ModifyCostNode { Target = tgt, Op = CostModOp.Set, Value = v0, Duration = durSet },
             };
         }
 
@@ -1965,15 +1991,60 @@ public sealed class ActionParser
     }
 
     /// <summary>消费 "until the end of the/your/your opponent's turn" 持续时间短语。</summary>
-    private void ConsumeDuration(TokenCursor cur)
+    /// <summary>
+    /// 解析持续时间短语。
+    /// 之前返回 void，把 "until the end of the turn" 吃进垃圾桶，
+    /// 导致所有限时效果都被编译成 Permanent（本回合 +1/+0 变成永久 +1/+0）。
+    /// </summary>
+    /// <summary>
+    /// 给已经生成的节点补上持续时间。
+    /// 持续时间短语出现在授予项之后（"give it +1/+0 until the end of the turn"），
+    /// 解析到它时节点已经构造完毕，只能重建一份带 Duration 的副本。
+    /// </summary>
+    private static EffectNode WithDuration(EffectNode node, DurationKind dur) => node switch
     {
-        if (!cur.MatchWord("until")) return;
+        ModifyStatsNode n => new ModifyStatsNode
+        {
+            Target = n.Target, Op = n.Op, Attack = n.Attack, Life = n.Life,
+            Duration = dur, If = n.If,
+        },
+        ModifyKeywordNode n => new ModifyKeywordNode
+        {
+            Target = n.Target, Op = n.Op, Keyword = n.Keyword, Value = n.Value,
+            Duration = dur, If = n.If,
+        },
+        ModifyCostNode n => new ModifyCostNode
+        {
+            Target = n.Target, Op = n.Op, Value = n.Value,
+            Duration = dur, If = n.If,
+        },
+        GrantAbilityNode n => new GrantAbilityNode
+        {
+            Target = n.Target, Granted = n.Granted,
+            Duration = dur, If = n.If,
+        },
+        _ => node,
+    };
+
+    private DurationKind ConsumeDuration(TokenCursor cur)
+    {
+        int save = cur.Position;
+
+        // "this turn" 形式
+        if (cur.MatchPhrase("this", "turn")) return DurationKind.ThisTurn;
+        if (cur.MatchPhrase("this", "match")) return DurationKind.ThisMatch;
+
+        if (!cur.MatchWord("until")) return DurationKind.Permanent;
+
         cur.TryMatchAnyWord("the", "your", "their");
         cur.TryMatchAnyWord("end");
         cur.TryMatchAnyWord("of");
         cur.TryMatchAnyWord("the", "your", "their");
-        cur.TryMatchAnyWord("opponent's", "opponent");
+
+        bool opponent = cur.TryMatchAnyWord("opponent's", "opponent");
         cur.TryMatchAnyWord("turn", "turns");
+
+        return opponent ? DurationKind.UntilEndOfOpponentTurn : DurationKind.ThisTurn;
     }
 
     /// <summary>"Play a card" / "play it" / "Recover 1 play point"（play 作名词已被 Recover 吃掉）。</summary>

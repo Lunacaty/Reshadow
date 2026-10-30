@@ -101,7 +101,7 @@ public sealed class VmEval
             }
 
             case NumOp.Counter:
-                return _world.ReadCounter(scope.Owner, e.Counter);
+                return _world.ReadCounter(scope.ResolvePlayer(scope.Owner), e.Counter);
 
             case NumOp.DistinctCount:
             {
@@ -202,7 +202,7 @@ public sealed class VmEval
             }
 
             case DeckRuleExpr dr:
-                return _world.CheckDeckRule(dr.Owner, dr.Rule);
+                return _world.CheckDeckRule(scope.ResolvePlayer(dr.Owner), dr.Rule);
 
             case IsPreviousExpr ip:
                 return scope.Read(ip.Slot).Count > 0;
@@ -236,7 +236,7 @@ public sealed class VmEval
         }
         if (!map.TryGetValue(counter.Id, out var parts))
         {
-            int total = _world.ReadCounter(scope.Owner, counter);
+            int total = _world.ReadCounter(scope.ResolvePlayer(scope.Owner), counter);
             if (total < 0) total = 0;
             // 在 [0, total] 上取两个切点，切成三段
             int a = total > 0 ? _world.Rng.Next(0, total + 1) : 0;
@@ -321,12 +321,12 @@ public sealed class VmEval
                 break;
 
             case TargetSourceKind.CardId:
-                pool = _world.FindByCardId(t.Zone, t.Owner, t.CardId)
+                pool = _world.FindByCardId(t.Zone, scope.ResolvePlayer(t.Owner), t.CardId)
                              .Select(EntityRef.From).ToList();
                 break;
 
             default:
-                pool = _world.EnumerateZone(t.Zone, t.Owner)
+                pool = _world.EnumerateZone(t.Zone, scope.ResolvePlayer(t.Owner))
                              .Select(EntityRef.From).ToList();
                 break;
         }

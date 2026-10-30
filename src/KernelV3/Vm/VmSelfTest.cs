@@ -34,6 +34,7 @@ public static class VmSelfTest
         TestModeChoice();         // ★ Bug3：模式抉择执行
         TestSingularTarget();     // ★ 单数目标只影响 1 个
         TestPluralTarget();       // ★ 复数目标影响全部
+        TestPlayerPerspective();  // ★ 后手玩家的相对视角必须翻译成绝对身份
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -47,7 +48,7 @@ public static class VmSelfTest
     {
         var w = new MemoryWorld();
         var vm = new CardVm(w);
-        var t = w.Create(1, ZoneRef.Board, ZoneScope.Opponent, atk: 2, life: 5);
+        var t = w.Create(1, ZoneRef.Board, 1, atk: 2, life: 5);
 
         vm.PushBody(new EffectNode[]
         {
@@ -56,7 +57,7 @@ public static class VmSelfTest
                 Target = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent),
                 Amount = NumExpr.Const(3),
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
 
         vm.StepUntilBlocked();
         Check("基础伤害", t.Life == 2, $"期望 2，实际 {t.Life}");
@@ -66,8 +67,8 @@ public static class VmSelfTest
     {
         var w = new MemoryWorld();
         var vm = new CardVm(w);
-        var a = w.Create(1, ZoneRef.Board, ZoneScope.Opponent, life: 5);
-        var b = w.Create(2, ZoneRef.Board, ZoneScope.Opponent, life: 5);
+        var a = w.Create(1, ZoneRef.Board, 1, life: 5);
+        var b = w.Create(2, ZoneRef.Board, 1, life: 5);
 
         vm.PushBody(new EffectNode[]
         {
@@ -85,7 +86,7 @@ public static class VmSelfTest
                 Target = TargetSpec.Previous,
                 Amount = NumExpr.Const(3),
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
 
         var st = vm.StepUntilBlocked();
         bool blocked = st == VmStatus.WaitingForInput && vm.Pending != null;
@@ -108,7 +109,7 @@ public static class VmSelfTest
         //   3) 第二刀即使指向同一区域，也找不到它
         var w = new MemoryWorld();
         var vm = new CardVm(w);
-        var t = w.Create(1, ZoneRef.Board, ZoneScope.Opponent, life: 1);
+        var t = w.Create(1, ZoneRef.Board, 1, life: 1);
         int serial0 = t.EntrySerial;
 
         vm.PushBody(new EffectNode[]
@@ -116,7 +117,7 @@ public static class VmSelfTest
             new DealDamageNode { Target = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent), Amount = NumExpr.Const(3), IsAbility = false },
             // 第二刀仍然指向 Board；如果 SBA 生效，这里已经找不到任何目标
             new DealDamageNode { Target = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent), Amount = NumExpr.Const(3), IsAbility = false },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
         vm.StepUntilBlocked();
 
         bool movedToGrave = t.Zone == ZoneRef.Cemetery;
@@ -134,7 +135,7 @@ public static class VmSelfTest
         var vm = new CardVm(w);
         var d = new CardDef { CardId = 777, Name = "Target", BaseAttack = 4, BaseLife = 3 };
         w.RegisterCard(d);
-        var t = w.Create(777, ZoneRef.Board, ZoneScope.Opponent, atk: 4, life: 3);
+        var t = w.Create(777, ZoneRef.Board, 1, atk: 4, life: 3);
 
         vm.PushBody(new EffectNode[]
         {
@@ -152,22 +153,22 @@ public static class VmSelfTest
                 ToZone = ZoneRef.Hand,
                 ToOwner = ZoneScope.Self,
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
         vm.StepUntilBlocked();
 
-        var copy = w.EnumerateZone(ZoneRef.Hand, ZoneScope.Self).FirstOrDefault();
+        var copy = w.EnumerateZone(ZoneRef.Hand, 0).FirstOrDefault();
         Check("死后仍能复制（读快照）", copy != null && copy.Def?.CardId == 777, copy == null ? "没生成" : "生成了");
     }
 
     private static void TestEntrySerial()
     {
         var w = new MemoryWorld();
-        var e = w.Create(1, ZoneRef.Board, ZoneScope.Self, life: 5);
+        var e = w.Create(1, ZoneRef.Board, 0, life: 5);
         int ser0 = e.EntrySerial;
         var r0 = EntityRef.From(e);
 
-        w.MoveEntity(e, ZoneRef.Hand, ZoneScope.Self);   // 回手
-        w.MoveEntity(e, ZoneRef.Board, ZoneScope.Self);  // 再打出
+        w.MoveEntity(e, ZoneRef.Hand, 0);   // 回手
+        w.MoveEntity(e, ZoneRef.Board, 0);  // 再打出
 
         bool changed = e.EntrySerial != ser0;
         bool stale = w.GetLive(r0.EntityId, r0.EntrySerial) == null;
@@ -178,8 +179,8 @@ public static class VmSelfTest
     {
         var w = new MemoryWorld();
         var vm = new CardVm(w);
-        var enemy = w.Create(1, ZoneRef.Board, ZoneScope.Opponent, life: 10);
-        var self = w.Create(2, ZoneRef.Board, ZoneScope.Self, life: 5);
+        var enemy = w.Create(1, ZoneRef.Board, 1, life: 10);
+        var self = w.Create(2, ZoneRef.Board, 0, life: 5);
 
         vm.PushBody(new EffectNode[]
         {
@@ -188,7 +189,7 @@ public static class VmSelfTest
             // 中间插一个改自己的动作，不应覆盖 $selected
             new ModifyStatsNode { Target = TargetSpec.Self, Op = StatModOp.Add, Attack = NumExpr.Const(0), Life = NumExpr.Const(1) },
             new MoveZoneNode { Target = TargetSpec.Previous, ToZone = ZoneRef.Cemetery },
-        }, new VmScope { Owner = ZoneScope.Self, Source = EntityRef.From(self) });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0, Source = EntityRef.From(self) });
         vm.StepUntilBlocked();
 
         Check("槽位不被中间动作覆盖", enemy.Zone == ZoneRef.Cemetery && self.Life == 6,
@@ -203,8 +204,8 @@ public static class VmSelfTest
         var f2 = new CardDef { CardId = 11, Kind = CardKind.Spell };
         w.RegisterCard(f1);
         w.RegisterCard(f2);
-        var a = w.Create(10, ZoneRef.Deck, ZoneScope.Self);
-        var b = w.Create(11, ZoneRef.Deck, ZoneScope.Self);
+        var a = w.Create(10, ZoneRef.Deck, 0);
+        var b = w.Create(11, ZoneRef.Deck, 0);
 
         // 抽 2 张，然后只对「抽到的随从」做处理
         vm.PushBody(new EffectNode[]
@@ -226,7 +227,7 @@ public static class VmSelfTest
                 },
                 Amount = NumExpr.Const(1),
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
         vm.StepUntilBlocked();
 
         Check("抽牌后写入 $created", a.Zone == ZoneRef.Hand && b.Zone == ZoneRef.Hand,
@@ -250,10 +251,10 @@ public static class VmSelfTest
                     new ModifyCounterNode { Counter = Ctr("hits"), Op = CounterOp.Add, Delta = NumExpr.Const(1) },
                 },
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
         vm.StepUntilBlocked();
 
-        int hits = w.ReadCounter(ZoneScope.Self, Ctr("hits"));
+        int hits = w.ReadCounter(0, Ctr("hits"));
         Check("循环被硬上限截断", hits == 5, $"期望 5 次，实际 {hits}");
     }
 
@@ -274,10 +275,10 @@ public static class VmSelfTest
                     new List<EffectNode> { new ModifyCounterNode { Counter = Ctr("B"), Op = CounterOp.Add, Delta = NumExpr.Const(1) } },
                 },
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
         vm.StepUntilBlocked();
 
-        int sum = w.ReadCounter(ZoneScope.Self, Ctr("A")) + w.ReadCounter(ZoneScope.Self, Ctr("B"));
+        int sum = w.ReadCounter(0, Ctr("A")) + w.ReadCounter(0, Ctr("B"));
         Check("随机分支只走一条", sum == 1, $"总和 {sum}");
     }
 
@@ -285,7 +286,7 @@ public static class VmSelfTest
     {
         var w = new MemoryWorld();
         var vm = new CardVm(w);
-        var t = w.Create(1, ZoneRef.Board, ZoneScope.Opponent, life: 5);
+        var t = w.Create(1, ZoneRef.Board, 1, life: 5);
 
         vm.PushBody(new EffectNode[]
         {
@@ -302,7 +303,7 @@ public static class VmSelfTest
                     new DealDamageNode { Target = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent), Amount = NumExpr.Const(2) },
                 },
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
         vm.StepUntilBlocked();
 
         Check("条件分支", t.Life == 3, $"期望 3，实际 {t.Life}");
@@ -329,7 +330,7 @@ public static class VmSelfTest
                     new List<EffectNode> { new ModifyCounterNode { Counter = Ctr("s3"), Op = CounterOp.Add, Delta = NumExpr.Const(1) } },
                 },
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
         vm.StepUntilBlocked();
 
         Check("Sequence 正序执行（Bug2）",
@@ -355,7 +356,7 @@ public static class VmSelfTest
                     new List<EffectNode> { new ModifyCounterNode { Counter = Ctr("modeB"), Op = CounterOp.Add, Delta = NumExpr.Const(1) } },
                 },
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
 
         var st = vm.StepUntilBlocked();
         bool blocked = st == VmStatus.WaitingForInput && vm.Pending != null;
@@ -366,8 +367,8 @@ public static class VmSelfTest
             // 选第 2 个模式（下标 1）
             vm.SubmitChoice(vm.Pending.ChoiceId, new[] { 1 });
             vm.StepUntilBlocked();
-            int a = w.ReadCounter(ZoneScope.Self, Ctr("modeA"));
-            int b = w.ReadCounter(ZoneScope.Self, Ctr("modeB"));
+            int a = w.ReadCounter(0, Ctr("modeA"));
+            int b = w.ReadCounter(0, Ctr("modeB"));
             Check("选中的模式分支真正执行（Bug3）", a == 0 && b == 1, $"modeA={a} modeB={b}");
         }
     }
@@ -379,7 +380,7 @@ public static class VmSelfTest
         var vm = new CardVm(w);
         var foeDef = new CardDef { CardId = 100, Name = "Foe", Kind = CardKind.Follower };
         w.RegisterCard(foeDef);
-        for (int i = 0; i < 3; i++) w.Create(100, ZoneRef.Board, ZoneScope.Opponent, life: 20);
+        for (int i = 0; i < 3; i++) w.Create(100, ZoneRef.Board, 1, life: 20);
 
         vm.PushBody(new EffectNode[]
         {
@@ -393,7 +394,7 @@ public static class VmSelfTest
                 },
                 ToZone = ZoneRef.Cemetery,
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
 
         var st = vm.StepUntilBlocked();
         bool blocked = st == VmStatus.WaitingForInput && vm.Pending != null;
@@ -402,7 +403,7 @@ public static class VmSelfTest
             vm.SubmitChoice(vm.Pending.ChoiceId, new[] { vm.Pending.Candidates[0] });
             vm.StepUntilBlocked();
         }
-        int dead = w.EnumerateZone(ZoneRef.Cemetery, ZoneScope.Opponent).Count();
+        int dead = w.EnumerateZone(ZoneRef.Cemetery, 1).Count();
         Check("单数目标只影响 1 个", dead == 1, $"墓地={dead} 挂起={blocked}");
     }
 
@@ -412,7 +413,7 @@ public static class VmSelfTest
         var w = new MemoryWorld();
         var vm = new CardVm(w);
         w.RegisterCard(new CardDef { CardId = 100, Name = "Foe", Kind = CardKind.Follower });
-        for (int i = 0; i < 3; i++) w.Create(100, ZoneRef.Board, ZoneScope.Opponent, life: 20);
+        for (int i = 0; i < 3; i++) w.Create(100, ZoneRef.Board, 1, life: 20);
 
         vm.PushBody(new EffectNode[]
         {
@@ -428,11 +429,47 @@ public static class VmSelfTest
                 Attack = NumExpr.Const(0),
                 Life = NumExpr.Const(-3),
             },
-        }, new VmScope { Owner = ZoneScope.Self });
+        }, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
         vm.StepUntilBlocked();
 
-        int hurt = w.EnumerateZone(ZoneRef.Board, ZoneScope.Opponent).Count(x => x.Life == 17);
+        int hurt = w.EnumerateZone(ZoneRef.Board, 1).Count(x => x.Life == 17);
         Check("复数目标影响全部", hurt == 3, "受伤数=" + hurt);
+    }
+
+    private static void TestPlayerPerspective()
+    {
+        // 致命的架构错误回归测试：
+        // 后手玩家（Controller = 1）打出一张 AST 里写着「所有敌方随从」的卡，
+        // 必须打到先手玩家（PlayerId = 0）的随从，绝不能打到自己。
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+        w.RegisterCard(new CardDef { CardId = 100, Name = "Foe", Kind = CardKind.Follower });
+
+        var mine   = w.Create(100, ZoneRef.Board, 1, life: 20);   // 后手玩家自己的随从
+        var theirs = w.Create(100, ZoneRef.Board, 0, life: 20);   // 先手玩家的随从
+
+        vm.PushBody(new EffectNode[]
+        {
+            new ModifyStatsNode
+            {
+                // AST 视角：Opponent 指的是「我的对手」，不是「玩家 1」
+                Target = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Zone,
+                    Owner = ZoneScope.Opponent,
+                    Zone = ZoneRef.Board,
+                    Mode = SelectMode.All,
+                },
+                Op = StatModOp.Add,
+                Attack = NumExpr.Const(0),
+                Life = NumExpr.Const(-5),
+            },
+        }, new VmScope { Owner = ZoneScope.Opponent, Controller = 1 });   // 后手玩家在行动
+        vm.StepUntilBlocked();
+
+        Check("后手的『敌方随从』打先手，不误伤自己",
+            theirs.Life == 15 && mine.Life == 20,
+            $"先手随从 {theirs.Life}（应 15），后手随从 {mine.Life}（应 20）");
     }
 
     // ---------- 工具 ----------

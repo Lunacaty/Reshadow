@@ -277,7 +277,7 @@ public sealed partial class CardVm
         }
 
         // Target == null：修改主战者级计数器
-        int cur = _world.ReadCounter(n.Owner, n.Counter);
+        int cur = _world.ReadCounter(scope.ResolvePlayer(n.Owner), n.Counter);
         int next = n.Op switch
         {
             CounterOp.Add => cur + delta,
@@ -285,7 +285,7 @@ public sealed partial class CardVm
             CounterOp.Fill => delta,
             _ => cur,
         };
-        _world.WriteCounter(n.Owner, n.Counter, next);
+        _world.WriteCounter(scope.ResolvePlayer(n.Owner), n.Counter, next);
         _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnCounterChange, Amount = delta });
         return false;
     }
@@ -300,7 +300,7 @@ public sealed partial class CardVm
             if (t.Zone == n.ToZone) continue;
             if (t.Zone == ZoneRef.Board && n.ToZone != ZoneRef.Board)
                 _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(t) });
-            _world.MoveEntity(t, n.ToZone, t.Owner);
+            _world.MoveEntity(t, n.ToZone, t.PlayerId);
             moved.Add(t);
         }
         scope.Bind(n.OutSlot, moved);
@@ -318,11 +318,11 @@ public sealed partial class CardVm
             {
                 var refs = _eval.ResolveRef(n.CopyFrom, scope);
                 if (refs.Count == 0) break;
-                e = _world.SpawnCopy(refs[0], n.ToZone, n.ToOwner);
+                e = _world.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner));
             }
             else
             {
-                e = _world.SpawnCard(n.CardId, n.ToZone, n.ToOwner);
+                e = _world.SpawnCard(n.CardId, n.ToZone, scope.ResolvePlayer(n.ToOwner));
             }
             if (e != null) created.Add(e);
         }
@@ -483,7 +483,7 @@ public sealed partial class CardVm
     /// <summary>给资源计数器挂载能力（faith 等）。</summary>
     private bool DoGrantCounter(GrantCounterAbilityNode n, VmScope scope)
     {
-        _world.GrantCounterAbility(n.Owner, n.Counter, n.Granted);
+        _world.GrantCounterAbility(scope.ResolvePlayer(n.Owner), n.Counter, n.Granted);
         return false;
     }
 

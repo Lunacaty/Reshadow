@@ -28,7 +28,8 @@ public sealed class EntitySnapshot
     public int CardId { get; init; }
     public string Name { get; init; } = "";
     public ZoneRef Zone { get; init; }
-    public ZoneScope Owner { get; init; }
+    /// <summary>绝对玩家编号（0 = 先手，1 = 后手）。AST 的 ZoneScope 是相对视角，绝不能混用。</summary>
+    public int PlayerId { get; init; }
     public int Attack { get; init; }
     public int Life { get; init; }
     public int MaxLife { get; init; }
@@ -53,7 +54,8 @@ public sealed class RuntimeEntity
     public int EntityId { get; init; }
     public int EntrySerial { get; set; }
     public Ast.CardDef Def { get; set; }
-    public ZoneScope Owner { get; set; }
+    /// <summary>绝对玩家编号（0 = 先手，1 = 后手）。</summary>
+    public int PlayerId { get; set; }
     public ZoneRef Zone { get; set; }
 
     public int Attack { get; set; }
@@ -81,7 +83,7 @@ public sealed class RuntimeEntity
         CardId = Def?.CardId ?? 0,
         Name = Def?.Name ?? "",
         Zone = Zone,
-        Owner = Owner,
+        PlayerId = PlayerId,
         Attack = Attack,
         Life = Life,
         MaxLife = MaxLife,

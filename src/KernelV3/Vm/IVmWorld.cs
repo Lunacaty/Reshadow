@@ -14,6 +14,11 @@ namespace ShadowverseFan.KernelV3.Vm;
 //   · 未来换状态存储（内存 / 数据库）不需要动 VM
 // ============================================================================
 
+/// <remarks>
+/// 所有玩家归属一律用 int playerId（0 = 先手，1 = 后手，-1 = 双方）。
+/// ZoneScope 是 AST 的相对视角，同一个 Self 在不同卡上指向不同的真实玩家，
+/// 绝不能直接传给世界层。转换只在 VmScope.ResolvePlayer() 一处发生。
+/// </remarks>
 public interface IVmWorld
 {
     /// <summary>随机源。联机时必须由服务端播种，不能各自 new Random()。</summary>
@@ -27,16 +32,16 @@ public interface IVmWorld
     RuntimeEntity GetLive(int entityId, int entrySerial);
 
     /// <summary>枚举某区域的实体。</summary>
-    IEnumerable<RuntimeEntity> EnumerateZone(ZoneRef zone, ZoneScope owner);
+    IEnumerable<RuntimeEntity> EnumerateZone(ZoneRef zone, int playerId);
 
     /// <summary>按卡号找实体（用于「召唤某张具体卡」）。</summary>
-    IEnumerable<RuntimeEntity> FindByCardId(ZoneRef zone, ZoneScope owner, int cardId);
+    IEnumerable<RuntimeEntity> FindByCardId(ZoneRef zone, int playerId, int cardId);
 
     /// <summary>读计数器（PP / 墓地 / 连击 / 玩家自定义资源）。</summary>
-    int ReadCounter(ZoneScope owner, SymbolId<CounterTag> counter);
+    int ReadCounter(int playerId, SymbolId<CounterTag> counter);
 
     /// <summary>写计数器。</summary>
-    void WriteCounter(ZoneScope owner, SymbolId<CounterTag> counter, int value);
+    void WriteCounter(int playerId, SymbolId<CounterTag> counter, int value);
 
     /// <summary>读实体自己的计数器（倒计时 / 魔力增幅 / 单卡变量）。</summary>
     int ReadEntityCounter(RuntimeEntity e, SymbolId<CounterTag> counter);
@@ -45,13 +50,13 @@ public interface IVmWorld
     void WriteEntityCounter(RuntimeEntity e, SymbolId<CounterTag> counter, int value);
 
     /// <summary>检查牌库规则。</summary>
-    bool CheckDeckRule(ZoneScope owner, DeckRule rule);
+    bool CheckDeckRule(int playerId, DeckRule rule);
 
     /// <summary>分配一个新的实体 id。</summary>
     int AllocateEntityId();
 
     /// <summary>把实体放进某区域（会触发 EntrySerial++）。</summary>
-    void MoveEntity(RuntimeEntity e, ZoneRef toZone, ZoneScope toOwner);
+    void MoveEntity(RuntimeEntity e, ZoneRef toZone, int toPlayerId);
 
     /// <summary>把实体移出游戏（破坏 / 放逐后的最终去向）。</summary>
     void RemoveEntity(RuntimeEntity e);
@@ -60,10 +65,10 @@ public interface IVmWorld
     void EmitEvent(VmEvent ev);
 
     /// <summary>按卡号生成一张新卡并放进指定区域。</summary>
-    RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, ZoneScope toOwner);
+    RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId);
 
     /// <summary>按快照生成一个复制体（用于「复制一份」）。</summary>
-    RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, ZoneScope toOwner);
+    RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId);
 
     /// <summary>把实体变形为另一张卡。</summary>
     void TransformEntity(RuntimeEntity e, int intoCardId);
@@ -72,7 +77,7 @@ public interface IVmWorld
     void GrantAbility(RuntimeEntity e, Ast.AbilityDef ability);
 
     /// <summary>给一个资源计数器挂载能力（如 faith 的"每当友方随从进化"）。</summary>
-    void GrantCounterAbility(ZoneScope owner, SymbolId<CounterTag> counter, Ast.AbilityDef ability);
+    void GrantCounterAbility(int playerId, SymbolId<CounterTag> counter, Ast.AbilityDef ability);
 
     /// <summary>
     /// 状态结算（State-Based Actions）：把场上 Life &lt;= 0 的实体移入墓地并触发 OnDestroy。
