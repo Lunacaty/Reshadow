@@ -242,6 +242,28 @@ public static partial class DocAcceptanceTest
                q != null ? string.Join(",", q.Select(x => x.Kind)) : "null");
         }
 
+        // 4.1 第 2 条：同瞬间多能力入列排序（主客场 + 旧新）
+        {
+            var st = new Battle.BattleState(seed: 90);
+            var vm = new CardVm(st);
+            CardVm.Schema = st.Schema;
+            st.ActivePlayer = 0;
+            vm.CurrentTurnOwner = 0;
+            st.RegisterCard(new CardDef { CardId = 1, Name = "A", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+            st.RegisterCard(new CardDef { CardId = 2, Name = "C", Kind = CardKind.Crest });
+            st.SpawnCard(1, ZoneRef.Board, 0);
+            st.SpawnCard(1, ZoneRef.Board, 1);
+            st.GainCrest(2, "C", 0);
+            st.GainCrest(2, "C", 1);
+
+            // 当前回合玩家的纹章与战场都存在，且双方均有
+            bool haveAll = st.EnumerateZone(ZoneRef.Board, 0).Any()
+                        && st.EnumerateZone(ZoneRef.Board, 1).Any()
+                        && st.EnumerateZone(ZoneRef.CrestArea, 0).Any()
+                        && st.EnumerateZone(ZoneRef.CrestArea, 1).Any();
+            Ok("c-4.1", "多能力入列排序：主客场+旧新的候选池齐备", haveAll);
+        }
+
         // 4.2 统一伤害管线顺序
         {
             var st = new Battle.BattleState(seed: 64);
@@ -271,6 +293,87 @@ public static partial class DocAcceptanceTest
             bool noLeave = !st.EventLog.Skip(before).Any(x => x.Kind == CoreEvent.OnLeaveField);
             bool noEnter = !st.EventLog.Skip(before).Any(x => x.Kind == CoreEvent.OnEnterField);
             Ok("c-5", "Transform 不触发 OnLeaveField / OnEnterField", noLeave && noEnter);
+        }
+
+        // 5 原子动作：Banish / Transform / 复制
+        {
+            var st = new Battle.BattleState(seed: 91);
+            var vm = new CardVm(st);
+            CardVm.Schema = st.Schema;
+            st.RegisterCard(new CardDef { CardId = 1, Name = "A", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+            var e = st.SpawnCard(1, ZoneRef.Board, 0);
+            int s0 = st.ReadCounter(0, st.Schema.Counter("shadow"));
+            vm.PushBody(new EffectNode[] { new MoveZoneNode { Target = TargetSpec.Self, ToZone = ZoneRef.Banished } },
+                new VmScope { Owner = ZoneScope.Self, Controller = 0, Source = EntityRef.From(e) });
+            vm.StepUntilBlocked();
+            bool banishOk = e.Zone == ZoneRef.Banished
+                        && st.ReadCounter(0, st.Schema.Counter("shadow")) == s0
+                        && st.Players[0].DestroyedThisMatch.Count == 0;
+            Ok("c-5", "Banish 进消失区、不加墓场、不进破坏池", banishOk);
+        }
+        {
+            var st = new Battle.BattleState(seed: 92);
+            var vm = new CardVm(st);
+            CardVm.Schema = st.Schema;
+            st.RegisterCard(new CardDef { CardId = 1, Name = "A", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+            st.RegisterCard(new CardDef { CardId = 2, Name = "B", Kind = CardKind.Follower, BaseAttack = 5, BaseLife = 5 });
+            var e = st.SpawnCard(1, ZoneRef.Board, 0);
+            e.Keywords.Add(st.Schema.Keyword("ward"));
+            int ev0 = st.EventLog.Count;
+            vm.PushBody(new EffectNode[] { new TransformNode { Target = TargetSpec.Self, IntoCardId = 2 } },
+                new VmScope { Owner = ZoneScope.Self, Controller = 0, Source = EntityRef.From(e) });
+            vm.StepUntilBlocked();
+            bool noLeave = !st.EventLog.Skip(ev0).Any(x => x.Kind == CoreEvent.OnLeaveField);
+            bool noEnter = !st.EventLog.Skip(ev0).Any(x => x.Kind == CoreEvent.OnEnterField);
+            bool cleared = !e.Keywords.Contains(st.Schema.Keyword("ward"));
+            Ok("c-5", "Transform 不触发离场/入场且清空旧状态", noLeave && noEnter && cleared);
+        }
+        {
+            var st = new Battle.BattleState(seed: 93);
+            st.RegisterCard(new CardDef { CardId = 1, Name = "A", Kind = CardKind.Follower, BaseAttack = 2, BaseLife = 2 });
+            var src2 = st.SpawnCard(1, ZoneRef.Board, 0);
+            src2.Attack = 7; src2.Life = 9;
+            var exact = st.SpawnCopy(EntityRef.From(src2), ZoneRef.Board, 0, true);
+            var plain = st.SpawnCopy(EntityRef.From(src2), ZoneRef.Board, 0, false);
+            Ok("c-5", "exact copy 继承当前值 / 普通 copy 取白板",
+               exact.Attack == 7 && exact.Life == 9 && plain.Attack == 2 && plain.Life == 2);
+        }
+
+        // 7 胜负判定
+        {
+            var st = new Battle.BattleState(seed: 94);
+            var tr = new Battle.TurnRunner(st, st.Schema);
+            st.RegisterCard(new CardDef { CardId = 990000, Name = "L0", Kind = CardKind.Leader, BaseLife = 20 });
+            st.RegisterCard(new CardDef { CardId = 990001, Name = "L1", Kind = CardKind.Leader, BaseLife = 20 });
+            var l0 = st.CreateEntity(990000, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+            var l1 = st.CreateEntity(990001, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+            bool notOver = tr.Winner() == -1;
+            l1.Life = 0;
+            bool p0Wins = tr.Winner() == 0;
+            l0.Life = 0;
+            bool draw = tr.Winner() == -2;
+            Ok("c-7", "胜负判定：未结束 / 一方归零 / 双方平局", notOver && p0Wins && draw);
+        }
+        {
+            var st = new Battle.BattleState(seed: 95);
+            st.RegisterCard(new CardDef { CardId = 990000, Name = "L0", Kind = CardKind.Leader, BaseLife = 20 });
+            st.RegisterCard(new CardDef { CardId = 990001, Name = "L1", Kind = CardKind.Leader, BaseLife = 20 });
+            var l0 = st.CreateEntity(990000, ZoneRef.Leader, 0); l0.Life = 20; st.Players[0].Leader = l0;
+            var l1 = st.CreateEntity(990001, ZoneRef.Leader, 1); l1.Life = 20; st.Players[1].Leader = l1;
+            st.RegisterCard(new CardDef { CardId = 1, Name = "D", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+            st.SpawnCard(1, ZoneRef.Deck, 0);
+            st.DrawCards(0, 2);
+            Ok("c-7", "牌组抽空判负", st.Players[0].LostByDeckOut);
+        }
+        {
+            var st = new Battle.BattleState(seed: 96);
+            st.RegisterCard(new CardDef { CardId = 990000, Name = "L0", Kind = CardKind.Leader, BaseLife = 20 });
+            st.RegisterCard(new CardDef { CardId = 990001, Name = "L1", Kind = CardKind.Leader, BaseLife = 20 });
+            var l0 = st.CreateEntity(990000, ZoneRef.Leader, 0); l0.Life = 20; st.Players[0].Leader = l0;
+            var l1 = st.CreateEntity(990001, ZoneRef.Leader, 1); l1.Life = 20; st.Players[1].Leader = l1;
+            st.Players[0].HasVictoryCard = true;
+            st.DrawCards(0, 1);
+            Ok("c-7", "牌组空但有胜利卡改判胜利", st.Players[0].WonByVictoryCard);
         }
 
         // 6.1 关键词真值表

@@ -279,12 +279,27 @@ public sealed partial class CardVm
         // 必须扫描所有「能力可能生效」的区域：
         //   场上、EX 区、手牌（魔力增幅）、牌库（瞬念召唤）、纹章区、墓地（部分谢幕曲）
         // 只扫 Board + ExArea 会让 ActiveZone=Hand 的能力永远收不到事件。
-        var candidates = _world.EnumerateZone(ZoneRef.Board, -1)
-            .Concat(_world.EnumerateZone(ZoneRef.ExArea, -1))
-            .Concat(_world.EnumerateZone(ZoneRef.Hand, -1))
-            .Concat(_world.EnumerateZone(ZoneRef.Deck, -1))
-            .Concat(_world.EnumerateZone(ZoneRef.CrestArea, -1))
-            .ToList();
+        // 同时诱发多个能力时的入列排序（R-4.1 第 2 条）：
+        //   当前回合玩家的纹章（旧->新） -> 当前回合玩家的场上卡（旧->新）
+        //   -> 对手的纹章（旧->新） -> 对手的场上卡（旧->新）
+        // 另外手牌 / 牌组 / 额外区里的监听卡也要扫，放在最后。
+        int curP = _currentTurnOwner;
+        int othP = 1 - curP;
+        var candidates = new System.Collections.Generic.List<RuntimeEntity>();
+        void AddZone(ZoneRef z, int pid)
+        {
+            foreach (var x in _world.EnumerateZone(z, pid)) candidates.Add(x);
+        }
+        AddZone(ZoneRef.CrestArea, curP);
+        AddZone(ZoneRef.Board, curP);
+        AddZone(ZoneRef.CrestArea, othP);
+        AddZone(ZoneRef.Board, othP);
+        AddZone(ZoneRef.ExArea, curP);
+        AddZone(ZoneRef.ExArea, othP);
+        AddZone(ZoneRef.Hand, curP);
+        AddZone(ZoneRef.Hand, othP);
+        AddZone(ZoneRef.Deck, curP);
+        AddZone(ZoneRef.Deck, othP);
 
         foreach (var e in candidates)
         {
