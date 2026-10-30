@@ -83,10 +83,10 @@ public sealed class TurnRunner
         // 5. 回合开始事件
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnStart });
 
-        // 6. 常规抽 1 张（先手第一回合不抽，这是 WB 规则）
-        bool isFirstTurnOfFirstPlayer = _state.TurnNumber == 1 && playerId == 0;
-        if (!isFirstTurnOfFirstPlayer)
-            _state.DrawCards(playerId, 1);
+        // 6. 常规抽 1 张。
+        // 统一口径：每个回合开始时当前回合玩家都抽 1 张，
+        // 先手第一回合也不例外。之前按「先手不抽」写的分支会少抽一张。
+        _state.DrawCards(playerId, 1);
 
         vm?.StepUntilBlocked();
     }

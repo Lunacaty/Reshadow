@@ -184,6 +184,10 @@ def main():
     ap.add_argument('--max-bytes', type=int, default=600000, help='警告阈值')
     ap.add_argument('--title', default=None, help='文档标题')
     ap.add_argument('--no-tree', action='store_true', help='不输出目录树')
+    ap.add_argument('--attach', action='append', default=[], metavar='PATH',
+                    help='追加一个仓库外的文档（如设计原文）到文末，可重复')
+    ap.add_argument('--attach-title', default='附件：设计原文与对话资料',
+                    help='--attach 引入文档的章节标题')
     ap.add_argument('--quiet', action='store_true')
     args = ap.parse_args()
 
@@ -254,6 +258,31 @@ def main():
             sub += "　·　" + note
         out.write("<sub>" + sub + "</sub>\n\n")
         out.write("```" + lang + "\n" + body + "\n```\n\n")
+
+    # 追加仓库外文档（设计原文 / 对话资料）
+    attached = []
+    for ap_ in args.attach:
+        fp = ap_ if os.path.isabs(ap_) else os.path.join(root, ap_)
+        if not os.path.isfile(fp):
+            skipped.append((ap_, '附件不存在'))
+            continue
+        try:
+            body = io.open(fp, encoding='utf-8', errors='replace').read()
+        except OSError:
+            skipped.append((ap_, '附件读取失败'))
+            continue
+        if body.endswith('\n'):
+            body = body[:-1]
+        attached.append((ap_, os.path.basename(fp), body, os.path.getsize(fp)))
+
+    if attached:
+        out.write("---\n\n## " + args.attach_title + "\n\n")
+        out.write("> 这些文档不在 git 仓库内，由 --attach 显式引入。\n\n")
+        for ap_, base, body, sz in attached:
+            out.write("### `" + base + "`\n\n<sub>" + fmt_size(sz) + "</sub>\n\n")
+            # 用四个反引号包裹：附件自带的 ``` 代码块不会提前闭合，
+            # 且内容里的 ## 标题被当作普通文本，不会打乱正文层级。
+            out.write("````text\n" + body + "\n````\n\n")
 
     if skipped:
         out.write("## 已跳过的文件\n\n| 文件 | 原因 |\n|---|---|\n")

@@ -78,14 +78,20 @@ public sealed class TargetSpec
     public static TargetSpec SelfLeader => new()
     {
         SourceKind = TargetSourceKind.Zone, Owner = Core.ZoneScope.Self,
-        Zone = Core.ZoneRef.ExArea, IncludeLeader = true, Mode = Core.SelectMode.All,
+        Zone = Core.ZoneRef.Leader, IncludeLeader = false, Mode = Core.SelectMode.All,
     };
 
     /// <summary>敌方主战者。</summary>
+    /// <summary>对方主战者本体。</summary>
+    /// <remarks>
+    /// IncludeLeader 必须为 false：它的语义是「随从 + 额外包含主战者」。
+    /// 目标本就是主战者时再置 true，ParseDeal 会额外追加一条打脸，
+    /// 导致同一能力里出现两次完全相同的伤害。
+    /// </remarks>
     public static TargetSpec OpponentLeader => new()
     {
         SourceKind = TargetSourceKind.Zone, Owner = Core.ZoneScope.Opponent,
-        Zone = Core.ZoneRef.ExArea, IncludeLeader = true, Mode = Core.SelectMode.All,
+        Zone = Core.ZoneRef.Leader, IncludeLeader = false, Mode = Core.SelectMode.All,
     };
 
     // ---------- 内置槽位名 ----------

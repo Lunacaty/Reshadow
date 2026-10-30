@@ -36,6 +36,23 @@ public static class AstEnglishPrinter
 
         sb.Append(TriggerWord(a.Trigger));
 
+        // Trigger 的限定字段必须打印，否则属于「数据存了但看不见」，
+        // 会把编译器的正确输出误报成错误。
+        if (a.Trigger != null)
+        {
+            if (a.Trigger.ActiveZone != Core.ActiveZoneScope.Board)
+                sb.Append(" zone=" + a.Trigger.ActiveZone);
+            if (a.Trigger.DuringTurn != Core.TurnOwnerScope.Any)
+                sb.Append(" turn=" + a.Trigger.DuringTurn);
+            if (a.Trigger.MaxTriggersPerTurn > 0)
+                sb.Append(" max=" + a.Trigger.MaxTriggersPerTurn);
+            if (a.Trigger.SubjectFilter != null)
+                sb.Append(" on(" + PrintTarget(a.Trigger.SubjectFilter) + ")");
+            if (a.Trigger.SecondaryFilter != null)
+                sb.Append(" vs(" + PrintTarget(a.Trigger.SecondaryFilter) + ")");
+        }
+
+
         if (a.Costs != null && a.Costs.Count > 0)
             sb.Append(" [" + string.Join("+", a.Costs.Select(c => c.Kind + "(" + PrintNum(c.Amount) + ")")) + "]");
 
@@ -91,7 +108,11 @@ public static class AstEnglishPrinter
                 sb.Append((r.FullRestore ? "fully restore " : "restore " + PrintNum(r.Amount) + " ") + "to " + PrintTarget(r.Target));
                 break;
             case ModifyStatsNode m:
-                sb.Append("modifystats " + m.Op + " " + PrintNum(m.Attack) + "/" + PrintNum(m.Life) + " to " + PrintTarget(m.Target));
+                // Swap 没有数值，打 0/0 会让审查误以为是编译器丢了值。
+                if (m.Op == Ast.StatModOp.Swap)
+                    sb.Append("modifystats Swap to " + PrintTarget(m.Target));
+                else
+                    sb.Append("modifystats " + m.Op + " " + PrintNum(m.Attack) + "/" + PrintNum(m.Life) + " to " + PrintTarget(m.Target));
                 break;
             case ModifyCostNode mc:
                 sb.Append("modifycost " + mc.Op + " " + PrintNum(mc.Value) + " to " + PrintTarget(mc.Target));
@@ -143,6 +164,10 @@ public static class AstEnglishPrinter
             case MacroNode mac:
                 sb.Append("macro " + mac.Macro.Name);
                 break;
+            case GrantCounterAbilityNode gc:
+                sb.Append("grant to counter:" + gc.Counter.Name + " owner=" + gc.Owner
+                          + " \"" + PrintAbility(gc.Granted) + "\"");
+                break;
             default:
                 sb.Append(n.GetType().Name.ToLowerInvariant());
                 break;
@@ -185,7 +210,7 @@ public static class AstEnglishPrinter
         {
             NumOp.Const => e.Value.ToString(),
             NumOp.Counter => "ctr:" + e.Counter.Name,
-            NumOp.Property => "prop:" + e.Stat,
+            NumOp.Property => "prop:" + e.Stat + (e.Of != null ? "(" + PrintTarget(e.Of) + ")" : ""),
             NumOp.Count => "count(" + PrintTarget(e.Of) + ")",
             NumOp.Sum => "sum(" + PrintTarget(e.Of) + ")",
             NumOp.Arith => PrintArith(e),

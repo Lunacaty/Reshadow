@@ -424,7 +424,7 @@ public sealed class ActionParser
             new DealDamageNode { Target = target, Amount = amount, IsAbility = true, IsSplit = splitFlag },
         };
         // "deal 6 damage to them and the enemy leader" —— TargetParser 已把 and the enemy leader 折进 IncludeLeader
-        if (target.IncludeLeader)
+        if (target.IncludeLeader && target.Zone != Core.ZoneRef.Leader)
             dmgNodes.Add(new DealDamageNode
             {
                 Target = TargetSpec.OpponentLeader,
