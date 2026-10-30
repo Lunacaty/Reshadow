@@ -126,6 +126,10 @@ public sealed class ActionParser
             case "banish": return ParseMove(cur, ZoneRef.Banished);
             case "discard": return ParseMove(cur, ZoneRef.Cemetery, isDestroy: false, fromZone: ZoneRef.Hand);
             case "return": return ParseMove(cur, ZoneRef.Hand);
+            // "move this card to the board" / "move it to your hand"
+            // Invoke 卡的主体效果就是 move，之前完全没有这个动词，
+            // 导致 Activates in deck 的卡在语义层就断了。
+            case "move": return ParseMoveVerb(cur);
             case "evolve": return ParseEvolve(cur, false);
             case "super-evolve": return ParseEvolve(cur, true);
             case "select": return ParseSelect(cur);
@@ -1165,6 +1169,34 @@ public sealed class ActionParser
     /// 则用它作为来源区域。
     /// 例："Discard a card" 的弃牌来自手牌，不是战场。
     /// </summary>
+    /// <summary>
+    /// "move &lt;target&gt; to &lt;zone&gt;"。目标在谓语之前，区域在 to 之后。
+    /// </summary>
+    private List<EffectNode> ParseMoveVerb(TokenCursor cur)
+    {
+        cur.ExpectWord("move");
+        var target = _target.TryParse(cur);
+        if (target == null) throw new LangException("move 后面没有目标");
+
+        ZoneRef to = ZoneRef.Board;
+        if (cur.TryMatchAnyWord("to", "into"))
+        {
+            cur.TryMatchAnyWord("the", "your");
+            if (cur.Current.IsAnyWord("board", "field")) to = ZoneRef.Board;
+            else if (cur.Current.IsAnyWord("hand")) to = ZoneRef.Hand;
+            else if (cur.Current.IsAnyWord("deck")) to = ZoneRef.Deck;
+            else if (cur.Current.IsAnyWord("cemetery", "graveyard")) to = ZoneRef.Cemetery;
+            else if (cur.Current.IsAnyWord("banished", "banish")) to = ZoneRef.Banished;
+            else if (cur.Current.IsAnyWord("ex", "exarea")) to = ZoneRef.ExArea;
+            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
+        }
+
+        return new List<EffectNode>
+        {
+            new MoveZoneNode { Target = target, ToZone = to },
+        };
+    }
+
     private List<EffectNode> ParseMove(TokenCursor cur, ZoneRef to, bool isDestroy = false,
                                       ZoneRef? fromZone = null)
     {

@@ -93,8 +93,43 @@ public sealed class TurnRunner
         // （对手护符不推进吟唱 —— 吟唱只在持有者自己的回合推进）
         // （当前无独立的“对手回合开始”事件，留待下一步扩展）
 
-        // ── 第 6 步：直接召唤（Invoke） 检查 ──
-        // 牌组中带 Activates in deck 的卡在 TurnStart 事件下由 VM 自行处理。
+        // ── 第 6 步：直接召唤（Invoke）（R-6.2） ──
+        // 满场时不发动；同一时机同名卡只发动 1 张。
+        if (p.Board.Count < PlayerState.MaxBoard)
+        {
+            var fired = new HashSet<int>();
+            foreach (var card in p.Deck.ToList())
+            {
+                if (card.Def?.Abilities == null) continue;
+                if (!fired.Add(card.Def.CardId)) continue;   // 同名卡同一时机只跳 1 张
+
+                // 它是否声明了「在牌组中监听的回合开始时能力」
+                bool hasInvoke = false;
+                foreach (var ab in card.Def.Abilities)
+                {
+                    if (ab?.Trigger == null) continue;
+                    if (ab.Trigger.ActiveZone != ActiveZoneScope.Deck) continue;
+                    if (ab.Trigger.Event != CoreEvent.TurnStart) continue;
+                    hasInvoke = true;
+                    break;
+                }
+                if (!hasInvoke) continue;
+
+                // 条件由 VM 在触发时判定；这里只负责把满足条件的卡拉上场。
+                // 具体做法：把它移到战场，再发 OnEnterField；
+                // 入场曲（OnPlay）不发动——直接召唤不是打出。
+                _state.MoveEntity(card, ZoneRef.Board, playerId);
+                vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnSummon, Subject = EntityRef.From(card) });
+                if (card.Def.Kind == Ast.CardKind.Follower)
+                {
+                    var rallyKey = _schema.Counter("rally");
+                    _state.WriteCounter(playerId, rallyKey,
+                        _state.ReadCounter(playerId, rallyKey) + 1);
+                }
+                vm?.StepUntilBlocked();
+                if (p.Board.Count >= PlayerState.MaxBoard) break;
+            }
+        }
 
         // ── 第 7 步：清空待机队列 ──
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnStart });

@@ -64,6 +64,7 @@ public static class VmSelfTest
         GateMatchSetup();
         GateEarthSigil();
         GateInvokeZone();
+        GateInvokeSummon();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -1184,6 +1185,41 @@ public static class VmSelfTest
 
         Check("门禁24 牌组/手牌监听区域", deckZone && handZone && fires,
               "deck=" + deckZone + " hand=" + handZone);
+    }
+
+    /// <summary>门禁25：Invoke。牌组里声明「回合开始时从牌组上场」的卡会被拉上场，且不发动入场曲。</summary>
+    private static void GateInvokeSummon()
+    {
+        var st = new Battle.BattleState(seed: 18);
+        var tr = new Battle.TurnRunner(st, st.Schema);
+        var vm = new CardVm(st);
+        CardVm.Schema = st.Schema;
+        st.ActivePlayer = 0;
+
+        var lex = new Lang.Lexicon();
+        foreach (var kw in new[] { "ward", "rush", "storm" }) lex.AddKeyword(kw);
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+        var r = comp.Compile("Activates in deck. At the start of your turn, move this card to the board.");
+
+        st.RegisterCard(new CardDef
+        {
+            CardId = 810, Name = "Invoker", Kind = CardKind.Follower,
+            BaseCost = 5, BaseAttack = 3, BaseLife = 3, Abilities = r.Abilities,
+        });
+        var card = st.SpawnCard(810, ZoneRef.Deck, 0);
+
+        bool inDeck = card.Zone == ZoneRef.Deck;
+        tr.StartTurn(0, vm);
+
+        bool onBoard = card.Zone == ZoneRef.Board;
+        // 直接召唤不是打出，入场曲不应发动
+        bool noFanfare = !st.EventLog.Any(e => e.Kind == CoreEvent.OnPlay);
+        // 随从上场要加协作
+        bool rallyUp = st.ReadCounter(0, st.Schema.Counter("rally")) >= 1;
+
+        Check("门禁25 Invoke 从牌组上场", inDeck && onBoard && noFanfare && rallyUp,
+              "inDeck=" + inDeck + " onBoard=" + onBoard + " noFanfare=" + noFanfare + " rally=" + rallyUp);
     }
 
     private static void Check(string name, bool ok, string detail)
