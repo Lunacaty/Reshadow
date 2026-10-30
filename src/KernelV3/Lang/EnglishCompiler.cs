@@ -110,9 +110,18 @@ public sealed class EnglishCompiler
             ? (IReadOnlyList<EffectNode>)Array.Empty<EffectNode>()
             : _actions.ParseSequence(cur2);
 
+        // 引号内没有显式能力头时，它是**常驻效果**，不是入场曲。
+        //   "Give this follower "Can attack 2 times per turn.""
+        //   "Give it "Can't attack followers or leaders.""
+        // 旧实现用 BuildTrigger() 的默认值 OnPlay，把常驻限制变成
+        // 「被授予后再打出时才触发」，在场上永远不生效。
+        var trig = hb2.EventExplicit
+            ? hb2.BuildTrigger()
+            : new TriggerSpec { Event = CoreEvent.PassiveAura };
+
         return new AbilityDef
         {
-            Trigger = hb2.BuildTrigger(),
+            Trigger = trig,
             Condition = hb2.Condition,
             Costs = hb2.Costs,
             Body = body,
@@ -129,7 +138,16 @@ public sealed class EnglishCompiler
         s = s.Replace("<ev>", "\u0002").Replace("</ev>", "\u0003");
         s = s.Replace("<sev>", "\u0004").Replace("</sev>", "\u0005");
         s = System.Text.RegularExpressions.Regex.Replace(s, @"<[^>]+>", "");
-        s = s.Replace("\n", " ").Replace("\r", " ");
+
+        // 换行符是**能力级**分隔符，与句号的语义完全不同：
+        //   "Countdown (2)\nLast Words: Summon a Regal Falcon."  → 两条独立能力
+        //   "Engage: Destroy this card. Select an ally and give it Rush." → 同一条能力的两个动作
+        // 之前把 \n 抹成空格，两种情形被迫归成一种，
+        // 直接造成 Countdown / Fuse / Ward 与后续能力粘连。
+        s = s.Replace("\r\n", "\n").Replace('\r', '\n');
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\n[ \t]+", "\n");
+        s = s.Replace("\n", "\u0001");
+
         s = System.Text.RegularExpressions.Regex.Replace(s, @"[ \t]+", " ");
         return s.Trim();
     }
@@ -227,6 +245,12 @@ public sealed class EnglishCompiler
                 sentOptions[si] = -2;   // -2 = 已消费，不再参与后续分支
             }
         }
+
+        // 同一段内可以有多句：只有第一句带能力头，
+        // 后续没头的句子应当**追加到同一条能力**，而不是另起一条 OnPlay。
+        //   "Engage: Destroy this card. Select an ally and give it Rush."（两句同属 OnEngage）
+        //   "Return your hand to deck. Draw 5 cards. ..."（三句同属 OnPlay）
+        AbilityDef currentAbility = null;
 
         for (int si = 0; si < sentences.Count; si++)
         {
@@ -396,6 +420,14 @@ public sealed class EnglishCompiler
                     continue;
                 }
                 if (!hb.EventExplicit) continue;
+
+                // "Fuse: Forestcraft cards" 这类材料声明段本身没有动作，
+                // 它只是告诉玩家可以融合什么，不是一条能力。
+                // 之前把它落成 body 为空的 OnFuse，运行时会多出一条空触发。
+                if (hb.Event == CoreEvent.OnFuse && hb.Costs.Count == 0
+                    && (hb.Condition == null || hb.Condition is ConstBoolExpr))
+                    continue;
+
                 result.Add(new AbilityDef
                 {
                     Trigger = hb.BuildTrigger(),
@@ -424,13 +456,27 @@ public sealed class EnglishCompiler
             c.AssertEnd(Trunc(segment));
             if (body.Count == 0) continue;
 
-            result.Add(new AbilityDef
+            // 无新头、无新代价、无新条件，且前面已有能力：
+            // 这是同一触发下的后续动作句，并入当前能力的 Body。
+            bool noNewHeader = !hb.EventExplicit
+                                && hb.Costs.Count == 0
+                                && (hb.Condition == null || hb.Condition is ConstBoolExpr);
+            if (noNewHeader && currentAbility != null && currentAbility.Trigger != null
+                && currentAbility.Trigger.Event != CoreEvent.PassiveAura)
+            {
+                ((List<EffectNode>)currentAbility.Body).AddRange(body);
+                continue;
+            }
+
+            var built = new AbilityDef
             {
                 Trigger = hb.BuildTrigger(),
                 Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs)),
                 Costs = hb.Costs,
                 Body = body,
-            });
+            };
+            result.Add(built);
+            currentAbility = built;
         }
 
         // 收尾：把剩余的模式选项落成 BranchModeNode

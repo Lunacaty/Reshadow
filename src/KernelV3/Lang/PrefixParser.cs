@@ -355,8 +355,11 @@ public sealed class PrefixParser
         int save = cur.Position;
         if (!cur.MatchWord("whenever") && !cur.MatchWord("when")) return false;
 
-        // 形态 A：主语是 you
-        if (cur.MatchWord("you"))
+        // 形态 A：主语是 you（含缩写 you've）
+        bool isYou = cur.MatchWord("you");
+        if (!isYou && cur.MatchPhrase("you've")) isYou = true;
+        if (!isYou && cur.MatchPhrase("you", "have")) isYou = true;
+        if (isYou)
         {
             if (cur.MatchWord("draw")) { b.Event = CoreEvent.OnDraw; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("play", "or", "fuse"))
@@ -367,6 +370,13 @@ public sealed class PrefixParser
             else if (cur.MatchWord("play")) { b.Event = CoreEvent.OnPlay; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchWord("discard")) { b.Event = CoreEvent.OnDiscard; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("fuse", "to", "this", "card")) { b.Event = CoreEvent.OnFuse; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
+            // "When you've Fused both to this card, ..."（已融合完成）
+            else if (cur.MatchWord("fused") || cur.MatchPhrase("fuse", "d"))
+            {
+                b.Event = CoreEvent.OnFuse; b.EventExplicit = true;
+                b.SubjectFilter = TargetSpec.Self;
+                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Comma) cur.Advance();
+            }
             else if (cur.MatchWord("activate") || cur.MatchWord("engage")) { b.Event = CoreEvent.OnEngage; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("perform", "earth", "rite")) { b.Event = CoreEvent.OnCountdownExpire; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
             else if (cur.MatchWord("fuse"))

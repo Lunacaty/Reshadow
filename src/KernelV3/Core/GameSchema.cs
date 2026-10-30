@@ -87,7 +87,7 @@ public sealed class GameSchema
     public static readonly string[] BuiltinKeywords =
     {
         "ward", "rush", "storm", "bane", "drain", "ambush", "aura",
-        "intimidate", "barrier", "cannot_attack", "cannot_destroy",
+        "intimidate", "barrier", "cannot_attack", "cannot_destroy", "cannot_be_played",
         "attack_limit", "damage_cap", "ignores ward",
     };
 

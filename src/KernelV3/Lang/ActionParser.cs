@@ -311,6 +311,10 @@ public sealed class ActionParser
                     kw = "cannot_attack";
                 else if (j.Contains("be destroyed"))
                     kw = "cannot_destroy";
+                // "Can't be played"是「这张卡不能从手牌打出」，与「不能攻击」完全不同。
+                // 旧实现落进兜底分支变成 cannot_attack，会让这张卡仍可以打出。
+                else if (j.Contains("be played"))
+                    kw = "cannot_be_played";
                 else if (j.Contains("attack") && j.Contains("time"))
                 {
                     kw = "max_attacks_per_turn";
