@@ -481,9 +481,12 @@ public sealed class ActionParser
             if (first == null && cur.Current.IsAnyWord("the", "an") && cur.Peek().IsAnyWord("enemy"))
             {
                 cur.Advance();
+                cur.TryMatchAnyWord("enemy");
+                cur.TryMatchAnyWord("leader");
                 first = TargetSpec.OpponentLeader;
             }
-            if (first == null && cur.Current.IsWord("your"))
+            if (first == null && cur.Current.IsWord("your")
+                && cur.Peek().IsAnyWord("faith", "crest"))
             {
                 // "give your faith "..."" —— 给资源挂能力，退化为 Self
                 cur.Advance();
@@ -530,6 +533,13 @@ public sealed class ActionParser
                 result.AddRange(built);
                 granted++;
 
+                // 授予项后可能紧跟 "at random"，先消费掉
+                if (cur.Current.IsWord("at") && cur.Peek().IsWord("random"))
+                {
+                    cur.Advance(); cur.Advance();
+                    break;
+                }
+
                 // 消费授予项之间的 , / and
                 int sepSave = cur.Position;
                 bool hadComma = cur.Current.Kind == TokKind.Comma;
@@ -539,13 +549,19 @@ public sealed class ActionParser
 
                 // "Bane or Ward at random" —— or 也视为并列
                 if (cur.Current.IsWord("or")) { cur.Advance(); hadAnd = true; }
-                // "at random" 收尾短语
+                // "at random" 收尾短语：消费后直接结束
                 if (cur.Current.IsWord("at") && cur.Peek().IsWord("random"))
                 {
                     cur.Advance(); cur.Advance();
                     break;
                 }
                 if (!hadComma && !hadAnd) break;
+                // 分隔符之后若是 "at random"，同样消费并结束
+                if (cur.Current.IsWord("at") && cur.Peek().IsWord("random"))
+                {
+                    cur.Advance(); cur.Advance();
+                    break;
+                }
                 if (!IsGrantStart(cur)) { cur.Seek(sepSave); break; }
             }
 
@@ -824,9 +840,51 @@ public sealed class ActionParser
                     ToOwner = ZoneScope.Self,
                     Count = NumExpr.Const(listCount),
                 });
+
+            // 接续 "and give it ..." / "and evolve it ..."
+            while (cur.Current.IsWord("and"))
+            {
+                int sv = cur.Position;
+                cur.Advance();
+                var more = ParseOne(cur);
+                if (more == null) { cur.Seek(sv); break; }
+                nodes.AddRange(more);
+            }
             return nodes;
         }
         cur.Seek(save1);
+
+        // ---------- 分支 2b："an <修饰词> <卡名>"（如 an Enhanced Puppet）----------
+        {
+            int s2b = cur.Position;
+            cur.TryMatchAnyWord("an", "a");
+            // 跳过 1-2 个修饰词，看是否能落到卡名
+            int skipped = 0;
+            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.CardName && skipped < 3
+                   && cur.Current.Kind == TokKind.Word)
+            {
+                // 遇到动作动词就停
+                if (cur.Current.IsAnyWord("to", "and", "with", "on", "from", "at", "or")) break;
+                cur.Advance(); skipped++;
+            }
+            if (cur.Current.Kind == TokKind.CardName && skipped <= 2)
+            {
+                var ct2 = cur.Current;
+                cur.Advance();
+                ConsumeDestination(cur);
+                nodes.Add(new SpawnCardNode
+                {
+                    SourceKind = CardSourceKind.CardId,
+                    CardId = ct2.CardId,
+                    CardName = ct2.Text,
+                    ToZone = toZone,
+                    ToOwner = ZoneScope.Self,
+                    Count = NumExpr.Const(1),
+                });
+                return nodes;
+            }
+            cur.Seek(s2b);
+        }
 
         // ---------- 分支 3：跨区拉人 TargetSpec（"3 random ... from your deck"） ----------
         cur.TryMatchAnyWord("any", "all");

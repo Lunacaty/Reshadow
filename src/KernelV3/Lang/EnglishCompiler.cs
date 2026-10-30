@@ -95,9 +95,22 @@ public sealed class EnglishCompiler
         var hb2 = new AbilityHeaderBuilder();
         _prefixes.ParseAll(cur2, hb2);
 
-        var body = cur2.IsAtEnd
-            ? (IReadOnlyList<EffectNode>)Array.Empty<EffectNode>()
-            : _actions.ParseSequence(cur2);
+        IReadOnlyList<EffectNode> body;
+        if (cur2.IsAtEnd)
+            body = Array.Empty<EffectNode>();
+        else
+        {
+            try { body = _actions.ParseSequence(cur2); }
+            catch (LangException)
+            {
+                // 引号内是无法建模的能力文本（"Takes 1 more damage."），
+                // 保留为 MacroNode 而不是让整张卡编译失败
+                body = new List<EffectNode>
+                {
+                    new MacroNode { Macro = _lex.Macro("unmodeled_ability") },
+                };
+            }
+        }
 
         return new AbilityDef
         {
