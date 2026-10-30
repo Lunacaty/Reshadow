@@ -69,6 +69,7 @@ public static class VmSelfTest
         GateDrawSemantics();
         GateCrestShape();
         GateCrestCounter();
+        GateImmuneKeywords();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -1358,6 +1359,35 @@ public static class VmSelfTest
         Check("门禁29 纹章实体计数器独立于玩家级",
               initOk && playerOk && eachUp && playerSame,
               "init=" + initOk + " player=" + playerOk + " eachUp=" + eachUp + " same=" + playerSame);
+    }
+
+    /// <summary>
+    /// 门禁30：两个「只写不读」的关键词。
+    /// cannot_destroy（不能被破坏）与 cannot_attack（不能攻击）
+    /// 之前只有写入点，没有任何读取点，效果完全不生效。
+    /// </summary>
+    private static void GateImmuneKeywords()
+    {
+        var st = new Battle.BattleState(seed: 22);
+        var cr = new Battle.CombatResolver(st, st.Schema);
+        st.RegisterCard(new CardDef { CardId = 720, Name = "Tank", Kind = CardKind.Follower, BaseAttack = 2, BaseLife = 5 });
+        st.RegisterCard(new CardDef { CardId = 721, Name = "Pacifist", Kind = CardKind.Follower, BaseAttack = 2, BaseLife = 5 });
+        st.ActivePlayer = 0;
+        st.TurnNumber = 5;
+
+        var tank = st.SpawnCard(720, ZoneRef.Board, 0);
+        tank.Keywords.Add(st.Schema.Keyword("cannot_destroy"));
+        st.DestroyEntity(tank);
+        bool surviveDestroy = tank.Zone == ZoneRef.Board;
+
+        var pacifist = st.SpawnCard(721, ZoneRef.Board, 0);
+        pacifist.EnteredTurn = 0;
+        pacifist.Keywords.Add(st.Schema.Keyword("cannot_attack"));
+        bool canAttack = cr.CanAttack(pacifist, st.Players[1].Leader ?? tank, out _);
+
+        Check("门禁30 不能被破坏 / 不能攻击",
+              surviveDestroy && !canAttack,
+              "surviveDestroy=" + surviveDestroy + " canAttack=" + canAttack);
     }
 
     private static void Check(string name, bool ok, string detail)

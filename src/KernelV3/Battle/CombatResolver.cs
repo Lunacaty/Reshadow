@@ -37,6 +37,10 @@ public sealed class CombatResolver
         if (attacker == null) { reason = "攻击者为空"; return false; }
         if (attacker.Zone != ZoneRef.Board) { reason = "攻击者不在场上"; return false; }
         if (attacker.Attack <= 0) { reason = "攻击力为 0"; return false; }
+
+        // 「不能攻击」关键词（cannot_attack）。
+        // 卡面写 Can't attack 的随从之前照样能打人。
+        if (Has(attacker, "cannot_attack")) { reason = "该随从不能攻击"; return false; }
         if (defender == null) { reason = "目标为空"; return false; }
 
         bool isLeaderTarget = defender.Zone == ZoneRef.Leader;

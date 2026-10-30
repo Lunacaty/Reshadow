@@ -626,6 +626,11 @@ public sealed class BattleState : IVmWorld
         // byRule = true 表示「规则性收尾」（层数归 0），不受保护拦截。
         if (!byRule && IsProtectedAmulet(e)) return;
 
+        // 「不能被破坏」关键词（cannot_destroy）。
+        // 这个关键词之前只有写入、从来没有读取点——
+        // 卡面写着 Can't be destroyed 也照样一把炸掉。
+        if (e.Keywords.Contains(Schema.Keyword("cannot_destroy"))) return;
+
         int owner = e.PlayerId;
         var snap = e.TakeSnapshot();
 
