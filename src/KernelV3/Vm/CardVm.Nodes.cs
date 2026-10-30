@@ -35,6 +35,7 @@ public sealed partial class CardVm
             case ModifyCounterNode n: return DoModifyCounter(n, scope);
             case MoveZoneNode n: return DoMoveZone(n, scope);
             case SpawnCardNode n: return DoSpawn(n, scope);
+            case ReplaceDeckNode n: return DoReplaceDeck(n, scope);
             case EvolveNode n: return DoEvolve(n, scope);
             case TransformNode n: return DoTransform(n, scope);
             case ConditionalNode n: return DoConditional(n, scope);
@@ -347,6 +348,24 @@ public sealed partial class CardVm
             if (e != null) created.Add(e);
         }
         scope.Bind(n.OutSlot, created);
+        return false;
+    }
+
+    /// <summary>
+    /// 整副牌库替换："Replace your deck with the Apocalypse Deck"。
+    ///
+    /// 牌组名必须能在 DeckDefTable 里解析；解析不到就抛错。
+    /// 这里不静默装空牌库 —— 空牌库会让玩家下一回合直接 DECK_OUT 判负，
+    /// 一个"看起来成功"的失败比报错危险得多。
+    /// </summary>
+    private bool DoReplaceDeck(ReplaceDeckNode n, VmScope scope)
+    {
+        int pid = scope.ResolvePlayer(n.Owner);
+        var cardIds = DeckDefs.Expand(n.DeckName);
+        if (cardIds == null)
+            throw new VmFaultException("未定义的具名牌组: [" + n.DeckName + "]");
+
+        _world.ReplaceDeck(pid, n.DeckName, cardIds);
         return false;
     }
 

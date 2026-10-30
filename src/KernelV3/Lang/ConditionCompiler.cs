@@ -42,6 +42,27 @@ public static class ConditionCompiler
     }
 
     /// <summary>回退路径：&lt;TargetNP&gt; is N / is N or less / is at least N。</summary>
+    /// <summary>
+    /// 识别资源计数器名，返回对应 CounterTag；不是资源时返回 null。
+    /// 支持：play points / pp / combo / shadows / earth sigils / evolution points / crests / faith
+    /// </summary>
+    private static Core.SymbolId<Core.CounterTag>? MatchResourceCounter(TokenCursor c, Lexicon lex)
+    {
+        int save = c.Position;
+        string name = null;
+        if (c.MatchPhrase("max", "play", "points")) name = "max_pp";
+        else if (c.MatchPhrase("play", "points") || c.MatchPhrase("play", "point")) name = "pp";
+        else if (c.MatchWord("combo")) name = "combo";
+        else if (c.MatchWord("shadows")) name = "shadow";
+        else if (c.MatchPhrase("earth", "sigils") || c.MatchPhrase("earth", "sigil")) name = "earth_sigil";
+        else if (c.MatchPhrase("evolution", "points") || c.MatchPhrase("evolution", "point")) name = "ep";
+        else if (c.MatchWord("crests")) name = "crest";
+        else if (c.MatchWord("faith")) name = "faith";
+        if (name == null) { c.Seek(save); return null; }
+        return lex.Counter(name);
+    }
+
+
     private static BoolExpr TryParseGenericComparison(TokenCursor c, Lexicon lex)
     {
         var subject = new TargetParser(lex).TryParse(c);
@@ -100,6 +121,98 @@ public static class ConditionCompiler
     }
 
     private static BoolExpr ParseAtom(TokenCursor c, Lexicon lex)
+    {
+        // ---- 扩展条件语法（官方卡面与渲染器都会产出这些写法）----
+
+        // "if X is at least 5" / "if X is 5" — 变量 X / Y / Z
+        if (c.Current.IsAnyWord("x", "y", "z"))
+        {
+            int vs = c.Position;
+            var vn = c.Current.Text.ToUpperInvariant();
+            c.Advance();
+            if (c.MatchWord("is") || c.MatchWord("are"))
+            {
+                c.TryMatchAnyWord("at", "least");
+                if (c.Current.Kind == TokKind.Number)
+                {
+                    int v = c.Current.Value;
+                    c.Advance();
+                    while (!c.IsAtEnd) c.Advance();
+                    return new CompareExpr
+                    {
+                        Left = NumExpr.Ctr(lex.Counter(vn)),
+                        Op = CompareOp.Ge,
+                        Right = NumExpr.Const(v),
+                    };
+                }
+            }
+            c.Seek(vs);
+        }
+
+        // "if countdown 2 or more" / "if countdown is at least 2"
+        if (c.Current.IsAnyWord("countdown"))
+        {
+            int cs = c.Position;
+            c.Advance();
+            c.TryMatchAnyWord("is");
+            c.TryMatchAnyWord("at", "least");
+            if (c.Current.Kind == TokKind.Number)
+            {
+                int v = c.Current.Value;
+                c.Advance();
+                c.TryMatchAnyWord("or");
+                c.TryMatchAnyWord("more");
+                while (!c.IsAtEnd) c.Advance();
+                return new CompareExpr
+                {
+                    Left = NumExpr.Prop(StatKey.Countdown, TargetSpec.Self),
+                    Op = CompareOp.Ge,
+                    Right = NumExpr.Const(v),
+                };
+            }
+            c.Seek(cs);
+        }
+
+        // "if this follower is super-evolved" / "if this card is damaged" — 自身状态句
+        // 注意："super-evolved" 在词法层被拆成 super + '-' + evolved 三个 token。
+        if (c.MatchPhrase("this", "follower", "is") || c.MatchPhrase("this", "card", "is"))
+        {
+            bool isSuper = false;
+            if (c.Current.IsAnyWord("super")) { isSuper = true; c.Advance(); c.TryMatch(TokKind.Dash); }
+            var word = c.Current.Text.ToLowerInvariant();
+            c.Advance();
+            while (!c.IsAtEnd) c.Advance();
+            var st = word switch
+            {
+                "evolved" => isSuper ? UnitState.SuperEvolved : UnitState.Evolved,
+                "superevolved" => UnitState.SuperEvolved,
+                "damaged" => UnitState.Damaged,
+                "silenced" => UnitState.Silenced,
+                _ => UnitState.None,
+            };
+            if (st != UnitState.None) return new HasStateExpr { State = st, Of = TargetSpec.Self };
+            return BoolExpr.True;
+        }
+
+        // "if it is super-evolved" / "if it is evolved"
+        if (c.MatchWord("it") && (c.MatchWord("is")))
+        {
+            bool isSuper2 = false;
+            if (c.Current.IsAnyWord("super")) { isSuper2 = true; c.Advance(); c.TryMatch(TokKind.Dash); }
+            var w2 = c.Current.Text.ToLowerInvariant();
+            c.Advance();
+            while (!c.IsAtEnd) c.Advance();
+            var st2 = w2 switch
+            {
+                "evolved" => isSuper2 ? UnitState.SuperEvolved : UnitState.Evolved,
+                "damaged" => UnitState.Damaged,
+                _ => UnitState.None,
+            };
+            if (st2 != UnitState.None) return new HasStateExpr { State = st2, Of = TargetSpec.Self };
+            return BoolExpr.True;
+        }
+
+
     {
         if (c.MatchPhrase("there", "are", "no", "duplicates"))
         {
@@ -397,6 +510,17 @@ public static class ConditionCompiler
             }
             bool atLeast = c.MatchPhrase("at", "least");
             int n = ReadNumber(c);
+
+            // 资源计数器："you have at least 4 play points" / "at least 3 combo"
+            var resCounter = MatchResourceCounter(c, lex);
+            if (resCounter != null)
+                return new CompareExpr
+                {
+                    Left = NumExpr.Ctr(resCounter.Value),
+                    Op = CompareOp.Ge,
+                    Right = NumExpr.Const(n > 0 ? n : 1),
+                };
+
             var tgt = new TargetParser(lex).TryParse(c);
             if (tgt != null)
             {
@@ -554,6 +678,7 @@ public static class ConditionCompiler
 
         throw new LangException("无法识别的条件");
     }
+}
 
     private static int ReadNumber(TokenCursor c)
     {

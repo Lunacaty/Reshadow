@@ -51,9 +51,6 @@ public sealed class TargetSpec
     public bool DistinctByName { get; init; }
     public Core.SelectMode Mode { get; init; } = Core.SelectMode.All;
     public NumExpr Count { get; init; } = NumExpr.Const(1);
-    /// <summary>为 true 时，找不到目标则整个动作失败（默认跳过）。</summary>
-    public bool RequireNonEmpty { get; init; }
-
     /// <summary>
     /// 历史池作用域：把候选池从"场上/手牌"切换到"本局/本回合的历史记录"。
     /// 例："Summon a copy of a random allied amulet destroyed this match"。
@@ -73,7 +70,7 @@ public sealed class TargetSpec
         SourceKind = SourceKind, Owner = Owner, Zone = Zone, Slot = Slot,
         CardId = CardId, CardName = CardName, Sort = Sort,
         SortDescending = SortDescending, DistinctByName = DistinctByName,
-        Mode = Mode, Count = Count, RequireNonEmpty = RequireNonEmpty,
+        Mode = Mode, Count = Count,
         IncludeLeader = IncludeLeader,
         Where = BoolExpr.And(Where, extra),
     };

@@ -181,8 +181,12 @@ public sealed class Tokenizer
                 int j = i;
                 while (j < text.Length && char.IsDigit(text[j])) j++;
                 // 选项序号：数字 + '.'（可跟空格，也可直接句末）
+                // 且必须处在「块起点」——行首或上一 token 是句读。
+                // 否则 "X starts at 2." 的句末 2. 会被误判成选项标记，
+                // 把 "2. On Spellboost: ..." 整体吞成 "选项 2"，句子就此断裂。
                 bool isOption = j < text.Length && text[j] == '.'
-                    && (j + 1 >= text.Length || text[j + 1] == ' ');
+                    && (j + 1 >= text.Length || text[j + 1] == ' ')
+                    && IsOptionBoundary(tokens);
                 if (isOption)
                 {
                     tokens.Add(new Token
@@ -264,6 +268,23 @@ public sealed class Tokenizer
 
         tokens.Add(Eof());
         return tokens;
+    }
+
+    /// <summary>
+    /// 当前位置是否允许出现选项序号。
+    /// 选项序号只会出现在「块起点」：文本开头，或紧跟句号 / 逗号 / 冒号 /
+    /// 分号 / 另一个选项序号 / 引号块之后。
+    /// 这样 "X starts at 2." 的句末 2. 就不会被当成下一块的序号。
+    /// </summary>
+    private static bool IsOptionBoundary(List<Token> tokens)
+    {
+        if (tokens.Count == 0) return true;
+        return tokens[^1].Kind switch
+        {
+            TokKind.Period or TokKind.Comma or TokKind.Colon
+                or TokKind.Semicolon or TokKind.OptionMark or TokKind.Quoted => true,
+            _ => false,
+        };
     }
 
     private TokKind Classify(string word)

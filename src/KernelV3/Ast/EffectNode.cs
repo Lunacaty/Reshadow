@@ -135,7 +135,14 @@ public sealed class GrantCounterAbilityNode : EffectNode
 
 // ---------- 8. 生成卡 ----------
 
-public enum CardSourceKind { CardId = 0, CopyOfTarget }
+public enum CardSourceKind
+{
+    CardId = 0,
+    /// <summary>从某个目标集合复制。</summary>
+    CopyOfTarget,
+    /// <summary>"Summon 2 instead" —— 重复上一个动作生成的卡，只改次数。</summary>
+    CopyOfPrevious,
+}
 
 /// <summary>凭空生成（召唤衍生物 / 加手牌 / 复制体）。</summary>
 public sealed class SpawnCardNode : EffectNode
@@ -261,7 +268,27 @@ public sealed class BranchModeNode : EffectNode
     public TargetSpec GrantTarget { get; init; }
 }
 
-// ---------- 17. 宏 ----------
+// ---------- 17. 牌库替换 ----------
+
+/// <summary>
+/// 整副牌库替换（"Replace your deck with the Apocalypse Deck"）。
+///
+/// 这不是"生成一张卡"，而是一次原子操作：
+///   · 丢弃当前牌库的全部内容（**不进任何区域**，不污染 BanishedCount）
+///   · 装入具名牌组定义的整套卡
+///
+/// 旧实现把它拆成 MoveZone(Banished) + SpawnCard(单卡)，两个后果：
+///   1. "Apocalypse Deck" 是全库 0 命中的名字，实际生成一张查不到的卡
+///   2. 旧牌库进 Banished，BanishedCount 一次性 +30，此后所有读它的条件全错
+/// </summary>
+public sealed class ReplaceDeckNode : EffectNode
+{
+    /// <summary>具名牌组名（"Apocalypse Deck"）。由 DeckDefTable 解析成卡表。</summary>
+    public string DeckName { get; init; } = "";
+    public Core.ZoneScope Owner { get; init; } = Core.ZoneScope.Self;
+}
+
+// ---------- 18. 宏 ----------
 
 /// <summary>机制宏（Reanimate(4) / SpellboostHand(2) / 玩家自定义复合动作）。</summary>
 public sealed class MacroNode : EffectNode

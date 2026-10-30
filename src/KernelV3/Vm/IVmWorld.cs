@@ -75,6 +75,17 @@ public interface IVmWorld
     /// <summary>按卡号生成一张新卡并放进指定区域。</summary>
     RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId);
 
+    /// <summary>
+    /// 用一副具名牌组替换某玩家的整个牌库（"Replace your deck with ..."）。
+    ///
+    /// 语义契约（三条，实现必须全部满足）：
+    ///   1. 旧牌库的全部卡直接离场，**不进入任何区域**
+    ///      —— 特别是不能进 Banished，否则 BanishedCount 被永久污染
+    ///   2. 新牌库按牌组定义逐张生成，顺序固定
+    ///   3. 牌组名无法解析时由调用方抛错，不得静默装成空牌库
+    /// </summary>
+    void ReplaceDeck(int playerId, string deckName, IReadOnlyList<int> cardIds);
+
     /// <summary>按快照生成一个复制体（用于「复制一份」）。</summary>
     RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId);
 

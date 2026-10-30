@@ -460,9 +460,11 @@ public sealed class ActionParser
                 CardId = filter.CardId,
                 CardName = filter.CardName,
                 Where = filter.Where,
-                // "all copies" 保留 All；其余无明确模式时按随机检索
+                // "all copies" 保留 All；其余无明确模式时按随机检索。
+                // Count 是不可空 NumExpr：写 null 会让抽牌数量整条丢失，
+                // 应始终传入 n，由 Mode 决定它的语义（All 时 n 被忽略）。
                 Mode = filter.Mode == SelectMode.All ? SelectMode.All : SelectMode.Random,
-                Count = filter.Mode == SelectMode.All ? null : n,
+                Count = n,
                 DistinctByName = filter.DistinctByName,
                 Sort = filter.Sort,
                 SortDescending = filter.SortDescending,
@@ -1076,6 +1078,30 @@ public sealed class ActionParser
             cur.Seek(s2c);
         }
 
+        // ---------- 分支 2d："N instead" —— 重复上一个召唤，只改次数 ----------
+        // 卡面："Evolve: Summon a Mecha Cavalier. Super-Evolve: Summon 2 instead."
+        // 这里的 2 是**次数**，宾语是前一句的卡，不是目标数量。
+        // 之前落到分支 3，被当成「从场上选 2 个」，于是整句变成 MoveZone。
+        {
+            int s2d = cur.Position;
+            int n = 0;
+            bool sawNum = false;
+            if (cur.Current.Kind == TokKind.Number) { n = cur.Current.Value; cur.Advance(); sawNum = true; }
+            if (sawNum && cur.Current.IsWord("instead"))
+            {
+                cur.Advance();
+                nodes.Add(new SpawnCardNode
+                {
+                    SourceKind = CardSourceKind.CopyOfPrevious,
+                    ToZone = toZone,
+                    ToOwner = ZoneScope.Self,
+                    Count = NumExpr.Const(n),
+                });
+                return nodes;
+            }
+            cur.Seek(s2d);
+        }
+
         // ---------- 分支 3：跨区拉人 TargetSpec（"3 random ... from your deck"） ----------
         cur.TryMatchAnyWord("any", "all");
         var moveTarget = _target.TryParse(cur);
@@ -1097,7 +1123,18 @@ public sealed class ActionParser
 
     private List<EffectNode> ParseMove(TokenCursor cur, ZoneRef to)
     {
+        var verb = cur.Current.Text.ToLowerInvariant();
         cur.Advance();   // 动词
+
+        // "return it to deck" / "return it to hand" —— 目的地由短语决定。
+        // 只按动词取默认目的地（return -> Hand）会把「回牌库」静默变成「回手牌」。
+        if (verb == "return")
+        {
+            int saveVerb = cur.Position;
+            var explicitTo = PeekDestinationZone(cur);
+            if (explicitTo.HasValue) to = explicitTo.Value;
+            else cur.Seek(saveVerb);
+        }
 
         // "Banish all 1-, 3-, 5-, 7-, and 9-cost cards ..." —— 费用枚举
         if (cur.Current.IsWord("all") && cur.Peek().Kind == TokKind.Number)
@@ -1166,6 +1203,41 @@ public sealed class ActionParser
         var moveNodes = new List<EffectNode> { new MoveZoneNode { Target = target, ToZone = to } };
         moveNodes.AddRange(ParseAndAllTargets(cur, to));
         return moveNodes;
+    }
+
+    /// <summary>
+    /// 向前窥视「to &lt;zone&gt;」短语并返回目标区域，不改动游标。
+    /// 只认明确写出的区域名；没有就返回 null，调用方保留默认值。
+    /// </summary>
+    private static ZoneRef? PeekDestinationZone(TokenCursor cur)
+    {
+        int save = cur.Position;
+        try
+        {
+            // 跳到本句内的 "to"
+            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
+            {
+                if (cur.Current.IsWord("to")) break;
+                cur.Advance();
+            }
+            if (cur.IsAtEnd || !cur.Current.IsWord("to")) return null;
+            cur.Advance();
+
+            // "to your deck" / "to the top of your deck" / "to your hand"
+            if (cur.Current.IsAnyWord("your", "the", "a", "an")) cur.Advance();
+            while (cur.Current.IsAnyWord("top", "bottom", "of", "your", "their")) cur.Advance();
+
+            if (cur.Current.IsAnyWord("deck")) return ZoneRef.Deck;
+            if (cur.Current.IsAnyWord("hand")) return ZoneRef.Hand;
+            if (cur.Current.IsAnyWord("cemetery")) return ZoneRef.Cemetery;
+            if (cur.Current.IsAnyWord("banished")) return ZoneRef.Banished;
+            if (cur.Current.IsAnyWord("field", "board")) return ZoneRef.Board;
+            return null;
+        }
+        finally
+        {
+            cur.Seek(save);
+        }
     }
 
     // ---------- 进化 ----------
@@ -1345,13 +1417,17 @@ public sealed class ActionParser
                 // 丢掉紧跟着的分隔符，让后续动作能接上
                 if (cur.Current.Kind == TokKind.Comma) cur.Advance();
             }
+            // 纹章必须进 CrestArea。
+            // 这里曾写成 ExArea（与 TryParseSingleGrant 里的 Crest: 分支不一致），
+            // 结果是纹章被塞进额外区，PlayerState.CrestArea 永远为空，
+            // 任何"纹章在场"类判定与 MaxCrest 上限都不会生效。
             return new List<EffectNode>
             {
                 new SpawnCardNode
                 {
                     SourceKind = CardSourceKind.CardId,
                     CardName = crestName,
-                    ToZone = ZoneRef.ExArea,
+                    ToZone = ZoneRef.CrestArea,
                     ToOwner = ZoneScope.Self,
                     Count = NumExpr.Const(1),
                 },
@@ -1898,28 +1974,16 @@ public sealed class ActionParser
             deckName.Append(cur.Current.Text);
             cur.Advance();
         }
-        // 牌库替换：清空牌库并把指定牌库装入。
-        // 具名牌库（"the Apocalypse Deck"）由 Battle 层按名字解析成卡表。
+        // 牌库替换是一个原子动作，不是一个"清空 + 生成单卡"的组合：
+        //   · 旧牌库直接丢弃，**不进 Banished**（否则 BanishedCount 被永久污染）
+        //   · 新牌库是具名牌组，由 DeckDefTable 解析成整套卡表
+        // 具名解析失败由 Battle 层报错，绝不静默装进空牌库或伪造单卡。
         return new List<EffectNode>
         {
-            new MoveZoneNode
+            new ReplaceDeckNode
             {
-                Target = new TargetSpec
-                {
-                    SourceKind = TargetSourceKind.Zone,
-                    Zone = ZoneRef.Deck,
-                    Owner = ZoneScope.Self,
-                    Mode = SelectMode.All,
-                },
-                ToZone = ZoneRef.Banished,   // 旧牌库清走
-            },
-            new SpawnCardNode
-            {
-                SourceKind = CardSourceKind.CardId,
-                CardName = deckName.ToString().Trim(),
-                ToZone = ZoneRef.Deck,
-                ToOwner = ZoneScope.Self,
-                Count = NumExpr.Const(1),
+                DeckName = deckName.ToString().Trim(),
+                Owner = ZoneScope.Self,
             },
         };
     }

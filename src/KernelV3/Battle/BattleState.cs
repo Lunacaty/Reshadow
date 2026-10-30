@@ -296,6 +296,15 @@ public sealed class BattleState : IVmWorld
     public RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId)
         => CreateEntity(cardId, toZone, toPlayerId);
 
+    public void ReplaceDeck(int playerId, string deckName, IReadOnlyList<int> cardIds)
+    {
+        var p = Players[playerId];
+        // 旧牌库直接离场：既不进 Banished 也不进 Cemetery，
+        // 否则 BanishedCount / CemeteryCount 会被一次性打爆。
+        p.Deck.Clear();
+        foreach (var id in cardIds) CreateEntity(id, ZoneRef.Deck, playerId);
+    }
+
     public RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId)
     {
         var s = source.Snapshot;

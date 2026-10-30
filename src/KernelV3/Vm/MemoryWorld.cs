@@ -139,6 +139,17 @@ public sealed class MemoryWorld : IVmWorld
         return e;
     }
 
+    public void ReplaceDeck(int playerId, string deckName, IReadOnlyList<int> cardIds)
+    {
+        // 旧牌库直接离场：不进 Banished、不进 Cemetery，否则计数器被污染
+        for (int i = _entities.Count - 1; i >= 0; i--)
+        {
+            var e = _entities[i];
+            if (e.PlayerId == playerId && e.Zone == ZoneRef.Deck) _entities.RemoveAt(i);
+        }
+        foreach (var id in cardIds) SpawnCard(id, ZoneRef.Deck, playerId);
+    }
+
     public RuntimeEntity SpawnCopy(EntityRef src, ZoneRef toZone, int toPlayerId)
     {
         var s = src.Snapshot;

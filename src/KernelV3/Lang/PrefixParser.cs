@@ -40,6 +40,9 @@ public sealed class AbilityHeaderBuilder
     /// <summary>是否已经显式设置了事件（用于 During 的 PassiveAura 兜底不覆盖真实事件）。</summary>
     public bool EventExplicit;
 
+    /// <summary>护符的初始吟唱值。属于卡牌属性，不是代价。</summary>
+    public int? CountdownValue;
+
     public TriggerSpec BuildTrigger() => new()
     {
         Event = Event,
@@ -109,7 +112,14 @@ public sealed class PrefixParser
             cur.TryMatch(TokKind.CloseParen);
         }
         ConsumeDelimiter(cur);
-        b.Costs.Add(new CostSpec { Kind = CostKind.Countdown, Amount = NumExpr.Const(param), Label = "countdown" });
+
+        // Countdown (N) 是护符自身的初始吟唱值，不是代价。
+        // 它与紧跟的 Last Words / Whenever 等能力头**完全独立**：
+        //   · 吟唱是属性：拍下来时为 N，每回合 -1，归零破坏
+        //   · 谢幕曲是触发：被破坏就触发（无论为何被破坏）
+        // 旧实现把它当 CostSpec 并转成 "ctr:countdown >= N" 条件，
+        // 等于要求「吟唱还没减完才能触发谢幕曲」，语义完全错。
+        b.CountdownValue = param;
         return true;
     }
 
@@ -287,18 +297,26 @@ public sealed class PrefixParser
                 // 带参头同时也是**事件**：Engage (N) 是启动式能力，不是 Fanfare。
                 // 之前这里直接 return，而 Event 默认是 OnPlay，
                 // 导致所有护符启动能力都被编译成「打出时」。
+                // 只有**本身即时机**的头才允许改写事件：
+                //   Engage (N)    → 启动式能力
+                //   Countdown (N) → 倒计时到期
+                //
+                // Necromancy / Combo / Rally / Earth Rite / Enhance 是**代价**，
+                // 修饰的是「在什么时机下、满足什么代价才发动」，本身不决定时机。
+                // 之前把它们一律映射成 OnPlay 并置 EventExplicit，于是
+                // "Evolve: Necromancy (4) - ..." 里的 Evolve 被冲掉，
+                // 整条能力变成「打出时」触发 —— 91 张卡因此错标时机。
                 var evFromHead = name switch
                 {
                     "engage" => CoreEvent.OnEngage,
-                    "enhance" => CoreEvent.OnPlay,
                     "countdown" => CoreEvent.OnCountdownExpire,
-                    "necromancy" => CoreEvent.OnPlay,
-                    "combo" => CoreEvent.OnPlay,
-                    "rally" => CoreEvent.OnPlay,
-                    "earth rite" => CoreEvent.OnPlay,
                     _ => (CoreEvent)(-1),
                 };
-                if ((int)evFromHead >= 0) { b.Event = evFromHead; b.EventExplicit = true; }
+                if ((int)evFromHead >= 0 && !b.EventExplicit)
+                {
+                    b.Event = evFromHead;
+                    b.EventExplicit = true;
+                }
                 return true;
             }
             cur.Seek(save);

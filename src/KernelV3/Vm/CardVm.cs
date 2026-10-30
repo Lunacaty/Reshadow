@@ -29,6 +29,15 @@ public sealed partial class CardVm
     private int _nextChoiceId = 1;
     private int _faultBudget = 5000;
 
+    /// <summary>
+    /// 具名牌组表。卡面 "Replace your deck with the Apocalypse Deck"
+    /// 按名字在这里解析成整套卡；未注册的名字会在结算时抛错。
+    /// </summary>
+    public static DeckDefTable DeckDefs { get; set; } = DeckDefTable.CreateDefault();
+
+    /// <summary>符号表。代价执行需要它取 pp / shadow 的真实 Id。</summary>
+    public static GameSchema Schema { get; set; } = GameSchema.CreateDefault();
+
     public CardVm(IVmWorld world)
     {
         _world = world ?? throw new ArgumentNullException(nameof(world));
@@ -292,6 +301,13 @@ public sealed partial class CardVm
                 if (ab.Trigger.Event != ev.Kind) continue;
                 if (!MatchesTrigger(ab.Trigger, ev, e)) continue;
                 if (_eval.EvalBool(ab.Condition, new VmScope { Controller = e.PlayerId }) == false) continue;
+
+                // 代价检查：不能支付就不能发动。
+                // 之前这里完全没有判定，所以 Enhance / Necromancy 等代价形同虚设。
+                var ppKey = Schema.Counter("pp");
+                var shadowKey = Schema.Counter("shadow");
+                if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey)) continue;
+                CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey);
 
                 var scope = new VmScope
                 {

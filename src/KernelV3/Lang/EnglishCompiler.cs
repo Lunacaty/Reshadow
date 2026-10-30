@@ -196,50 +196,93 @@ public sealed class EnglishCompiler
         }
         if (cur.Count > 0) { sentences.Add(cur); sentOptions.Add(curOption); }
 
+        // ★ 选项块终结：选项只延续到「下一个能力头」出现为止。
+        // 少了这一步，"... 2. Deal 2 damage. Enhance (3): Activate all of them instead."
+        // 会把 Enhance 那一句也并进选项 2，整句随后撞墙报错。
+        // 规则：某个选项之后出现 Fanfare / Enhance / Combo ... 这类带冒号或
+        // 短横的能力头，即视为选项块结束，其后所有句子回到 -1。
+        CloseOptionBlockOnHeader(sentences, sentOptions);
+
         // 条件句：把 "If X, Y" 拆成条件 + 动作
         BoolExpr pendingCondition = null;
         var modeOptions = new List<IReadOnlyList<EffectNode>>();
+        // 与 modeOptions 平行的序号表：同一个编号的连续句子并进同一个选项。
+        var modeOptionIds = new List<int>();
         TriggerSpec modeTrigger = null;
         BoolExpr modeCondition = BoolExpr.True;
         List<CostSpec> modeCosts = new List<CostSpec>();
+        SectionZone modeZone = zone;
+        // 模式块引导句携带的选取数量（"Select 2 Modes to activate"）。
+        NumExpr modePick = NumExpr.Const(1);
+
+        // 变量声明句先整体摘出：它可能出现在选项块内部
+        // （"2. Deal X damage ... X is this follower's attack."），
+        // 一旦被当成选项的动作解析，就会撞上「解析器无法推进」。
+        // 声明本身只登记绑定、不产出动作，与它在哪个块里无关。
+        for (int si = 0; si < sentences.Count; si++)
+        {
+            if (IsVariableDeclaration(sentences[si]))
+            {
+                TryBindVariableDeclaration(sentences[si]);
+                sentOptions[si] = -2;   // -2 = 已消费，不再参与后续分支
+            }
+        }
 
         for (int si = 0; si < sentences.Count; si++)
         {
             var sent = sentences[si];
 
-            // 模式选项句：收集到 modeOptions
+            if (sentOptions[si] == -2) continue;
+
+            // 模式选项句：收集到 modeOptions。
+            // 同一个序号下的多句（"1. A. B."）属于同一个选项，
+            // 必须并进同一个 action 列表 —— 之前按句各建一个选项，
+            // 4 句的 "1. 2. 3. 4." 会被拆成 8 个选项，编号形同虚设。
             if (sentOptions[si] >= 0)
             {
                 var oc = new TokenCursor(sent);
-                var ob = _actions.ParseSequence(oc);
+
+                // ★ 选项内部同样要先剥前缀。
+                // "3. Earth Rite (3) - Deal 4 damage ..." 的代价属于这个选项本身，
+                // 直接 ParseSequence 会把 "Earth Rite (3) -" 整段丢掉，
+                // 于是代价数值凭空消失，AST 里只剩一个无条件的伤害。
+                var ohb = new AbilityHeaderBuilder();
+                _prefixes.ParseAll(oc, ohb);
+
+                var ob = oc.IsAtEnd
+                    ? new List<EffectNode>()
+                    : _actions.ParseSequence(oc);
                 oc.AssertEnd("模式选项");
-                modeOptions.Add(ob);
+
+                // 选项级条件 / 代价必须随选项一起保留：
+                // 有代价就包一层 ConditionalNode，让它在结算时真正被判定。
+                if (ohb.Costs.Count > 0 || (ohb.Condition != null && ohb.Condition is not ConstBoolExpr))
+                {
+                    var optCond = AndCosts(ohb.Condition, ohb.Costs);
+                    ob = new List<EffectNode>
+                    {
+                        new ConditionalNode { Condition = optCond, Then = ob },
+                    };
+                }
+
+                if (modeOptions.Count > 0 && modeOptionIds[^1] == sentOptions[si])
+                {
+                    ((List<EffectNode>)modeOptions[^1]).AddRange(ob);
+                }
+                else
+                {
+                    modeOptions.Add(ob);
+                    modeOptionIds.Add(sentOptions[si]);
+                }
                 continue;
             }
 
-            // 遇到非选项句时，先把已收集的模式选项落成一个 BranchModeNode
-            if (modeOptions.Count > 0)
-            {
-                result.Add(new AbilityDef
-                {
-                    Trigger = modeTrigger ?? new TriggerSpec { Event = CoreEvent.OnPlay },
-                    Condition = modeCondition,
-                    Costs = modeCosts,
-                    Body = new List<EffectNode>
-                    {
-                        new BranchModeNode
-                        {
-                            Kind = ModeDispatchKind.Choose,
-                            PickCount = NumExpr.Const(1),
-                            Options = modeOptions,
-                        },
-                    },
-                });
-                modeOptions = new List<IReadOnlyList<EffectNode>>();
-                modeTrigger = null;
-                modeCondition = BoolExpr.True;
-                modeCosts = new List<CostSpec>();
-            }
+            // 遇到非选项句时，先把已收集的模式选项落成一个 BranchModeNode。
+            // 落盘必须发生在解析本句**之前** —— 本句可能正是一个新的模式块引导句
+            // （"1. ... 2. ... Evolve: Select a Mode to activate." 里那个 Evolve 头），
+            // 先落盘才能保证两段选项不会被并进同一个 BranchModeNode。
+            FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
+                           ref modeCondition, ref modeCosts, ref modeZone, ref modePick);
 
             var c = new TokenCursor(sent);
 
@@ -316,9 +359,42 @@ public sealed class EnglishCompiler
             var hb = new AbilityHeaderBuilder();
             _prefixes.ParseAll(c, hb);
 
+                // Countdown (N) 是护符属性：拍下来时为 N，每回合 -1，归零破坏。
+                // 与谢幕曲 / Whenever 等触发完全独立，必须独立成一条能力。
+                if (hb.CountdownValue.HasValue)
+                {
+                    result.Add(new AbilityDef
+                    {
+                        Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                        Condition = BoolExpr.True,
+                        Costs = new[] { new CostSpec
+                        {
+                            Kind = CostKind.Countdown,
+                            Amount = NumExpr.Const(hb.CountdownValue.Value),
+                            Label = "countdown",
+                        } },
+                        Body = Array.Empty<EffectNode>(),
+                    });
+                    hb.CountdownValue = null;
+                }
             if (c.IsAtEnd)
             {
-                // 只有前缀没有动作：常驻光环或纯触发声明
+                // 只有前缀没有动作。
+                // 若是 Countdown (N) 这类"带数值的头部"，数值本身是卡的
+                // 重要属性（护符剩余回合），不能因为这一段没有动作就丢掉：
+                // 卡面常写成 "Countdown (4)" 单独一段，<hr> 后才是正文。
+
+                if (hb.Costs.Count > 0 && !hb.EventExplicit)
+                {
+                    result.Add(new AbilityDef
+                    {
+                        Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                        Condition = AndZone(zone, hb.Condition),
+                        Costs = hb.Costs,
+                        Body = Array.Empty<EffectNode>(),
+                    });
+                    continue;
+                }
                 if (!hb.EventExplicit) continue;
                 result.Add(new AbilityDef
                 {
@@ -327,6 +403,20 @@ public sealed class EnglishCompiler
                     Costs = hb.Costs,
                     Body = Array.Empty<EffectNode>(),
                 });
+                continue;
+            }
+
+            // 模式引导句（"Select a Mode to activate." / "Select 2 Modes..."）
+            // 本身不产出动作（ParseSelect 把它消费成空 body），但它确定了
+            // 后续 "1. 2. 3." 选项块的选取数量，必须先于空 body 判定接住。
+            var pick = ExtractModePick(sent);
+            if (pick != null)
+            {
+                modeTrigger = hb.BuildTrigger();
+                modeCondition = AndCosts(hb.Condition, hb.Costs);
+                modeCosts = hb.Costs;
+                modeZone = zone;
+                modePick = pick;
                 continue;
             }
 
@@ -343,30 +433,23 @@ public sealed class EnglishCompiler
             });
         }
 
+        // 收尾：把剩余的模式选项落成 BranchModeNode
+        FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
+                       ref modeCondition, ref modeCosts, ref modeZone, ref modePick);
+
+        // 元模式（Meta-Mode）先行：把 "... 1. ... 2. ... Enhance (3): Activate all of them instead."
+        // 合成「条件成立时把前一个模式块的选取数放宽为全部」。
+        // 必须在 InsteadWeaver 之前做，否则 "Activate all of them" 会被
+        // 误当成「启动已选中的护符」。
+        // Enhance 累加展开：必须在 MetaMode 之前，否则模式块会先被合并。
+        result = EnhanceWeaver.Weave(result, _lex);
+
+        result = MetaModeWeaver.Weave(result, _lex);
+
         // 替代语义：把 "... Deal 2 damage. Combo (3) - Deal 4 damage instead."
         // 合成为 ConditionalNode(cond, Then: 后一句, Else: 前一句)。
         // 之前 instead 被当空气吃掉，导致两句都执行（合打 6 点）。
         result = InsteadWeaver.Weave(result, _lex);
-
-        // 收尾：把剩余的模式选项落成 BranchModeNode
-        if (modeOptions.Count > 0)
-        {
-            result.Add(new AbilityDef
-            {
-                Trigger = modeTrigger ?? new TriggerSpec { Event = CoreEvent.OnPlay },
-                Condition = modeCondition,
-                Costs = modeCosts,
-                Body = new List<EffectNode>
-                {
-                    new BranchModeNode
-                    {
-                        Kind = ModeDispatchKind.Choose,
-                        PickCount = NumExpr.Const(1),
-                        Options = modeOptions,
-                    },
-                },
-            });
-        }
 
         return result;
     }
@@ -381,6 +464,169 @@ public sealed class EnglishCompiler
     /// 引号块之后紧跟的能力头（'...' Super-Evolve: / ... Enhance (7): / ... If ...）
     /// 必须切开，否则会被当成同一动作序列的一部分。
     /// </summary>
+    /// <summary>
+    /// 能力头词表 —— 出现在选项块之后即标志选项块结束。
+    /// 与 PrefixParser 的头部词表保持同源，但这里只用于「断开选项块」。
+    /// </summary>
+    /// <summary>
+    /// 只有这些词才标志「选项块到此结束」。
+    ///
+    /// 刻意**不含** Combo / Necromancy / Rally / Earth Rite 这类代价前缀：
+    /// 它们是选项自身的修饰（"3. Combo (3) - Deal 4 damage"），
+    /// 把它当块终止符会把代价连同选项一起摘出去，代价就静默丢失了。
+    /// </summary>
+    private static readonly string[] HeaderWords =
+    {
+        "fanfare", "last", "strike", "clash", "evolve", "super-evolve", "super",
+        "enhance", "engage", "countdown",
+        "whenever", "when", "aura", "during", "once", "on", "at", "if",
+        "skybound", "super skybound", "activates", "fuse",
+    };
+
+    /// <summary>
+    /// 把「能力头之后的句子」从选项块里摘出来。
+    ///
+    /// 句子拆分阶段只知道「从哪儿开始是新的 1./2./3.」，
+    /// 不知道选项块在哪儿结束。结束判据是**能力头的出现**：
+    ///   "1. Draw a card. 2. Deal 2 damage. Enhance (3): Activate all of them instead."
+    /// 其中 Enhance 一句不属于选项 2。
+    /// </summary>
+    private static void CloseOptionBlockOnHeader(List<List<Token>> sentences, List<int> sentOptions)
+    {
+        bool closed = false;
+        for (int i = 0; i < sentences.Count; i++)
+        {
+            if (sentOptions[i] < 0) { closed = false; continue; }
+            if (closed) { sentOptions[i] = -1; continue; }
+
+            // 选项内出现能力头 → 本句**自己**就脱离选项块，其后句子也全部脱离。
+            // 只置 closed 不摘掉本句，能力头仍会留在选项 2 里撞墙。
+            if (StartsWithHeader(sentences[i]))
+            {
+                sentOptions[i] = -1;
+                closed = true;
+            }
+        }
+    }
+
+    /// <summary>该句是否以能力头开头（Fanfare: / Enhance (3): / Combo (3) - …）。</summary>
+    private static bool StartsWithHeader(IReadOnlyList<Token> sent)
+    {
+        if (sent.Count == 0) return false;
+
+        // 能力头必须以冒号或短横收尾才算数，否则 "On the field" 这类短语会误判
+        bool hasDelimiter = false;
+        for (int i = 0; i < sent.Count && i < 8; i++)
+        {
+            if (sent[i].Kind == TokKind.Colon || sent[i].Kind == TokKind.Dash) { hasDelimiter = true; break; }
+            if (sent[i].Kind == TokKind.Period || sent[i].Kind == TokKind.Comma) break;
+        }
+        if (!hasDelimiter) return false;
+
+        var head = sent[0].Text.ToLowerInvariant();
+        return Array.IndexOf(HeaderWords, head) >= 0;
+    }
+
+    /// <summary>
+    /// 识别模式块引导句并取出选取数量。
+    ///
+    /// 卡面写法：
+    ///   "Select a Mode to activate."   → 1
+    ///   "Select 2 Modes to activate."  → 2
+    ///   "Activate 2 random abilities from the following." → 2
+    ///   "Activate an ability in sequence from the following." → 1
+    ///
+    /// 返回 null 表示这不是模式引导句。
+    /// </summary>
+    private static NumExpr ExtractModePick(IReadOnlyList<Token> sent)
+    {
+        if (sent.Count == 0) return null;
+
+        // 引导句可能带能力头前缀：
+        //   "Super-Evolve: Select a Mode to activate."
+        // 前缀在 ParseAll 阶段已从游标剥离，但传进来的 sent 仍是**原始整句**，
+        // 所以不能只认句首，要在整句里定位 "select"。
+        int i = -1;
+        for (int k = 0; k < sent.Count; k++)
+        {
+            if (sent[k].IsAnyWord("select", "activate")) { i = k; break; }
+        }
+        if (i < 0) return null;
+        i++;
+
+        int n = 1;
+        bool sawDigit = false;
+        if (i < sent.Count && sent[i].Kind == TokKind.Number)
+        {
+            n = (int)sent[i].Value;
+            sawDigit = true;
+            i++;
+        }
+
+        bool isMode = false;
+        for (int k = i; k < sent.Count && k < i + 4; k++)
+        {
+            if (sent[k].IsAnyWord("mode", "modes", "abilities", "ability")) { isMode = true; break; }
+        }
+        if (!isMode) return null;
+
+        // 必须真的是「引导后续选项块」的形状，否则只是普通 Select
+        bool leadsBlock = false;
+        for (int k = i; k < sent.Count; k++)
+        {
+            if (sent[k].IsAnyWord("following", "activate", "activated")) { leadsBlock = true; break; }
+        }
+        if (!leadsBlock) return null;
+
+        return NumExpr.Const(sawDigit ? n : 1);
+    }
+
+    /// <summary>
+    /// 把已收集的模式选项落成一个 BranchModeNode。
+    /// 选项为空时什么也不做，且不改变任何状态。
+    ///
+    /// ★ 修复（对照设计 3 §5.1.2）：三件事必须一起做，否则嵌套模式会串味——
+    ///   1. zone 随块继承：进化段的选项必须带 Evolved 条件
+    ///   2. PickCount 来自引导句，不是写死 1
+    ///   3. 落盘后把块状态彻底复位，避免上一块的触发头污染下一块
+    /// </summary>
+    private void FlushModeBlock(
+        List<AbilityDef> result,
+        ref List<IReadOnlyList<EffectNode>> options,
+        ref List<int> optionIds,
+        ref TriggerSpec trigger,
+        ref BoolExpr condition,
+        ref List<CostSpec> costs,
+        ref SectionZone zone,
+        ref NumExpr pick)
+    {
+        if (options.Count == 0) return;
+
+        result.Add(new AbilityDef
+        {
+            Trigger = trigger ?? new TriggerSpec { Event = CoreEvent.OnPlay },
+            Condition = AndZone(zone, condition),
+            Costs = costs,
+            Body = new List<EffectNode>
+            {
+                new BranchModeNode
+                {
+                    Kind = ModeDispatchKind.Choose,
+                    PickCount = pick,
+                    Options = options,
+                },
+            },
+        });
+
+        options = new List<IReadOnlyList<EffectNode>>();
+        optionIds = new List<int>();
+        trigger = null;
+        condition = BoolExpr.True;
+        costs = new List<CostSpec>();
+        zone = SectionZone.Normal;
+        pick = NumExpr.Const(1);
+    }
+
     /// <summary>
     /// "Ward Last Words: ..." → ["Ward", ".", "Last Words: ..."]
     /// 裸关键词后面紧跟能力头时必须断开。
@@ -829,24 +1075,35 @@ public sealed class EnglishCompiler
         BoolExpr acc = cond ?? BoolExpr.True;
         foreach (var c in costs)
         {
-            var counterName = c.Kind switch
+            // 代价 → 布尔条件的映射。
+            // 之前只映射了 combo / rally / necromancy，其余一律 continue 跳过，
+            // 于是 "Earth Rite (3) - ..." 与 "Enhance (8): ..." 的数值整个蒸发。
+            var expr = c.Kind switch
             {
-                CostKind.TurnPlayCount => "combo",
-                CostKind.MatchPlayCount => "match_play",
-                CostKind.Necromance => "shadow",
+                CostKind.TurnPlayCount => Compare("combo", c.Amount),
+                CostKind.MatchPlayCount => Compare("match_play", c.Amount),
+                CostKind.Necromance => Compare("shadow", c.Amount),
+                // Earth Rite (N)：需要破坏自己 N 个护符 —— 用 earth_sigil 计数判定
+                CostKind.DestroyAlly => Compare("earth_sigil", c.Amount),
+                // Enhance (N) / Engage (N)：需要 N 点 PP
+                CostKind.UsePp => Compare("pp", c.Amount),
+                // Countdown (N)：护符每回合减 1，减到 0 触发。
+                // 它不是"条件"而是"初始计数"，但数值必须留在 AST 里 ——
+                // 之前一律 continue 跳过，Countdown (4) 的 4 就整条蒸发了。
+                CostKind.Countdown => Compare("countdown", c.Amount),
                 _ => null,
             };
-            if (counterName == null) continue;
-
-            var cmp = new CompareExpr
-            {
-                Left = NumExpr.Ctr(_lex.Counter(counterName)),
-                Op = CompareOp.Ge,
-                Right = c.Amount,
-            };
-            acc = BoolExpr.And(acc, cmp);
+            if (expr == null) continue;
+            acc = BoolExpr.And(acc, expr);
         }
         return acc;
+
+        CompareExpr Compare(string counter, NumExpr amount) => new()
+        {
+            Left = NumExpr.Ctr(_lex.Counter(counter)),
+            Op = CompareOp.Ge,
+            Right = amount ?? NumExpr.Const(0),
+        };
     }
 
     private static BoolExpr AndZone(SectionZone zone, BoolExpr cond)
