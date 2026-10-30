@@ -452,9 +452,45 @@ public sealed class ActionParser
     private List<EffectNode> ParseDraw(TokenCursor cur)
     {
         cur.ExpectWord("draw");
+
+        // "Draw a card" / "Draw an amulet" 里的冠词不是目标。
+        // 之前直接 ParseNumExpr → TryMatchAnyWord("card") 失败，
+        // 于是 "a card" 被 TargetParser 当成目标，
+        // 整条抽牌变成了「把牌库里一张随机牌移到手牌」。
+        cur.TryMatchAnyWord("a", "an", "the");
+
         var n = ParseNumExpr(cur);
+        cur.TryMatchAnyWord("a", "an", "the");
+
+        // "Draw an X-cost follower" / "Draw a 3-cost spell"：
+        // 这里的 X / 3 是「费用过滤」，不是抽牌张数。
+        // ParseNumExpr 已经把它当成数量吃掉了，剩下 "-cost follower" 无人识别。
+        NumExpr costFilter = null;
+        if (cur.Current.Kind == TokKind.Dash)
+        {
+            cur.Advance();                       // -
+            cur.TryMatchAnyWord("cost");
+            costFilter = n;
+            n = NumExpr.Const(1);                // 数量恢复为 1
+            cur.TryMatchAnyWord("a", "an", "the");
+        }
+
         cur.TryMatchAnyWord("card", "cards");
         var filter = _target.TryParse(cur);
+
+        // 费用过滤归到 Where
+        if (costFilter != null)
+        {
+            var cf = costFilter;
+            if (filter == null)
+                filter = new TargetSpec { SourceKind = TargetSourceKind.Zone, Zone = ZoneRef.Deck, Owner = ZoneScope.Self };
+            filter = filter.WithWhere(new CompareExpr
+            {
+                Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
+                Op = CompareOp.Eq,
+                Right = cf,
+            });
+        }
 
         // 定向检索必须继承 filter 的 CardId / CardName / Mode：
         //   "Draw all copies of Rusty"  -> Mode=All + CardId

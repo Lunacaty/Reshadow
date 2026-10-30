@@ -66,6 +66,7 @@ public static class VmSelfTest
         GateInvokeZone();
         GateInvokeSummon();
         GateSigilProtection();
+        GateDrawSemantics();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -1249,6 +1250,29 @@ public static class VmSelfTest
         Check("门禁26 护符免能力破坏 / 层数归 0 仍破坏",
               exists && immuneToAbility && diesAtZero,
               "exists=" + exists + " immune=" + immuneToAbility + " diesAtZero=" + diesAtZero);
+    }
+
+    /// <summary>门禁27：抽牌语义。普通抽牌必须是「牌库顶」，不能退化成随机。</summary>
+    private static void GateDrawSemantics()
+    {
+        var lex = new Lang.Lexicon();
+        lex.AddKeyword("ward");
+        lex.AddCard("Rusty", 777);
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+
+        var r1 = comp.Compile("Fanfare: Draw a card.");
+        var d1 = r1.Abilities.Count > 0 ? r1.Abilities[0].Body.OfType<Ast.MoveZoneNode>().FirstOrDefault() : null;
+        bool topOfDeck = d1?.Target != null && d1.Target.Mode == SelectMode.First
+                         && d1.Target.Zone == ZoneRef.Deck;
+
+        var r2 = comp.Compile("Fanfare: Draw all copies of Rusty.");
+        string s2 = r2.Abilities.Count > 0
+            ? string.Join("|", r2.Abilities[0].Body.Select(Lang.AstEnglishPrinter.PrintNode)) : "";
+        bool allCopies = s2.Contains("Rusty") && s2.Contains("All");
+
+        Check("门禁27 抽牌语义（牌库顶 / 指定卡）", topOfDeck && allCopies,
+              "top=" + topOfDeck + " all=" + allCopies);
     }
 
     private static void Check(string name, bool ok, string detail)
