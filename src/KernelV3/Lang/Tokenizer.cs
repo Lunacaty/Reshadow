@@ -180,8 +180,10 @@ public sealed class Tokenizer
             {
                 int j = i;
                 while (j < text.Length && char.IsDigit(text[j])) j++;
-                // 选项序号：数字 + '.' + 空格
-                if (j < text.Length && text[j] == '.' && j + 1 < text.Length && text[j + 1] == ' ')
+                // 选项序号：数字 + '.'（可跟空格，也可直接句末）
+                bool isOption = j < text.Length && text[j] == '.'
+                    && (j + 1 >= text.Length || text[j + 1] == ' ');
+                if (isOption)
                 {
                     tokens.Add(new Token
                     {
@@ -190,7 +192,7 @@ public sealed class Tokenizer
                         Value = int.TryParse(text.Substring(i, j - i), out var ov) ? ov : 0,
                         Pos = i,
                     });
-                    i = j + 2;
+                    i = (j + 1 < text.Length && text[j + 1] == ' ') ? j + 2 : j + 1;
                     continue;
                 }
                 var numText = text.Substring(i, j - i);

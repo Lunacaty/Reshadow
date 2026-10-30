@@ -449,6 +449,23 @@ public sealed class TargetParser
             owner = ZoneScope.Any; ownerSet = true; matched = true;
         }
 
+        // ---- 6c. 未知修饰词（未注册的兵种，如 Mysteria / Enhanced）----
+        // 它们不是词典里的 Trait/Clan，但语法位置是前置定语，跳过即可
+        while (!cur.IsAtEnd && cur.Current.Kind == TokKind.Word
+               && !cur.Current.IsAnyWord("follower", "followers", "amulet", "amulets",
+                                          "spell", "spells", "card", "cards",
+                                          "leader", "leaders", "it", "them", "this",
+                                          "enemy", "allied", "your", "the", "a", "an",
+                                          "copy", "copies", "and", "or", "with", "on",
+                                          "in", "from", "at", "to", "by", "that", "whose",
+                                          "duplicate", "duplicates", "ally", "allies",
+                                          "enemies", "random", "other", "another",
+                                          "differently", "named", "unselected", "leftmost",
+                                          "exact", "all"))
+        {
+            cur.Advance();
+        }
+
         // ---- 7. 卡种 / 卡名 ----
         if (cur.MatchPhrase("ally", "or", "enemy") || cur.MatchPhrase("allies", "or", "enemies"))
         {

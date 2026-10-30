@@ -40,9 +40,12 @@ public sealed class ActionParser
         var result = new List<EffectNode>();
         while (!cur.IsAtEnd)
         {
-            // 跳过句点、分号、选项标记，以及动作之间的连接词 (",", "and", "then")
-            if (cur.Current.Kind == TokKind.OptionMark ||
-                cur.Current.Kind == TokKind.Period ||
+            // OptionMark 是**新的选项**起点，必须终止当前动作序列，
+            // 交给 EnglishCompiler 的选项聚合逻辑处理；不能在这里跳过。
+            if (cur.Current.Kind == TokKind.OptionMark) break;
+
+            // 跳过句点、分号，以及动作之间的连接词 (",", "and", "then")
+            if (cur.Current.Kind == TokKind.Period ||
                 cur.Current.Kind == TokKind.Semicolon ||
                 cur.Current.Kind == TokKind.Comma ||
                 cur.Current.IsAnyWord("and", "then"))
@@ -71,7 +74,7 @@ public sealed class ActionParser
             if (node != null) result.AddRange(node);
 
             if (cur.Position == before)
-                throw new LangException("无法解析的动作：" + cur.Current + "（位置 " + cur.Current.Pos + "）");
+                throw LangException.At("无法解析的动作", "解析器在此处无法推进", cur, cur.All);
         }
         return result;
     }
@@ -1199,6 +1202,13 @@ public sealed class ActionParser
             }
         }
 
+        // "transform it based on ..." —— 没有 into，直接是融合分派
+        if (cur.Current.IsWord("based") || (cur.Current.IsWord("it") && cur.Peek().IsWord("based")))
+        {
+            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
+            return new List<EffectNode> { new MacroNode { Macro = _lex.Macro("fuse_switch") } };
+        }
+
         cur.TryMatchAnyWord("into");
         cur.TryMatchAnyWord("an", "a");
         cur.TryMatchAnyWord("exact", "copies", "copy");
@@ -1212,12 +1222,25 @@ public sealed class ActionParser
             return new List<EffectNode> { new TransformNode { Target = target, IntoCardId = id, IntoCardName = nm } };
         }
 
+        // "transform it based on the total cost of the cards fused" —— 按融合费用分派
+        if (cur.Current.IsWord("based") && cur.Peek().IsWord("on"))
+        {
+            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
+            return new List<EffectNode>
+            {
+                new MacroNode
+                {
+                    Macro = _lex.Macro("fuse_switch"),
+                },
+            };
+        }
+
         // "exact copies of random followers in your deck"
         cur.TryMatchAnyWord("exact", "copies", "copy");
         cur.TryMatchAnyWord("of");
         var copySrc = _target.TryParse(cur);
         if (copySrc == null)
-            throw new LangException("transform into 后面既不是卡名也不是可解析的目标集合");
+            throw LangException.At("transform into", "既不是卡名也不是可解析的目标集合", cur, cur.All);
         return new List<EffectNode> { new TransformNode { Target = target, CopySource = copySrc } };
     }
 

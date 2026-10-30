@@ -415,8 +415,9 @@ public sealed class EnglishCompiler
             if (i + 1 >= tokens.Count) continue;
 
             var nx = tokens[i + 1];
+            // OptionMark 本身就是切分边界，不必再插 Period
             if (nx.Kind == TokKind.Eof || nx.Kind == TokKind.Period
-                || nx.Kind == TokKind.Comma) continue;
+                || nx.Kind == TokKind.Comma || nx.Kind == TokKind.OptionMark) continue;
             if (nx.IsAnyWord("and", "until")) continue;
 
             // 引号后还有内容，且不是连接词 -> 切开

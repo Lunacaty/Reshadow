@@ -28,6 +28,9 @@ public sealed class TokenCursor
     }
 
     public int Position => _pos;
+
+    /// <summary>完整的 token 列表（诊断用）。</summary>
+    public IReadOnlyList<Token> All => _tokens;
     public int Length => _tokens.Count;
     public bool IsAtEnd => Current.Kind == TokKind.Eof;
 
@@ -112,7 +115,7 @@ public sealed class TokenCursor
         // 句末的句号/分号允许残留
         while (Current.Kind == TokKind.Period || Current.Kind == TokKind.Semicolon) Advance();
         if (!IsAtEnd)
-            throw new LangException($"{context}：句尾还有未消费的词 \"{Current}\"（位置 {Current.Pos}）");
+            throw LangException.At(context, "句尾还有未消费的词", this, All);
     }
 
     /// <summary>不报错的版本：返回剩余 token，供上层决定如何处理。</summary>
@@ -142,4 +145,8 @@ public sealed class TokenCursor
 public sealed class LangException : Exception
 {
     public LangException(string message) : base(message) { }
+
+    /// <summary>在 cursor 处报错，自动附带完整 token 流与原文。</summary>
+    public static LangException At(string stage, string why, TokenCursor cur, System.Collections.Generic.IReadOnlyList<Token> tokens)
+        => new(CompilerTrace.BuildError(stage, why, cur, tokens));
 }
