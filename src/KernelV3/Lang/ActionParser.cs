@@ -1170,7 +1170,35 @@ public sealed class ActionParser
     private List<EffectNode> ParseTransform(TokenCursor cur)
     {
         cur.ExpectWord("transform");
+
+        // 先找 into 的位置："transform <目标> into <结果>"
+        // 直接 TryParse 目标可能把 into 之后的内容一起吃掉
+        int saveT = cur.Position;
         var target = _target.TryParse(cur) ?? TargetSpec.Self;
+
+        // 若目标解析越过了 into，则回退到 into 之前重解析
+        if (!cur.Current.IsWord("into"))
+        {
+            int intoPos = -1;
+            for (int k = saveT; k < cur.Length; k++)
+            {
+                var probe = new TokenCursor(new List<Token>());
+            }
+            // 回退：从 saveT 重新扫到 into
+            cur.Seek(saveT);
+            var buffered = new List<Token>();
+            while (!cur.IsAtEnd && !cur.Current.IsWord("into"))
+            {
+                buffered.Add(cur.Current);
+                cur.Advance();
+            }
+            if (buffered.Count > 0)
+            {
+                var tcur = new TokenCursor(buffered);
+                target = _target.TryParse(tcur) ?? TargetSpec.Self;
+            }
+        }
+
         cur.TryMatchAnyWord("into");
         cur.TryMatchAnyWord("an", "a");
         cur.TryMatchAnyWord("exact", "copies", "copy");
@@ -1184,6 +1212,9 @@ public sealed class ActionParser
             return new List<EffectNode> { new TransformNode { Target = target, IntoCardId = id, IntoCardName = nm } };
         }
 
+        // "exact copies of random followers in your deck"
+        cur.TryMatchAnyWord("exact", "copies", "copy");
+        cur.TryMatchAnyWord("of");
         var copySrc = _target.TryParse(cur);
         if (copySrc == null)
             throw new LangException("transform into 后面既不是卡名也不是可解析的目标集合");
