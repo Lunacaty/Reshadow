@@ -125,7 +125,8 @@ public sealed class PrefixParser
         // 消费融合材料描述，直到下一个已知头/触发词
         while (!cur.IsAtEnd &&
                !cur.Current.IsAnyWord("whenever", "when", "fanfare", "evolve", "super-evolve",
-                                      "at", "draw", "deal", "transform", "summon", "give", "destroy"))
+                                      "at", "draw", "deal", "transform", "summon", "give", "destroy")
+               && !cur.Current.IsWord("when"))
         {
             cur.Advance();
         }

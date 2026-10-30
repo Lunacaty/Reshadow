@@ -522,8 +522,11 @@ public sealed class TargetParser
             }
             else if (cur.Current.IsAnyWord("it", "them"))
             {
-                // "all enemy copies of it" -> 指向上一条动作的目标
+                // "all enemy copies of it from the field" -> 指向上一条动作的目标
                 cur.Advance();
+                cur.TryMatchAnyWord("from", "on");
+                cur.TryMatchAnyWord("the");
+                cur.TryMatchAnyWord("field");
                 return new TargetSpec
                 {
                     SourceKind = TargetSourceKind.Slot,

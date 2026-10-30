@@ -465,6 +465,11 @@ public sealed class ActionParser
                 // "give +3/+3 instead" —— 省略目标时默认本卡
                 first = TargetSpec.Self;
             }
+            if (first == null && cur.Current.IsAnyWord("the", "an") && cur.Peek().IsAnyWord("enemy"))
+            {
+                cur.Advance();
+                first = TargetSpec.OpponentLeader;
+            }
             if (first == null && cur.Current.IsWord("your"))
             {
                 // "give your faith "..."" —— 给资源挂能力，退化为 Self
@@ -521,6 +526,12 @@ public sealed class ActionParser
 
                 // "Bane or Ward at random" —— or 也视为并列
                 if (cur.Current.IsWord("or")) { cur.Advance(); hadAnd = true; }
+                // "at random" 收尾短语
+                if (cur.Current.IsWord("at") && cur.Peek().IsWord("random"))
+                {
+                    cur.Advance(); cur.Advance();
+                    hadAnd = true;
+                }
                 if (!hadComma && !hadAnd) break;
                 if (!IsGrantStart(cur)) { cur.Seek(sepSave); break; }
             }
@@ -679,6 +690,14 @@ public sealed class ActionParser
 
         if (cur.MatchPhrase("an", "exact", "copy") || cur.MatchPhrase("an", "exact", "copies"))
             isCopy = true;
+        else if (cur.Current.Kind == TokKind.Number && cur.Peek().IsAnyWord("exact", "copy", "copies"))
+        {
+            copyCount = NumExpr.Const(cur.Current.Value);
+            cur.Advance();
+            cur.TryMatchAnyWord("exact");
+            cur.TryMatchAnyWord("copy", "copies");
+            isCopy = true;
+        }
         else if (cur.MatchPhrase("a", "copy") || cur.MatchPhrase("a", "copies"))
             isCopy = true;
         else if (cur.Current.Kind == TokKind.Number)
@@ -798,6 +817,46 @@ public sealed class ActionParser
     private List<EffectNode> ParseMove(TokenCursor cur, ZoneRef to)
     {
         cur.Advance();   // 动词
+
+        // "Banish all 1-, 3-, 5-, 7-, and 9-cost cards ..." —— 费用枚举
+        if (cur.Current.IsWord("all") && cur.Peek().Kind == TokKind.Number)
+        {
+            int se = cur.Position;
+            cur.Advance();
+            var costs = new List<int>();
+            while (cur.Current.Kind == TokKind.Number)
+            {
+                costs.Add(cur.Current.Value);
+                cur.Advance();
+                if (cur.Current.Kind == TokKind.Dash) cur.Advance();
+                if (cur.Current.Kind == TokKind.Comma) { cur.Advance(); continue; }
+                if (cur.Current.IsWord("and")) { cur.Advance(); continue; }
+                break;
+            }
+            if (costs.Count > 0 && cur.MatchWord("cost"))
+            {
+                var ors = new List<BoolExpr>();
+                foreach (var cc in costs)
+                    ors.Add(new CompareExpr
+                    {
+                        Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
+                        Op = CompareOp.Eq,
+                        Right = NumExpr.Const(cc),
+                    });
+                var t = _target.TryParse(cur);
+                var spec = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Zone,
+                    Owner = t?.Owner ?? ZoneScope.Self,
+                    Zone = t?.Zone ?? ZoneRef.Deck,
+                    Mode = SelectMode.All,
+                    Where = ors.Count == 1 ? ors[0] : BoolExpr.Or(ors.ToArray()),
+                };
+                return new List<EffectNode> { new MoveZoneNode { Target = spec, ToZone = to } };
+            }
+            cur.Seek(se);
+        }
+
         // "Destroy X random enemy followers"：X 数量 + random 修饰
         int forcedCount = 0;
         bool forcedRandom = false;
