@@ -127,6 +127,32 @@ public sealed class ActionParser
             case "remove": return ParseRemove(cur);
             case "replace": return ParseReplace(cur);
             case "halve": return ParseHalve(cur);
+            case "spend":
+            {
+                cur.Advance();
+                var amt = ParseNumExpr(cur);
+                cur.TryMatchAnyWord("play");
+                cur.TryMatchAnyWord("point", "points");
+                var nodes = new List<EffectNode>
+                {
+                    new ModifyCounterNode
+                    {
+                        Counter = _lex.Counter("pp"),
+                        Op = CounterOp.Add,
+                        Delta = NumExpr.Sub(NumExpr.Const(0), amt),
+                    },
+                };
+                if (cur.MatchWord("to")) nodes.AddRange(ParseSequence(cur));
+                return nodes;
+            }
+            case "invoke":
+            {
+                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
+                return new List<EffectNode>
+                {
+                    new MoveZoneNode { Target = TargetSpec.Self, ToZone = ZoneRef.Board },
+                };
+            }
             case "reduce":
             {
                 // "Reduce your faith's value by N to <动作>"
@@ -157,7 +183,6 @@ public sealed class ActionParser
             case "activate": return ParseActivate(cur);
             case "consume": return ParseConsume(cur);
             case "swap": return ParseSwap(cur);
-            case "invoke": return ParseInvoke(cur);
             case "fully": return ParseFully(cur);
             case "your": return ParseOpponentDraws(cur);
             case "it": return ParseItCosts(cur);
@@ -435,6 +460,18 @@ public sealed class ActionParser
             // 1. 解析 1 个或多个并列目标
             var targets = new List<TargetSpec>();
             var first = _target.TryParse(cur);
+            if (first == null && IsGrantStart(cur))
+            {
+                // "give +3/+3 instead" —— 省略目标时默认本卡
+                first = TargetSpec.Self;
+            }
+            if (first == null && cur.Current.IsWord("your"))
+            {
+                // "give your faith "..."" —— 给资源挂能力，退化为 Self
+                cur.Advance();
+                cur.TryMatchAnyWord("faith", "crest");
+                first = TargetSpec.Self;
+            }
             if (first == null)
                 throw new LangException("Give 缺少目标，停在 " + cur.Current);
             targets.Add(first);
@@ -482,6 +519,8 @@ public sealed class ActionParser
                 if (hadComma) cur.Advance();
                 if (cur.Current.IsWord("and")) { cur.Advance(); hadAnd = true; }
 
+                // "Bane or Ward at random" —— or 也视为并列
+                if (cur.Current.IsWord("or")) { cur.Advance(); hadAnd = true; }
                 if (!hadComma && !hadAnd) break;
                 if (!IsGrantStart(cur)) { cur.Seek(sepSave); break; }
             }
@@ -781,7 +820,9 @@ public sealed class ActionParser
             };
         }
         ConsumeDestination(cur);
-        return new List<EffectNode> { new MoveZoneNode { Target = target, ToZone = to } };
+        var moveNodes = new List<EffectNode> { new MoveZoneNode { Target = target, ToZone = to } };
+        moveNodes.AddRange(ParseAndAllTargets(cur, to));
+        return moveNodes;
     }
 
     // ---------- 进化 ----------
@@ -1079,6 +1120,11 @@ public sealed class ActionParser
             times = NumExpr.Const(cur.Current.Value);
             cur.Advance();
         }
+        else if (cur.Current.IsAnyWord("x", "y", "z"))
+        {
+            times = NumExpr.Var(cur.Current.Text.ToUpperInvariant());
+            cur.Advance();
+        }
         cur.TryMatchAnyWord("time", "times");
 
         return new List<EffectNode>
@@ -1158,6 +1204,21 @@ public sealed class ActionParser
     // ---------- 补充：修饰头 / 参数 / 收尾 ----------
 
     /// <summary>消费 "to your hand" / "to the field" 这类收尾短语。</summary>
+    /// <summary>"and all followers" / "and all enemy copies of it" 这类并列全体目标。</summary>
+    private List<EffectNode> ParseAndAllTargets(TokenCursor cur, ZoneRef to)
+    {
+        var nodes = new List<EffectNode>();
+        while (cur.Current.IsWord("and"))
+        {
+            cur.Advance();
+            var t = _target.TryParse(cur);
+            if (t == null) { cur.TryMatchAnyWord("all"); t = _target.TryParse(cur); }
+            if (t == null) break;
+            nodes.Add(new MoveZoneNode { Target = t, ToZone = to });
+        }
+        return nodes;
+    }
+
     private void ConsumeDestination(TokenCursor cur)
     {
         while (cur.Current.IsAnyWord("to"))

@@ -155,22 +155,82 @@ public static class ConditionCompiler
                 Right = NumExpr.Const(ReadNumber(c)),
             };
 
-        if (c.MatchPhrase("this", "card's", "cost", "is") && c.Peek().Kind == TokKind.Number)
+        if (c.Current.IsWord("this") && c.Peek().IsWord("card's")
+            && c.Peek(2).IsWord("cost") && c.Peek(3).IsWord("is")
+            && c.Peek(4).Kind == TokKind.Number)
         {
-            cur_skip: ;
-            var sv = c.Position;
-            c.Advance();
-            if (c.Current.Kind == TokKind.Number)
+            c.Advance(); c.Advance(); c.Advance(); c.Advance();
+            int cv = c.Current.Value; c.Advance();
+            return new CompareExpr
             {
-                int cv = c.Current.Value; c.Advance();
+                Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Self),
+                Op = CompareOp.Eq,
+                Right = NumExpr.Const(cv),
+            };
+        }
+
+        // "this follower's attack is lower/higher than its defense"
+        if (c.Current.IsWord("this") && c.Peek().IsWord("follower's")
+            && c.Peek(2).IsWord("attack") && c.Peek(3).IsWord("is"))
+        {
+            bool isLower = c.Peek(4).IsWord("lower");
+            bool isHigher = c.Peek(4).IsWord("higher");
+            if (isLower || isHigher)
+            {
+                while (!c.IsAtEnd && !c.Current.IsWord("defense")) c.Advance();
+                c.TryMatchAnyWord("defense");
                 return new CompareExpr
                 {
-                    Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Self),
-                    Op = CompareOp.Eq,
-                    Right = NumExpr.Const(cv),
+                    Left = NumExpr.Prop(StatKey.Attack, TargetSpec.Self),
+                    Op = isLower ? CompareOp.Lt : CompareOp.Gt,
+                    Right = NumExpr.Prop(StatKey.Life, TargetSpec.Self),
                 };
             }
-            c.Seek(sv);
+        }
+
+        // "this follower's defense is N or less"
+        if (c.Current.IsWord("this") && c.Peek().IsWord("follower's")
+            && c.Peek(2).IsAnyWord("defense", "attack") && c.Peek(3).IsWord("is"))
+        {
+            bool isAtk = c.Peek(2).IsWord("attack");
+            c.Advance(); c.Advance(); c.Advance(); c.Advance();
+            if (c.Current.Kind == TokKind.Number)
+            {
+                int n3 = c.Current.Value; c.Advance();
+                var op3 = CompareOp.Eq;
+                if (c.MatchWord("or"))
+                {
+                    if (c.MatchWord("less")) op3 = CompareOp.Le;
+                    else if (c.MatchWord("more")) op3 = CompareOp.Ge;
+                }
+                return new CompareExpr
+                {
+                    Left = NumExpr.Prop(isAtk ? StatKey.Attack : StatKey.Life, TargetSpec.Self),
+                    Op = op3,
+                    Right = NumExpr.Const(n3),
+                };
+            }
+        }
+
+        // "this follower is super-evolved"（分词成 super / - / evolved）
+        if (c.Current.IsWord("this") && c.Peek().IsWord("follower") && c.Peek(2).IsWord("is")
+            && c.Peek(3).IsWord("super"))
+        {
+            c.Advance(); c.Advance(); c.Advance(); c.Advance();
+            if (c.Current.Kind == TokKind.Dash) c.Advance();
+            c.TryMatchAnyWord("evolved");
+            return new HasStateExpr { State = UnitState.SuperEvolved, Of = TargetSpec.Self };
+        }
+
+        if (c.MatchPhrase("this", "card's", "cost", "is") && c.Current.Kind == TokKind.Number)
+        {
+            int cv = c.Current.Value; c.Advance();
+            return new CompareExpr
+            {
+                Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Self),
+                Op = CompareOp.Eq,
+                Right = NumExpr.Const(cv),
+            };
         }
         if (c.MatchPhrase("this", "card's", "cost", "isn't")
             || c.MatchPhrase("this", "card's", "cost", "is", "not"))

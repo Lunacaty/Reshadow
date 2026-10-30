@@ -304,6 +304,13 @@ public sealed class TargetParser
             }
 
             // 归属
+            // "allied and enemy follower" -> Any
+            if (cur.Current.IsAnyWord("allied", "allies") && cur.Peek().IsWord("and")
+                && cur.Peek(2).IsAnyWord("enemy", "enemies"))
+            {
+                cur.Advance(); cur.Advance(); cur.Advance();
+                owner = ZoneScope.Any; ownerSet = true; matched = true; continue;
+            }
             if (cur.Current.IsAnyWord("enemy"))
             {
                 cur.Advance();
