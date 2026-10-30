@@ -34,8 +34,9 @@ _pending_ui/
 *.jpg
 *.uid
 
-# 一次性调试脚本
+# 一次性调试脚本（tools/ 下的正式工具除外）
 *.py
+!tools/*.py
 
 # 语料导出（由 tools/ 重新生成）
 _corpus_*.json
