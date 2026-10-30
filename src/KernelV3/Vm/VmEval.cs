@@ -101,6 +101,14 @@ public sealed class VmEval
             }
 
             case NumOp.Counter:
+                // 奥义槽是**每张手牌各自**的数值，不能读玩家级计数器。
+                // 先查事件源实体自己身上的计数器，没有才退回玩家级。
+                if (scope.Source != null)
+                {
+                    var src = _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial);
+                    if (src != null && src.Counters.TryGetValue(e.Counter, out var ev2))
+                        return ev2;
+                }
                 return _world.ReadCounter(scope.ResolvePlayer(scope.Owner), e.Counter);
 
             case NumOp.DistinctCount:

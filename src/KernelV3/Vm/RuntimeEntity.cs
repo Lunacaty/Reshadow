@@ -75,6 +75,12 @@ public sealed class RuntimeEntity
     public bool AttackedLeaderLastTurn { get; set; }
     public int EnteredTurn { get; set; }
 
+    /// <summary>本回合是否已启动过（护符 Engage）。每回合上限 1 次。</summary>
+    public bool EngagedThisTurn { get; set; }
+
+    /// <summary>本回合是否已被融合（Fuse）。每个融合目标每回合上限 1 次。</summary>
+    public bool FusedThisTurn { get; set; }
+
     public HashSet<SymbolId<KeywordTag>> Keywords { get; } = new();
 
     /// <summary>带参关键词的数值（max_attacks_per_turn=2 / damage_cap=0 …）。</summary>

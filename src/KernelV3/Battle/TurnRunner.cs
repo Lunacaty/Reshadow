@@ -43,6 +43,10 @@ public sealed class TurnRunner
 
         var p = _state.Players[playerId];
 
+        // 奥义槽 += 1（回合数增加了 1）。规则：奥义槽 = 当前回合数 + 本卡在手时我方进化次数。
+        // 每张手牌各自维护自己的槽位，所以这里给手牌里每张「带奥义能力」的卡累加。
+        BumpSkyboundGauge(playerId);
+
         // 1. 只涨当前玩家的 MaxPP 与 PP（上限 10）
         var maxPpKey = _schema.Counter("max_pp");
         var ppKey = _schema.Counter("pp");
@@ -55,6 +59,19 @@ public sealed class TurnRunner
         _state.WriteCounter(playerId, comboKey, 0);
 
         p.ManualEvolvedThisTurn = false;
+        p.UsedExtraPpThisTurn = false;
+
+        // 每回合重置实体的「本回合已启动 / 已融合」标记。
+        // 不重置的话，一个护符在第一次 Engage 之后就永远不能再启动。
+        foreach (var e in _state.EnumerateZone(ZoneRef.Board, -1))
+        {
+            e.EngagedThisTurn = false;
+            e.FusedThisTurn = false;
+        }
+        foreach (var e in _state.EnumerateZone(ZoneRef.Hand, -1))
+        {
+            e.FusedThisTurn = false;
+        }
         p.EngagedEntityIdsThisTurn.Clear();
         p.FusedEntityIdsThisTurn.Clear();
         p.DestroyedThisTurn.Clear();
@@ -149,6 +166,119 @@ public sealed class TurnRunner
         return true;
     }
 
+    /// <summary>
+    /// 手牌中所有带【奥义】的卡，奥义槽 +1。
+    /// 规则：奥义槽 = 当前回合数 + 本卡在手时我方随从进化/超进化的次数。
+    /// 每张卡各自维护自己的槽位，所以槽位存在实体计数器上。
+    /// </summary>
+    private void BumpSkyboundGauge(int playerId)
+    {
+        var gaugeKey = _schema.Counter("skybound_gauge");
+        foreach (var e in _state.EnumerateZone(ZoneRef.Hand, playerId))
+        {
+            if (e.Def == null) continue;
+            bool hasSkybound = false;
+            foreach (var ab in e.Def.Abilities)
+            {
+                if (ab?.Condition == null) continue;
+                if (ContainsOnlySkyboundGauge(ab.Condition)) { hasSkybound = true; break; }
+            }
+            if (!hasSkybound) continue;
+            e.Counters.TryGetValue(gaugeKey, out var cur);
+            e.Counters[gaugeKey] = cur + 1;
+        }
+    }
+
+    private static bool ContainsOnlySkyboundGauge(Ast.BoolExpr e)
+    {
+        if (e is Ast.CompareExpr c)
+            return c.Left != null && c.Left.Op == Ast.NumOp.Counter
+                   && c.Left.Counter.Name == "skybound_gauge";
+        if (e is Ast.AndExpr a)
+            foreach (var x in a.Items) if (ContainsOnlySkyboundGauge(x)) return true;
+        return false;
+    }
+
+    // ---------- 启动护符 / 融合 ----------
+
+    /// <summary>
+    /// 启动护符（Engage）：支付 Engage (N) 的 PP，发 OnEngage。
+    /// 每回合每个护符只能启动 1 次。
+    /// </summary>
+    public bool EngageAmulet(int playerId, RuntimeEntity amulet, int cost, CardVm vm)
+    {
+        if (playerId != _state.ActivePlayer) return false;
+        if (amulet == null || amulet.Zone != ZoneRef.Board || amulet.PlayerId != playerId) return false;
+        if (amulet.EngagedThisTurn) return false;
+
+        var ppKey = _schema.Counter("pp");
+        if (_state.ReadCounter(playerId, ppKey) < cost) return false;
+        _state.WriteCounter(playerId, ppKey, _state.ReadCounter(playerId, ppKey) - cost);
+
+        amulet.EngagedThisTurn = true;
+        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEngage, Subject = EntityRef.From(amulet) });
+        vm?.StepUntilBlocked();
+        return true;
+    }
+
+    /// <summary>
+    /// 融合（Fuse）：把关卡作为材料融合进 baseCard，累计 fuse_count / fuse_cost，发 OnFuse。
+    /// 每个融合目标每回合只能融合 1 次。
+    /// </summary>
+    public bool FuseCards(int playerId, RuntimeEntity baseCard,
+                          IReadOnlyList<RuntimeEntity> materials, CardVm vm)
+    {
+        if (playerId != _state.ActivePlayer) return false;
+        if (baseCard == null || baseCard.Zone != ZoneRef.Hand || baseCard.PlayerId != playerId) return false;
+        if (baseCard.FusedThisTurn) return false;
+        if (materials == null || materials.Count == 0) return false;
+
+        int totalCost = 0;
+        foreach (var m in materials)
+        {
+            if (m == null || m.Zone != ZoneRef.Hand || m.PlayerId != playerId) return false;
+            totalCost += m.Cost;
+        }
+
+        var fuseCount = _schema.Counter("fuse_count");
+        var fuseCost = _schema.Counter("fuse_cost");
+        _state.WriteCounter(playerId, fuseCount, _state.ReadCounter(playerId, fuseCount) + 1);
+        _state.WriteCounter(playerId, fuseCost, _state.ReadCounter(playerId, fuseCost) + totalCost);
+
+        foreach (var m in materials)
+            _state.MoveEntity(m, ZoneRef.Cemetery, playerId);
+
+        baseCard.FusedThisTurn = true;
+        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnFuse, Subject = EntityRef.From(baseCard) });
+        vm?.StepUntilBlocked();
+        return true;
+    }
+
+    // ---------- 后手额外能量点 ----------
+
+    /// <summary>
+    /// 后手玩家使用额外能量点：本回合临时 pp + 1（不增加 max_pp）。
+    /// 一局两次，第 1~5 回合一次、第 6 回合起一次，每回合最多一次。
+    /// </summary>
+    public bool UseExtraPp(int playerId)
+    {
+        if (playerId != 1) return false;                       // 只有后手有
+        if (playerId != _state.ActivePlayer) return false;      // 只能在自己回合
+        var p = _state.Players[playerId];
+        if (p.UsedExtraPpThisTurn) return false;                // 每回合最多一次
+
+        bool early = _state.TurnNumber <= 5;
+        if (early && p.UsedEarlyExtraPp) return false;
+        if (!early && p.UsedLateExtraPp) return false;
+
+        if (early) p.UsedEarlyExtraPp = true; else p.UsedLateExtraPp = true;
+        p.UsedExtraPpThisTurn = true;
+
+        var ppKey = _schema.Counter("pp");
+        _state.WriteCounter(playerId, ppKey, _state.ReadCounter(playerId, ppKey) + 1);
+        return true;
+    }
+
     // ---------- 进化 ----------
 
     /// <summary>普通进化。先手第 5 回合 / 后手第 4 回合解锁，消耗 1 ep。</summary>
@@ -212,9 +342,12 @@ public sealed class TurnRunner
         // 超进化同时触发 Evolve 与 Super-Evolve 两种能力（官方铁律）。
         // 之前无论普通还是超进化都只发 OnEvolve，
         // 导致所有「Super-Evolve:」能力在手动超进化时永远不触发。
-        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEvolve, Subject = EntityRef.From(e) });
+        var evoKey = _schema.Counter("evolve_count");
+        _state.WriteCounter(playerId, evoKey, _state.ReadCounter(playerId, evoKey) + 1);
+
+        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEvolve, Subject = EntityRef.From(e), IsManualEvolve = true });
         if (super)
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnSuperEvolve, Subject = EntityRef.From(e) });
+            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnSuperEvolve, Subject = EntityRef.From(e), IsManualEvolve = true });
         vm?.StepUntilBlocked();
         return true;
     }

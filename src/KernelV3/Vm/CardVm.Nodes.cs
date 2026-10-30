@@ -419,9 +419,17 @@ public sealed partial class CardVm
             // 超进化同时触发 Evolve 与 Super-Evolve。
             // 且超进化必须把 IsEvolved 也置位——否则「if this follower is evolved」
             // 这类条件在自动超进化后仍然为假。
-            _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnEvolve, Subject = EntityRef.From(t) });
+            // 这是「能力效果自动进化」，不是玩家花 EP/SEP 手动进化。
+            // IsManualEvolve = false 让 FlushNextTrigger 跳过 Evolve: / Super-Evolve: 冒号头，
+            // 只让 When/Whenever ... evolves 这类事件从句收到事件。
+            // 奥义槽依赖「自己随从进化/超进化的次数」，自动进化同样计入。
+            var evoKey = Schema.Counter("evolve_count");
+            var owner = t.PlayerId;
+            _world.WriteCounter(owner, evoKey, _world.ReadCounter(owner, evoKey) + 1);
+
+            _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnEvolve, Subject = EntityRef.From(t), IsManualEvolve = false });
             if (n.IsSuperEvolve)
-                _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnSuperEvolve, Subject = EntityRef.From(t) });
+                _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnSuperEvolve, Subject = EntityRef.From(t), IsManualEvolve = false });
         }
         // 不覆写 $selected（只有 SelectTargetNode / SpawnCardNode 可以写槽位）
         return false;

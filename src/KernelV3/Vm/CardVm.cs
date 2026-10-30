@@ -299,6 +299,12 @@ public sealed partial class CardVm
             {
                 if (ab.Trigger == null) continue;
                 if (ab.Trigger.Event != ev.Kind) continue;
+
+                // Evolve: / Super-Evolve: 冒号头只认玩家手动花费 EP/SEP 的进化。
+                // 能力效果自动进化（"Evolve this follower"）不触发这两类头，
+                // 只会触发 When/Whenever ... evolves 这类事件从句。
+                if (ab.Trigger.ManualEvolveOnly && !ev.IsManualEvolve) continue;
+
                 if (!MatchesTrigger(ab.Trigger, ev, e)) continue;
                 if (_eval.EvalBool(ab.Condition, new VmScope { Controller = e.PlayerId }) == false) continue;
 

@@ -85,6 +85,12 @@ public sealed class GameSchema
         ("turn_play", 0, 99),
         ("match_play", 0, 999),
         ("evolve_count", 0, 99),
+        // 融合：fuse_count 记融合次数，fuse_cost 记累计材料费用
+        ("fuse_count", 0, 99),
+        ("fuse_cost", 0, 99),
+        // 奥义槽 = 当前回合数 + 本卡在手时自己随从进化/超进化的次数。
+        // 奥义 >= 10 可发动，解放奥义 >= 15。
+        ("skybound_gauge", 0, 99),
     };
 
     public static readonly string[] BuiltinKeywords =

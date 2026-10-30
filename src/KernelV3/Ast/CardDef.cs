@@ -32,6 +32,14 @@ public sealed class TriggerSpec
     /// <summary>每回合最多次数。0 表示不限；1 对应 Once on each of your turns。</summary>
     public int MaxTriggersPerTurn { get; init; }
 
+    /// <summary>
+    /// 只用「手动进化」触发。
+    /// 卡面上的 Evolve: / Super-Evolve: 冒号头只在你真的花 EP/SEP 进化时发动；
+    /// 由能力效果自动进化（如 "Evolve this follower"）**不触发**这两类头，
+    /// 但会触发 When/Whenever ... evolves 这类事件从句。
+    /// </summary>
+    public bool ManualEvolveOnly { get; init; }
+
     public static TriggerSpec Of(Core.CoreEvent ev) => new() { Event = ev };
 }
 

@@ -44,6 +44,11 @@ public static class VmSelfTest
         GateAuraNotSelectable();
         GateFieldFullVanish();
 
+        // ---- Phase 5 验收门禁 ----
+        GateManualVsAutoEvolve();
+        GateExtraPp();
+        GateSkyboundArt();
+
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
         foreach (var l in _log) sb.AppendLine(l);
@@ -639,6 +644,70 @@ public static class VmSelfTest
 
         Check("门禁4 Aura/Ambush 不可被能力选中", ok,
               "candidates=" + string.Join(",", ids) + " plain=" + plain.EntityId);
+    }
+
+    // ==================== Phase 5 验收门禁 ====================
+
+    /// <summary>门禁6：Evolve: 冒号头只认手动进化，效果自动进化不触发。</summary>
+    private static void GateManualVsAutoEvolve()
+    {
+        var lex = new Lang.Lexicon();
+        foreach (var kw in new[] { "ward", "rush", "storm" }) lex.AddKeyword(kw);
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+
+        var r1 = comp.Compile("Evolve: Draw a card.");
+        var r2 = comp.Compile("Whenever this follower evolves, deal 1 damage to an enemy follower.");
+
+        bool headerManual = r1.Abilities.Count > 0 && r1.Abilities[0].Trigger != null
+                            && r1.Abilities[0].Trigger.ManualEvolveOnly;
+        bool clauseFree = r2.Abilities.Count > 0 && r2.Abilities[0].Trigger != null
+                          && !r2.Abilities[0].Trigger.ManualEvolveOnly;
+
+        Check("门禁6 手动进化与效果进化区分", headerManual && clauseFree,
+              "header=" + headerManual + " clause=" + clauseFree);
+    }
+
+    /// <summary>门禁7：后手额外 PP 每回合一次，且不增加 max_pp。</summary>
+    private static void GateExtraPp()
+    {
+        var st = new Battle.BattleState(seed: 1);
+        var tr = new Battle.TurnRunner(st, st.Schema);
+        var ppKey = st.Schema.Counter("pp");
+        var maxKey = st.Schema.Counter("max_pp");
+
+        st.WriteCounter(1, ppKey, 3);
+        st.WriteCounter(1, maxKey, 3);
+        st.TurnNumber = 1;
+        st.ActivePlayer = 1;
+
+        bool first = tr.UseExtraPp(1);
+        bool ppUp = st.ReadCounter(1, ppKey) == 4;
+        bool maxSame = st.ReadCounter(1, maxKey) == 3;
+        bool secondSameTurn = tr.UseExtraPp(1);
+
+        Check("门禁7 后手额外 PP", first && ppUp && maxSame && !secondSameTurn,
+              "first=" + first + " pp=" + st.ReadCounter(1, ppKey) + " max=" + st.ReadCounter(1, maxKey) + " twice=" + secondSameTurn);
+    }
+
+    /// <summary>门禁8：奥义槽阈值——奥义 >= 10，解放奥义 >= 15。</summary>
+    private static void GateSkyboundArt()
+    {
+        var lex = new Lang.Lexicon();
+        foreach (var kw in new[] { "ward", "rush", "storm" }) lex.AddKeyword(kw);
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+
+        var r1 = comp.Compile("Fanfare: Skybound Art - Deal 5 damage to 2 random enemy followers.");
+        var r2 = comp.Compile("Fanfare: Super Skybound Art - Deal 3 damage to the enemy leader.");
+
+        string c1 = r1.Abilities.Count > 0 ? Lang.AstEnglishPrinter.PrintBool(r1.Abilities[0].Condition) : "";
+        string c2 = r2.Abilities.Count > 0 ? Lang.AstEnglishPrinter.PrintBool(r2.Abilities[0].Condition) : "";
+
+        bool ok1 = c1.Contains("skybound_gauge") && c1.Contains("10");
+        bool ok2 = c2.Contains("skybound_gauge") && c2.Contains("15");
+
+        Check("门禁8 奥义/解放奥义阈值", ok1 && ok2, "art=" + c1 + " super=" + c2);
     }
 
     private static void Check(string name, bool ok, string detail)

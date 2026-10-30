@@ -17,6 +17,15 @@ public sealed class PlayerState
     /// <summary>0 = 先手，1 = 后手。绝对身份，不随视角变化。</summary>
     public int PlayerId { get; init; }
 
+    /// <summary>
+    /// 后手补偿用的额外能量点。
+    /// 一局两次：第 1~5 回合可用 1 次（Early），第 6 回合起可用 1 次（Late）。
+    /// 前 5 回合没用不会累加到第 6 回合，且每回合最多按 1 次。
+    /// </summary>
+    public bool UsedEarlyExtraPp { get; set; }
+    public bool UsedLateExtraPp { get; set; }
+    public bool UsedExtraPpThisTurn { get; set; }
+
     /// <summary>主战者实体（生命值、最大生命值、状态）。</summary>
     public RuntimeEntity Leader { get; set; }
 

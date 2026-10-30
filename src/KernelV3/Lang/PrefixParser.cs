@@ -43,6 +43,9 @@ public sealed class AbilityHeaderBuilder
     /// <summary>护符的初始吟唱值。属于卡牌属性，不是代价。</summary>
     public int? CountdownValue;
 
+    /// <summary>这是 Evolve: / Super-Evolve: 冒号头，只认玩家手动花费 EP/SEP 的进化。</summary>
+    public bool ManualEvolveOnly;
+
     public TriggerSpec BuildTrigger() => new()
     {
         Event = Event,
@@ -51,6 +54,7 @@ public sealed class AbilityHeaderBuilder
         ActiveZone = ActiveZone,
         DuringTurn = DuringTurn,
         MaxTriggersPerTurn = MaxTriggersPerTurn,
+        ManualEvolveOnly = ManualEvolveOnly,
     };
 }
 
@@ -239,9 +243,9 @@ public sealed class PrefixParser
     {
         ("fanfare",        CoreEvent.OnPlay,          null),
         ("last words",     CoreEvent.OnDestroy,       null),
-        ("evolve",         CoreEvent.OnEvolve,        null),
-        ("super evolve",   CoreEvent.OnSuperEvolve,   null),
-        ("super-evolve",   CoreEvent.OnSuperEvolve,   null),
+        ("evolve",         CoreEvent.OnEvolve,        "manual_evolve"),
+        ("super evolve",   CoreEvent.OnSuperEvolve,   "manual_evolve"),
+        ("super-evolve",   CoreEvent.OnSuperEvolve,   "manual_evolve"),
         ("strike",         CoreEvent.OnAttack,        null),
         ("follower strike",CoreEvent.OnAttack,        null),
         ("clash",          CoreEvent.OnClash,         null),
@@ -339,8 +343,26 @@ public sealed class PrefixParser
             }
 
             if ((int)ev >= 0) { b.Event = ev; b.EventExplicit = true; }
-            if (condFlag != null)
-                b.Condition = BoolExpr.And(b.Condition, new HasStateExpr { State = UnitState.None, Of = TargetSpec.Self });
+            if (condFlag == "manual_evolve")
+                b.ManualEvolveOnly = true;
+
+            // 【奥义 / 解放奥义】：条件头，不是事件头。
+            //   Skybound Art        -> 奥义槽 >= 10
+            //   Super Skybound Art  -> 奥义槽 >= 15
+            // 奥义槽 = 当前回合数 + 本卡在手时我方随从进化/超进化的次数。
+            // 之前这里只是占位 (CoreEvent)(-1)，运行时完全不认，能力永不触发。
+            if (condFlag == "skybound_art" || condFlag == "super_skybound_art")
+            {
+                int need = condFlag == "skybound_art" ? 10 : 15;
+                b.Event = CoreEvent.OnPlay;
+                b.EventExplicit = true;
+                b.Condition = BoolExpr.And(b.Condition, new CompareExpr
+                {
+                    Left = NumExpr.Ctr(_lex.Counter("skybound_gauge")),
+                    Op = Core.CompareOp.Ge,
+                    Right = NumExpr.Const(need),
+                });
+            }
             return true;
         }
 
