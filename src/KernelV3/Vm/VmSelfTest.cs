@@ -48,6 +48,8 @@ public static class VmSelfTest
         GateManualVsAutoEvolve();
         GateExtraPp();
         GateSkyboundArt();
+        GateAbilityDamageThroughPipeline();
+        GateSummonInstead();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -708,6 +710,72 @@ public static class VmSelfTest
         bool ok2 = c2.Contains("skybound_gauge") && c2.Contains("15");
 
         Check("门禁8 奥义/解放奥义阈值", ok1 && ok2, "art=" + c1 + " super=" + c2);
+    }
+
+    /// <summary>门禁9：能力伤害与法术伤害都要经过屏障。</summary>
+    private static void GateAbilityDamageThroughPipeline()
+    {
+        var w = new MemoryWorld();
+        var schema = w.Schema;
+        var barrier = schema.Keyword("barrier");
+
+        var t = w.Create(1, ZoneRef.Board, 1, atk: 0, life: 5);
+        t.Keywords.Add(barrier);
+
+        // 用 CardVm 执行一条 DealDamageNode（模拟法术伤害）
+        var vm = new CardVm(w);
+        CardVm.Schema = schema;
+        var ab = new AbilityDef
+        {
+            Trigger = new Ast.TriggerSpec { Event = CoreEvent.OnPlay },
+            Body = new[] { new DealDamageNode
+            {
+                Target = new Ast.TargetSpec
+                {
+                    SourceKind = Ast.TargetSourceKind.Zone,
+                    Owner = ZoneScope.Opponent,
+                    Zone = ZoneRef.Board,
+                    Mode = SelectMode.All,
+                    Where = Ast.BoolExpr.True,
+                },
+                Amount = Ast.NumExpr.Const(3),
+                IsAbility = true,
+            } },
+        };
+        vm.PushAbility(ab, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
+        vm.StepUntilBlocked();
+
+        bool ok = t.Life == 5 && !t.Keywords.Contains(barrier);
+        Check("门禁9 能力伤害走统一管线（屏障生效）", ok,
+              "life=" + t.Life + " barrier=" + t.Keywords.Contains(barrier));
+    }
+
+    /// <summary>门禁10："Summon a X. ... summon 2 instead." 要真的召唤同一张卡。</summary>
+    private static void GateSummonInstead()
+    {
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+        CardVm.Schema = w.Schema;
+
+        // 先注册一张真实卡（id=700）
+        w.RegisterCard(new CardDef { CardId = 700, Name = "Megalorca", Kind = CardKind.Follower, BaseAttack = 3, BaseLife = 3 });
+
+        var ab = new AbilityDef
+        {
+            Trigger = new Ast.TriggerSpec { Event = CoreEvent.OnPlay },
+            Body = new[]
+            {
+                new SpawnCardNode { CardId = 700, CardName = "Megalorca", ToZone = ZoneRef.Board, Count = Ast.NumExpr.Const(1) },
+                new SpawnCardNode { SourceKind = CardSourceKind.CopyOfPrevious, ToZone = ZoneRef.Board, Count = Ast.NumExpr.Const(2) },
+            },
+        };
+        vm.PushAbility(ab, new VmScope { Owner = ZoneScope.Self, Controller = 0 });
+        vm.StepUntilBlocked();
+
+        var onBoard = w.EnumerateZone(ZoneRef.Board, 0).ToList();
+        bool ok = onBoard.Count == 3 && onBoard.All(e => e.Def != null && e.Def.CardId == 700);
+        Check("门禁10 Summon N instead 复制同一张卡", ok,
+              "board=" + onBoard.Count + " ids=" + string.Join(",", onBoard.Select(e => e.Def?.CardId ?? 0)));
     }
 
     private static void Check(string name, bool ok, string detail)

@@ -193,13 +193,11 @@ public sealed partial class CardVm
     private void ApplyDamage(RuntimeEntity t, int amount, bool isAbility)
     {
         if (amount <= 0) return;
-        t.Life -= amount;
-        _world.EmitEvent(new VmEvent
-        {
-            Kind = CoreEvent.OnDamaged,
-            Subject = EntityRef.From(t),
-            Amount = amount,
-        });
+        // 能力伤害必须走世界的统一管线：屏幕（barrier）、超进化免伤、
+        // 伤害上限都在那里处理。直接 t.Life -= amount 会全部绕过，
+        // 导致法术能无视屏障、能炸死自己回合的超进化随从。
+        var src = t.PlayerId == 0 ? 1 : 0;
+        _world.ApplyDamage(t, amount, src);
     }
 
     private bool DoRestore(RestoreLifeNode n, VmScope scope)
@@ -381,9 +379,19 @@ public sealed partial class CardVm
                 if (refs.Count == 0) break;
                 e = _world.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner));
             }
+            else if (n.SourceKind == CardSourceKind.CopyOfPrevious)
+            {
+                // "Summon a Megalorca. If you're in Overflow, summon 2 instead."
+                // 这句没有卡名，宾语就是上一句召唤的那张卡。
+                // 之前这里没有任何分支，SpawnCard 收到 CardId=0，产出空实体。
+                int prevId = scope.LastSpawnedCardId;
+                if (prevId <= 0) break;
+                e = _world.SpawnCard(prevId, n.ToZone, scope.ResolvePlayer(n.ToOwner));
+            }
             else
             {
                 e = _world.SpawnCard(n.CardId, n.ToZone, scope.ResolvePlayer(n.ToOwner));
+                if (e != null) scope.LastSpawnedCardId = n.CardId;
             }
             if (e != null) created.Add(e);
         }

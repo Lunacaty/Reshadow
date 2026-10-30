@@ -124,6 +124,20 @@ public sealed class MemoryWorld : IVmWorld
 
     public void RemoveEntity(RuntimeEntity e) => _entities.Remove(e);
 
+    /// <summary>统一伤害管线：屏障先吸收，再扣血。</summary>
+    public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId)
+    {
+        if (target == null || amount <= 0) return;
+        var barrier = Schema.Keyword("barrier");
+        if (target.Keywords.Contains(barrier))
+        {
+            target.Keywords.Remove(barrier);
+            amount = 0;
+        }
+        if (amount > 0) target.Life -= amount;
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnDamaged, Subject = EntityRef.From(target), Amount = amount });
+    }
+
     /// <summary>
     /// 破坏：进墓场，并补上 MoveEntity 不会做的三件事：
     /// · 发 OnDestroy（谢幕曲）

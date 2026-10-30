@@ -86,29 +86,30 @@ public sealed class CombatResolver
     }
 
     /// <summary>战斗五步时序：宣告 -> OnAttack -> 伤害 -> OnDamaged -> SBA。</summary>
+    /// <summary>
+    /// 攻击结算 12 步（R-5.2）。
+    /// 每一步都要先检查双方是否还在场，离场则跳过后续的交战与伤害交换。
+    /// </summary>
     public void ExecuteCombat(RuntimeEntity attacker, RuntimeEntity defender, CardVm vm)
     {
         if (!CanAttack(attacker, defender, out var reason))
             throw new InvalidOperationException("非法攻击：" + reason);
 
+        // 1. 攻击宣言：计数与潜行解除
         attacker.AttacksThisTurn++;
         attacker.AttackedThisTurn = true;
         attacker.AttackedLeaderLastTurn = defender.Zone == ZoneRef.Leader;
+        var ambushKw = _schema.Keyword("ambush");
+        if (attacker.Keywords.Contains(ambushKw)) attacker.Keywords.Remove(ambushKw);
 
+        // 2. 攻击方【攻撃時】/【交戦時】
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnAttack, Subject = EntityRef.From(attacker) });
 
-        int atk = attacker.Attack;
-        bool attackerHasBane = Has(attacker, "bane");
-        bool defenderHasBane = Has(defender, "bane");
+        bool isFollowerTarget = defender.Zone == ZoneRef.Board;
 
-        if (defender.Zone == ZoneRef.Leader)
+        // 3. 被攻击方【交戦時】（只在攻击随从时）
+        if (isFollowerTarget)
         {
-            ApplyDamage(defender, atk, attacker.PlayerId, vm);
-            ApplyDrain(attacker, atk, vm);
-        }
-        else
-        {
-            // 交战时(OnClash)：随从对随从的攻击触发，官方术语表有独立条目
             vm?.EnqueueEvent(new VmEvent
             {
                 Kind = CoreEvent.OnClash,
@@ -116,25 +117,59 @@ public sealed class CombatResolver
                 Object = EntityRef.From(defender),
             });
 
-            // 交战双方同时结算（虹吸按各自造成的伤害回复）
-            ApplyDamage(defender, atk, attacker.PlayerId, vm);
-            ApplyDrain(attacker, atk, vm);
-
-            ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm);
-            ApplyDrain(defender, defender.Attack, vm);
-
-            // 毁灭(Bane)：交战时直接破坏对方，不看剩余生命
-            if (attackerHasBane && defender.Zone == ZoneRef.Board) _state.DestroyEntity(defender);
-            if (defenderHasBane && attacker.Zone == ZoneRef.Board) _state.DestroyEntity(attacker);
-
-            if (attacker.IsSuperEvolved && defender.Zone != ZoneRef.Board)
-            {
-                var foe = _state.Players[defender.PlayerId].Leader;
-                if (foe != null) ApplyDamage(foe, 1, attacker.PlayerId, vm);
-            }
+            // 若攻击方在第 2 步就用能力破坏了对方，对方的【交戦時】不触发
+            vm?.StepUntilBlocked();
         }
 
         _state.ProcessStateBasedActions();
+
+        // 4. 超进化溢出 1 点（第 2 步用能力破坏对方随从时）
+        if (attacker.IsSuperEvolved && isFollowerTarget && defender.Zone != ZoneRef.Board)
+            OverflowDamage(attacker, defender);
+
+        // 5/6. 双方因【攻撃時】/【交戦時】诱发的效果
+        vm?.StepUntilBlocked();
+
+        if (attacker.Zone != ZoneRef.Board) { _state.ProcessStateBasedActions(); return; }
+
+        int atk = attacker.Attack;
+        bool defenderHasBane = isFollowerTarget && Has(defender, "bane");
+        bool attackerHasBane = Has(attacker, "bane");
+
+        // 7. 攻击方造成伤害
+        if (defender.Zone == ZoneRef.Leader)
+        {
+            ApplyDamage(defender, atk, attacker.PlayerId, vm);
+            ApplyDrain(attacker, atk, vm);
+        }
+        else if (defender.Zone == ZoneRef.Board)
+        {
+            // 8. 被攻击方反击
+            ApplyDamage(defender, atk, attacker.PlayerId, vm);
+            ApplyDrain(attacker, atk, vm);
+            ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm);
+            ApplyDrain(defender, defender.Attack, vm);
+
+            // 9. 双方体力 <= 0 的破坏；必杀（Bane）即使 0 伤害也破坏
+            if (attackerHasBane && defender.Zone == ZoneRef.Board) _state.DestroyEntity(defender);
+            if (defenderHasBane && attacker.Zone == ZoneRef.Board) _state.DestroyEntity(attacker);
+        }
+
+        _state.ProcessStateBasedActions();
+
+        // 10. 超进化溢出 1 点（交战破坏对方随从时）
+        if (attacker.IsSuperEvolved && isFollowerTarget && defender.Zone != ZoneRef.Board)
+            OverflowDamage(attacker, defender);
+
+        // 11/12. 被破坏随从的谢幕曲等诱发效果
+        vm?.StepUntilBlocked();
+        _state.ProcessStateBasedActions();
+    }
+
+    private void OverflowDamage(RuntimeEntity attacker, RuntimeEntity defender)
+    {
+        var foe = _state.Players[defender.PlayerId].Leader;
+        if (foe != null) ApplyDamage(foe, 1, attacker.PlayerId);
     }
 
     /// <summary>

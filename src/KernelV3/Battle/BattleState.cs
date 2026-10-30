@@ -262,6 +262,13 @@ public sealed class BattleState : IVmWorld
     /// 破坏（Destroy）：进墓地 + 触发 OnDestroy + shadow+1。
     /// 只有真正的「被破坏」才调用它；放逐 / 回手 / 变形一律不要用。
     /// </summary>
+    /// <summary>
+    /// 统一伤害管线。能力伤害必须走这里，
+    /// 否则屏障、超进化免伤、伤害上限全部被绕过。
+    /// </summary>
+    public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId)
+        => new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId);
+
     public void DestroyEntity(RuntimeEntity e)
     {
         if (e == null) return;

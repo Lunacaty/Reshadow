@@ -34,6 +34,13 @@ public sealed class VmScope
     /// </summary>
     public int Controller { get; init; }
 
+    /// <summary>
+    /// 上一次真正召唤成功的卡 ID。
+    /// "Summon a X. ... summon 2 instead." 里第二句没有卡名，
+    /// 靠这个记录补上前一句的卡（CardSourceKind.CopyOfPrevious）。
+    /// </summary>
+    public int LastSpawnedCardId { get; set; }
+
     /// <summary>把 AST 的相对视角翻译成世界的绝对玩家编号。</summary>
     public int ResolvePlayer(ZoneScope relative) => relative switch
     {

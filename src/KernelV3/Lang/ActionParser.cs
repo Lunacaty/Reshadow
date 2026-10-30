@@ -1182,16 +1182,25 @@ public sealed class ActionParser
             cur.Seek(se);
         }
 
-        // "Destroy X random enemy followers"：X 数量 + random 修饰
-        int forcedCount = 0;
-        bool forcedRandom = false;
-        if (cur.Current.IsAnyWord("x", "y", "z")) { cur.Advance(); forcedCount = 1; }
-        else if (cur.Current.Kind == TokKind.Number) { forcedCount = (int)cur.Current.Value; cur.Advance(); }
-        while (cur.Current.IsAnyWord("random")) { cur.Advance(); forcedRandom = true; }
+        // 数量与 random 由 TargetParser 读；它不认识句首的变量 X，
+        // 所以这里只把 X 当数量占位消耗掉，**不覆盖 Mode**。
+        // 之前用 Mode = forcedRandom ? Random : Choose 强行改写，把
+        // "6 other random followers" 的 Random 压成 Choose，随机破坏全变成手选。
+        var leadCount = default(NumExpr);
+        if (cur.Current.IsAnyWord("x", "y", "z"))
+        {
+            var vn = cur.Current.Text.ToUpperInvariant();
+            cur.Advance();
+            leadCount = NumExpr.Ctr(_lex.Counter(vn));
+        }
+        else if (cur.Current.Kind == TokKind.Number)
+        {
+            leadCount = NumExpr.Const((int)cur.Current.Value);
+            cur.Advance();
+        }
 
-        var extraDmg = new List<EffectNode>();
         var target = _target.TryParse(cur) ?? TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent);
-        if (forcedRandom || forcedCount > 0)
+        if (leadCount != null)
         {
             target = new TargetSpec
             {
@@ -1199,8 +1208,8 @@ public sealed class ActionParser
                 Owner = target.Owner,
                 Zone = target.Zone,
                 Where = target.Where,
-                Mode = forcedRandom ? SelectMode.Random : SelectMode.Choose,
-                Count = NumExpr.Const(forcedCount > 0 ? forcedCount : 1),
+                Mode = target.Mode,          // 保留 TargetParser 算出的 Random / Choose
+                Count = leadCount,
             };
         }
         ConsumeDestination(cur);
