@@ -100,6 +100,13 @@ public sealed class ModifyKeywordNode : EffectNode
     public KeywordOp Op { get; init; } = KeywordOp.Grant;
     public Core.SymbolId<Core.KeywordTag> Keyword { get; init; } = Core.SymbolId<Core.KeywordTag>.Invalid;
     public DurationKind Duration { get; init; } = DurationKind.Permanent;
+
+    /// <summary>
+    /// 带参关键词的数值（可空）。
+    /// 例：max_attacks_per_turn = 2 / damage_cap = 0 / damage_taken_bonus = 1 / mode_pick_bonus = 1。
+    /// 没有数值时保持 null，避免把 "上限 0" 和 "没有上限" 混为一谈。
+    /// </summary>
+    public NumExpr Value { get; init; }
 }
 
 // ---------- 7. 授予能力 ----------
@@ -162,6 +169,12 @@ public sealed class TransformNode : EffectNode
     public TargetSpec Target { get; init; }
     public int IntoCardId { get; init; }
     public string IntoCardName { get; init; } = "";
+
+    /// <summary>
+    /// 变形源不是具体卡名而是目标集合时使用。
+    /// 例："transform all allied followers into exact copies of random followers in your deck"。
+    /// </summary>
+    public TargetSpec CopySource { get; init; }
 }
 
 // ---------- 11. 进化 ----------
@@ -183,6 +196,15 @@ public sealed class ModifyCounterNode : EffectNode
     public Core.SymbolId<Core.CounterTag> Counter { get; init; } = Core.SymbolId<Core.CounterTag>.Invalid;
     public CounterOp Op { get; init; } = CounterOp.Add;
     public NumExpr Delta { get; init; } = NumExpr.Const(1);
+
+    /// <summary>
+    /// 计数器持有者：
+    ///   null  -> 修改主战者级计数器（pp / ep / faith / combo…）
+    ///   非 null -> 修改每个目标实体自己的计数器（倒计时 / 魔力增幅 / 单卡变量 X）
+    /// </summary>
+    public TargetSpec Target { get; init; }
+
+    /// <summary>Target 为 null 时的玩家归属。</summary>
     public Core.ZoneScope Owner { get; init; } = Core.ZoneScope.Self;
 }
 
@@ -231,6 +253,12 @@ public sealed class BranchModeNode : EffectNode
     public ModeDispatchKind Kind { get; init; } = ModeDispatchKind.Choose;
     public NumExpr PickCount { get; init; } = NumExpr.Const(1);
     public IReadOnlyList<IReadOnlyList<EffectNode>> Options { get; init; } = Array.Empty<IReadOnlyList<EffectNode>>();
+
+    /// <summary>
+    /// 模式选项作用的目标（"give this follower 3 random abilities from the following"）。
+    /// null 表示选项自己携带目标。
+    /// </summary>
+    public TargetSpec GrantTarget { get; init; }
 }
 
 // ---------- 17. 宏 ----------

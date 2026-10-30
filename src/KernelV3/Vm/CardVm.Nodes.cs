@@ -174,6 +174,28 @@ public sealed partial class CardVm
     private void DoModifyCounter(ModifyCounterNode n, VmScope scope)
     {
         int delta = _eval.EvalNum(n.Delta, scope);
+
+        // Target != null：修改每个目标实体自己的计数器
+        if (n.Target != null)
+        {
+            var ents = _eval.Resolve(n.Target, scope);
+            foreach (var e in ents)
+            {
+                int curE = _world.ReadEntityCounter(e, n.Counter);
+                int nextE = n.Op switch
+                {
+                    CounterOp.Add => curE + delta,
+                    CounterOp.Set => delta,
+                    CounterOp.Fill => delta,
+                    _ => curE,
+                };
+                _world.WriteEntityCounter(e, n.Counter, nextE);
+            }
+            _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnCounterChange, Amount = delta });
+            return;
+        }
+
+        // Target == null：修改主战者级计数器
         int cur = _world.ReadCounter(n.Owner, n.Counter);
         int next = n.Op switch
         {
@@ -185,8 +207,6 @@ public sealed partial class CardVm
         _world.WriteCounter(n.Owner, n.Counter, next);
         _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnCounterChange, Amount = delta });
     }
-
-    // ---------- 移区 / 生成 ----------
 
     private void DoMoveZone(MoveZoneNode n, VmScope scope)
     {

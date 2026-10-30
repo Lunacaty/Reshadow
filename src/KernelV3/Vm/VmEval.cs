@@ -103,6 +103,21 @@ public sealed class VmEval
             case NumOp.Counter:
                 return _world.ReadCounter(scope.Owner, e.Counter);
 
+            case NumOp.DistinctCount:
+            {
+                var t = e.Of ?? TargetSpec.Self;
+                var ents = Resolve(t, scope);
+                return ents.Where(x => x.Def != null).Select(x => x.Def.CardId).Distinct().Count();
+            }
+
+            case NumOp.MaxGroupSize:
+            {
+                var t = e.Of ?? TargetSpec.Self;
+                var ents = Resolve(t, scope);
+                var groups = ents.GroupBy(x => x.Cost).Select(g => g.Count()).ToList();
+                return groups.Count > 0 ? groups.Max() : 0;
+            }
+
             case NumOp.SplitOf:
                 // 把计数器随机拆成 3 份，同一帧内 X/Y/Z 之和恒等于计数器值
                 return GetSplitPart(scope, e.Counter, e.Value);

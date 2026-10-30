@@ -39,6 +39,10 @@ public enum NumOp
     /// 同一张卡的一次结算里，X+Y+Z 恒等于计数器值。
     /// </summary>
     SplitOf,
+    /// <summary>目标池中不同卡名的数量（"differently named"）。</summary>
+    DistinctCount,
+    /// <summary>目标池中同费用的最大张数（"cards with the same cost"）。</summary>
+    MaxGroupSize,
 }
 
 public enum ArithOp { Add = 0, Sub, Mul, Div, Mod }

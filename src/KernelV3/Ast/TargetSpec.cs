@@ -55,6 +55,12 @@ public sealed class TargetSpec
     public bool RequireNonEmpty { get; init; }
 
     /// <summary>
+    /// 历史池作用域：把候选池从"场上/手牌"切换到"本局/本回合的历史记录"。
+    /// 例："Summon a copy of a random allied amulet destroyed this match"。
+    /// </summary>
+    public Core.HistoryScope History { get; init; } = Core.HistoryScope.None;
+
+    /// <summary>
     /// 是否把主战者纳入候选池。
     /// 影之诗规则：「all enemies」= 敌方随从 + 敌方主战者；
     /// 「all enemy followers」= 仅随从。

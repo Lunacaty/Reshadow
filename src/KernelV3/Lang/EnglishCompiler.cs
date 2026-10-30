@@ -48,12 +48,12 @@ public sealed class EnglishCompiler
         if (string.IsNullOrWhiteSpace(text)) return r;
 
         var plain = Preprocess(text);
-        foreach (var segment in SplitSegments(plain))
+        foreach (var (zone, segment) in SplitSegments(plain))
         {
             if (segment.Trim().Length == 0) continue;
             try
             {
-                var abs = CompileSegment(segment);
+                var abs = CompileSegment(segment, zone);
                 r.Abilities.AddRange(abs);
             }
             catch (LangException ex)
@@ -126,25 +126,37 @@ public sealed class EnglishCompiler
         return s.Trim();
     }
 
-    /// <summary>按段落标记与句号切分。</summary>
-    private static IEnumerable<string> SplitSegments(string text)
+    /// <summary>段落所属的进化作用域。</summary>
+    private enum SectionZone { Normal = 0, Evolved, SuperEvolved }
+
+    /// <summary>
+    /// 按段落标记与句号切分。
+    /// &lt;ev&gt; / &lt;sev&gt; 是**作用域标记**而非普通分隔符：
+    /// 段落必须继承 Evolved / SuperEvolved，否则未进化时会白嫖进化后才有的能力。
+    /// </summary>
+    private static IEnumerable<(SectionZone zone, string text)> SplitSegments(string text)
     {
         var buf = new System.Text.StringBuilder();
+        var zone = SectionZone.Normal;
         foreach (var c in text)
         {
             if (c == '\u0001' || c == '\u0002' || c == '\u0003' || c == '\u0004' || c == '\u0005')
             {
-                if (buf.Length > 0) { yield return buf.ToString(); buf.Clear(); }
+                if (buf.Length > 0) { yield return (zone, buf.ToString()); buf.Clear(); }
+                if (c == '\u0002') zone = SectionZone.Evolved;
+                else if (c == '\u0003') zone = SectionZone.Normal;
+                else if (c == '\u0004') zone = SectionZone.SuperEvolved;
+                else if (c == '\u0005') zone = SectionZone.Normal;
                 continue;
             }
             buf.Append(c);
         }
-        if (buf.Length > 0) yield return buf.ToString();
+        if (buf.Length > 0) yield return (zone, buf.ToString());
     }
 
     // ---------- 单段编译 ----------
 
-    private List<AbilityDef> CompileSegment(string segment)
+    private List<AbilityDef> CompileSegment(string segment, SectionZone zone = SectionZone.Normal)
     {
         var result = new List<AbilityDef>();
         var tokens = _tokenizer.Tokenize(segment);
@@ -303,7 +315,7 @@ public sealed class EnglishCompiler
                 result.Add(new AbilityDef
                 {
                     Trigger = hb.BuildTrigger(),
-                    Condition = hb.Condition,
+                    Condition = AndZone(zone, hb.Condition),
                     Costs = hb.Costs,
                     Body = Array.Empty<EffectNode>(),
                 });
@@ -317,7 +329,7 @@ public sealed class EnglishCompiler
             result.Add(new AbilityDef
             {
                 Trigger = hb.BuildTrigger(),
-                Condition = hb.Condition,
+                Condition = AndZone(zone, hb.Condition),
                 Costs = hb.Costs,
                 Body = body,
             });
@@ -779,6 +791,18 @@ public sealed class EnglishCompiler
     {
         var key = (name ?? "").ToUpperInvariant();
         return _variableBindings.TryGetValue(key, out var e) ? e : NumExpr.Ctr(_lex.Counter(key));
+    }
+
+    /// <summary>
+    /// 把进化段落的作用域折进条件。
+    /// &lt;ev&gt; 段落的能力必须附加 Evolved 状态，否则未进化时就会生效。
+    /// OnEvolve 触发器本身已隐含进化，不重复附加。
+    /// </summary>
+    private static BoolExpr AndZone(SectionZone zone, BoolExpr cond)
+    {
+        if (zone == SectionZone.Normal) return cond;
+        var state = zone == SectionZone.Evolved ? UnitState.Evolved : UnitState.SuperEvolved;
+        return BoolExpr.And(cond, new HasStateExpr { State = state, Of = TargetSpec.Self });
     }
 
     private static string Trunc(string s)

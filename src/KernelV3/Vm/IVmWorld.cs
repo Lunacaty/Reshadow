@@ -38,6 +38,12 @@ public interface IVmWorld
     /// <summary>写计数器。</summary>
     void WriteCounter(ZoneScope owner, SymbolId<CounterTag> counter, int value);
 
+    /// <summary>读实体自己的计数器（倒计时 / 魔力增幅 / 单卡变量）。</summary>
+    int ReadEntityCounter(RuntimeEntity e, SymbolId<CounterTag> counter);
+
+    /// <summary>写实体自己的计数器。</summary>
+    void WriteEntityCounter(RuntimeEntity e, SymbolId<CounterTag> counter, int value);
+
     /// <summary>检查牌库规则。</summary>
     bool CheckDeckRule(ZoneScope owner, DeckRule rule);
 

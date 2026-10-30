@@ -70,6 +70,16 @@ public sealed class MemoryWorld : IVmWorld
     /// <summary>测试用：计数器写入回调（验证执行顺序）。</summary>
     public Action<string, int> OnCounterWrite;
 
+    public int ReadEntityCounter(RuntimeEntity e, SymbolId<CounterTag> counter)
+        => e != null && e.Counters.TryGetValue(counter, out var v) ? v : 0;
+
+    public void WriteEntityCounter(RuntimeEntity e, SymbolId<CounterTag> counter, int value)
+    {
+        if (e == null) return;
+        e.Counters[counter] = value;
+        OnCounterWrite?.Invoke(counter.Name, value);
+    }
+
     public void WriteCounter(ZoneScope owner, SymbolId<CounterTag> counter, int value)
     {
         _counters[(owner, counter.Id)] = value;

@@ -138,6 +138,17 @@ public enum UnitState
     AttackedLeaderLastTurn,
 }
 
+/// <summary>历史池作用域（用于"本局/本回合被破坏的卡"这类统计）。</summary>
+public enum HistoryScope
+{
+    None = 0,
+    DestroyedThisTurn,
+    DestroyedThisMatch,
+    EnteredThisMatch,
+    FusedToSelf,
+    AffectedByThisAbility,
+}
+
 /// <summary>牌库规则（用于 DeckRule 谓词）。</summary>
 public enum DeckRule
 {
