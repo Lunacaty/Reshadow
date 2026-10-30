@@ -199,6 +199,7 @@ public sealed class PrefixParser
         if ((!isStart && !isEnd) || !cur.MatchWord("of")) { cur.Seek(save); return false; }
 
         if (cur.MatchPhrase("your", "opponent's", "turn")) b.DuringTurn = TurnOwnerScope.Opponent;
+        else if (cur.MatchPhrase("each", "turn")) b.DuringTurn = TurnOwnerScope.Any;
         else if (cur.MatchPhrase("your", "turn")) b.DuringTurn = TurnOwnerScope.Self;
         else { cur.Seek(save); return false; }
 
@@ -318,7 +319,11 @@ public sealed class PrefixParser
             else if (cur.MatchPhrase("fuse", "to", "this", "card")) { b.Event = CoreEvent.OnFuse; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
             else if (cur.MatchWord("activate") || cur.MatchWord("engage")) { b.Event = CoreEvent.OnEngage; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("perform", "earth", "rite")) { b.Event = CoreEvent.OnCountdownExpire; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
-            else if (cur.MatchWord("fuse")) { b.Event = CoreEvent.OnFuse; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
+            else if (cur.MatchWord("fuse"))
+            {
+                b.Event = CoreEvent.OnFuse; b.EventExplicit = true;
+                b.SubjectFilter = _target.TryParse(cur) ?? TargetSpec.Self;
+            }
             else if (cur.MatchWord("summon")) { b.Event = CoreEvent.OnSummon; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchWord("attack")) { b.Event = CoreEvent.OnAttack; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
             else if (cur.MatchWord("evolve")) { b.Event = CoreEvent.OnEvolve; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
@@ -408,8 +413,18 @@ public sealed class PrefixParser
         if (!cur.MatchWord("if")) return false;
 
         var buf = new List<Token>();
-        while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Comma)
+        while (!cur.IsAtEnd)
         {
+            if (cur.Current.Kind == TokKind.Comma)
+            {
+                // 逗号后是数字，或 "and <数字>"，说明是条件内部的枚举逗号，不切分
+                if (cur.Peek(1).Kind == TokKind.Number
+                    || (cur.Peek(1).IsWord("and") && cur.Peek(2).Kind == TokKind.Number))
+                {
+                    buf.Add(cur.Current); cur.Advance(); continue;
+                }
+                break;
+            }
             buf.Add(cur.Current);
             cur.Advance();
         }

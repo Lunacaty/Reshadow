@@ -17,6 +17,9 @@ namespace ShadowverseFan.KernelV3.Lang;
 
 public sealed class Lexicon
 {
+    /// <summary>符号注册表。Lang 层一切符号必须经由它取得真实 Id。</summary>
+    public GameSchema Schema { get; } = GameSchema.CreateDefault();
+
     private readonly Dictionary<string, int> _cardNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _cardIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _keywords = new(StringComparer.OrdinalIgnoreCase);
@@ -27,6 +30,12 @@ public sealed class Lexicon
     private readonly List<string> _namesByLength = new();
 
     public int CardNameCount => _cardNames.Count;
+
+    public SymbolId<CounterTag> Counter(string name) => Schema.Counter(name);
+    public SymbolId<KeywordTag> Keyword(string name) => Schema.Keyword(name);
+    public SymbolId<TraitTag> Trait(string name) => Schema.Trait(name);
+    public SymbolId<ClanTag> Clan(string name) => Schema.Clan(name);
+    public SymbolId<MacroTag> Macro(string name) => Schema.Macro(name);
 
     public void AddCard(string name, int cardId)
     {

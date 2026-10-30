@@ -158,6 +158,25 @@ public sealed class VmEval
                 return ents.Any(x => x.Def != null && x.Def.Clan.Id == hc.Clan.Id);
             }
 
+            case HasKindExpr hk:
+            {
+                var t = hk.Of ?? TargetSpec.Self;
+                var ents = Resolve(t, scope);
+                return ents.Any(x => x.Def != null && x.Def.Kind == hk.Kind);
+            }
+
+            case NotSameEntityExpr ne:
+            {
+                var t = ne.Of ?? TargetSpec.Item;
+                var ents = Resolve(t, scope);
+                var excluded = scope.Read(ne.ExcludeSlot);
+                if (excluded.Count == 0) return ents.Count > 0;
+                // 排除自己：候选里至少有一个 EntityId 不在排除集合中
+                var bad = new HashSet<int>();
+                foreach (var ex in excluded) bad.Add(ex.EntityId);
+                return ents.Any(x => !bad.Contains(x.EntityId));
+            }
+
             case DeckRuleExpr dr:
                 return _world.CheckDeckRule(dr.Owner, dr.Rule);
 

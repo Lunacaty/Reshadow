@@ -46,6 +46,14 @@ public sealed class ActionParser
                 continue;
             }
 
+            // "and, until the end of your opponent's turn, give it ..."
+            if (cur.Current.IsWord("until"))
+            {
+                ConsumeDuration(cur);
+                if (cur.Current.Kind == TokKind.Comma) cur.Advance();
+                continue;
+            }
+
             // 句中条件："draw a card and, if X, restore 1 defense"
             if (cur.Current.IsWord("if"))
             {
@@ -111,7 +119,6 @@ public sealed class ActionParser
             case "select": return ParseSelect(cur);
             case "transform": return ParseTransform(cur);
             case "gain": return ParseGain(cur);
-            case "reduce": return ParseCostChange(cur, -1);
             case "increase": return ParseCostChange(cur, 1);
             case "set": return ParseSet(cur);
             case "spellboost": return ParseSpellboost(cur);
@@ -120,6 +127,30 @@ public sealed class ActionParser
             case "remove": return ParseRemove(cur);
             case "replace": return ParseReplace(cur);
             case "halve": return ParseHalve(cur);
+            case "reduce":
+            {
+                // "Reduce your faith's value by N to <动作>"
+                int sv = cur.Position;
+                cur.Advance();
+                if (cur.MatchPhrase("your", "faith's", "value"))
+                {
+                    cur.TryMatchAnyWord("by");
+                    var amt = ParseNumExpr(cur);
+                    var nodes = new List<EffectNode>
+                    {
+                        new ModifyCounterNode
+                        {
+                            Counter = _lex.Counter("faith"),
+                            Op = CounterOp.Add,
+                            Delta = NumExpr.Sub(NumExpr.Const(0), amt),
+                        },
+                    };
+                    if (cur.MatchWord("to")) nodes.AddRange(ParseSequence(cur));
+                    return nodes;
+                }
+                cur.Seek(sv);
+                return ParseCostChange(cur, -1);
+            }
             case "play": return ParsePlayVerb(cur);
             case "advance": return ParseAdvanceOrDelay(cur, -1);
             case "delay": return ParseAdvanceOrDelay(cur, +1);
@@ -138,6 +169,16 @@ public sealed class ActionParser
             // 绝不能在这里把剩余词吞掉（那是 V2 的兜底病）。
             case "whenever": case "when": case "at":
                 return null;
+            case "ignores":
+            {
+                var kw2 = cur.Current.Text;
+                cur.Advance();
+                cur.TryMatchAnyWord("ward");
+                return new List<EffectNode>
+                {
+                    new ModifyKeywordNode { Target = TargetSpec.Self, Op = KeywordOp.Grant, Keyword = _lex.Keyword("ignores ward") },
+                };
+            }
             // Can't / Can 开头的限制句 → 关键词限制
             case "can't": case "cant": case "can": case "cannot":
             {
@@ -157,7 +198,7 @@ public sealed class ActionParser
                     {
                         Target = TargetSpec.Self,
                         Op = KeywordOp.Grant,
-                        Keyword = SymbolId<KeywordTag>.FromName(kw),
+                        Keyword = _lex.Keyword(kw),
                     },
                 };
             }
@@ -179,7 +220,7 @@ public sealed class ActionParser
                 {
                     new ModifyCounterNode
                     {
-                        Counter = SymbolId<CounterTag>.FromName("countdown"),
+                        Counter = _lex.Counter("countdown"),
                         Op = CounterOp.Set,
                         Delta = NumExpr.Const(n),
                     },
@@ -208,6 +249,7 @@ public sealed class ActionParser
 
         // "Deal N damage split between all enemies"
         var splitFlag = false;
+        var extraDmg = new List<EffectNode>();
 
         // 形态 A: deal N damage to <target>
         // 形态 B: deal it N damage          （it 指代上一条动作的目标）
@@ -233,6 +275,16 @@ public sealed class ActionParser
             cur.TryMatchAnyWord("to");
             target = _target.TryParse(cur) ?? TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent);
         }
+        // "... and 2 damage to your leader" —— 第二段伤害
+        while (cur.Current.IsWord("and") && cur.Peek(1).Kind == TokKind.Number && cur.Peek(2).IsWord("damage"))
+        {
+            cur.Advance();
+            int amt2 = cur.Current.Value; cur.Advance(); cur.Advance();
+            cur.TryMatchAnyWord("to");
+            var t2 = _target.TryParse(cur) ?? TargetSpec.OpponentLeader;
+            extraDmg.Add(new DealDamageNode { Target = t2, Amount = NumExpr.Const(amt2), IsAbility = true });
+        }
+
         var dmgNodes = new List<EffectNode>
         {
             new DealDamageNode { Target = target, Amount = amount, IsAbility = true, IsSplit = splitFlag },
@@ -245,6 +297,7 @@ public sealed class ActionParser
                 Amount = amount,
                 IsAbility = true,
             });
+        dmgNodes.AddRange(extraDmg);
         return dmgNodes;
     }
 
@@ -294,6 +347,8 @@ public sealed class ActionParser
             full = true;
             amount = NumExpr.Const(0);
         }
+        else if (cur.MatchPhrase("the", "same", "amount"))
+            amount = NumExpr.Prop(StatKey.Life, TargetSpec.Self);
         else amount = ParseNumExpr(cur);
         cur.TryMatchAnyWord("defense", "defense,", "health");
         cur.TryMatchAnyWord("to");
@@ -332,7 +387,7 @@ public sealed class ActionParser
             else if (cur.Current.IsAnyWord("super"))
             {
                 cur.Advance();
-                cur.TryMatchAnyWord("-");
+                if (cur.Current.Kind == TokKind.Dash) cur.Advance();
                 cur.TryMatchAnyWord("evolution", "evolutions");
                 cur.TryMatchAnyWord("point", "points");
                 counter = "sep";
@@ -355,7 +410,7 @@ public sealed class ActionParser
 
             nodes.Add(new ModifyCounterNode
             {
-                Counter = SymbolId<CounterTag>.FromName(counter),
+                Counter = _lex.Counter(counter),
                 Op = CounterOp.Add,
                 Delta = amount,
             });
@@ -493,6 +548,11 @@ public sealed class ActionParser
         }
 
         // B. 关键词
+        if (cur.MatchPhrase("last", "words"))
+            return new List<EffectNode>
+            {
+                new ModifyKeywordNode { Target = TargetSpec.Previous, Op = KeywordOp.Remove, Keyword = _lex.Keyword("last words") },
+            };
         if (cur.Current.Kind == TokKind.Keyword)
         {
             var kw = cur.Current.Text;
@@ -501,7 +561,7 @@ public sealed class ActionParser
                 outNodes.Add(new ModifyKeywordNode
                 {
                     Target = t, Op = KeywordOp.Grant,
-                    Keyword = SymbolId<KeywordTag>.FromName(kw),
+                    Keyword = _lex.Keyword(kw),
                 });
             return outNodes;
         }
@@ -649,10 +709,9 @@ public sealed class ActionParser
                 cur.Advance();
 
                 int sepPos = cur.Position;
-                bool comma = cur.Current.Kind == TokKind.Comma;
-                bool and = cur.Current.IsWord("and");
+                bool comma = cur.TryMatch(TokKind.Comma);
+                bool and = cur.TryMatchWord("and");
                 if (!comma && !and) break;
-                cur.Advance();
 
                 // 预判后面是否还是卡名
                 int la = cur.Position;
@@ -707,6 +766,7 @@ public sealed class ActionParser
         else if (cur.Current.Kind == TokKind.Number) { forcedCount = (int)cur.Current.Value; cur.Advance(); }
         while (cur.Current.IsAnyWord("random")) { cur.Advance(); forcedRandom = true; }
 
+        var extraDmg = new List<EffectNode>();
         var target = _target.TryParse(cur) ?? TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent);
         if (forcedRandom || forcedCount > 0)
         {
@@ -854,7 +914,7 @@ public sealed class ActionParser
         {
             new ModifyCounterNode
             {
-                Counter = SymbolId<CounterTag>.FromName(key),
+                Counter = _lex.Counter(key),
                 Op = CounterOp.Add,
                 Delta = NumExpr.Const(amount),
             },
@@ -883,6 +943,63 @@ public sealed class ActionParser
     {
         cur.Advance();
 
+        // "set your/the enemy leader's max defense to N"
+        {
+            int sp = cur.Position;
+            var leadOwner = ZoneScope.Self;
+            bool ok = false;
+            if (cur.MatchPhrase("your", "leader's")) { leadOwner = ZoneScope.Self; ok = true; }
+            else if (cur.MatchPhrase("the", "enemy", "leader's")) { leadOwner = ZoneScope.Opponent; ok = true; }
+            if (ok && cur.MatchPhrase("max", "defense"))
+            {
+                cur.TryMatchAnyWord("to");
+                var maxDefV = ParseNumExpr(cur);
+                ConsumeDuration(cur);
+                return new List<EffectNode>
+                {
+                    new ModifyStatsNode
+                    {
+                        Target = leadOwner == ZoneScope.Self ? TargetSpec.SelfLeader : TargetSpec.OpponentLeader,
+                        Op = StatModOp.Set,
+                        Life = maxDefV,
+                    },
+                };
+            }
+            cur.Seek(sp);
+        }
+
+        // "set their costs to 0"
+        if (cur.Current.IsAnyWord("their", "its") && cur.Peek().IsAnyWord("costs", "cost"))
+        {
+            cur.Advance(); cur.Advance();
+            cur.TryMatchAnyWord("to");
+            var cv = ParseNumExpr(cur);
+            return new List<EffectNode>
+            {
+                new ModifyCostNode { Target = TargetSpec.Previous, Op = CostModOp.Set, Value = cv },
+            };
+        }
+
+        // "set the attack of all enemy followers on the field to 4"
+        if (cur.MatchWord("the") && cur.Peek().IsAnyWord("attack", "defense"))
+        {
+            var statName = cur.Current.Text;
+            cur.Advance(); cur.Advance();
+            cur.TryMatchAnyWord("of");
+            var tgt = _target.TryParse(cur) ?? TargetSpec.Previous;
+            cur.TryMatchAnyWord("to");
+            var v2 = ParseNumExpr(cur);
+            return new List<EffectNode>
+            {
+                new ModifyStatsNode
+                {
+                    Target = tgt, Op = StatModOp.Set,
+                    Attack = statName.StartsWith("attack") ? v2 : null,
+                    Life = statName.StartsWith("defense") ? v2 : null,
+                },
+            };
+        }
+
         // "set their/its attack and defense to X"
         if (cur.Current.IsAnyWord("their", "its") && cur.Peek().IsAnyWord("attack"))
         {
@@ -905,12 +1022,14 @@ public sealed class ActionParser
         }
 
         // "set the cost of this card to 1"
-        if (cur.MatchWord("the") && cur.MatchWord("cost"))
+        if (cur.Current.IsWord("the") && (cur.Peek().IsWord("cost") || cur.Peek().IsWord("costs")))
         {
+            cur.Advance(); cur.Advance();
             cur.TryMatchAnyWord("of");
             var tgt = _target.TryParse(cur) ?? TargetSpec.Self;
             cur.TryMatchAnyWord("to");
             var v0 = ParseNumExpr(cur);
+            ConsumeDuration(cur);
             return new List<EffectNode>
             {
                 new ModifyCostNode { Target = tgt, Op = CostModOp.Set, Value = v0 },
@@ -964,7 +1083,7 @@ public sealed class ActionParser
         {
             new ModifyCounterNode
             {
-                Counter = SymbolId<CounterTag>.FromName("spellboost"),
+                Counter = _lex.Counter("spellboost"),
                 Op = CounterOp.Add,
                 Delta = times,
             },
@@ -987,7 +1106,7 @@ public sealed class ActionParser
             }
             result.Add(new MacroNode
             {
-                Macro = SymbolId<MacroTag>.FromName("reanimate"),
+                Macro = _lex.Macro("reanimate"),
                 Args = new[] { NumExpr.Const(n) },
             });
             if (!cur.TryMatchAnyWord("and")) break;
@@ -1028,7 +1147,7 @@ public sealed class ActionParser
             {
                 Target = TargetSpec.Self,
                 Op = KeywordOp.Grant,
-                Keyword = SymbolId<KeywordTag>.FromName(kw),
+                Keyword = _lex.Keyword(kw),
             },
         };
     }
@@ -1087,6 +1206,17 @@ public sealed class ActionParser
             }
             return new List<EffectNode>();
         }
+        if (cur.Current.IsWord("last") && cur.Peek().IsWord("words"))
+        {
+            cur.Advance(); cur.Advance();
+            while (!cur.IsAtEnd && !cur.Current.IsAnyWord("from")) cur.Advance();
+            cur.TryMatchAnyWord("from");
+            var lt = _target.TryParse(cur) ?? TargetSpec.Previous;
+            return new List<EffectNode>
+            {
+                new ModifyKeywordNode { Target = lt, Op = KeywordOp.Remove, Keyword = _lex.Keyword("last words") },
+            };
+        }
         if (cur.Current.Kind == TokKind.Keyword)
         {
             var kw = cur.Current.Text;
@@ -1100,7 +1230,7 @@ public sealed class ActionParser
                 {
                     Target = tgt,
                     Op = KeywordOp.Remove,
-                    Keyword = SymbolId<KeywordTag>.FromName(kw),
+                    Keyword = _lex.Keyword(kw),
                 },
             };
         }
@@ -1161,7 +1291,7 @@ public sealed class ActionParser
         {
             new MacroNode
             {
-                Macro = SymbolId<MacroTag>.FromName("replace_deck"),
+                Macro = _lex.Macro("replace_deck"),
             },
         };
     }
@@ -1198,7 +1328,7 @@ public sealed class ActionParser
             new ModifyCounterNode
             {
                 Owner = target?.Owner ?? ZoneScope.Self,
-                Counter = SymbolId<CounterTag>.FromName("countdown"),
+                Counter = _lex.Counter("countdown"),
                 Op = CounterOp.Add,
                 Delta = sign < 0 ? NumExpr.Sub(NumExpr.Const(0), val) : val,
             },
@@ -1209,7 +1339,7 @@ public sealed class ActionParser
     {
         cur.ExpectWord("activate");
         if (cur.MatchPhrase("all", "of", "them", "instead"))
-            return new List<EffectNode> { new MacroNode { Macro = SymbolId<MacroTag>.FromName("activate_all") } };
+            return new List<EffectNode> { new MacroNode { Macro = _lex.Macro("activate_all") } };
         if (cur.MatchPhrase("its", "fanfare", "ability"))
             return new List<EffectNode> { new InvokeAbilityNode { Target = TargetSpec.Self, Event = CoreEvent.OnPlay } };
         if (cur.MatchPhrase("an", "ability", "in", "sequence", "from", "the", "following"))
@@ -1223,7 +1353,7 @@ public sealed class ActionParser
             return new List<EffectNode> { new BranchModeNode { Kind = ModeDispatchKind.Random, PickCount = NumExpr.Const(n), Options = Array.Empty<IReadOnlyList<EffectNode>>() } };
         }
         while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
-        return new List<EffectNode> { new MacroNode { Macro = SymbolId<MacroTag>.FromName("activate") } };
+        return new List<EffectNode> { new MacroNode { Macro = _lex.Macro("activate") } };
     }
 
     private List<EffectNode> ParseConsume(TokenCursor cur)
@@ -1235,7 +1365,7 @@ public sealed class ActionParser
         {
             new ModifyCounterNode
             {
-                Counter = SymbolId<CounterTag>.FromName("clues"),
+                Counter = _lex.Counter("clues"),
                 Op = CounterOp.Add,
                 Delta = NumExpr.Sub(NumExpr.Const(0), count),
             },
@@ -1285,7 +1415,7 @@ public sealed class ActionParser
             {
                 new ModifyCounterNode
                 {
-                    Counter = SymbolId<CounterTag>.FromName("pp"),
+                    Counter = _lex.Counter("pp"),
                     Op = CounterOp.Fill,
                     Delta = NumExpr.Const(0),
                 },
@@ -1334,10 +1464,10 @@ public sealed class ActionParser
     private void ConsumeDuration(TokenCursor cur)
     {
         if (!cur.MatchWord("until")) return;
-        cur.TryMatchAnyWord("the", "your");
+        cur.TryMatchAnyWord("the", "your", "their");
         cur.TryMatchAnyWord("end");
         cur.TryMatchAnyWord("of");
-        cur.TryMatchAnyWord("the", "your");
+        cur.TryMatchAnyWord("the", "your", "their");
         cur.TryMatchAnyWord("opponent's", "opponent");
         cur.TryMatchAnyWord("turn", "turns");
     }
@@ -1374,7 +1504,7 @@ public sealed class ActionParser
         {
             var name = cur.Current.Text.ToUpperInvariant();
             cur.Advance();
-            return NumExpr.Ctr(SymbolId<CounterTag>.FromName(name));
+            return NumExpr.Ctr(_lex.Counter(name));
         }
         // X-cost → 按费用 X 筛选，数量取 1
         if (cur.Current.IsAnyWord("x-cost"))

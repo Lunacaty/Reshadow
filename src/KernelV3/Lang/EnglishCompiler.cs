@@ -63,21 +63,27 @@ public sealed class EnglishCompiler
     }
 
     /// <summary>铁律二：把引号内的 token 流编译成一个 AbilityDef。</summary>
+    /// <remarks>
+    /// ★ 修订（Gemini 63 号审计·偏离 6）：
+    /// 旧实现只调 TryParseHeader，没接 PrefixParser，导致
+    /// "At the end of your turn, ..." / "Whenever ..." 这类引号能力全部在位置 0 报错。
+    /// 现与顶层句子走同一套前缀剥离器。
+    /// </remarks>
     private AbilityDef CompileQuotedAbility(IReadOnlyList<Token> inner)
     {
         var cur = new TokenCursor(inner);
-        var trigger = new TriggerSpec { Event = CoreEvent.PassiveAura };
+        var hb = new AbilityHeaderBuilder();
+        _prefixes.ParseAll(cur, hb);
 
-        // 引号内可能自带能力头（"Last Words: Draw a card"）
-        var hdr = TryParseHeader(cur);
-        if (hdr != null) trigger = hdr.Value.trigger;
+        var body = cur.IsAtEnd
+            ? (IReadOnlyList<EffectNode>)Array.Empty<EffectNode>()
+            : _actions.ParseSequence(cur);
 
-        var body = _actions.ParseSequence(cur);
         return new AbilityDef
         {
-            Trigger = trigger,
-            Condition = BoolExpr.True,
-            Costs = Array.Empty<CostSpec>(),
+            Trigger = hb.BuildTrigger(),
+            Condition = hb.Condition,
+            Costs = hb.Costs,
             Body = body,
         };
     }
@@ -165,6 +171,32 @@ public sealed class EnglishCompiler
                 if (c.IsAtEnd) continue;
             }
 
+            // "Ignores Ward" / "Earth Sigil" / "Clue" 这类句首类型词
+            while (!c.IsAtEnd)
+            {
+                if (c.MatchPhrase("ignores", "ward"))
+                {
+                    result.Add(new AbilityDef
+                    {
+                        Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                        Condition = BoolExpr.True,
+                        Costs = Array.Empty<CostSpec>(),
+                        Body = new List<EffectNode>
+                        {
+                            new ModifyKeywordNode
+                            {
+                                Target = TargetSpec.Self,
+                                Op = KeywordOp.Grant,
+                                Keyword = _lex.Keyword("ignores ward"),
+                            },
+                        },
+                    });
+                    continue;
+                }
+                if (c.MatchPhrase("earth", "sigil") || c.MatchWord("clue")) continue;
+                break;
+            }
+
             // 句首裸关键词（Ward / Rush / Storm …）：每个词生成一个独立常驻能力
             while (c.Current.Kind == TokKind.Keyword)
             {
@@ -183,7 +215,7 @@ public sealed class EnglishCompiler
                         {
                             Target = TargetSpec.Self,
                             Op = KeywordOp.Grant,
-                            Keyword = SymbolId<KeywordTag>.FromName(kwText),
+                            Keyword = _lex.Keyword(kwText),
                         },
                     },
                 });
@@ -234,6 +266,33 @@ public sealed class EnglishCompiler
     /// 引号块之后紧跟的能力头（'...' Super-Evolve: / ... Enhance (7): / ... If ...）
     /// 必须切开，否则会被当成同一动作序列的一部分。
     /// </summary>
+    /// <summary>
+    /// "Ward Last Words: ..." → ["Ward", ".", "Last Words: ..."]
+    /// 裸关键词后面紧跟能力头时必须断开。
+    /// </summary>
+    private static List<Token> SplitKeywordThenHeader(IReadOnlyList<Token> tokens)
+    {
+        var result = new List<Token>();
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            var t = tokens[i];
+            if (t.Kind == TokKind.Keyword && i + 1 < tokens.Count)
+            {
+                var nx = tokens[i + 1];
+                if (nx.IsAnyWord("last", "fanfare", "strike", "clash", "evolve", "super-evolve",
+                                 "engage", "enhance", "countdown", "necromancy", "rally", "combo",
+                                 "whenever", "when", "at", "aura", "during", "once"))
+                {
+                    result.Add(t);
+                    result.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
+                    continue;
+                }
+            }
+            result.Add(t);
+        }
+        return result;
+    }
+
     private static List<Token> SplitAfterQuote(IReadOnlyList<Token> tokens)
     {
         var result = new List<Token>();
@@ -242,59 +301,15 @@ public sealed class EnglishCompiler
             var t = tokens[i];
             result.Add(t);
             if (t.Kind != TokKind.Quoted) continue;
+            if (i + 1 >= tokens.Count) continue;
 
-            // 只在引号后紧跟「已知能力头」时切分：
-            //   '...' Super-Evolve:  /  '...' Enhance (7):  /  '...' Fanfare:  /  '...' Last Words:
-            if (i + 1 < tokens.Count)
-            {
-                var nx = tokens[i + 1];
-                var nn = i + 2 < tokens.Count ? tokens[i + 2] : null;
-                bool isHeader = (nx.IsAnyWord("super-evolve", "enhance", "fanfare", "evolve", "engage",
-                                              "countdown", "fuse", "combo", "rally", "necromancy",
-                                              "last", "strike", "clash")
-                                 && nn != null && (nn.Kind == TokKind.Colon || nn.IsAnyWord("words")));
-                if (isHeader)
-                    result.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
-            }
-        }
-        return result;
-    }
+            var nx = tokens[i + 1];
+            if (nx.Kind == TokKind.Eof || nx.Kind == TokKind.Period
+                || nx.Kind == TokKind.Comma) continue;
+            if (nx.IsAnyWord("and", "until")) continue;
 
-    private static List<Token> SplitKeywordThenHeader(IReadOnlyList<Token> tokens)
-    {
-        var result = new List<Token>();
-        for (int i = 0; i < tokens.Count; i++)
-        {
-            var t = tokens[i];
-            // 在关键词之后插入一个 Period，制造切分
-            if (t.Kind == TokKind.Keyword && i + 1 < tokens.Count)
-            {
-                var nx = tokens[i + 1];
-                if (nx.IsAnyWord("last", "fanfare", "strike", "clash", "evolve", "super-evolve",
-                                 "engage", "enhance", "countdown", "necromancy", "rally", "combo",
-                                 "whenever", "when", "at", "aura", "during", "during", "once"))
-                {
-                    result.Add(t);
-                    result.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
-                    continue;
-                }
-            }
-
-            // Countdown (N) 后面直接跟另一个头/事件句 → 在右括号后切分
-            if (t.IsAnyWord("countdown") && i + 1 < tokens.Count && tokens[i + 1].Kind == TokKind.OpenParen)
-            {
-                result.Add(t);                 // Countdown
-                result.Add(tokens[i + 1]);     // (
-                int k = i + 2;
-                if (k < tokens.Count && tokens[k].Kind == TokKind.Number) { result.Add(tokens[k]); k++; }
-                if (k < tokens.Count && tokens[k].Kind == TokKind.CloseParen) { result.Add(tokens[k]); k++; }
-                // 后面若还有内容，插一个句号制造切分
-                if (k < tokens.Count && tokens[k].Kind != TokKind.Period)
-                    result.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
-                i = k - 1;
-                continue;
-            }
-            result.Add(t);
+            // 引号后还有内容，且不是连接词 -> 切开
+            result.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
         }
         return result;
     }
@@ -415,7 +430,7 @@ public sealed class EnglishCompiler
         if (joined.Contains("overflow"))
             return new CompareExpr
             {
-                Left = NumExpr.Ctr(SymbolId<CounterTag>.FromName("max_pp")),
+                Left = NumExpr.Ctr(_lex.Counter("max_pp")),
                 Op = CompareOp.Ge,
                 Right = NumExpr.Const(7),
             };
@@ -432,7 +447,7 @@ public sealed class EnglishCompiler
                 if (joined.Contains("play point"))
                     return new CompareExpr
                     {
-                        Left = NumExpr.Ctr(SymbolId<CounterTag>.FromName("max_pp")),
+                        Left = NumExpr.Ctr(_lex.Counter("max_pp")),
                         Op = CompareOp.Ge,
                         Right = NumExpr.Const(v),
                     };
@@ -450,6 +465,12 @@ public sealed class EnglishCompiler
     {
         var j = joined.Trim().TrimEnd('.').ToLowerInvariant();
         return j == "activates in hand"
+            || j == "activates in deck"
+            || j == "activates"
+            || j == "mitilykket"
+            || j == "delay"
+            || j == "clue"
+            || j == "earth sigil"
             || j == "during your turn"
             || j == "during your opponent's turn"
             || j == "once on each of your turns"

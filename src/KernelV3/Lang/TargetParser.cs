@@ -24,6 +24,9 @@ public sealed class TargetParser
 
     public TargetParser(Lexicon lex) => _lex = lex;
 
+    /// <summary>诊断用：上一次 TryParse 在后置定语循环里消费了多 token。</summary>
+    public static int LastPostfixConsumed;
+
     /// <summary>尝试从 cursor 当前位置解析一个目标。解析不了返回 null（cursor 不动）。</summary>
     public TargetSpec TryParse(TokenCursor cur)
     {
@@ -202,59 +205,86 @@ public sealed class TargetParser
             matched = true;
         }
 
-        // ---- 2. 随机 / 去重 ----
-        while (true)
-        {
-            if (cur.Current.IsAnyWord("random"))
-            {
-                cur.Advance();
-                if (mode != SelectMode.All) mode = SelectMode.Random;
-                else { mode = SelectMode.Random; if (!countSet) { count = NumExpr.Const(1); countSet = true; } }
-                matched = true;
-                continue;
-            }
-            if (cur.Current.IsAnyWord("differently") && cur.Peek().IsWord("named"))
-            {
-                cur.Advance(); cur.Advance();
-                distinct = true;
-                matched = true;
-                continue;
-            }
-            if (cur.Current.IsAnyWord("exact"))
-            {
-                cur.Advance(); cur.TryMatchAnyWord("copy");
-                matched = true;
-                continue;
-            }
-            break;
-        }
-
-        // ---- 3. 其他 ----
-        if (cur.Current.IsAnyWord("another", "other"))
-        {
-            cur.Advance();
-            wheres.Add(new HasStateExpr { State = UnitState.None, Of = TargetSpec.Item });  // 占位：不是 self
-            matched = true;
-        }
-        while (cur.Current.IsAnyWord("a", "an")) cur.Advance();
-
-        // ---- 3a. and 是并列边界，TargetParser 在此停止 ----
+        // ---- 2. and 是并列边界，在此停止（必须在修饰词循环之前判定）----
         if (cur.Current.IsWord("and"))
         {
             cur.Seek(start);
             return null;
         }
 
-        // ---- 3b. 冠词（the / a / an）----
-        while (cur.Current.IsAnyWord("the", "a", "an")) cur.Advance();
-
-        // ---- 4~6. 形容词群循环（归属 / 状态 / 兵种 / 职业 顺序不固定）----
-        // 英语里这些是同层修饰语，可任意排列：
-        //   "all unevolved allied followers"     → 状态 → 归属
-        //   "all allied unevolved followers"     → 归属 → 状态
-        //   "all other allied Swordcraft followers" → 其他 → 归属 → 职业
+        // ---- 3. 统一前置修饰词循环 ----
+        // 英语里这些是同层修饰语，顺序不固定：
+        //   all random other allied evolved Ward followers with 3 defense or less
+        //   the 2 leftmost / another random / a random unselected enemy / 3-base-cost allied
+        // 旧实现把它们散落在循环外，导致一旦顺序与预期不同就永远匹配不到。
         while (true)
         {
+            // 冠词
+            if (cur.Current.IsAnyWord("the", "a", "an")) { cur.Advance(); continue; }
+
+            // [N] leftmost / leftmost
+            if (cur.Current.Kind == TokKind.Number && cur.Peek().IsWord("leftmost"))
+            {
+                count = NumExpr.Const(cur.Current.Value); countSet = true;
+                cur.Advance(); cur.Advance();
+                mode = SelectMode.First; matched = true; continue;
+            }
+            if (cur.Current.IsWord("leftmost"))
+            {
+                cur.Advance(); mode = SelectMode.First;
+                if (!countSet) { count = NumExpr.Const(1); countSet = true; }
+                matched = true; continue;
+            }
+
+            // random / differently named / exact copy / unselected / another·other
+            if (cur.MatchWord("random"))
+            {
+                mode = SelectMode.Random;
+                if (!countSet) { count = NumExpr.Const(1); countSet = true; }
+                matched = true; continue;
+            }
+            if (cur.MatchPhrase("differently", "named")) { distinct = true; matched = true; continue; }
+            if (cur.MatchPhrase("exact", "copy") || cur.MatchPhrase("exact", "copies")) { matched = true; continue; }
+            if (cur.MatchWord("unselected"))
+            {
+                wheres.Add(BoolExpr.Not(new IsPreviousExpr { Slot = TargetSpec.SlotSelected }));
+                matched = true; continue;
+            }
+            if (cur.MatchAnyWord("another", "other"))
+            {
+                wheres.Add(new NotSameEntityExpr { ExcludeSlot = TargetSpec.SlotSelf, Of = TargetSpec.Item });
+                matched = true; continue;
+            }
+
+            // N-cost / N-base-cost / X-cost（分词器把 X-cost 拆成 X / - / cost）
+            if ((cur.Current.Kind == TokKind.Number || cur.Current.IsAnyWord("x", "y", "z"))
+                && cur.Peek().Kind == TokKind.Dash)
+            {
+                NumExpr costExpr = cur.Current.Kind == TokKind.Number
+                    ? NumExpr.Const(cur.Current.Value)
+                    : NumExpr.Var(cur.Current.Text.ToUpperInvariant());
+                cur.Advance(); cur.Advance();
+                bool isBase = cur.MatchWord("base");
+                cur.TryMatch(TokKind.Dash);
+                cur.TryMatchAnyWord("cost", "costs");
+                wheres.Add(new CompareExpr
+                {
+                    Left = NumExpr.Prop(isBase ? StatKey.BaseCost : StatKey.Cost, TargetSpec.Item),
+                    Op = CompareOp.Eq,
+                    Right = costExpr,
+                });
+                matched = true; continue;
+            }
+
+            // non-<Trait>（分词器拆成 non / - / Encroacher）
+            if (cur.Current.IsWord("non") && cur.Peek().Kind == TokKind.Dash)
+            {
+                cur.Advance(); cur.Advance();
+                var trNon = cur.Current.Text; cur.Advance();
+                wheres.Add(BoolExpr.Not(new HasTraitExpr { Trait = _lex.Trait(trNon), Of = TargetSpec.Item }));
+                matched = true; continue;
+            }
+
             // 归属
             if (cur.Current.IsAnyWord("enemy"))
             {
@@ -322,7 +352,7 @@ public sealed class TargetParser
             {
                 var tr = cur.Current.Text;
                 cur.Advance();
-                wheres.Add(new HasTraitExpr { Trait = SymbolId<TraitTag>.FromName(tr), Of = TargetSpec.Item });
+                wheres.Add(new HasTraitExpr { Trait = _lex.Trait(tr), Of = TargetSpec.Item });
                 matched = true; continue;
             }
 
@@ -331,7 +361,7 @@ public sealed class TargetParser
             {
                 var cn = cur.Current.Text;
                 cur.Advance();
-                wheres.Add(new HasClanExpr { Clan = SymbolId<ClanTag>.FromName(cn), Of = TargetSpec.Item });
+                wheres.Add(new HasClanExpr { Clan = _lex.Clan(cn), Of = TargetSpec.Item });
                 matched = true; continue;
             }
 
@@ -339,7 +369,7 @@ public sealed class TargetParser
             if (cur.Current.IsAnyWord("another", "other"))
             {
                 cur.Advance();
-                wheres.Add(BoolExpr.Not(new IsPreviousExpr { Slot = TargetSpec.SlotSelf }));
+                wheres.Add(new NotSameEntityExpr { ExcludeSlot = TargetSpec.SlotSelf, Of = TargetSpec.Item });
                 matched = true; continue;
             }
 
@@ -353,42 +383,47 @@ public sealed class TargetParser
             matched = true;
         }
 
-        // ---- 5b. N-base-cost / N-cost 前置修饰 ----
-        while (cur.Current.Kind == TokKind.Number && cur.Peek().Kind == TokKind.Dash)
+        // "all N-, N-, and N-cost cards"（费用枚举）
+        if (cur.Current.IsAnyWord("all") && cur.Peek().Kind == TokKind.Number)
         {
-            int cost = cur.Current.Value;
-            cur.Advance(); cur.Advance();   // N -
-            bool isBase = cur.MatchWord("base");
-            cur.TryMatchAnyWord("cost");
-            if (cur.Current.Kind == TokKind.Dash) cur.Advance();
-            wheres.Add(new CompareExpr
+            int saveE = cur.Position;
+            cur.Advance();
+            var costs = new List<int>();
+            while (cur.Current.Kind == TokKind.Number)
             {
-                Left = NumExpr.Prop(isBase ? StatKey.BaseCost : StatKey.Cost, TargetSpec.Item),
-                Op = CompareOp.Eq,
-                Right = NumExpr.Const(cost),
-            });
-            matched = true;
-        }
-
-        // ---- 6. 兵种（可能连续多个）----
-        while (cur.Current.Kind == TokKind.Trait || _lex.IsTrait(cur.Current.Text))
-        {
-            var tr = cur.Current.Text;
-            cur.Advance();
-            wheres.Add(new HasTraitExpr { Trait = SymbolId<TraitTag>.FromName(tr), Of = TargetSpec.Item });
-            matched = true;
-        }
-
-        // ---- 6b. 职业 ----
-        if (cur.Current.Kind == TokKind.Clan)
-        {
-            var cn = cur.Current.Text;
-            cur.Advance();
-            wheres.Add(new HasClanExpr { Clan = SymbolId<ClanTag>.FromName(cn), Of = TargetSpec.Item });
-            matched = true;
+                costs.Add(cur.Current.Value);
+                cur.Advance();
+                if (cur.Current.Kind == TokKind.Dash) cur.Advance();
+                if (cur.Current.Kind == TokKind.Comma) { cur.Advance(); continue; }
+                if (cur.Current.IsWord("and")) { cur.Advance(); continue; }
+                break;
+            }
+            if (costs.Count > 0 && cur.MatchWord("cost"))
+            {
+                var ors = new List<BoolExpr>();
+                foreach (var cc in costs)
+                    ors.Add(new CompareExpr
+                    {
+                        Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
+                        Op = CompareOp.Eq,
+                        Right = NumExpr.Const(cc),
+                    });
+                wheres.Add(ors.Count == 1 ? ors[0] : BoolExpr.Or(ors.ToArray()));
+                matched = true;
+            }
+            else cur.Seek(saveE);
         }
 
         // ---- 7. 卡种 / 卡名 ----
+        if (cur.MatchPhrase("ally", "or", "enemy") || cur.MatchPhrase("allies", "or", "enemies"))
+        {
+            owner = ZoneScope.Any; ownerSet = true; includeLeader = true; matched = true;
+        }
+        else if (cur.Current.IsAnyWord("duplicate", "duplicates"))
+        {
+            cur.Advance(); matched = true;
+        }
+        else
         if (cur.Current.Kind == TokKind.CardName)
         {
             cardId = cur.Current.CardId;
@@ -399,19 +434,21 @@ public sealed class TargetParser
         else if (cur.Current.IsAnyWord("follower", "followers"))
         {
             cur.Advance();
-            wheres.Add(new ExistsExpr { Target = TargetSpec.Item, Op = CompareOp.Ge, Count = NumExpr.Const(1) });
+            wheres.Add(new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item });
             hasCardType = true;
             matched = true;
         }
         else if (cur.Current.IsAnyWord("amulet", "amulets"))
         {
             cur.Advance();
+            wheres.Add(new HasKindExpr { Kind = CardKind.Amulet, Of = TargetSpec.Item });
             hasCardType = true;
             matched = true;
         }
         else if (cur.Current.IsAnyWord("spell", "spells"))
         {
             cur.Advance();
+            wheres.Add(new HasKindExpr { Kind = CardKind.Spell, Of = TargetSpec.Item });
             hasCardType = true;
             matched = true;
         }
@@ -450,6 +487,17 @@ public sealed class TargetParser
                 cardName = cur.Current.Text;
                 cur.Advance();
             }
+            else if (cur.Current.IsAnyWord("it", "them"))
+            {
+                // "all enemy copies of it" -> 指向上一条动作的目标
+                cur.Advance();
+                return new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Slot,
+                    Slot = TargetSpec.SlotSelected,
+                    Mode = SelectMode.All,
+                };
+            }
             matched = true;
         }
 
@@ -467,7 +515,6 @@ public sealed class TargetParser
             if (cur.Current.IsAnyWord("opponent's", "opponent") )
             {
                 cur.Advance();
-                cur.TryMatchAnyWord("hand", "deck", "cemetery");
                 owner = ZoneScope.Opponent; ownerSet = true;
             }
             var z = cur.Current.Text.ToLowerInvariant();
@@ -494,6 +541,7 @@ public sealed class TargetParser
         else if (cur.MatchPhrase("destroyed", "this", "match")) { zone = ZoneRef.Cemetery; }
 
         // ---- 9. 后置定语 ----
+        int postLoopStart = cur.Position;
         while (true)
         {
             // 区域短语可能出现在后置定语之后（"that costs 3 or less from your deck"）
@@ -503,6 +551,37 @@ public sealed class TargetParser
             if (cur.MatchPhrase("from", "the", "field")) { zone = ZoneRef.Board; matched = true; continue; }
             if (cur.MatchPhrase("in", "your", "hand")) { zone = ZoneRef.Hand; matched = true; continue; }
             if (cur.MatchPhrase("in", "your", "deck")) { zone = ZoneRef.Deck; matched = true; continue; }
+            // "whose cost has been changed"
+            if (cur.MatchPhrase("whose", "cost", "has", "been", "changed"))
+            {
+                wheres.Add(new HasStateExpr { State = UnitState.CostModified, Of = TargetSpec.Item });
+                matched = true; continue;
+            }
+            // "drawn"（Summon any Forestcraft followers drawn）
+            if (cur.MatchWord("drawn"))
+            {
+                slot = TargetSpec.SlotCreated; matched = true; continue;
+            }
+            // "and the enemy leader"
+            if (cur.MatchPhrase("and", "the", "enemy", "leader") || cur.MatchPhrase("and", "an", "enemy", "leader"))
+            {
+                includeLeader = true; matched = true; continue;
+            }
+
+            // "and both leaders"
+            if (cur.MatchPhrase("and", "both", "leaders") || cur.MatchPhrase("both", "leaders"))
+            {
+                includeLeader = true; owner = ZoneScope.Any; ownerSet = true;
+                matched = true; continue;
+            }
+            // "with Fuse"（先判断再消耗，避免 MatchWord 抢先吞掉 with）
+            if (cur.Current.IsWord("with") && cur.Peek().IsWord("fuse"))
+            {
+                cur.Advance(); cur.Advance();
+                wheres.Add(new IsPreviousExpr { Slot = "fuse_material" });
+                matched = true; continue;
+            }
+
             // "or the enemy leader"
             if (cur.MatchPhrase("or", "the", "enemy", "leader") || cur.MatchPhrase("or", "an", "enemy", "leader"))
             {
@@ -524,6 +603,26 @@ public sealed class TargetParser
                 matched = true;
                 continue;
             }
+            // "with N defense/attack or less/more"
+            if (cur.Current.IsWord("with") && cur.Peek().Kind == TokKind.Number
+                && cur.Peek(2).IsAnyWord("attack", "defense", "life"))
+            {
+                cur.Advance();
+                int fn = cur.Current.Value; cur.Advance();
+                var fstat = cur.Current.Text.ToLowerInvariant().StartsWith("attack") ? StatKey.Attack : StatKey.Life;
+                cur.Advance();
+                cur.TryMatchAnyWord("or");
+                var fop = cur.Current.IsAnyWord("less") ? CompareOp.Le : CompareOp.Ge;
+                cur.Advance();
+                wheres.Add(new CompareExpr
+                {
+                    Left = NumExpr.Prop(fstat, TargetSpec.Item),
+                    Op = fop,
+                    Right = NumExpr.Const(fn),
+                });
+                matched = true; continue;
+            }
+
             // "with On Spellboost"
             if (cur.MatchPhrase("with", "on", "spellboost"))
             {
@@ -557,10 +656,11 @@ public sealed class TargetParser
                 cur.Advance(); cur.Advance();
                 desc = cur.Current.IsAnyWord("highest");
                 cur.Advance();
+                bool isBaseCost = cur.MatchWord("base");
                 var key = cur.Current.Text.ToLowerInvariant();
                 cur.Advance();
                 sort = key.StartsWith("attack") ? SortKey.Attack
-                     : key.StartsWith("cost") ? SortKey.Cost
+                     : key.StartsWith("cost") ? (isBaseCost ? SortKey.BaseCost : SortKey.Cost)
                      : SortKey.Life;
                 matched = true;
                 continue;
@@ -571,7 +671,7 @@ public sealed class TargetParser
                 cur.Advance();
                 var kw = cur.Current.Text;
                 cur.Advance();
-                wheres.Add(new HasKeywordExpr { Keyword = SymbolId<KeywordTag>.FromName(kw), Of = TargetSpec.Item });
+                wheres.Add(new HasKeywordExpr { Keyword = _lex.Keyword(kw), Of = TargetSpec.Item });
                 matched = true;
                 continue;
             }
@@ -659,6 +759,7 @@ public sealed class TargetParser
             }
             break;
         }
+        LastPostfixConsumed = cur.Position - postLoopStart;
 
         if (!matched && !hasCardType && wheres.Count == 0 && cardId == 0)
         {

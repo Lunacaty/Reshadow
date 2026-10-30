@@ -102,6 +102,26 @@ public sealed class DeckRuleExpr : BoolExpr
     public Core.ZoneScope Owner { get; init; } = Core.ZoneScope.Self;
 }
 
+/// <summary>实体属于某卡种（随从 / 法术 / 护符）。</summary>
+/// <remarks>
+/// 旧实现用 ExistsExpr($item >= 1) 代替随从判定，那恒为真，等于没过滤。
+/// </remarks>
+public sealed class HasKindExpr : BoolExpr
+{
+    public CardKind Kind { get; init; }
+    public TargetSpec? Of { get; init; }
+}
+
+/// <summary>当前候选实体与某槽位里的实体**不是同一个**（"another / other" 的真实语义）。</summary>
+/// <remarks>
+/// 旧实现塞 UnitState.None，而 MatchState 对 None 返回 false —— 导致 all "another" 目标恒空。
+/// </remarks>
+public sealed class NotSameEntityExpr : BoolExpr
+{
+    public string ExcludeSlot { get; init; } = TargetSpec.SlotSelf;
+    public TargetSpec? Of { get; init; }
+}
+
 /// <summary>本次效果的上一条动作是否影响了某实体（"it" 的存在性检查）。</summary>
 public sealed class IsPreviousExpr : BoolExpr
 {
