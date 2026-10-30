@@ -85,6 +85,12 @@ public sealed partial class CardVm
             pool = pool.Where(r => {
                 var sn = r.Snapshot;
                 if (sn == null || sn.Zone != ZoneRef.Board) return true;
+
+                // 土之印 / Clue 护符不能被能力选中（双方都不行）。
+                var live = _world.GetLive(sn.EntityId, sn.EntrySerial);
+                if (live != null && _world is Battle.BattleState bs && bs.IsProtectedAmulet(live))
+                    return false;
+
                 if (sn.PlayerId == controller) return true;   // 己方目标不受限
                 return !sn.Keywords.Contains(ambushKw) && !sn.Keywords.Contains(auraKw);
             }).ToList();
@@ -414,7 +420,10 @@ public sealed partial class CardVm
             {
                 var refs = _eval.ResolveRef(n.CopyFrom, scope);
                 if (refs.Count == 0) break;
-                e = _world.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner));
+                // 接口上只有 3 参数版；exact 区分需要落到具体实现。
+                e = _world is Battle.BattleState bs2
+                    ? bs2.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner), n.IsExactCopy)
+                    : _world.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner));
             }
             else if (n.SourceKind == CardSourceKind.CopyOfPrevious)
             {

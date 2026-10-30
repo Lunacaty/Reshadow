@@ -150,6 +150,13 @@ public sealed class SpawnCardNode : EffectNode
     public CardSourceKind SourceKind { get; init; } = CardSourceKind.CardId;
     public int CardId { get; init; }
     public string CardName { get; init; } = "";
+    /// <summary>
+    /// 是否是「exact copy」（完整复制）。
+    /// exact：继承源目标当前的攻击力、生命值、费用、已获得的关键词与进化状态。
+    /// 非 exact：取源目标对应卡号的初始白板状态。
+    /// </summary>
+    public bool IsExactCopy { get; init; }
+
     /// <summary>SourceKind == CopyOfTarget 时，从哪个目标复制。</summary>
     public TargetSpec CopyFrom { get; init; }
     public Core.ZoneScope ToOwner { get; init; } = Core.ZoneScope.Self;

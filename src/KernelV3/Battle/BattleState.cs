@@ -195,7 +195,7 @@ public sealed class BattleState : IVmWorld
             Players[playerId].Counters[counter.Id] = clamped;
 
             // 层数归 0：护符立即破坏
-            if (clamped <= 0) DestroyEntity(holder);
+            if (clamped <= 0) DestroyEntity(holder, byRule: true);
             return;
         }
 
@@ -213,6 +213,15 @@ public sealed class BattleState : IVmWorld
 
     /// <summary>信仰实体的卡 ID 偏移量，避免与真实卡冲突。</summary>
     public const int FaithEntityIdBase = 900000;
+
+    /// <summary>
+    /// 土之印与 Clue 护符的保护（R-6.2）：
+    /// 它们不能被能力选中，也不能被能力破坏。
+    /// 只有层数归 0 的规则性破坏能结束它们。
+    /// </summary>
+    public bool IsProtectedAmulet(RuntimeEntity e)
+        => e?.Def != null
+           && (e.Def.CardId == MagicSedimentCardId || e.Def.CardId == ClueDefaultCardId);
 
     /// <summary>取该玩家场上的 Clue 护符（最多 1 个）。</summary>
     public RuntimeEntity FindClue(int playerId)
@@ -534,7 +543,10 @@ public sealed class BattleState : IVmWorld
     public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId)
         => new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId);
 
-    public void DestroyEntity(RuntimeEntity e)
+    /// <summary>IVmWorld 接口实现：能力破坏，受保护拦截。</summary>
+    void IVmWorld.DestroyEntity(RuntimeEntity e) => DestroyEntity(e);
+
+    public void DestroyEntity(RuntimeEntity e, bool byRule = false)
     {
         if (e == null) return;
         if (e.Zone != ZoneRef.Board) return;
@@ -542,6 +554,11 @@ public sealed class BattleState : IVmWorld
         // 超进化铁律：自己的回合内，超进化随从不能被任何能力或效果破坏。
         // 这条规则之前完全没有实现，法术可以直接炸死刚超进化的随从。
         if (e.IsSuperEvolved && e.PlayerId == ActivePlayer) return;
+
+        // 土之印 / Clue 护符不能被能力破坏（R-6.2）。
+        // 它们只能因「层数归 0」而规则性破坏。
+        // byRule = true 表示「规则性收尾」（层数归 0），不受保护拦截。
+        if (!byRule && IsProtectedAmulet(e)) return;
 
         int owner = e.PlayerId;
         var snap = e.TakeSnapshot();
@@ -636,12 +653,27 @@ public sealed class BattleState : IVmWorld
         foreach (var id in cardIds) CreateEntity(id, ZoneRef.Deck, playerId);
     }
 
-    public RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId)
+    /// <summary>IVmWorld 接口实现：默认完整复制。</summary>
+    RuntimeEntity IVmWorld.SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId)
+        => SpawnCopy(source, toZone, toPlayerId, exact: true);
+
+    /// <summary>
+    /// 复制一个实体。
+    /// exact = true：继承当前攻击力 / 生命值 / 费用。
+    /// exact = false：取该卡号的白板初始状态。
+    /// </summary>
+    public RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId, bool exact = true)
     {
         var s = source.Snapshot;
         if (s == null) return null;
-        var e = CreateEntity(s.CardId, toZone, toPlayerId, s.Attack, s.Life, s.Cost);
-        return e;
+
+        if (!exact)
+        {
+            // 白板复制：只用卡号生成，不带任何当前状态
+            return CreateEntity(s.CardId, toZone, toPlayerId);
+        }
+
+        return CreateEntity(s.CardId, toZone, toPlayerId, s.Attack, s.Life, s.Cost);
     }
 
     /// <summary>

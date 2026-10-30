@@ -65,6 +65,7 @@ public static class VmSelfTest
         GateEarthSigil();
         GateInvokeZone();
         GateInvokeSummon();
+        GateSigilProtection();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -1220,6 +1221,34 @@ public static class VmSelfTest
 
         Check("门禁25 Invoke 从牌组上场", inDeck && onBoard && noFanfare && rallyUp,
               "inDeck=" + inDeck + " onBoard=" + onBoard + " noFanfare=" + noFanfare + " rally=" + rallyUp);
+    }
+
+    /// <summary>门禁26：土之印 / Clue 护符不能被能力破坏，但层数归 0 的规则破坏能生效。</summary>
+    private static void GateSigilProtection()
+    {
+        var st = new Battle.BattleState(seed: 19);
+        var key = st.Schema.Counter("earth_sigil");
+        st.RegisterCard(new CardDef
+        {
+            CardId = Battle.BattleState.MagicSedimentCardId, Name = "Magic Sediment",
+            Kind = CardKind.Amulet, BaseCost = 1,
+        });
+
+        st.WriteCounter(0, key, 2);
+        var sigil = st.FindEarthSigil(0);
+        bool exists = sigil != null;
+
+        // 能力破坏应被拦截
+        st.DestroyEntity(sigil);
+        bool immuneToAbility = st.FindEarthSigil(0) != null;
+
+        // 层数归 0 的规则破坏要生效
+        st.WriteCounter(0, key, 0);
+        bool diesAtZero = st.FindEarthSigil(0) == null;
+
+        Check("门禁26 护符免能力破坏 / 层数归 0 仍破坏",
+              exists && immuneToAbility && diesAtZero,
+              "exists=" + exists + " immune=" + immuneToAbility + " diesAtZero=" + diesAtZero);
     }
 
     private static void Check(string name, bool ok, string detail)

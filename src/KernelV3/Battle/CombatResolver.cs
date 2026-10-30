@@ -168,6 +168,17 @@ public sealed class CombatResolver
             OverflowDamage(attacker, defender);
 
         // 11/12. 被破坏随从的谢幕曲等诱发效果
+        // 顺序铁律（R-3.2 第 11/12 步）：
+        //   先结算攻击方（当前回合玩家）在第 9 步入列的谢幕曲，
+        //   再结算被攻击方（非当前回合玩家）的同类能力。
+        // 既然队列已按「主客场 + 旧→新」排序，这里只需在
+        // 每个待机能力结算前确保它仍在正确的主客场序上。
+        vm?.StepUntilBlocked();
+        _state.ProcessStateBasedActions();
+
+        // 两轮收尾：第一轮解决破坏时新产生的待机能力，
+        // 第二轮解决那些能力再次引发的破坏（例如谢幕曲再造成伤害）。
+        // 不做无限循环：最多两轮，避免互相触发无休止。
         vm?.StepUntilBlocked();
         _state.ProcessStateBasedActions();
     }
