@@ -61,6 +61,7 @@ public static class VmSelfTest
         GateDiscardEvent();
         GatePlayCardLimits();
         GateNegativeStatsKill();
+        GateMatchSetup();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -1090,6 +1091,39 @@ public static class VmSelfTest
 
         Check("门禁21 属性归零能破坏超进化随从", immune && diesByLife,
               "immune=" + immune + " diesByLife=" + diesByLife);
+    }
+
+    /// <summary>门禁22：开局流程（主战者 / 牌组 / 起手 4 张 / 换牌 / 回合循环）。</summary>
+    private static void GateMatchSetup()
+    {
+        var st = new Battle.BattleState(seed: 16);
+        st.RegisterCard(new CardDef { CardId = 1, Name = "F", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1 });
+        var deck = Enumerable.Repeat(1, 40).ToArray();
+        var mr = new Battle.MatchRunner(st);
+        mr.Start(0, deck, deck);
+
+        bool leaders = st.Players[0].Leader != null && st.Players[1].Leader != null
+                       && st.Players[0].Leader.Life == 20 && st.Players[1].Leader.Life == 20;
+        bool hand4 = st.EnumerateZone(ZoneRef.Hand, 0).Count() == 4
+                     && st.EnumerateZone(ZoneRef.Hand, 1).Count() == 4;
+        bool deckLeft = st.EnumerateZone(ZoneRef.Deck, 0).Count() == 36;
+        bool phase = mr.Phase == Battle.MatchPhase.Mulligan;
+
+        // 换牌：换掉 2 张，手牌仍 4 张
+        var ret = st.EnumerateZone(ZoneRef.Hand, 0).Take(2).ToList();
+        mr.Mulligan(0, ret);
+        bool afterMulligan = st.EnumerateZone(ZoneRef.Hand, 0).Count() == 4;
+
+        // 进入对局：先手第 1 回合，pp = 1，抽 1 张变 5 张
+        mr.ConfirmMulligan();
+        bool playing = mr.Phase == Battle.MatchPhase.Playing;
+        bool pp1 = st.ReadCounter(0, st.Schema.Counter("pp")) == 1;
+        bool hand5 = st.EnumerateZone(ZoneRef.Hand, 0).Count() == 5;
+
+        bool ok = leaders && hand4 && deckLeft && phase && afterMulligan && playing && pp1 && hand5;
+        Check("门禁22 开局与回合流程", ok,
+              "leaders=" + leaders + " hand4=" + hand4 + " deck36=" + deckLeft + " mulligan=" + afterMulligan
+              + " playing=" + playing + " pp1=" + pp1 + " hand5=" + hand5);
     }
 
     private static void Check(string name, bool ok, string detail)
