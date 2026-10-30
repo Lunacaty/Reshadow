@@ -21,6 +21,9 @@ public sealed class MemoryWorld : IVmWorld
     private readonly Dictionary<int, CardDef> _cardPool = new();
 
     public List<VmEvent> EventLog { get; } = new();
+    /// <summary>符号表：计数器上下限等元数据来自这里。</summary>
+    public GameSchema Schema { get; } = GameSchema.CreateDefault();
+
     public Random Rng { get; }
 
     public MemoryWorld(int seed = 12345) => Rng = new Random(seed);
@@ -92,8 +95,9 @@ public sealed class MemoryWorld : IVmWorld
 
     public void WriteCounter(int playerId, SymbolId<CounterTag> counter, int value)
     {
-        _counters[(playerId, counter.Id)] = value;
-        OnCounterWrite?.Invoke(counter.Name, value);
+        int clamped = Schema.ClampCounter(counter, value);
+        _counters[(playerId, counter.Id)] = clamped;
+        OnCounterWrite?.Invoke(counter.Name, clamped);
     }
 
     public bool CheckDeckRule(int playerId, DeckRule rule)

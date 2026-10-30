@@ -64,7 +64,8 @@ public sealed class BattleState : IVmWorld
     public void WriteCounter(int playerId, SymbolId<CounterTag> counter, int value)
     {
         if (playerId < 0 || playerId > 1) return;
-        Players[playerId].Counters[counter.Id] = value;
+        // 钳制到该计数器自己的范围（pp 0..10 / ep 0..2 …）
+        Players[playerId].Counters[counter.Id] = Schema.ClampCounter(counter, value);
     }
 
     public int ReadEntityCounter(RuntimeEntity e, SymbolId<CounterTag> counter)

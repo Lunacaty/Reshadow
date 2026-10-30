@@ -18,6 +18,18 @@ namespace ShadowverseFan.KernelV3.Core;
 
 public sealed class GameSchema
 {
+    /// <summary>计数器名（不区分大小写） -> (下限, 上限)。上限 -1 表示不限。</summary>
+    public Dictionary<string, (int min, int max)> CounterLimits { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>把计数器值钳制到它自己的范围内。</summary>
+    public int ClampCounter(SymbolId<CounterTag> ctr, int value)
+    {
+        if (ctr == null || !CounterLimits.TryGetValue(ctr.Name ?? "", out var lim)) return value;
+        if (lim.max >= 0 && value > lim.max) value = lim.max;
+        if (value < lim.min) value = lim.min;
+        return value;
+    }
+
     public SymbolRegistry<TraitTag> Traits { get; } = new();
     public SymbolRegistry<CounterTag> Counters { get; } = new();
     public SymbolRegistry<KeywordTag> Keywords { get; } = new();
@@ -48,11 +60,28 @@ public sealed class GameSchema
     }
 
     /// <summary>引擎内置的全部资源计数器。</summary>
-    public static readonly string[] BuiltinCounters =
+    /// <summary>
+    /// 内置资源计数器的定义：名字 + 下限 + 上限（-1 表示不限）。
+    /// 官方规则：能量点上限 10、进化点 2、超进化点 2。
+    /// 没有上限约束时，效果会把 pp 写成负数或超量而不被发现。
+    /// </summary>
+    public static readonly (string name, int min, int max)[] BuiltinCounterDefs =
     {
-        "pp", "max_pp", "ep", "sep", "countdown", "spellboost",
-        "earth_sigil", "clues", "crest", "faith", "shadow",
-        "X", "Y", "Z", "turn_play", "match_play", "evolve_count",
+        ("pp", 0, 10),
+        ("max_pp", 0, 10),
+        ("ep", 0, 2),
+        ("sep", 0, 2),
+        ("countdown", 0, 99),
+        ("spellboost", 0, 99),
+        ("earth_sigil", 0, 99),
+        ("clues", 0, 99),
+        ("crest", 0, 99),
+        ("faith", 0, 99),
+        ("shadow", 0, 999),
+        ("X", 0, 999), ("Y", 0, 999), ("Z", 0, 999),
+        ("turn_play", 0, 99),
+        ("match_play", 0, 999),
+        ("evolve_count", 0, 99),
     };
 
     public static readonly string[] BuiltinKeywords =
@@ -66,7 +95,11 @@ public sealed class GameSchema
     public static GameSchema CreateDefault()
     {
         var s = new GameSchema();
-        foreach (var c in BuiltinCounters) s.Counters.Register(c, "builtin");
+        foreach (var (name, min, max) in BuiltinCounterDefs)
+        {
+            s.Counters.Register(name, "builtin");
+            s.CounterLimits[name] = (min, max);
+        }
         foreach (var k in BuiltinKeywords) s.Keywords.Register(k, "builtin");
         return s;
     }
