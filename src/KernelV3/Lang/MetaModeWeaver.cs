@@ -58,6 +58,27 @@ public static class MetaModeWeaver
                     break;
                 }
             }
+
+            // 往前找不到时，必须往后找。
+            // 卡面可以写成：
+            //   "Select a Mode to activate. If ..., activate all of them instead. 1. ... 2. ..."
+            // 这里 instead 句出现在选项 1./2. 之**前**，若只往前找，
+            // 永远找不到那个還没被落盘的模式块。
+            if (idx < 0)
+            {
+                for (int i = result.Count; i < abilities.Count; i++)
+                {
+                    var a2 = abilities[i];
+                    if (a2?.Body != null && a2.Body.Any(n => n is BranchModeNode)) { idx = i; break; }
+                }
+                if (idx >= 0)
+                {
+                    // 后面的模式块还没循环到：先把它们原样放进 result，
+                    // 再按下面的通常路径改写。
+                    while (result.Count <= idx) result.Add(abilities[result.Count]);
+                }
+            }
+
             if (idx < 0)
             {
                 // 找不到可改写的模式块：保留原动作，不让效果凭空消失

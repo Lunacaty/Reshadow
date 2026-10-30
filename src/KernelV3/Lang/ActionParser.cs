@@ -27,10 +27,14 @@ public sealed class ActionParser
 
     /// <summary>调试开关：打印 ParseGive 的每一步。</summary>
 
-    public ActionParser(Lexicon lex, Func<IReadOnlyList<Token>, AbilityDef> compileQuotedAbility)
+    public ActionParser(Lexicon lex, Func<IReadOnlyList<Token>, AbilityDef> compileQuotedAbility,
+                        TargetParser target = null)
     {
         _lex = lex;
-        _target = new TargetParser(lex);
+        // 必须与编译器共用同一个 TargetParser：
+        // 代词作用域（DefaultPronounSlot）是写在实例上的状态，
+        // 各自新建一个实例的话，编译器设置的 $trigger 永远传不到动作解析。
+        _target = target ?? new TargetParser(lex);
         _compileQuotedAbility = compileQuotedAbility;
     }
 
@@ -834,6 +838,34 @@ public sealed class ActionParser
             var quoted = cur.Current;
             cur.Advance();
             var granted = _compileQuotedAbility(quoted.Inner);
+
+            // 引号内只是单纯授予关键词 / 属性限制（如 "Can't attack followers or leaders"）时，
+            // 直接展开成对目标 t 的 ModifyKeywordNode。
+            // 否则包成 GrantAbilityNode 后，外层的
+            // "until the end of your opponent's turn" 无法挂到关键词上，时限直接丢失。
+            if (granted.Trigger != null
+                && granted.Trigger.Event == Core.CoreEvent.PassiveAura
+                && (granted.Condition == null || granted.Condition is Ast.ConstBoolExpr)
+                && granted.Body != null
+                && granted.Body.Count > 0
+                && granted.Body.All(n => n is ModifyKeywordNode))
+            {
+                foreach (var t in targets)
+                    foreach (var kn in granted.Body)
+                    {
+                        var mk = (ModifyKeywordNode)kn;
+                        outNodes.Add(new ModifyKeywordNode
+                        {
+                            Target = t,
+                            Op = mk.Op,
+                            Keyword = mk.Keyword,
+                            Value = mk.Value,
+                            Duration = mk.Duration,
+                        });
+                    }
+                return outNodes;
+            }
+
             foreach (var t in targets)
                 outNodes.Add(new GrantAbilityNode { Target = t, Granted = granted });
             return outNodes;
@@ -1817,7 +1849,9 @@ public sealed class ActionParser
             }
             if (sentBuf.Count > 0 && !IsVariableDecl(sentBuf)) kept.AddRange(sentBuf);
 
-            var inner = new ActionParser(_lex, _compileQuotedAbility);
+            var inner = new ActionParser(_lex, _compileQuotedAbility, _target);
+            // 必须继承变量解析器：否则引号内的 X/Y/Z 在子解析器里无法解析。
+            inner.VariableResolver = VariableResolver;
             body = inner.ParseSequence(new TokenCursor(kept));
         }
         return new List<EffectNode> { new LoopNode { Kind = LoopKind.Times, Count = n, Body = body } };

@@ -22,6 +22,12 @@ public sealed class TargetParser
 {
     private readonly Lexicon _lex;
 
+    /// <summary>
+    /// 代词 it / them 默认指向的槽位。null 表示 $selected。
+    /// 编译 "When/Whenever <主语> ... " 触发器时应置为 $trigger，直到本句出现 Select 再切回 $selected。
+    /// </summary>
+    public string DefaultPronounSlot { get; set; }
+
     public TargetParser(Lexicon lex) => _lex = lex;
 
     /// <summary>诊断用：上一次 TryParse 在后置定语循环里消费了多 token。</summary>
@@ -150,7 +156,18 @@ public sealed class TargetParser
                 }
                 cur.Seek(saveAnd);
             }
-            return new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = TargetSpec.SlotSelected, Mode = SelectMode.All };
+            // 代词 it 的指向取决于当前上下文（R-4 / Stage 4 代词绑定）：
+            //   · 前面有 Select <Target>      → $selected
+            //   · 前面是 Summon / Add / Draw   → $created
+            //   · 处于 When/Whenever <主语> enters/evolves/attacks 触发器且本句未 Select → $trigger
+            // 之前死写 $selected，导致 30 张
+            // "Whenever X enters the field, give it ..." 在触发时去读空的 $selected。
+            return new TargetSpec
+            {
+                SourceKind = TargetSourceKind.Slot,
+                Slot = DefaultPronounSlot ?? TargetSpec.SlotSelected,
+                Mode = SelectMode.All,
+            };
         }
         if (cur.Current.IsAnyWord("them"))
         {

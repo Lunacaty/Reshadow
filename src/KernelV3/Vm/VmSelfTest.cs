@@ -56,6 +56,7 @@ public static class VmSelfTest
         GateCrestUnique();
         GateFaithEntity();
         GateFaithGrantedAbility();
+        GatePronounScope();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -958,6 +959,27 @@ public static class VmSelfTest
         bool ok = after == before + 1;
         Check("门禁16 信仰挂载能力能触发", ok,
               "spellboost " + before + "->" + after);
+    }
+
+    /// <summary>门禁17：代词 it 的槽位随上下文变化（触发器下 -> $trigger）。</summary>
+    private static void GatePronounScope()
+    {
+        var lex = new Lang.Lexicon();
+        foreach (var kw in new[] { "ward", "rush", "storm" }) lex.AddKeyword(kw);
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+
+        // 触发器下：it 应指向 $trigger
+        var r1 = comp.Compile("Whenever an allied follower enters the field, give it Ward.");
+        string b1 = r1.Abilities.Count > 0 ? string.Join("|", r1.Abilities[0].Body.Select(Lang.AstEnglishPrinter.PrintNode)) : "";
+
+        // Select 后：it 应指向 $selected
+        var r2 = comp.Compile("Fanfare: Select an enemy follower on the field and destroy it.");
+        string b2 = r2.Abilities.Count > 0 ? string.Join("|", r2.Abilities[0].Body.Select(Lang.AstEnglishPrinter.PrintNode)) : "";
+
+        bool ok = b1.Contains("$trigger") && b2.Contains("$selected");
+        Check("门禁17 代词槽位随上下文变化", ok,
+              "whenever=" + b1 + " select=" + b2);
     }
 
     private static void Check(string name, bool ok, string detail)

@@ -28,7 +28,7 @@ public sealed class EnglishCompiler
         _lex = lex ?? throw new ArgumentNullException(nameof(lex));
         _tokenizer = new Tokenizer(lex);
         _target = new TargetParser(lex);
-        _actions = new ActionParser(lex, CompileQuotedAbility);
+        _actions = new ActionParser(lex, CompileQuotedAbility, _target);
         _actions.VariableResolver = ResolveVariable;
         _prefixes = new PrefixParser(lex, _target);
     }
@@ -69,6 +69,28 @@ public sealed class EnglishCompiler
         r.Abilities.Clear();
         r.Abilities.AddRange(InsteadWeaver.Weave(buffer, _lex));
 
+        // "X starts at N" 的初值落盘：产出一条 PassiveAura，把初始值写进实体计数器。
+        // 不这样做的话，初值只能编译期替换成常量，
+        // 后面的 "Increase X by 1" 就没有东西可以加。
+        foreach (var kv in _initialCounters)
+        {
+            r.Abilities.Add(new AbilityDef
+            {
+                Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                Condition = BoolExpr.True,
+                Costs = Array.Empty<CostSpec>(),
+                Body = new List<EffectNode>
+                {
+                    new ModifyCounterNode
+                    {
+                        Counter = _lex.Counter(kv.Key),
+                        Op = CounterOp.Set,
+                        Delta = NumExpr.Const(kv.Value),
+                    },
+                },
+            });
+        }
+
         return r;
     }
 
@@ -85,21 +107,31 @@ public sealed class EnglishCompiler
         var hb = new AbilityHeaderBuilder();
         _prefixes.ParseAll(cur, hb);
 
-        // 引号内可能包含 "X is the number of ..." 这类变量声明句，需先剔除
+        // 引号内可能包含 "X is the number of ..." 这类变量声明句。
+        // 不仅要从动作流里剔除，还必须**先登记绑定**。
+        // 之前只剔除不登记，导致引号内的 X 永远解析不出真实取值。
         var kept = new List<Token>();
         var sent = new List<Token>();
         foreach (var t in inner)
         {
             if (t.Kind == TokKind.Period)
             {
-                if (sent.Count > 0 && !IsVariableDeclaration(sent)) kept.AddRange(sent);
-                if (sent.Count > 0) kept.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
+                if (sent.Count > 0)
+                {
+                    if (IsVariableDeclaration(sent)) TryBindVariableDeclaration(sent);
+                    else kept.AddRange(sent);
+                    kept.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
+                }
                 sent = new List<Token>();
                 continue;
             }
             sent.Add(t);
         }
-        if (sent.Count > 0 && !IsVariableDeclaration(sent)) kept.AddRange(sent);
+        if (sent.Count > 0)
+        {
+            if (IsVariableDeclaration(sent)) TryBindVariableDeclaration(sent);
+            else kept.AddRange(sent);
+        }
 
         var cur2 = new TokenCursor(kept);
         var hb2 = new AbilityHeaderBuilder();
@@ -425,6 +457,13 @@ public sealed class EnglishCompiler
             // 循环剥离所有句首前缀（回合 / 频率 / 边界 / 头 / 事件 / 条件）
             var hb = new AbilityHeaderBuilder();
             _prefixes.ParseAll(c, hb);
+
+            // 代词作用域（R-4 / Stage 4）：
+            // 处于 "When/Whenever <主语> ..." 触发器下时，本句的 it 应指向触发源 $trigger，
+            // 而不是空的 $selected。一旦本句执行了 Select，切回 $selected。
+            _target.DefaultPronounSlot = hb.SubjectFilter != null
+                ? TargetSpec.SlotTrigger
+                : null;
 
                 // Countdown (N) 是护符属性：拍下来时为 N，每回合 -1，归零破坏。
                 // 与谢幕曲 / Whenever 等触发完全独立，必须独立成一条能力。
@@ -1049,6 +1088,9 @@ public sealed class EnglishCompiler
     /// <summary>本次编译期间登记的变量绑定：变量名 -> 取值表达式。</summary>
     private readonly Dictionary<string, NumExpr> _variableBindings = new();
 
+    /// <summary>"X starts at N" 的初值，装配到实体初始计数器。</summary>
+    private readonly Dictionary<string, int> _initialCounters = new();
+
     /// <summary>
     /// 解析 "X is the number of ..." / "X, Y, and Z ... add up to your faith's value"。
     /// 后者建立 X/Y/Z -> SplitOf(faith, 0/1/2) 的绑定。
@@ -1071,8 +1113,20 @@ public sealed class EnglishCompiler
         // "X starts at 0"
         if (joined.Contains("starts at") && sent.Count >= 3 && sent[0].IsAnyWord("x", "y", "z"))
         {
-            if (sent[2].Kind == TokKind.Number)
-                _variableBindings[sent[0].Text.ToUpperInvariant()] = NumExpr.Const(sent[2].Value);
+            // 注意：分词后它是 X / starts / at / 2，数字在第 3 位而不是第 2 位。
+            int numIdx = -1;
+            for (int k = 1; k < sent.Count; k++)
+                if (sent[k].Kind == TokKind.Number) { numIdx = k; break; }
+            if (numIdx > 0)
+            {
+                // "X starts at N" 不是编译期常量：后面往往跟着
+                // "On Spellboost: Increase X by 1" 这类动态修改。
+                // 绑成 Const(N) 会让增量全部丢失。
+                var vn = sent[0].Text.ToUpperInvariant();
+                _variableBindings[vn] = NumExpr.Ctr(_lex.Counter(vn));
+                _initialCounters[vn] = sent[numIdx].Value;
+            }
+            return;
             return;
         }
 
