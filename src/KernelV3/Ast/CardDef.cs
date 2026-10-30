@@ -73,7 +73,12 @@ public sealed class AbilityDef
 }
 
 /// <summary>卡种。</summary>
-public enum CardKind { Follower = 0, Spell, Amulet, Crest, Leader }
+/// <summary>
+/// 卡牌种类。
+/// Faith 与 Crest 都住在纹章区，但二者互相独立：
+/// 纹章相关的效果（如「纹章造成伤害」）不得把信仰算进去。
+/// </summary>
+public enum CardKind { Follower = 0, Spell, Amulet, Crest, Leader, Faith }
 
 /// <summary>一张卡。</summary>
 public sealed class CardDef

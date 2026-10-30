@@ -128,6 +128,12 @@ public sealed class VmEvent
     /// </summary>
     public bool IsManualEvolve { get; init; }
 
+    /// <summary>变动的计数器名（OnCounterChange 专用）。</summary>
+    public string CounterName { get; init; }
+
+    /// <summary>该事件归属的玩家（绝对编号）。</summary>
+    public int PlayerId { get; init; } = -1;
+
     /// <summary>
     /// 待机列入列优先级（数值越小越先），见 R-3.3：
     ///   10 入场曲 / 进化时 / 超进化时 / 启动

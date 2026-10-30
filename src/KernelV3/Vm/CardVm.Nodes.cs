@@ -313,8 +313,14 @@ public sealed partial class CardVm
                     _ => curE,
                 };
                 _world.WriteEntityCounter(e, n.Counter, nextE);
+                _world.EmitEvent(new VmEvent
+                {
+                    Kind = CoreEvent.OnCounterChange,
+                    Amount = delta,
+                    CounterName = n.Counter.Name,
+                    PlayerId = e.PlayerId,
+                });
             }
-            _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnCounterChange, Amount = delta });
             return false;
         }
 
@@ -327,8 +333,15 @@ public sealed partial class CardVm
             CounterOp.Fill => delta,
             _ => cur,
         };
-        _world.WriteCounter(scope.ResolvePlayer(n.Owner), n.Counter, next);
-        _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnCounterChange, Amount = delta });
+        int owner = scope.ResolvePlayer(n.Owner);
+        _world.WriteCounter(owner, n.Counter, next);
+        _world.EmitEvent(new VmEvent
+        {
+            Kind = CoreEvent.OnCounterChange,
+            Amount = delta,
+            CounterName = n.Counter.Name,
+            PlayerId = owner,
+        });
         return false;
     }
 

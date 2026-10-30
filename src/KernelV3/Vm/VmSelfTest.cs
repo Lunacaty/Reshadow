@@ -54,6 +54,8 @@ public static class VmSelfTest
         GateTurnEndExpire();
         GateTriggerPriority();
         GateCrestUnique();
+        GateFaithEntity();
+        GateFaithGrantedAbility();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -877,6 +879,85 @@ public static class VmSelfTest
         bool ok = afterDup == 1 && afterOther == 2;
         Check("门禁14 纹章同名唯一", ok,
               "dup=" + afterDup + " other=" + afterOther);
+    }
+
+    /// <summary>门禁15：信仰是纹章区里的实体，有自己的 faith 计数器，且不算纹章。</summary>
+    private static void GateFaithEntity()
+    {
+        var st = new Battle.BattleState(seed: 11);
+        var schema = st.Schema;
+        var faithKey = schema.Counter("faith");
+
+        // 造一张带信仰的卡并放进牌组
+        var lex = new Lang.Lexicon();
+        foreach (var kw in new[] { "ward", "rush", "storm" }) lex.AddKeyword(kw);
+        lex.Build();
+        var comp = new Lang.EnglishCompiler(lex);
+        var r = comp.Compile("Fanfare: Reduce your faith's value by 10 to add a Depths of the Eld Lance to your hand.");
+        lex.AddCard("Depths of the Eld Lance", 90014330);
+        lex.Build();
+        comp = new Lang.EnglishCompiler(lex);
+        r = comp.Compile("Fanfare: Reduce your faith's value by 10 to add a Depths of the Eld Lance to your hand.");
+
+        st.RegisterCard(new CardDef
+        {
+            CardId = 800, Name = "FaithCard", Kind = CardKind.Crest,
+            BaseCost = 1, Abilities = r.Abilities,
+        });
+        st.SpawnCard(800, ZoneRef.Deck, 0);
+
+        st.SetupFaith();
+
+        var fe = st.FindFaith(0);
+        bool exists = fe != null && fe.IsFaith && fe.Def != null && fe.Def.Kind == CardKind.Faith;
+        int fv = st.ReadCounter(0, faithKey);
+
+        // 写入信仰值应落在实体上，而不是玩家身上
+        st.WriteCounter(0, faithKey, 7);
+        bool storedOnEntity = fe != null && fe.Counters.TryGetValue(faithKey, out var ev) && ev == 7;
+        bool playerHas = st.Players[0].Counters.TryGetValue(faithKey.Id, out var pv) && pv != 0;
+
+        bool ok = exists && fv == 0 && storedOnEntity && !playerHas;
+        Check("门禁15 信仰实体与独立计数器", ok,
+              "exists=" + exists + " init=" + fv + " onEntity=" + storedOnEntity + " onPlayer=" + playerHas);
+    }
+
+    /// <summary>门禁16：挂在信仰上的能力（give your faith "..."）能够真正触发。</summary>
+    private static void GateFaithGrantedAbility()
+    {
+        var st = new Battle.BattleState(seed: 12);
+        var vm = new CardVm(st);
+        CardVm.Schema = st.Schema;
+
+        // 手工造一个信仰实体
+        var faithDef = new CardDef { CardId = 950001, Name = "Faith", Kind = CardKind.Faith };
+        st.RegisterCard(faithDef);
+        var fe = st.SpawnCard(950001, ZoneRef.CrestArea, 0);
+        fe.IsFaith = true;
+        fe.FaithOwner = 0;
+
+        // 给它挂一条「当友方随从进化时，造成 1 点伤害」
+        var granted = new AbilityDef
+        {
+            Trigger = new Ast.TriggerSpec { Event = CoreEvent.OnEvolve },
+            Body = new[] { new ModifyCounterNode
+            {
+                Counter = st.Schema.Counter("spellboost"),
+                Op = CounterOp.Add,
+                Delta = Ast.NumExpr.Const(1),
+            } },
+        };
+        st.GrantCounterAbility(0, st.Schema.Counter("faith"), granted);
+
+        // 触发一次进化事件
+        int before = st.ReadCounter(0, st.Schema.Counter("spellboost"));
+        vm.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEvolve });
+        vm.StepUntilBlocked();
+        int after = st.ReadCounter(0, st.Schema.Counter("spellboost"));
+
+        bool ok = after == before + 1;
+        Check("门禁16 信仰挂载能力能触发", ok,
+              "spellboost " + before + "->" + after);
     }
 
     private static void Check(string name, bool ok, string detail)

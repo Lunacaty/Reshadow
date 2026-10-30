@@ -241,6 +241,9 @@ public sealed class MemoryWorld : IVmWorld
     public void GrantCounterAbility(int playerId, SymbolId<CounterTag> counter, AbilityDef ability)
         => GrantedCounterAbilities.Add((playerId, counter, ability));
 
+    IReadOnlyList<(int playerId, SymbolId<CounterTag> ctr, Ast.AbilityDef ab)> IVmWorld.GrantedCounterAbilities
+        => GrantedCounterAbilities;
+
     public int ProcessStateBasedActions()
     {
         int n = 0;

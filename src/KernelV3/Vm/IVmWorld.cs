@@ -106,6 +106,12 @@ public interface IVmWorld
     void GrantCounterAbility(int playerId, SymbolId<CounterTag> counter, Ast.AbilityDef ability);
 
     /// <summary>
+    /// 运行时挂在资源计数器上的能力（如信仰）。
+    /// 这些能力不属于任何卡，必须单独扫描才能触发。
+    /// </summary>
+    IReadOnlyList<(int playerId, SymbolId<CounterTag> ctr, Ast.AbilityDef ab)> GrantedCounterAbilities { get; }
+
+    /// <summary>
     /// 状态结算（State-Based Actions）：把场上 Life &lt;= 0 的实体移入墓地并触发 OnDestroy。
     /// 必须在每条原子指令执行后调用，否则死亡随从会继续留在场上挨刀。
     /// 返回本次结算产生的事件数（便于循环直到稳定）。

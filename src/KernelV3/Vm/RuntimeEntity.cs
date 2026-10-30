@@ -81,6 +81,15 @@ public sealed class RuntimeEntity
     /// <summary>本回合是否已被融合（Fuse）。每个融合目标每回合上限 1 次。</summary>
     public bool FusedThisTurn { get; set; }
 
+    /// <summary>
+    /// 这是否是一个信仰实体（住在纹章区，但不算纹章）。
+    /// 纹章相关的效果必须按这个标志排除信仰。
+    /// </summary>
+    public bool IsFaith { get; set; }
+
+    /// <summary>信仰的持有者（绝对玩家编号）。</summary>
+    public int FaithOwner { get; set; } = -1;
+
     public HashSet<SymbolId<KeywordTag>> Keywords { get; } = new();
 
     /// <summary>带参关键词的数值（max_attacks_per_turn=2 / damage_cap=0 …）。</summary>

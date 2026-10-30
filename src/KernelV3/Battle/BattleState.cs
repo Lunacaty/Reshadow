@@ -46,7 +46,92 @@ public sealed class BattleState : IVmWorld
         Players[1] = new PlayerState { PlayerId = 1 };
     }
 
-    // ---------- 卡池 ----------
+    /// <summary>
+    /// 开局扫描信仰（R-1.2 / c-2.1 第 2 步）。
+    /// 牌组里每张「带信仰能力」的卡，在开局就在纹章区生成一个对应信仰实体，
+    /// 初始信仰值 = 0。同名信仰只生成一个。
+    /// 只有开局就在牌组里的卡才会生成信仰，对战中途加入的不算。
+    /// </summary>
+    public void SetupFaith()
+    {
+        var faithKey = Schema.Counter("faith");
+        for (int pid = 0; pid < 2; pid++)
+        {
+            var p = Players[pid];
+            var seen = new HashSet<int>();
+            foreach (var card in p.Deck)
+            {
+                if (card.Def == null) continue;
+                if (!DefinesFaith(card.Def)) continue;
+                if (!seen.Add(card.Def.CardId)) continue;
+
+                // 信仰实体用 Faith 卡种（不是 Crest），
+                // 这样「纹章相关效果」会自然排除它。
+                int fid = FaithEntityIdBase + card.Def.CardId;
+                if (!_cardPool.ContainsKey(fid))
+                {
+                    _cardPool[fid] = new CardDef
+                    {
+                        CardId = fid,
+                        Name = card.Def.Name,
+                        Kind = CardKind.Faith,
+                        BaseCost = 0,
+                    };
+                }
+                var fe = CreateEntity(fid, ZoneRef.CrestArea, pid);
+                if (fe == null) continue;
+                fe.IsFaith = true;
+                fe.FaithOwner = pid;
+                fe.Counters[faithKey] = 0;
+            }
+        }
+    }
+
+    /// <summary>该卡是否定义了信仰（卡面提到 faith）。</summary>
+    private static bool DefinesFaith(CardDef def)
+    {
+        if (def.Abilities == null) return false;
+        foreach (var ab in def.Abilities)
+        {
+            if (ab == null) continue;
+            if (MentionsFaith(ab.Condition)) return true;
+            foreach (var n in ab.Body ?? Array.Empty<EffectNode>())
+                if (MentionsFaithNode(n)) return true;
+        }
+        return false;
+    }
+
+    private static bool MentionsFaithNode(EffectNode n)
+        => n != null && MentionsFaithNum(ReflectNum(n));
+
+    private static NumExpr ReflectNum(EffectNode n) => n switch
+    {
+        // ModifyCounterNode 的 Counter 就是目标计数器：指向 faith 就说明该卡用到信仰。
+        // 不能去 Delta 里找 —— "Reduce your faith's value by 10" 的 Delta 是算术式。
+        ModifyCounterNode mc => mc.Counter.Name == "faith"
+            ? NumExpr.Ctr(mc.Counter)
+            : mc.Delta,
+        RestoreLifeNode r => r.Amount,
+        _ => null,
+    };
+
+    private static bool MentionsFaithNum(NumExpr e)
+    {
+        if (e == null) return false;
+        if (e.Op == NumOp.Counter && e.Counter.Name == "faith") return true;
+        if (e.Args != null) foreach (var a in e.Args) if (MentionsFaithNum(a)) return true;
+        return false;
+    }
+
+    private static bool MentionsFaith(BoolExpr b)
+    {
+        if (b is CompareExpr c) return MentionsFaithNum(c.Left) || MentionsFaithNum(c.Right);
+        if (b is AndExpr a) return a.Items.Any(MentionsFaith);
+        if (b is OrExpr o) return o.Items.Any(MentionsFaith);
+        return false;
+    }
+
+    // ---------- 卡池 ----------    // ---------- 卡池 ----------
 
     public void RegisterCard(CardDef def) => _cardPool[def.CardId] = def;
 
@@ -58,14 +143,42 @@ public sealed class BattleState : IVmWorld
     public int ReadCounter(int playerId, SymbolId<CounterTag> counter)
     {
         if (playerId < 0 || playerId > 1) return 0;
+
+        // 信仰值住在信仰实体身上，不在玩家身上。
+        // 这样做的好处：信仰占纹章区一格、同名唯一、而且可以单独被授予能力，
+        // 同时不会被「纹章造成伤害」这类效果误伤。
+        var faith = FindFaith(playerId);
+        if (faith != null && counter.Name == "faith")
+            return faith.Counters.TryGetValue(counter, out var fv) ? fv : 0;
+
         return Players[playerId].Counters.TryGetValue(counter.Id, out var v) ? v : 0;
     }
 
     public void WriteCounter(int playerId, SymbolId<CounterTag> counter, int value)
     {
         if (playerId < 0 || playerId > 1) return;
+
+        var faith = FindFaith(playerId);
+        if (faith != null && counter.Name == "faith")
+        {
+            faith.Counters[counter] = Schema.ClampCounter(counter, value);
+            return;
+        }
+
         // 钳制到该计数器自己的范围（pp 0..10 / ep 0..2 …）
         Players[playerId].Counters[counter.Id] = Schema.ClampCounter(counter, value);
+    }
+
+    /// <summary>信仰实体的卡 ID 偏移量，避免与真实卡冲突。</summary>
+    public const int FaithEntityIdBase = 900000;
+
+    /// <summary>取该玩家的信仰实体（纹章区里带 IsFaith 的那个）。</summary>
+    public RuntimeEntity FindFaith(int playerId)
+    {
+        if (playerId < 0 || playerId > 1) return null;
+        foreach (var e in Players[playerId].CrestArea)
+            if (e.IsFaith) return e;
+        return null;
     }
 
     public int ReadEntityCounter(RuntimeEntity e, SymbolId<CounterTag> counter)
@@ -209,9 +322,9 @@ public sealed class BattleState : IVmWorld
 
         // 纹章唯一铁律：同名纹章不可重复持有。
         // 已有纹章 A 时再获得 A，直接忽略（连倒计时也不刷新）。
-        if (zone == ZoneRef.CrestArea && e.Def != null)
+        if (zone == ZoneRef.CrestArea && e.Def != null && !e.IsFaith)
         {
-            bool exists = p.CrestArea.Any(c => c.Def != null && c.Def.CardId == e.Def.CardId);
+            bool exists = p.CrestArea.Any(c => c.Def != null && !c.IsFaith && c.Def.CardId == e.Def.CardId);
             if (exists) { e.Zone = ZoneRef.None; _all.Remove(e); return; }
         }
 

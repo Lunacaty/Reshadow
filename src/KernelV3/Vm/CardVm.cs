@@ -300,6 +300,19 @@ public sealed partial class CardVm
             {
                 if (ge != null && ge.EntityId == e.EntityId) AddCandidate(byEntity, ge, gab);
             }
+
+            // 挂在资源计数器上的能力（信仰等）。
+            // 例："give your faith 'Whenever an allied follower evolves, deal 1 damage'"。
+            // 它们不属于任何卡，之前没有扫描，所以信仰掉上的被动永远不触发。
+            if (e.IsFaith && e.FaithOwner >= 0)
+            {
+                foreach (var (pid, ctr, cab) in _world.GrantedCounterAbilities)
+                {
+                    if (pid != e.FaithOwner) continue;
+                    if (ctr.Name != "faith") continue;
+                    AddCandidate(byEntity, e, cab);
+                }
+            }
         }
 
         foreach (var kv in byEntity)
@@ -370,7 +383,9 @@ public sealed partial class CardVm
             ActiveZoneScope.Hand => ZoneRef.Hand,
             ActiveZoneScope.Deck => ZoneRef.Deck,
             ActiveZoneScope.ExArea => ZoneRef.ExArea,
-            _ => ZoneRef.Board,
+            // 信仰与纹章住在纹章区，不在战场。
+            // 若按默认 Board 判定，挂在信仰上的被动永远不会触发。
+            _ => owner.Zone == ZoneRef.CrestArea ? ZoneRef.CrestArea : ZoneRef.Board,
         };
         if (owner.Zone != need) return false;
 
