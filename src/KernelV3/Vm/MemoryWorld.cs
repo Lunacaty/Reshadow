@@ -58,6 +58,16 @@ public sealed class MemoryWorld : IVmWorld
         return e;
     }
 
+    /// <summary>测试用历史池：把墓地当作被破坏记录。</summary>
+    public IEnumerable<EntitySnapshot> EnumerateHistory(HistoryScope scope, int playerId)
+    {
+        if (scope == HistoryScope.None) return Array.Empty<EntitySnapshot>();
+        return _entities.Where(e => e.Zone == ZoneRef.Cemetery
+                                    && (playerId < 0 || e.PlayerId == playerId))
+                        .Select(e => e.TakeSnapshot())
+                        .ToList();
+    }
+
     public IEnumerable<RuntimeEntity> EnumerateZone(ZoneRef zone, int playerId)
         => _entities.Where(e => e.Zone == zone && (playerId < 0 || e.PlayerId == playerId));
 

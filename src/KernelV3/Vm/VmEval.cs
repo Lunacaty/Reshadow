@@ -326,8 +326,18 @@ public sealed class VmEval
                 break;
 
             default:
-                pool = _world.EnumerateZone(t.Zone, scope.ResolvePlayer(t.Owner))
-                             .Select(EntityRef.From).ToList();
+                if (t.History != HistoryScope.None)
+                {
+                    // 历史池：候选来自「本局/本回合被破坏」的记录，不是当前区域
+                    pool = _world.EnumerateHistory(t.History, scope.ResolvePlayer(t.Owner))
+                                 .Select(sn => new EntityRef(sn.EntityId, sn.EntrySerial, sn))
+                                 .ToList();
+                }
+                else
+                {
+                    pool = _world.EnumerateZone(t.Zone, scope.ResolvePlayer(t.Owner))
+                                 .Select(EntityRef.From).ToList();
+                }
                 break;
         }
 

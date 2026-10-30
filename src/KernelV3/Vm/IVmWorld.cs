@@ -31,6 +31,14 @@ public interface IVmWorld
     /// </summary>
     RuntimeEntity GetLive(int entityId, int entrySerial);
 
+    /// <summary>
+    /// 枚举历史池（本回合/本局被破坏、入场过的卡）。
+    /// 「Reanimate (N)」与「本局被破坏的随从」这类效果必须走这里 ——
+    /// 直接查 Cemetery 会把后来被复活或消失的卡算错。
+    /// playerId = -1 表示双方。
+    /// </summary>
+    IEnumerable<EntitySnapshot> EnumerateHistory(HistoryScope scope, int playerId);
+
     /// <summary>枚举某区域的实体。</summary>
     IEnumerable<RuntimeEntity> EnumerateZone(ZoneRef zone, int playerId);
 

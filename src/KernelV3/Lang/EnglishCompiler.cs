@@ -48,19 +48,27 @@ public sealed class EnglishCompiler
         if (string.IsNullOrWhiteSpace(text)) return r;
 
         var plain = Preprocess(text);
+        var buffer = new List<AbilityDef>();
         foreach (var (zone, segment) in SplitSegments(plain))
         {
             if (segment.Trim().Length == 0) continue;
             try
             {
                 var abs = CompileSegment(segment, zone);
-                r.Abilities.AddRange(abs);
+                buffer.AddRange(abs);
             }
             catch (LangException ex)
             {
                 r.Errors.Add($"[{Trunc(segment)}] {ex.Message}");
             }
         }
+
+        // 跨段替代语义：instead 可能落在与前提句不同的段落
+        // （"Fanfare: Restore 3. Super-Evolve: Restore 4 instead."），
+        // CompileSegment 只见得到自己那一段，接不上，必须在这里再合一次。
+        r.Abilities.Clear();
+        r.Abilities.AddRange(InsteadWeaver.Weave(buffer, _lex));
+
         return r;
     }
 

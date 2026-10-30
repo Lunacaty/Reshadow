@@ -1238,10 +1238,39 @@ public sealed class ActionParser
             if (basedIdx < 0 && rest[k].IsWord("based")) basedIdx = k;
         }
 
-        // "transform it based on the total cost of the cards fused" —— 融合分派
+        // "transform it based on the total cost of the cards fused" —— 融合分派。
+        // 具体变形成什么取决于融合费用，由 Battle 层的融合逻辑在结算时决定；
+        // 这里用一个标记性的条件节点表达「按融合费用选择」，不再走宏。
         if (basedIdx >= 0 && (intoIdx < 0 || basedIdx < intoIdx))
         {
-            return new List<EffectNode> { new MacroNode { Macro = _lex.Macro("fuse_switch") } };
+            return new List<EffectNode>
+            {
+                new ConditionalNode
+                {
+                    Condition = new CompareExpr
+                    {
+                        Left = NumExpr.Ctr(_lex.Counter("fuse_cost")),
+                        Op = CompareOp.Ge,
+                        Right = NumExpr.Const(1),
+                    },
+                    Then = new List<EffectNode>
+                    {
+                        new TransformNode
+                        {
+                            Target = TargetSpec.Self,
+                            CopySource = new TargetSpec
+                            {
+                                SourceKind = TargetSourceKind.Zone,
+                                Zone = ZoneRef.Deck,
+                                Owner = ZoneScope.Self,
+                                Mode = SelectMode.Random,
+                                Count = NumExpr.Const(1),
+                            },
+                        },
+                    },
+                    Else = new List<EffectNode>(),
+                },
+            };
         }
 
         // 分界之前是目标
@@ -1869,11 +1898,28 @@ public sealed class ActionParser
             deckName.Append(cur.Current.Text);
             cur.Advance();
         }
+        // 牌库替换：清空牌库并把指定牌库装入。
+        // 具名牌库（"the Apocalypse Deck"）由 Battle 层按名字解析成卡表。
         return new List<EffectNode>
         {
-            new MacroNode
+            new MoveZoneNode
             {
-                Macro = _lex.Macro("replace_deck"),
+                Target = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Zone,
+                    Zone = ZoneRef.Deck,
+                    Owner = ZoneScope.Self,
+                    Mode = SelectMode.All,
+                },
+                ToZone = ZoneRef.Banished,   // 旧牌库清走
+            },
+            new SpawnCardNode
+            {
+                SourceKind = CardSourceKind.CardId,
+                CardName = deckName.ToString().Trim(),
+                ToZone = ZoneRef.Deck,
+                ToOwner = ZoneScope.Self,
+                Count = NumExpr.Const(1),
             },
         };
     }
@@ -1920,8 +1966,27 @@ public sealed class ActionParser
     private List<EffectNode> ParseActivate(TokenCursor cur)
     {
         cur.ExpectWord("activate");
+
+        // "activate all of them instead" —— 对已选中的护符逐个启动其 Engage 能力。
+        // 之前是 MacroNode 占位，运行时 ExpandMacro 返回空 -> 什么也不做。
         if (cur.MatchPhrase("all", "of", "them", "instead"))
-            return new List<EffectNode> { new MacroNode { Macro = _lex.Macro("activate_all") } };
+            return new List<EffectNode>
+            {
+                new InvokeAbilityNode
+                {
+                    Target = TargetSpec.Previous,
+                    Event = CoreEvent.OnEngage,
+                },
+            };
+        if (cur.MatchPhrase("all", "of", "them"))
+            return new List<EffectNode>
+            {
+                new InvokeAbilityNode
+                {
+                    Target = TargetSpec.Previous,
+                    Event = CoreEvent.OnEngage,
+                },
+            };
         if (cur.MatchPhrase("its", "fanfare", "ability"))
             return new List<EffectNode> { new InvokeAbilityNode { Target = TargetSpec.Self, Event = CoreEvent.OnPlay } };
         if (cur.MatchPhrase("an", "ability", "in", "sequence", "from", "the", "following"))
@@ -1935,7 +2000,23 @@ public sealed class ActionParser
             return new List<EffectNode> { new BranchModeNode { Kind = ModeDispatchKind.Random, PickCount = NumExpr.Const(n), Options = Array.Empty<IReadOnlyList<EffectNode>>() } };
         }
         while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
-        return new List<EffectNode> { new MacroNode { Macro = _lex.Macro("activate") } };
+        // "activate a random ability that hasn't been activated" ——
+        // 启动一个此前未启动过的能力
+        return new List<EffectNode>
+        {
+            new InvokeAbilityNode
+            {
+                Target = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Zone,
+                    Zone = ZoneRef.Board,
+                    Owner = ZoneScope.Self,
+                    Mode = SelectMode.Random,
+                    Count = NumExpr.Const(1),
+                },
+                Event = CoreEvent.OnEngage,
+            },
+        };
     }
 
     private List<EffectNode> ParseConsume(TokenCursor cur)

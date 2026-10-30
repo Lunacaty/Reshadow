@@ -503,11 +503,21 @@ public sealed partial class CardVm
         return false;
     }
 
+    /// <summary>
+    /// 宏展开。
+    ///
+    /// 未实现的宏必须报错，不能静默跳过 ——
+    /// 静默跳过意味着一张卡的能力在实战中凭空消失，而且没有任何痕迹。
+    /// </summary>
     private bool DoMacro(MacroNode n, VmScope scope)
     {
         var args = n.Args?.Select(a => _eval.EvalNum(a, scope)).ToList() ?? new List<int>();
         var body = _world.ExpandMacro(n.Macro, args, scope);
-        if (body != null && body.Count > 0) PushBody(body, scope.Derive());
+
+        if (body == null || body.Count == 0)
+            throw new VmFaultException("机制宏未实现：" + n.Macro.Name + "（展开结果为空，效果会凭空消失）");
+
+        PushBody(body, scope.Derive());
         return false;
     }
 }

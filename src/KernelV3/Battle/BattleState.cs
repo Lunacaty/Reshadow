@@ -94,6 +94,22 @@ public sealed class BattleState : IVmWorld
         return Players[playerId].Zone(zone) ?? (IEnumerable<RuntimeEntity>)Array.Empty<RuntimeEntity>();
     }
 
+    /// <summary>
+    /// 历史池查询。BattleState 维护的是快照列表（PlayerState 里的 DestroyedThisMatch 等），
+    /// 不是当前的 Cemetery —— 被复活或消失的卡不应该再算进去。
+    /// </summary>
+    public IEnumerable<EntitySnapshot> EnumerateHistory(HistoryScope scope, int playerId)
+    {
+        IEnumerable<PlayerState> ps = playerId < 0 ? Players : new[] { Players[playerId] };
+        return scope switch
+        {
+            HistoryScope.DestroyedThisTurn => ps.SelectMany(p => p.DestroyedThisTurn).ToList(),
+            HistoryScope.DestroyedThisMatch => ps.SelectMany(p => p.DestroyedThisMatch).ToList(),
+            HistoryScope.EnteredThisMatch => ps.SelectMany(p => p.EnteredThisMatch).ToList(),
+            _ => Array.Empty<EntitySnapshot>(),
+        };
+    }
+
     public IEnumerable<RuntimeEntity> FindByCardId(ZoneRef zone, int playerId, int cardId)
         => EnumerateZone(zone, playerId).Where(e => (e.Def?.CardId ?? 0) == cardId);
 
@@ -311,6 +327,10 @@ public sealed class BattleState : IVmWorld
 
     public IReadOnlyList<(int playerId, SymbolId<CounterTag> ctr, AbilityDef ab)> GrantedCounterAbilities => _grantedCounters;
 
+    /// <summary>
+    /// 机制宏展开。返回空表示未实现 —— VM 会因此报错，
+    /// 而不是让效果凭空消失。
+    /// </summary>
     public IReadOnlyList<EffectNode> ExpandMacro(SymbolId<MacroTag> macro, IReadOnlyList<int> args, VmScope scope)
         => Array.Empty<EffectNode>();
 
