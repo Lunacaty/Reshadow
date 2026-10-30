@@ -33,6 +33,12 @@ public enum NumOp
     Clamp,
     /// <summary>计数器当前值（需要 CounterTag）。</summary>
     Counter,
+    /// <summary>
+    /// 把某计数器随机拆成三份，取其中一份（X / Y / Z）。
+    /// 例："X, Y, and Z are determined randomly and add up to your faith's value."
+    /// 同一张卡的一次结算里，X+Y+Z 恒等于计数器值。
+    /// </summary>
+    SplitOf,
 }
 
 public enum ArithOp { Add = 0, Sub, Mul, Div, Mod }
@@ -91,6 +97,10 @@ public sealed class NumExpr
 
     public static NumExpr SumOf(TargetSpec target, Core.StatKey key)
         => new() { Op = NumOp.Sum, Of = target, Stat = key };
+
+    /// <summary>把计数器随机拆成 3 份并取第 index 份（0=X, 1=Y, 2=Z）。</summary>
+    public static NumExpr SplitOf(Core.SymbolId<Core.CounterTag> counter, int index, TargetSpec of = null)
+        => new() { Op = NumOp.SplitOf, Counter = counter, Value = index, Of = of };
 
     public static NumExpr Var(string name) => new() { Op = NumOp.Counter, Counter = Core.SymbolId<Core.CounterTag>.FromName(name) };
 

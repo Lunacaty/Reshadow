@@ -65,6 +65,9 @@ public interface IVmWorld
     /// <summary>给实体附加一段能力。</summary>
     void GrantAbility(RuntimeEntity e, Ast.AbilityDef ability);
 
+    /// <summary>给一个资源计数器挂载能力（如 faith 的"每当友方随从进化"）。</summary>
+    void GrantCounterAbility(ZoneScope owner, SymbolId<CounterTag> counter, Ast.AbilityDef ability);
+
     /// <summary>展开机制宏为动作序列（Reanimate / Spellboost / 玩家自定义）。</summary>
     IReadOnlyList<Ast.EffectNode> ExpandMacro(SymbolId<MacroTag> macro, IReadOnlyList<int> args, VmScope scope);
 }

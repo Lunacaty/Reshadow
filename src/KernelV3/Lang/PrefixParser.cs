@@ -122,13 +122,26 @@ public sealed class PrefixParser
 
         b.Event = CoreEvent.OnFuse;
         b.EventExplicit = true;
-        // 消费融合材料描述，直到下一个已知头/触发词
+
+        // 消费融合材料描述，直到下一个已知头/触发词/事件从句
         while (!cur.IsAtEnd &&
                !cur.Current.IsAnyWord("whenever", "when", "fanfare", "evolve", "super-evolve",
-                                      "at", "draw", "deal", "transform", "summon", "give", "destroy")
-               && !cur.Current.IsWord("when"))
+                                      "at", "draw", "deal", "transform", "summon", "give", "destroy"))
         {
             cur.Advance();
+        }
+
+        // "When you've Fused both to this card," —— 融合条件从句，消费掉整个从句
+        if (cur.Current.IsAnyWord("when", "whenever"))
+        {
+            int probe = cur.Position;
+            cur.Advance();
+            if (cur.Current.IsAnyWord("you've", "you"))
+            {
+                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Comma) cur.Advance();
+                if (cur.Current.Kind == TokKind.Comma) cur.Advance();
+            }
+            else cur.Seek(probe);
         }
         return true;
     }

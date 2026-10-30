@@ -29,6 +29,7 @@ public sealed class EnglishCompiler
         _tokenizer = new Tokenizer(lex);
         _target = new TargetParser(lex);
         _actions = new ActionParser(lex, CompileQuotedAbility);
+        _actions.VariableResolver = ResolveVariable;
         _prefixes = new PrefixParser(lex, _target);
     }
 
@@ -240,8 +241,12 @@ public sealed class EnglishCompiler
             var joinedSent = string.Join(" ", sent.Select(t => t.Text));
             if (IsPureStatePhrase(joinedSent)) continue;
 
-            // 变量声明句（X is ... / X starts at N）：登记变量，不产生动作
-            if (IsVariableDeclaration(sent)) continue;
+            // 变量声明句：登记变量绑定，不产生动作
+            if (IsVariableDeclaration(sent))
+            {
+                TryBindVariableDeclaration(sent);
+                continue;
+            }
 
             // 融合分支表 "1: <Card> 2: <Card> 3 or more: <Card>"
             if (IsFuseSwitchTableHead(c))
@@ -378,9 +383,18 @@ public sealed class EnglishCompiler
             if (t.Kind == TokKind.Keyword && i + 1 < tokens.Count)
             {
                 var nx = tokens[i + 1];
-                if (nx.IsAnyWord("last", "fanfare", "strike", "clash", "evolve", "super-evolve",
-                                 "engage", "enhance", "countdown", "necromancy", "rally", "combo",
-                                 "whenever", "when", "at", "aura", "during", "once"))
+                bool isHeader = nx.IsAnyWord("last", "fanfare", "strike", "clash", "evolve",
+                                            "super-evolve", "engage", "enhance", "countdown",
+                                            "necromancy", "rally", "combo", "whenever", "when",
+                                            "aura", "during", "once");
+
+                // "at" 只在跟 the/a 时才可能是句首（"At the end of your turn"），
+                // 否则 "Ward at random" 会被误切。
+                if (!isHeader && nx.IsWord("at") && i + 2 < tokens.Count
+                    && tokens[i + 2].IsAnyWord("the", "a"))
+                    isHeader = true;
+
+                if (isHeader)
                 {
                     result.Add(t);
                     result.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
@@ -665,6 +679,48 @@ public sealed class EnglishCompiler
                     },
                 },
             });
+    }
+
+    /// <summary>本次编译期间登记的变量绑定：变量名 -> 取值表达式。</summary>
+    private readonly Dictionary<string, NumExpr> _variableBindings = new();
+
+    /// <summary>
+    /// 解析 "X is the number of ..." / "X, Y, and Z ... add up to your faith's value"。
+    /// 后者建立 X/Y/Z -> SplitOf(faith, 0/1/2) 的绑定。
+    /// </summary>
+    private void TryBindVariableDeclaration(IReadOnlyList<Token> sent)
+    {
+        var texts = sent.Select(t => t.Text.ToLowerInvariant()).ToList();
+        var joined = string.Join(" ", texts);
+
+        // "X, Y, and Z are determined randomly and add up to your faith's value"
+        if (joined.Contains("add up to") && joined.Contains("faith"))
+        {
+            var ctr = _lex.Counter("faith");
+            _variableBindings["X"] = NumExpr.SplitOf(ctr, 0);
+            _variableBindings["Y"] = NumExpr.SplitOf(ctr, 1);
+            _variableBindings["Z"] = NumExpr.SplitOf(ctr, 2);
+            return;
+        }
+
+        // "X starts at 0"
+        if (joined.Contains("starts at") && sent.Count >= 3 && sent[0].IsAnyWord("x", "y", "z"))
+        {
+            if (sent[2].Kind == TokKind.Number)
+                _variableBindings[sent[0].Text.ToUpperInvariant()] = NumExpr.Const(sent[2].Value);
+            return;
+        }
+
+        // "X is the number of <X>" —— 留待后续按上下文解析，先登记为 0
+        if (sent.Count >= 2 && sent[0].IsAnyWord("x", "y", "z"))
+            _variableBindings[sent[0].Text.ToUpperInvariant()] = NumExpr.Const(0);
+    }
+
+    /// <summary>查变量绑定；没有则退回计数器读取。</summary>
+    public NumExpr ResolveVariable(string name)
+    {
+        var key = (name ?? "").ToUpperInvariant();
+        return _variableBindings.TryGetValue(key, out var e) ? e : NumExpr.Ctr(_lex.Counter(key));
     }
 
     private static string Trunc(string s)

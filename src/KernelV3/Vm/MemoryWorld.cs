@@ -134,6 +134,11 @@ public sealed class MemoryWorld : IVmWorld
     public void GrantAbility(RuntimeEntity e, AbilityDef ability)
         => GrantedAbilities.Add((e, ability));
 
+    public readonly List<(ZoneScope owner, SymbolId<CounterTag> ctr, AbilityDef ab)> GrantedCounterAbilities = new();
+
+    public void GrantCounterAbility(ZoneScope owner, SymbolId<CounterTag> counter, AbilityDef ability)
+        => GrantedCounterAbilities.Add((owner, counter, ability));
+
     public IReadOnlyList<EffectNode> ExpandMacro(SymbolId<MacroTag> macro, IReadOnlyList<int> args, VmScope scope)
         => Array.Empty<EffectNode>();   // 宏由 Battle 层注册，自测里不展开
 }

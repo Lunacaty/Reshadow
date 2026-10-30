@@ -22,6 +22,11 @@ public sealed class ActionParser
     private readonly TargetParser _target;
     private readonly Func<IReadOnlyList<Token>, AbilityDef> _compileQuotedAbility;
 
+    /// <summary>变量解析委托（由 EnglishCompiler 注入，处理 X/Y/Z 绑定）。</summary>
+    public Func<string, NumExpr> VariableResolver { get; set; }
+
+    /// <summary>调试开关：打印 ParseGive 的每一步。</summary>
+
     public ActionParser(Lexicon lex, Func<IReadOnlyList<Token>, AbilityDef> compileQuotedAbility)
     {
         _lex = lex;
@@ -470,6 +475,29 @@ public sealed class ActionParser
         // 外层循环：支持 "Give <T1> <G1> and <T2> <G2>"（第二组省略 give）
         while (!cur.IsAtEnd)
         {
+            // 0. "give your faith "..."" —— 给**资源计数器**挂能力，必须在目标解析之前判断
+            if (cur.Current.IsWord("your") && cur.Peek().IsAnyWord("faith", "crest"))
+            {
+                int saveF = cur.Position;
+                cur.Advance();
+                var ctrName0 = cur.Current.Text.ToLowerInvariant();
+                cur.Advance();
+                if (cur.Current.Kind == TokKind.Quoted)
+                {
+                    var q0 = cur.Current;
+                    cur.Advance();
+                    result.Add(new GrantCounterAbilityNode
+                    {
+                        Counter = _lex.Counter(ctrName0),
+                        Owner = ZoneScope.Self,
+                        Granted = _compileQuotedAbility(q0.Inner),
+                    });
+                    ConsumeDuration(cur);
+                    continue;
+                }
+                cur.Seek(saveF);
+            }
+
             // 1. 解析 1 个或多个并列目标
             var targets = new List<TargetSpec>();
             var first = _target.TryParse(cur);
@@ -484,14 +512,6 @@ public sealed class ActionParser
                 cur.TryMatchAnyWord("enemy");
                 cur.TryMatchAnyWord("leader");
                 first = TargetSpec.OpponentLeader;
-            }
-            if (first == null && cur.Current.IsWord("your")
-                && cur.Peek().IsAnyWord("faith", "crest"))
-            {
-                // "give your faith "..."" —— 给资源挂能力，退化为 Self
-                cur.Advance();
-                cur.TryMatchAnyWord("faith", "crest");
-                first = TargetSpec.Self;
             }
             if (first == null)
                 throw new LangException("Give 缺少目标，停在 " + cur.Current);
@@ -547,21 +567,26 @@ public sealed class ActionParser
                 if (hadComma) cur.Advance();
                 if (cur.Current.IsWord("and")) { cur.Advance(); hadAnd = true; }
 
-                // "Bane or Ward at random" —— or 也视为并列
-                if (cur.Current.IsWord("or")) { cur.Advance(); hadAnd = true; }
-                // "at random" 收尾短语：消费后直接结束
+                // "Bane or Ward at random" —— or 后面的关键词作为第二个授予项
+                if (cur.Current.IsWord("or"))
+                {
+                    cur.Advance();
+                    var moreOr = TryParseSingleGrant(cur, targets);
+                    if (moreOr != null) { result.AddRange(moreOr); granted++; }
+                    if (cur.Current.IsWord("at") && cur.Peek().IsWord("random"))
+                    {
+                        cur.Advance(); cur.Advance();
+                    }
+                    break;
+                }
+
+                // 分隔符之后若是 "at random"，消费并结束
                 if (cur.Current.IsWord("at") && cur.Peek().IsWord("random"))
                 {
                     cur.Advance(); cur.Advance();
                     break;
                 }
                 if (!hadComma && !hadAnd) break;
-                // 分隔符之后若是 "at random"，同样消费并结束
-                if (cur.Current.IsWord("at") && cur.Peek().IsWord("random"))
-                {
-                    cur.Advance(); cur.Advance();
-                    break;
-                }
                 if (!IsGrantStart(cur)) { cur.Seek(sepSave); break; }
             }
 
@@ -886,6 +911,37 @@ public sealed class ActionParser
             cur.Seek(s2b);
         }
 
+        // ---------- 分支 2c："a Puppet" 这种最简形式（分支2 已消费冠词但未命中）----------
+        {
+            int s2c = cur.Position;
+            cur.TryMatchAnyWord("a", "an");
+            if (cur.Current.Kind == TokKind.CardName)
+            {
+                var ct3 = cur.Current;
+                cur.Advance();
+                ConsumeDestination(cur);
+                nodes.Add(new SpawnCardNode
+                {
+                    SourceKind = CardSourceKind.CardId,
+                    CardId = ct3.CardId,
+                    CardName = ct3.Text,
+                    ToZone = toZone,
+                    ToOwner = ZoneScope.Self,
+                    Count = NumExpr.Const(1),
+                });
+                while (cur.Current.IsWord("and"))
+                {
+                    int sv2 = cur.Position;
+                    cur.Advance();
+                    var more2 = ParseOne(cur);
+                    if (more2 == null) { cur.Seek(sv2); break; }
+                    nodes.AddRange(more2);
+                }
+                return nodes;
+            }
+            cur.Seek(s2c);
+        }
+
         // ---------- 分支 3：跨区拉人 TargetSpec（"3 random ... from your deck"） ----------
         cur.TryMatchAnyWord("any", "all");
         var moveTarget = _target.TryParse(cur);
@@ -1067,8 +1123,24 @@ public sealed class ActionParser
             cur.Advance();
             cur.TryMatch(TokKind.Colon);
             string crestName = "";
-            if (cur.Current.Kind == TokKind.CardName) { crestName = cur.Current.Text; cur.Advance(); }
-            else if (!cur.IsAtEnd) { crestName = cur.Current.Text; cur.Advance(); }
+            if (cur.Current.Kind == TokKind.CardName)
+            {
+                crestName = cur.Current.Text;
+                cur.Advance();
+            }
+            else
+            {
+                // 语料可能把带 "vs." 的卡名截断（"Istyndet vs."），
+                // 此时按剩余 token 拼成残名，交给运行时按前缀匹配。
+                var sbCrest = new System.Text.StringBuilder();
+                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
+                {
+                    if (sbCrest.Length > 0) sbCrest.Append(' ');
+                    sbCrest.Append(cur.Current.Text);
+                    cur.Advance();
+                }
+                crestName = sbCrest.ToString();
+            }
             return new List<EffectNode>
             {
                 new SpawnCardNode
@@ -1732,12 +1804,14 @@ public sealed class ActionParser
             cur.Advance();
             return NumExpr.Const(v);
         }
-        // X / Y / Z 变量 → 计数器读取
+        // X / Y / Z 变量 → 优先用 EnglishCompiler 登记的绑定（含 SplitOf），否则退回计数器
         if (cur.Current.IsAnyWord("x", "y", "z"))
         {
             var name = cur.Current.Text.ToUpperInvariant();
             cur.Advance();
-            return NumExpr.Ctr(_lex.Counter(name));
+            return VariableResolver != null
+                ? VariableResolver(name)
+                : NumExpr.Ctr(_lex.Counter(name));
         }
         // X-cost → 按费用 X 筛选，数量取 1
         if (cur.Current.IsAnyWord("x-cost"))

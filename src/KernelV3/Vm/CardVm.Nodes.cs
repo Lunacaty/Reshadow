@@ -41,6 +41,7 @@ public sealed partial class CardVm
             case LoopNode n: return DoLoop(n, frame);
             case BranchModeNode n: return DoBranch(n, frame);
             case GrantAbilityNode n: DoGrant(n, scope); return false;
+            case GrantCounterAbilityNode n: DoGrantCounter(n, scope); return false;
             case InvokeAbilityNode n: DoInvoke(n, scope); return false;
             case MacroNode n: DoMacro(n, scope); return false;
             default:
@@ -326,6 +327,12 @@ public sealed partial class CardVm
     {
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets) _world.GrantAbility(t, n.Granted);
+    }
+
+    /// <summary>给资源计数器挂载能力（faith 等）。</summary>
+    private void DoGrantCounter(GrantCounterAbilityNode n, VmScope scope)
+    {
+        _world.GrantCounterAbility(n.Owner, n.Counter, n.Granted);
     }
 
     private void DoInvoke(InvokeAbilityNode n, VmScope scope)

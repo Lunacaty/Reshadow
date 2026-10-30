@@ -112,6 +112,20 @@ public sealed class GrantAbilityNode : EffectNode
     public DurationKind Duration { get; init; } = DurationKind.Permanent;
 }
 
+/// <summary>
+/// 给一个**资源计数器**挂载能力（而非给实体）。
+///
+/// 例：`give your faith "Whenever an allied follower evolves, deal 1 damage to the enemy leader."`
+/// —— faith 是主战者持有的计数器，不是场上的实体，所以 GrantAbilityNode 表达不了。
+/// 这张能力会在该计数器每次变化时由 Battle 层的计数器监听器触发。
+/// </summary>
+public sealed class GrantCounterAbilityNode : EffectNode
+{
+    public Core.SymbolId<Core.CounterTag> Counter { get; init; } = Core.SymbolId<Core.CounterTag>.Invalid;
+    public Core.ZoneScope Owner { get; init; } = Core.ZoneScope.Self;
+    public AbilityDef Granted { get; init; }
+}
+
 // ---------- 8. 生成卡 ----------
 
 public enum CardSourceKind { CardId = 0, CopyOfTarget }

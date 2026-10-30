@@ -100,6 +100,10 @@ public sealed class VmEval
             case NumOp.Counter:
                 return _world.ReadCounter(scope.Owner, e.Counter);
 
+            case NumOp.SplitOf:
+                // 把计数器随机拆成 3 份，同一帧内 X/Y/Z 之和恒等于计数器值
+                return GetSplitPart(scope, e.Counter, e.Value);
+
             default:
                 throw new VmFaultException("未知的数值运算: " + e.Op);
         }
@@ -198,6 +202,34 @@ public sealed class VmEval
         CompareOp.Le => l <= r,
         _ => false,
     };
+
+    /// <summary>
+    /// 每个 VmScope 缓存一次拆分结果，保证同一次结算中 X+Y+Z 恒定。
+    /// key = 计数器 Id，value = [x, y, z]。
+    /// </summary>
+    private int GetSplitPart(VmScope scope, SymbolId<CounterTag> counter, int index)
+    {
+        if (!_splits.TryGetValue(scope, out var map))
+        {
+            map = new Dictionary<int, int[]>();
+            _splits[scope] = map;
+        }
+        if (!map.TryGetValue(counter.Id, out var parts))
+        {
+            int total = _world.ReadCounter(scope.Owner, counter);
+            if (total < 0) total = 0;
+            // 在 [0, total] 上取两个切点，切成三段
+            int a = total > 0 ? _world.Rng.Next(0, total + 1) : 0;
+            int b = total > 0 ? _world.Rng.Next(0, total + 1) : 0;
+            int lo = Math.Min(a, b), hi = Math.Max(a, b);
+            parts = new[] { lo, hi - lo, total - hi };
+            map[counter.Id] = parts;
+        }
+        int i = Math.Clamp(index, 0, 2);
+        return parts[i];
+    }
+
+    private readonly Dictionary<VmScope, Dictionary<int, int[]>> _splits = new();
 
     private static bool MatchState(RuntimeEntity e, UnitState s) => s switch
     {
