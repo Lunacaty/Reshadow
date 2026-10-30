@@ -43,6 +43,7 @@ public sealed class EnglishCompiler
     /// <summary>编译整张卡的效果文本。</summary>
     public Result Compile(string text)
     {
+        _variableBindings.Clear();   // 防止上一张卡的变量跨卡污染
         var r = new Result();
         if (string.IsNullOrWhiteSpace(text)) return r;
 
@@ -96,22 +97,10 @@ public sealed class EnglishCompiler
         var hb2 = new AbilityHeaderBuilder();
         _prefixes.ParseAll(cur2, hb2);
 
-        IReadOnlyList<EffectNode> body;
-        if (cur2.IsAtEnd)
-            body = Array.Empty<EffectNode>();
-        else
-        {
-            try { body = _actions.ParseSequence(cur2); }
-            catch (LangException)
-            {
-                // 引号内是无法建模的能力文本（"Takes 1 more damage."），
-                // 保留为 MacroNode 而不是让整张卡编译失败
-                body = new List<EffectNode>
-                {
-                    new MacroNode { Macro = _lex.Macro("unmodeled_ability") },
-                };
-            }
-        }
+        // 铁律一：引号内的能力必须真正解析出来，不允许吞异常降级
+        var body = cur2.IsAtEnd
+            ? (IReadOnlyList<EffectNode>)Array.Empty<EffectNode>()
+            : _actions.ParseSequence(cur2);
 
         return new AbilityDef
         {
@@ -202,12 +191,9 @@ public sealed class EnglishCompiler
             if (sentOptions[si] >= 0)
             {
                 var oc = new TokenCursor(sent);
-                try
-                {
-                    var ob = _actions.ParseSequence(oc);
-                    modeOptions.Add(ob);
-                }
-                catch (LangException) { /* 单条选项解析失败不影响其它 */ }
+                var ob = _actions.ParseSequence(oc);
+                oc.AssertEnd("模式选项");
+                modeOptions.Add(ob);
                 continue;
             }
 
@@ -711,9 +697,81 @@ public sealed class EnglishCompiler
             return;
         }
 
-        // "X is the number of <X>" —— 留待后续按上下文解析，先登记为 0
-        if (sent.Count >= 2 && sent[0].IsAnyWord("x", "y", "z"))
-            _variableBindings[sent[0].Text.ToUpperInvariant()] = NumExpr.Const(0);
+        // "X is ..." —— 真正解析右侧表达式，绝不允许绑成常数 0
+        if (sent.Count >= 3 && sent[0].IsAnyWord("x", "y", "z"))
+        {
+            var varName = sent[0].Text.ToUpperInvariant();
+            var rest = sent.Skip(2).ToList();   // 跳过 "X is"
+            _variableBindings[varName] = BuildVariableExpr(rest);
+        }
+    }
+
+    /// <summary>
+    /// 把 "this follower's attack" / "your Combo" / "the number of X" 这类右侧描述
+    /// 编译成真实的 NumExpr，而不是常数。
+    /// </summary>
+    private NumExpr BuildVariableExpr(IReadOnlyList<Token> rest)
+    {
+        if (rest.Count == 0) return NumExpr.Const(0);
+        var c = new TokenCursor(rest);
+        var joined = string.Join(" ", rest.Select(t => t.Text.ToLowerInvariant()));
+
+        // "the number of <TargetNP>"
+        if (c.MatchPhrase("the", "number", "of"))
+        {
+            var tgt = _target.TryParse(c);
+            if (tgt != null) return NumExpr.CountOf(tgt);
+        }
+
+        // "your Combo" / "your <资源>"
+        if (c.Current.IsWord("your"))
+        {
+            c.Advance();
+            if (!c.IsAtEnd)
+            {
+                var res = c.Current.Text.ToLowerInvariant();
+                return NumExpr.Ctr(_lex.Counter(res));
+            }
+        }
+
+        // "this follower's attack / defense / cost"
+        if (c.Current.IsWord("this"))
+        {
+            c.Advance();
+            c.TryMatchAnyWord("follower's", "card's", "follower", "card");
+            if (!c.IsAtEnd)
+            {
+                var statName = c.Current.Text.ToLowerInvariant();
+                var key = statName.StartsWith("attack") ? StatKey.Attack
+                        : statName.StartsWith("defense") ? StatKey.Life
+                        : statName.StartsWith("cost") ? StatKey.Cost
+                        : StatKey.Attack;
+                return NumExpr.Prop(key, TargetSpec.Self);
+            }
+        }
+
+        // "the selected follower's attack / defense"
+        if (c.Current.IsWord("the") && c.Peek().IsWord("selected"))
+        {
+            c.Advance(); c.Advance();
+            c.TryMatchAnyWord("follower's", "card's");
+            if (!c.IsAtEnd)
+            {
+                var sn = c.Current.Text.ToLowerInvariant();
+                var key = sn.StartsWith("attack") ? StatKey.Attack : StatKey.Life;
+                return NumExpr.Prop(key, TargetSpec.Previous);
+            }
+        }
+
+        // "the cost of the selected card" / "the cost of the card you drew"
+        if (c.MatchPhrase("the", "cost", "of"))
+        {
+            var tgt = _target.TryParse(c);
+            return NumExpr.Prop(StatKey.Cost, tgt ?? TargetSpec.Previous);
+        }
+
+        // 兜底：整段作为计数器名（如 "number of cards returned" 已在前面的分支处理）
+        return NumExpr.Ctr(_lex.Counter(joined.Replace(" ", "_")));
     }
 
     /// <summary>查变量绑定；没有则退回计数器读取。</summary>

@@ -132,7 +132,12 @@ public static class ConditionCompiler
         if (c.MatchPhrase("you've", "fused") || c.MatchPhrase("you", "have", "fused"))
         {
             while (!c.IsAtEnd) c.Advance();
-            return new IsPreviousExpr { Slot = "fuse_material" };
+            return new CompareExpr
+            {
+                Left = NumExpr.Ctr(lex.Counter("fuse_count")),
+                Op = CompareOp.Ge,
+                Right = NumExpr.Const(1),
+            };
         }
 
         if (c.MatchPhrase("an", "allied", "follower", "attacked", "a", "leader"))
@@ -150,7 +155,7 @@ public static class ConditionCompiler
         if (c.MatchPhrase("x", "is", "at", "least"))
             return new CompareExpr
             {
-                Left = NumExpr.Var("X"),
+                Left = NumExpr.Var(lex.Counter("X")),
                 Op = CompareOp.Ge,
                 Right = NumExpr.Const(ReadNumber(c)),
             };
@@ -429,7 +434,13 @@ public static class ConditionCompiler
         if (c.MatchPhrase("you've", "played", "cards"))
         {
             while (!c.IsAtEnd) c.Advance();
-            return new IsPreviousExpr { Slot = "played_all_costs" };
+            // 需要 8 个不同基础费用各至少打出 1 次
+            return new CompareExpr
+            {
+                Left = NumExpr.Ctr(lex.Counter("distinct_base_costs_played")),
+                Op = CompareOp.Ge,
+                Right = NumExpr.Const(8),
+            };
         }
 
         // "at least N differently named allied Artifact followers have entered the field this match"
@@ -468,7 +479,26 @@ public static class ConditionCompiler
         if (c.MatchPhrase("the", "sum", "of"))
         {
             while (!c.IsAtEnd) c.Advance();
-            return new IsPreviousExpr { Slot = "sum_base_cost" };
+            var handSelf = new TargetSpec
+            {
+                SourceKind = TargetSourceKind.Zone,
+                Owner = ZoneScope.Self,
+                Zone = ZoneRef.Hand,
+                Mode = SelectMode.All,
+            };
+            var handOpp = new TargetSpec
+            {
+                SourceKind = TargetSourceKind.Zone,
+                Owner = ZoneScope.Opponent,
+                Zone = ZoneRef.Hand,
+                Mode = SelectMode.All,
+            };
+            return new CompareExpr
+            {
+                Left = NumExpr.SumOf(handSelf, StatKey.BaseCost),
+                Op = CompareOp.Gt,
+                Right = NumExpr.SumOf(handOpp, StatKey.BaseCost),
+            };
         }
 
         // "you selected a spell / an allied amulet"

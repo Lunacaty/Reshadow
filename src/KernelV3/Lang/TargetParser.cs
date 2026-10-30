@@ -280,7 +280,7 @@ public sealed class TargetParser
             {
                 NumExpr costExpr = cur.Current.Kind == TokKind.Number
                     ? NumExpr.Const(cur.Current.Value)
-                    : NumExpr.Var(cur.Current.Text.ToUpperInvariant());
+                    : NumExpr.Var(_lex.Counter(cur.Current.Text.ToUpperInvariant()));
                 cur.Advance(); cur.Advance();
                 bool isBase = cur.MatchWord("base");
                 cur.TryMatch(TokKind.Dash);
@@ -814,7 +814,11 @@ public sealed class TargetParser
 
         return new TargetSpec
         {
-            SourceKind = cardId > 0 ? TargetSourceKind.CardId : TargetSourceKind.Zone,
+            // slot 优先："drawn" 之类会写入 $created
+            SourceKind = slot != null ? TargetSourceKind.Slot
+                       : cardId > 0 ? TargetSourceKind.CardId
+                       : TargetSourceKind.Zone,
+            Slot = slot ?? "",
             Owner = ownerSet ? owner : ZoneScope.Self,
             Zone = zone,
             CardId = cardId,

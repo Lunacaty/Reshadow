@@ -102,7 +102,9 @@ public sealed class NumExpr
     public static NumExpr SplitOf(Core.SymbolId<Core.CounterTag> counter, int index, TargetSpec of = null)
         => new() { Op = NumOp.SplitOf, Counter = counter, Value = index, Of = of };
 
-    public static NumExpr Var(string name) => new() { Op = NumOp.Counter, Counter = Core.SymbolId<Core.CounterTag>.FromName(name) };
+    /// <summary>读一个具名计数器。调用方必须传入带真实 Id 的 SymbolId（禁止 FromName）。</summary>
+    public static NumExpr Var(Core.SymbolId<Core.CounterTag> counter, TargetSpec of = null)
+        => new() { Op = NumOp.Counter, Counter = counter, Of = of };
 
     public static NumExpr Ctr(Core.SymbolId<Core.CounterTag> counter, TargetSpec of = null)
         => new() { Op = NumOp.Counter, Counter = counter, Of = of };
