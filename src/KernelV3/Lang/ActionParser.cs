@@ -1174,73 +1174,58 @@ public sealed class ActionParser
     {
         cur.ExpectWord("transform");
 
-        // 先找 into 的位置："transform <目标> into <结果>"
-        // 直接 TryParse 目标可能把 into 之后的内容一起吃掉
-        int saveT = cur.Position;
-        var target = _target.TryParse(cur) ?? TargetSpec.Self;
-
-        // 若目标解析越过了 into，则回退到 into 之前重解析
-        if (!cur.Current.IsWord("into"))
+        // 先把整句剩余 token 收集起来，用 into / based 做分界，避免目标解析吃掉结果部分
+        var rest = new List<Token>();
+        while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
         {
-            int intoPos = -1;
-            for (int k = saveT; k < cur.Length; k++)
-            {
-                var probe = new TokenCursor(new List<Token>());
-            }
-            // 回退：从 saveT 重新扫到 into
-            cur.Seek(saveT);
-            var buffered = new List<Token>();
-            while (!cur.IsAtEnd && !cur.Current.IsWord("into"))
-            {
-                buffered.Add(cur.Current);
-                cur.Advance();
-            }
-            if (buffered.Count > 0)
-            {
-                var tcur = new TokenCursor(buffered);
-                target = _target.TryParse(tcur) ?? TargetSpec.Self;
-            }
+            rest.Add(cur.Current);
+            cur.Advance();
         }
 
-        // "transform it based on ..." —— 没有 into，直接是融合分派
-        if (cur.Current.IsWord("based") || (cur.Current.IsWord("it") && cur.Peek().IsWord("based")))
+        // 找到分界位置
+        int intoIdx = -1, basedIdx = -1;
+        for (int k = 0; k < rest.Count; k++)
         {
-            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
+            if (intoIdx < 0 && rest[k].IsWord("into")) intoIdx = k;
+            if (basedIdx < 0 && rest[k].IsWord("based")) basedIdx = k;
+        }
+
+        // "transform it based on the total cost of the cards fused" —— 融合分派
+        if (basedIdx >= 0 && (intoIdx < 0 || basedIdx < intoIdx))
+        {
             return new List<EffectNode> { new MacroNode { Macro = _lex.Macro("fuse_switch") } };
         }
 
-        cur.TryMatchAnyWord("into");
-        cur.TryMatchAnyWord("an", "a");
-        cur.TryMatchAnyWord("exact", "copies", "copy");
-        cur.TryMatchAnyWord("of");
-        // 具体卡名 -> IntoCardId；否则是「复制某集合中的卡」-> CopySource
-        if (cur.Current.Kind == TokKind.CardName)
+        // 分界之前是目标
+        int splitAt = intoIdx >= 0 ? intoIdx : basedIdx;
+        var targetToks = splitAt > 0 ? rest.Take(splitAt).ToList() : new List<Token>();
+        var target = targetToks.Count > 0
+            ? (_target.TryParse(new TokenCursor(targetToks)) ?? TargetSpec.Self)
+            : TargetSpec.Self;
+
+        if (intoIdx < 0)
+            throw LangException.At("transform", "既没有 into 也没有 based on", cur, rest);
+
+        // into 之后是结果
+        var rhs = rest.Skip(intoIdx + 1).ToList();
+        var rc = new TokenCursor(rhs);
+        rc.TryMatchAnyWord("an", "a");
+        rc.TryMatchAnyWord("exact");
+        rc.TryMatchAnyWord("copies", "copy");
+        rc.TryMatchAnyWord("of");
+
+        // 具体卡名
+        if (rc.Current.Kind == TokKind.CardName)
         {
-            int id = cur.Current.CardId;
-            string nm = cur.Current.Text;
-            cur.Advance();
+            int id = rc.Current.CardId;
+            string nm = rc.Current.Text;
             return new List<EffectNode> { new TransformNode { Target = target, IntoCardId = id, IntoCardName = nm } };
         }
 
-        // "transform it based on the total cost of the cards fused" —— 按融合费用分派
-        if (cur.Current.IsWord("based") && cur.Peek().IsWord("on"))
-        {
-            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
-            return new List<EffectNode>
-            {
-                new MacroNode
-                {
-                    Macro = _lex.Macro("fuse_switch"),
-                },
-            };
-        }
-
-        // "exact copies of random followers in your deck"
-        cur.TryMatchAnyWord("exact", "copies", "copy");
-        cur.TryMatchAnyWord("of");
-        var copySrc = _target.TryParse(cur);
+        // 否则是「复制某集合中的卡」
+        var copySrc = _target.TryParse(rc);
         if (copySrc == null)
-            throw LangException.At("transform into", "既不是卡名也不是可解析的目标集合", cur, cur.All);
+            throw LangException.At("transform into", "既不是卡名也不是可解析的目标集合", rc, rhs);
         return new List<EffectNode> { new TransformNode { Target = target, CopySource = copySrc } };
     }
 
