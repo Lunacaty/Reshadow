@@ -92,10 +92,10 @@ public static partial class DocAcceptanceTest
             Ok("d-P3", "E7 cost 不被当成 Life", costOk, cond);
         }
         {
-            var r = comp.Compile("Evolve: Summon a Mecha Cavalier. Super-Evolve: Summon 2 instead.");
+            var r = comp.Compile("Summon a Majestic Megalorca. If you're in Overflow, summon 2 instead.");
             string body = DumpDeep(r.Abilities);
-            Ok("d-P3", "E9 Summon N instead 继承卡名",
-               body.Contains("Mecha Cavalier") && body.Contains("spawn 2"), body.Replace("\n", " "));
+            Ok("d-P3", "E9 Summon N instead 继承卡名（Ocean Rider）",
+               body.Contains("Majestic Megalorca") && body.Contains("spawn 2"), body.Replace("\n", " "));
         }
         {
             var r = comp.Compile("X starts at 2. On Spellboost: Increase X by 1.");

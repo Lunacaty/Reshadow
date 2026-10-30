@@ -26,12 +26,13 @@ public static partial class DocAcceptanceTest
 
         // 2. Stage4 Pass：$trigger / $selected / 镜头覆写
         {
-            var r = comp.Compile("Evolve: Summon a Mecha Cavalier. Super-Evolve: Summon 2 instead.");
-            // 要递归进入 ConditionalNode 才能看到分支正文
+            // Ocean Rider 真实文本：第二句没写卡名，必须从第一句继承
+            var r = comp.Compile("Summon a Majestic Megalorca. If you're in Overflow, summon 2 instead.");
             string body = DumpDeep(r.Abilities);
-            bool inherited = body.Contains("Mecha Cavalier") && body.Contains("spawn 2");
-            Ok("b-2", "InsteadWeaver 镜头覆写继承卡名", inherited,
-               body.Replace("\n", " "));
+            bool inherited = body.Contains("Majestic Megalorca") && body.Contains("spawn 2");
+            bool cond = body.Contains("max_pp");
+            Ok("b-2", "InsteadWeaver 镜头覆写继承卡名",
+               inherited && cond, body.Replace("\n", " "));
         }
 
         // 3. MoveZoneNode.IsDestroy
