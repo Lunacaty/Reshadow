@@ -401,6 +401,9 @@ public static class RoundTripVerifier
             // 不递归进去，5 就会被判成丢失。
             CollectNumExpr(e.Of.Count, acc);
             CollectNumsBool(e.Of.Where, acc);
+            // "the sum of the 3 highest base costs" 的 3 存在 TopN 上，
+            // 它不是 NumExpr，不收集就会被判成丢失。
+            if (e.Of.TopN > 0) acc.Add(e.Of.TopN);
         }
     }
 

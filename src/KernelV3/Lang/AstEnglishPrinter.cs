@@ -210,6 +210,7 @@ public static class AstEnglishPrinter
         if (t.IncludeLeader) sb.Append(" +leader");
         if (t.DistinctByName) sb.Append(" distinct");
         if (t.Sort != SortKey.None) sb.Append(" sort=" + t.Sort + (t.SortDescending ? "-desc" : ""));
+        if (t.TopN > 0) sb.Append(" topN=" + t.TopN);
         sb.Append(" " + t.Mode + " n=" + PrintNum(t.Count));
         if (t.Where != null && t.Where is not ConstBoolExpr) sb.Append(" where " + PrintBool(t.Where));
         return sb.ToString();

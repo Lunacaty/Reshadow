@@ -30,6 +30,9 @@ public static partial class DocAcceptanceTest
         // ---- 76-c ----
         RunDocC();
 
+        // ---- 设计3 ----
+        RunDesign3();
+
         // ---- 76-d ----
         RunDocD();
 

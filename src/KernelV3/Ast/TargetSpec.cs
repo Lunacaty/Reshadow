@@ -48,6 +48,10 @@ public sealed class TargetSpec
     public BoolExpr Where { get; init; } = BoolExpr.True;
     public Core.SortKey Sort { get; init; } = Core.SortKey.None;
     public bool SortDescending { get; init; }
+
+    /// <summary>取排序后的前 N 项（如「the 3 highest base costs」里的 3）。0 表示不限。</summary>
+    public int TopN { get; init; }
+
     public bool DistinctByName { get; init; }
     public Core.SelectMode Mode { get; init; } = Core.SelectMode.All;
     public NumExpr Count { get; init; } = NumExpr.Const(1);

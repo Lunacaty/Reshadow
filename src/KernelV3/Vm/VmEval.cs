@@ -52,7 +52,14 @@ public sealed class VmEval
             case NumOp.Sum:
             {
                 var t = e.Of ?? TargetSpec.Self;
-                return Resolve(t, scope).Sum(x => ReadStat(x, e.Stat));
+                var pool = Resolve(t, scope);
+
+                // "the sum of the 3 highest base costs"：先按 Sort 排好，再取前 TopN 项。
+                // Resolve 已经应用过 Sort / SortDescending，这里只需要截断。
+                if (t.TopN > 0 && pool.Count > t.TopN)
+                    pool = pool.Take(t.TopN).ToList();
+
+                return pool.Sum(x => ReadStat(x, e.Stat));
             }
 
             case NumOp.Arith:

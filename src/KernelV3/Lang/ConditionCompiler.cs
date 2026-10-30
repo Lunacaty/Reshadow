@@ -503,15 +503,25 @@ public static class ConditionCompiler
             var tgt = new TargetParser(lex).TryParse(c);
             var own = tgt?.Owner ?? ZoneScope.Self;
             var zone = tgt?.Zone ?? ZoneRef.Board;
+
+            // 必须把 TryParse 已解析出的限定条件一起带下去。
+            // 之前这里重新构造了一个只带 Owner/Zone 的 TargetSpec，
+            // 把 Where 里的 "base cost of 5 or more" 丢掉了，
+            // 于是条件退化成「只要有随从」。
+            var spec = new TargetSpec
+            {
+                SourceKind = TargetSourceKind.Zone,
+                Owner = own,
+                Zone = zone,
+                Mode = SelectMode.All,
+                Where = tgt?.Where,
+                CardId = tgt?.CardId ?? 0,
+                CardName = tgt?.CardName,
+                DistinctByName = tgt?.DistinctByName ?? false,
+            };
             return new CompareExpr
             {
-                Left = NumExpr.CountOf(new TargetSpec
-                {
-                    SourceKind = TargetSourceKind.Zone,
-                    Owner = own,
-                    Zone = zone,
-                    Mode = SelectMode.All,
-                }),
+                Left = NumExpr.CountOf(spec),
                 Op = CompareOp.Ge,
                 Right = NumExpr.Const(n),
             };
@@ -638,13 +648,24 @@ public static class ConditionCompiler
         // "the sum of the 3 highest base costs in your hand is higher than that of your opponent's"
         if (c.MatchPhrase("the", "sum", "of"))
         {
+            // "the sum of the 3 highest base costs" —— 数字 N 必须读进来。
+            // 之前这里无条件 while(!c.IsAtEnd) c.Advance() 把整句吞掉，
+            // 于是 N=3 完全消失，求和变成「全部基础费用之和」。
+            c.TryMatchAnyWord("the");
+            int topN = 0;
+            if (c.Current.Kind == TokKind.Number) { topN = c.Current.Value; c.Advance(); }
+            c.TryMatchAnyWord("highest", "lowest");
             while (!c.IsAtEnd) c.Advance();
+
             var handSelf = new TargetSpec
             {
                 SourceKind = TargetSourceKind.Zone,
                 Owner = ZoneScope.Self,
                 Zone = ZoneRef.Hand,
                 Mode = SelectMode.All,
+                Sort = SortKey.BaseCost,
+                SortDescending = true,
+                TopN = topN,
             };
             var handOpp = new TargetSpec
             {
@@ -652,6 +673,9 @@ public static class ConditionCompiler
                 Owner = ZoneScope.Opponent,
                 Zone = ZoneRef.Hand,
                 Mode = SelectMode.All,
+                Sort = SortKey.BaseCost,
+                SortDescending = true,
+                TopN = topN,
             };
             return new CompareExpr
             {
