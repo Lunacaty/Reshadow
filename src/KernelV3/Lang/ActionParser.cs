@@ -1857,8 +1857,9 @@ public sealed class ActionParser
                 cur.Advance();
                 cur.TryMatch(TokKind.CloseParen);
             }
-            // Reanimate (N)：从墓地召唤一个费用 <= N 的随从。
-            // 之前这里是 MacroNode 占位，运行时 ExpandMacro 返回空 -> 什么也不做。
+            // Reanimate (N)：从本局被破坏的随从里，**自动**取一个
+            // 费用 ≤ N 且费用最高的随从出场；同费用按数量加权随机。
+            // 绝对不能弹框让玩家手选（之前写成 Choose，运行时会挂起等玩家）。
             result.Add(new SpawnCardNode
             {
                 SourceKind = CardSourceKind.CopyOfTarget,
@@ -1867,15 +1868,19 @@ public sealed class ActionParser
                     SourceKind = TargetSourceKind.Zone,
                     Zone = ZoneRef.Cemetery,
                     Owner = ZoneScope.Self,
-                    Mode = SelectMode.Choose,
+                    Mode = SelectMode.Random,
                     Count = NumExpr.Const(1),
                     History = HistoryScope.DestroyedThisMatch,
-                    Where = new CompareExpr
-                    {
-                        Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
-                        Op = CompareOp.Le,
-                        Right = NumExpr.Const(n),
-                    },
+                    Sort = SortKey.Cost,
+                    SortDescending = true,
+                    Where = BoolExpr.And(
+                        new CompareExpr
+                        {
+                            Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
+                            Op = CompareOp.Le,
+                            Right = NumExpr.Const(n),
+                        },
+                        new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item }),
                 },
                 ToZone = ZoneRef.Board,
                 ToOwner = ZoneScope.Self,

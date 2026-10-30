@@ -38097,7 +38097,8 @@
    "eng_keys": [],
    "eng_texts": [],
    "eng_text": "",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "哥布林"
   },
   {
    "card_id": 90001210,
@@ -38157,7 +38158,8 @@
     "<b><color=Keyword>Clue</color></b>\n<hr><b><color=Keyword>Engage</color> (1)</b>: Draw a card. Consume a clue."
    ],
    "eng_text": "<b><color=Keyword>Clue</color></b>\n<hr><b><color=Keyword>Engage</color> (1)</b>: Draw a card. Consume a clue.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "神域的物证"
   },
   {
    "card_id": 90004110,
@@ -38187,7 +38189,8 @@
     "<b><color=Keyword>Storm</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Storm</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "沉默的魔将"
   },
   {
    "card_id": 90004120,
@@ -38207,7 +38210,8 @@
    "eng_keys": [],
    "eng_texts": [],
    "eng_text": "",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "深渊之主的仆从"
   },
   {
    "card_id": 90004130,
@@ -38242,7 +38246,8 @@
     "<b><color=Keyword>Fanfare</color></b>: Select 2 enemy followers on the field and deal 6 damage to them and the enemy leader."
    ],
    "eng_text": "<b><color=Keyword>Fanfare</color></b>: Select 2 enemy followers on the field and deal 6 damage to them and the enemy leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "边狱的邪祟"
   },
   {
    "card_id": 90004310,
@@ -38272,7 +38277,8 @@
     "Set the enemy leader's max defense to 1."
    ],
    "eng_text": "Set the enemy leader's max defense to 1.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "阿斯塔罗特的宣判"
   },
   {
    "card_id": 90004320,
@@ -38307,7 +38313,8 @@
     "Select an enemy follower on the field and destroy it."
    ],
    "eng_text": "Select an enemy follower on the field and destroy it.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "绝大的证明"
   },
   {
    "card_id": 90004330,
@@ -38347,7 +38354,8 @@
     "Deal 5 damage to a random enemy follower and the enemy leader."
    ],
    "eng_text": "Deal 5 damage to a random enemy follower and the enemy leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "涸绝的甘露"
   },
   {
    "card_id": 90011110,
@@ -38377,7 +38385,8 @@
     "<b><color=Keyword>Rush</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "妖精"
   },
   {
    "card_id": 90011120,
@@ -38412,7 +38421,8 @@
     "<b><color=Keyword>Ward</color></b>\nAt the end of your turn, evolve this follower."
    ],
    "eng_text": "<b><color=Keyword>Ward</color></b>\nAt the end of your turn, evolve this follower.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "新绿的妖精"
   },
   {
    "card_id": 90011310,
@@ -38442,7 +38452,8 @@
     "Restore 1 defense to your leader."
    ],
    "eng_text": "Restore 1 defense to your leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "森林的奥秘"
   },
   {
    "card_id": 90014110,
@@ -38477,7 +38488,8 @@
     "<b><color=Keyword>Storm</color></b>\n<b><color=Keyword>Ward</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Storm</color></b>\n<b><color=Keyword>Ward</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "冰晶剑士·伊芙"
   },
   {
    "card_id": 90014310,
@@ -38512,7 +38524,8 @@
     "Select an enemy follower on the field or the enemy leader and deal it 3 damage."
    ],
    "eng_text": "Select an enemy follower on the field or the enemy leader and deal it 3 damage.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "蔷薇之闪击"
   },
   {
    "card_id": 90014320,
@@ -38552,7 +38565,8 @@
     "Activates in hand. At the end of your turn, reduce the cost of this card by 1.\n<hr>Deal 6 damage to the enemy leader. If there's an allied <b><i><color=Keyword>Izudia, Annihilation Manifest</color></i></b> on the field, deal 20 damage instead."
    ],
    "eng_text": "Activates in hand. At the end of your turn, reduce the cost of this card by 1.\n<hr>Deal 6 damage to the enemy leader. If there's an allied <b><i><color=Keyword>Izudia, Annihilation Manifest</color></i></b> on the field, deal 20 damage instead.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "绝命的痛击"
   },
   {
    "card_id": 90014330,
@@ -38587,7 +38601,8 @@
     "Select an unevolved allied follower on the field and evolve it."
    ],
    "eng_text": "Select an unevolved allied follower on the field and evolve it.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "天枪深渊"
   },
   {
    "card_id": 90021110,
@@ -38607,7 +38622,8 @@
    "eng_keys": [],
    "eng_texts": [],
    "eng_text": "",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "骑士"
   },
   {
    "card_id": 90021120,
@@ -38627,7 +38643,8 @@
    "eng_keys": [],
    "eng_texts": [],
    "eng_text": "",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "铁甲骑士"
   },
   {
    "card_id": 90021130,
@@ -38647,7 +38664,8 @@
    "eng_keys": [],
    "eng_texts": [],
    "eng_text": "",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "娜哈特的私兵"
   },
   {
    "card_id": 90021210,
@@ -38682,7 +38700,8 @@
     "<b><color=Keyword>Countdown</color> (7)</b>\nWhenever you play a spell, advance this amulet's count by 1.\n<b><color=Keyword>Last Words</color></b>: Deal 2 damage to the enemy leader."
    ],
    "eng_text": "<b><color=Keyword>Countdown</color> (7)</b>\nWhenever you play a spell, advance this amulet's count by 1.\n<b><color=Keyword>Last Words</color></b>: Deal 2 damage to the enemy leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "令人战栗的海盗旗"
   },
   {
    "card_id": 90021310,
@@ -38717,7 +38736,8 @@
     "Select an enemy follower on the field or the enemy leader and deal it 1 damage."
    ],
    "eng_text": "Select an enemy follower on the field or the enemy leader and deal it 1 damage.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "黄金短剑"
   },
   {
    "card_id": 90021320,
@@ -38747,7 +38767,8 @@
     "Restore 2 defense to your leader."
    ],
    "eng_text": "Restore 2 defense to your leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "黄金之杯"
   },
   {
    "card_id": 90021330,
@@ -38787,7 +38808,8 @@
     "Select an allied follower on the field and give it +1/+0 and <b><color=Keyword>Rush</color></b>."
    ],
    "eng_text": "Select an allied follower on the field and give it +1/+0 and <b><color=Keyword>Rush</color></b>.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "黄金之靴"
   },
   {
    "card_id": 90021340,
@@ -38827,7 +38849,8 @@
     "Select an allied follower on the field and give it +0/+1 and <b><color=Keyword>Ward</color></b>."
    ],
    "eng_text": "Select an allied follower on the field and give it +0/+1 and <b><color=Keyword>Ward</color></b>.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "黄金项链"
   },
   {
    "card_id": 90021350,
@@ -38872,7 +38895,8 @@
     "Select a <b><color=Keyword>Mode</color></b> to activate.\n<ridx=0>1. Draw a card.</ridx>\n<ridx=1>2. Deal 2 damage to a random enemy follower.</ridx>"
    ],
    "eng_text": "Select a <b><color=Keyword>Mode</color></b> to activate.\n<ridx=0>1. Draw a card.</ridx>\n<ridx=1>2. Deal 2 damage to a random enemy follower.</ridx>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "闪耀的金币"
   },
   {
    "card_id": 90022110,
@@ -38902,7 +38926,8 @@
     "<b><color=Keyword>Rush</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "异形"
   },
   {
    "card_id": 90023110,
@@ -38942,7 +38967,8 @@
     "<b><color=Keyword>Fanfare</color></b>: If there's an allied <b><i><color=Keyword>Prim, Princess's Picnic</color></i></b> on the field, give this follower +1/+1 and <b><color=Keyword>Bane</color></b>.\n<hr><b><color=Keyword>Ward</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Fanfare</color></b>: If there's an allied <b><i><color=Keyword>Prim, Princess's Picnic</color></i></b> on the field, give this follower +1/+1 and <b><color=Keyword>Bane</color></b>.\n<hr><b><color=Keyword>Ward</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "安静的女仆·诺嘉"
   },
   {
    "card_id": 90024310,
@@ -38972,7 +38998,8 @@
     "Deal 4 damage split between all enemies."
    ],
    "eng_text": "Deal 4 damage split between all enemies.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "空绝的残光"
   },
   {
    "card_id": 90024320,
@@ -39022,7 +39049,8 @@
     "Select an enemy follower on the field and deal it 1 damage.\n<b><color=Keyword>Enhance</color> (1)</b>: Deal 3 damage instead."
    ],
    "eng_text": "Select an enemy follower on the field and deal it 1 damage.\n<b><color=Keyword>Enhance</color> (1)</b>: Deal 3 damage instead.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "天剑深渊"
   },
   {
    "card_id": 90024330,
@@ -39062,7 +39090,8 @@
     "Do this 2 times: \"Deal 4 damage to a random enemy follower.\""
    ],
    "eng_text": "Do this 2 times: \"Deal 4 damage to a random enemy follower.\"",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "亡命者的枪击"
   },
   {
    "card_id": 90031110,
@@ -39082,7 +39111,8 @@
    "eng_keys": [],
    "eng_texts": [],
    "eng_text": "",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "泥尘巨像"
   },
   {
    "card_id": 90031120,
@@ -39112,7 +39142,8 @@
     "<b><color=Keyword>Ward</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Ward</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "守护者巨像"
   },
   {
    "card_id": 90031130,
@@ -39147,7 +39178,8 @@
     "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Last Words</color></b>: Spellboost your hand."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Last Words</color></b>: Spellboost your hand.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "式神·小纸人"
   },
   {
    "card_id": 90031140,
@@ -39182,7 +39214,8 @@
     "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Last Words</color></b>: Spellboost your hand."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Last Words</color></b>: Spellboost your hand.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "式神·暴鬼"
   },
   {
    "card_id": 90031210,
@@ -39242,7 +39275,8 @@
     "<b><color=Keyword>Earth Sigil</color></b>\n<hr><b><color=Keyword>Engage</color> (1)</b>: Gain an earth sigil."
    ],
    "eng_text": "<b><color=Keyword>Earth Sigil</color></b>\n<hr><b><color=Keyword>Engage</color> (1)</b>: Gain an earth sigil.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "大地之魔片"
   },
   {
    "card_id": 90031310,
@@ -39277,7 +39311,8 @@
     "Deal 3 damage to a random enemy follower."
    ],
    "eng_text": "Deal 3 damage to a random enemy follower.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "玛纳利亚魔弹"
   },
   {
    "card_id": 90032110,
@@ -39312,7 +39347,8 @@
     "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Strike</color></b>: Spellboost your hand."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Strike</color></b>: Spellboost your hand.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "洋葱军团兵"
   },
   {
    "card_id": 90033310,
@@ -39352,7 +39388,8 @@
     "Draw 2 cards. Deal 2 damage to a random enemy follower."
    ],
    "eng_text": "Draw 2 cards. Deal 2 damage to a random enemy follower.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "有所成长了！"
   },
   {
    "card_id": 90034110,
@@ -39387,7 +39424,8 @@
     "<b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Last Words</color></b>: Spellboost your hand 3 times."
    ],
    "eng_text": "<b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Last Words</color></b>: Spellboost your hand 3 times.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "式神·天后"
   },
   {
    "card_id": 90034120,
@@ -39427,7 +39465,8 @@
     "When this follower enters the field, give it +X/+Y. X/Y is the total base attack/defense of allied Shikigami followers destroyed this turn.\n<hr><b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Aura</color></b>"
    ],
    "eng_text": "When this follower enters the field, give it +X/+Y. X/Y is the total base attack/defense of allied Shikigami followers destroyed this turn.\n<hr><b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Aura</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "式神·贵人"
   },
   {
    "card_id": 90034130,
@@ -39467,7 +39506,8 @@
     "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Ward</color></b>\nAt the end of your opponent's turn, destroy this card."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Ward</color></b>\nAt the end of your opponent's turn, destroy this card.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "安的巨大英灵"
   },
   {
    "card_id": 90034310,
@@ -39502,7 +39542,8 @@
     "Increase the cost of all followers in your hand by 1. Destroy all enemy followers."
    ],
    "eng_text": "Increase the cost of all followers in your hand by 1. Destroy all enemy followers.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "绝尽的伪证"
   },
   {
    "card_id": 90034320,
@@ -39542,7 +39583,8 @@
     "Select an enemy and deal it 2 damage. Restore 1 defense to your leader."
    ],
    "eng_text": "Select an enemy and deal it 2 damage. Restore 1 defense to your leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "伟大之术"
   },
   {
    "card_id": 90034330,
@@ -39597,7 +39639,8 @@
     "Summon a <b><i><color=Keyword>Crystalspawn</color></i></b> and give it +X/+X. Restore Y defense to your leader. Deal Z damage to the enemy leader. X, Y, and Z are determined randomly and add up to your faith's value."
    ],
    "eng_text": "Summon a <b><i><color=Keyword>Crystalspawn</color></i></b> and give it +X/+X. Restore Y defense to your leader. Deal Z damage to the enemy leader. X, Y, and Z are determined randomly and add up to your faith's value.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "天晶深渊"
   },
   {
    "card_id": 90034340,
@@ -39627,7 +39670,8 @@
     "Deal 5 damage to all enemy followers."
    ],
    "eng_text": "Deal 5 damage to all enemy followers.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "苍奏之四"
   },
   {
    "card_id": 90034350,
@@ -39662,7 +39706,8 @@
     "Select an allied follower on the field and give it \"Can attack 2 times per turn.\""
    ],
    "eng_text": "Select an allied follower on the field and give it \"Can attack 2 times per turn.\"",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "宏大的回归"
   },
   {
    "card_id": 90041110,
@@ -39692,7 +39737,8 @@
     "<b><color=Keyword>Intimidate</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Intimidate</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "炽炎幼龙"
   },
   {
    "card_id": 90041120,
@@ -39722,7 +39768,8 @@
     "<b><color=Keyword>Intimidate</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Intimidate</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "巨翼飞龙"
   },
   {
    "card_id": 90041130,
@@ -39752,7 +39799,8 @@
     "<b><color=Keyword>Rush</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "大海虎鲸"
   },
   {
    "card_id": 90043110,
@@ -39787,7 +39835,8 @@
     "<b><color=Keyword>Storm</color></b>\n<b><color=Keyword>Ward</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Storm</color></b>\n<b><color=Keyword>Ward</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "乙姬近卫队"
   },
   {
    "card_id": 90044110,
@@ -39817,7 +39866,8 @@
     "<b><color=Keyword>Ward</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Ward</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "霸道之金龙"
   },
   {
    "card_id": 90044120,
@@ -39847,7 +39897,8 @@
     "<b><color=Keyword>Rush</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "霸道之银龙"
   },
   {
    "card_id": 90044310,
@@ -39887,7 +39938,8 @@
     "Select a <b><color=Keyword>Mode</color></b> to activate.\n<ridx=0>1. Destroy all damaged enemy followers.</ridx>\n<ridx=1>2. Increase the cost of all cards in your opponent's hand by 1 until the end of their turn.</ridx>"
    ],
    "eng_text": "Select a <b><color=Keyword>Mode</color></b> to activate.\n<ridx=0>1. Destroy all damaged enemy followers.</ridx>\n<ridx=1>2. Increase the cost of all cards in your opponent's hand by 1 until the end of their turn.</ridx>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "银冰吐息"
   },
   {
    "card_id": 90044320,
@@ -39917,7 +39969,8 @@
     "Deal 1 damage to all followers."
    ],
    "eng_text": "Deal 1 damage to all followers.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "烈绝的灭牙"
   },
   {
    "card_id": 90044330,
@@ -39962,7 +40015,8 @@
     "When this card is discarded, deal 1 damage to the enemy leader and restore 1 defense to your leader.\n<hr>Deal 1 damage to the enemy leader. Restore 1 defense to your leader."
    ],
    "eng_text": "When this card is discarded, deal 1 damage to the enemy leader and restore 1 defense to your leader.\n<hr>Deal 1 damage to the enemy leader. Restore 1 defense to your leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "天刀深渊"
   },
   {
    "card_id": 90051110,
@@ -39982,7 +40036,8 @@
    "eng_keys": [],
    "eng_texts": [],
    "eng_text": "",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "骸骨士兵"
   },
   {
    "card_id": 90051120,
@@ -40012,7 +40067,8 @@
     "<b><color=Keyword>Drain</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Drain</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "蝙蝠"
   },
   {
    "card_id": 90051130,
@@ -40052,7 +40108,8 @@
     "<b><color=Keyword>Storm</color></b>\nWhen this card leaves the field, banish it.\nAt the end of your turn, banish this card."
    ],
    "eng_text": "<b><color=Keyword>Storm</color></b>\nWhen this card leaves the field, banish it.\nAt the end of your turn, banish this card.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "怨灵"
   },
   {
    "card_id": 90051140,
@@ -40087,7 +40144,8 @@
     "<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Rotting Zombie</color></i></b> and remove <b><color=Keyword>Last Words</color></b> from it."
    ],
    "eng_text": "<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Rotting Zombie</color></i></b> and remove <b><color=Keyword>Last Words</color></b> from it.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "腐臭的僵尸"
   },
   {
    "card_id": 90054110,
@@ -40122,7 +40180,8 @@
     "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Last Words</color></b>: Deal 2 damage to the enemy leader."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Last Words</color></b>: Deal 2 damage to the enemy leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "守卫犬的右腕·米米"
   },
   {
    "card_id": 90054120,
@@ -40157,7 +40216,8 @@
     "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Last Words</color></b>: Restore 2 defense to your leader."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Last Words</color></b>: Restore 2 defense to your leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "守卫犬的左腕·可可"
   },
   {
    "card_id": 90054130,
@@ -40202,7 +40262,8 @@
     "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Last Words</color></b>: Give a random allied <b><i><color=Keyword>Ginsetsu & Yuzuki, Twin Calamities</color></i></b> on the field +1/+0."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Last Words</color></b>: Give a random allied <b><i><color=Keyword>Ginsetsu & Yuzuki, Twin Calamities</color></i></b> on the field +1/+0.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "一尾狐"
   },
   {
    "card_id": 90054310,
@@ -40237,7 +40298,8 @@
     "Summon 2 copies of <b><i><color=Keyword>Rulenye & Valnareik</color></i></b> and give them <b><color=Keyword>Rush</color></b>."
    ],
    "eng_text": "Summon 2 copies of <b><i><color=Keyword>Rulenye & Valnareik</color></i></b> and give them <b><color=Keyword>Rush</color></b>.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "绝叫的扩散"
   },
   {
    "card_id": 90054320,
@@ -40272,7 +40334,8 @@
     "Select an allied <b><i><color=Keyword>Rulenye & Valnareik</color></i></b> on the field and give it <b><color=Keyword>Storm</color></b>."
    ],
    "eng_text": "Select an allied <b><i><color=Keyword>Rulenye & Valnareik</color></i></b> on the field and give it <b><color=Keyword>Storm</color></b>.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "爱绝的飞翔"
   },
   {
    "card_id": 90054330,
@@ -40302,7 +40365,8 @@
     "Draw 2 cards."
    ],
    "eng_text": "Draw 2 cards.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "天眼深渊"
   },
   {
    "card_id": 90061110,
@@ -40332,7 +40396,8 @@
     "<b><color=Keyword>Storm</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Storm</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "神圣猎鹰"
   },
   {
    "card_id": 90061120,
@@ -40362,7 +40427,8 @@
     "<b><color=Keyword>Rush</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "圣炎猛虎"
   },
   {
    "card_id": 90061130,
@@ -40392,7 +40458,8 @@
     "<b><color=Keyword>Storm</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Storm</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "壮丽大神隼"
   },
   {
    "card_id": 90061140,
@@ -40437,7 +40504,8 @@
     "When this follower enters the field, banish a random card with the lowest cost from your hand and evolve this follower.\n<hr><b><color=Keyword>Last Words</color></b>: Deal 2 damage to the enemy leader."
    ],
    "eng_text": "When this follower enters the field, banish a random card with the lowest cost from your hand and evolve this follower.\n<hr><b><color=Keyword>Last Words</color></b>: Deal 2 damage to the enemy leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "地害之兔"
   },
   {
    "card_id": 90064110,
@@ -40467,7 +40535,8 @@
     "<b><color=Keyword>Ward</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Ward</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "圣骑兵"
   },
   {
    "card_id": 90064210,
@@ -40502,7 +40571,8 @@
     "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Aura</color></b>\nAt the end of your turn, if there are at least 3 allied amulets on the field, deal 3 damage to all enemies."
    ],
    "eng_text": "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Aura</color></b>\nAt the end of your turn, if there are at least 3 allied amulets on the field, deal 3 damage to all enemies.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "月影指环"
   },
   {
    "card_id": 90064310,
@@ -40542,7 +40612,8 @@
     "Banish a random enemy follower from the field. Delay the counts of all your crests by 1."
    ],
    "eng_text": "Banish a random enemy follower from the field. Delay the counts of all your crests by 1.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "绝望的奔流"
   },
   {
    "card_id": 90064320,
@@ -40587,7 +40658,8 @@
     "Select a card on the field and destroy it. If you selected an allied amulet, deal 2 damage to the enemy leader and add a <b><i><color=Keyword>Depths of the Eld Tome</color></i></b> to your hand."
    ],
    "eng_text": "Select a card on the field and destroy it. If you selected an allied amulet, deal 2 damage to the enemy leader and add a <b><i><color=Keyword>Depths of the Eld Tome</color></i></b> to your hand.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "天书深渊"
   },
   {
    "card_id": 90071110,
@@ -40622,7 +40694,8 @@
     "<b><color=Keyword>Rush</color></b>\nAt the end of your opponent's turn, destroy this card."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\nAt the end of your opponent's turn, destroy this card.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "悬丝傀儡"
   },
   {
    "card_id": 90071120,
@@ -40657,7 +40730,8 @@
     "<b><color=Keyword>Rush</color></b>\nAt the end of your opponent's turn, destroy this card."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\nAt the end of your opponent's turn, destroy this card.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "改良型·悬丝傀儡"
   },
   {
    "card_id": 90071130,
@@ -40687,7 +40761,8 @@
     "When this card enters the field, draw a card."
    ],
    "eng_text": "When this card enters the field, draw a card.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "解析的创造物"
   },
   {
    "card_id": 90071140,
@@ -40717,7 +40792,8 @@
     "<b><color=Keyword>Rush</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "古老的创造物"
   },
   {
    "card_id": 90071150,
@@ -40747,7 +40823,8 @@
     "<b><color=Keyword>Ward</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Ward</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "神秘的创造物"
   },
   {
    "card_id": 90071160,
@@ -40777,7 +40854,8 @@
     "<b><color=Keyword>Storm</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Storm</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "绚烂的创造物"
   },
   {
    "card_id": 90071210,
@@ -40817,7 +40895,8 @@
     "<b><color=Keyword>Fuse</color></b>: Artifact amulets\nWhen you <b><color=Keyword>Fuse</color></b> to this card, transform it into a <b><i><color=Keyword>Striker Artifact</color></i></b>.\n<hr>Can't be played."
    ],
    "eng_text": "<b><color=Keyword>Fuse</color></b>: Artifact amulets\nWhen you <b><color=Keyword>Fuse</color></b> to this card, transform it into a <b><i><color=Keyword>Striker Artifact</color></i></b>.\n<hr>Can't be played.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "未来核心"
   },
   {
    "card_id": 90071220,
@@ -40857,7 +40936,8 @@
     "<b><color=Keyword>Fuse</color></b>: Artifact amulets\nWhen you <b><color=Keyword>Fuse</color></b> to this card, transform it into a <b><i><color=Keyword>Fortifier Artifact</color></i></b>.\n<hr>Can't be played."
    ],
    "eng_text": "<b><color=Keyword>Fuse</color></b>: Artifact amulets\nWhen you <b><color=Keyword>Fuse</color></b> to this card, transform it into a <b><i><color=Keyword>Fortifier Artifact</color></i></b>.\n<hr>Can't be played.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "过往核心"
   },
   {
    "card_id": 90072110,
@@ -40907,7 +40987,8 @@
     "<b><color=Keyword>Fuse</color></b>: Artifact cards\nWhen you <b><color=Keyword>Fuse</color></b> to this card, transform it based on the total cost of the cards fused.\n1: <b><i><color=Keyword>Ominous Artifact α</color></i></b>\n2: <b><i><color=Keyword>Ominous Artifact β</color></i></b>\n3 or more: <b><i><color=Keyword>Ominous Artifact γ</color></i></b>\n<hr><b><color=Keyword>Rush</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Fuse</color></b>: Artifact cards\nWhen you <b><color=Keyword>Fuse</color></b> to this card, transform it based on the total cost of the cards fused.\n1: <b><i><color=Keyword>Ominous Artifact α</color></i></b>\n2: <b><i><color=Keyword>Ominous Artifact β</color></i></b>\n3 or more: <b><i><color=Keyword>Ominous Artifact γ</color></i></b>\n<hr><b><color=Keyword>Rush</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "攻击创造物"
   },
   {
    "card_id": 90072120,
@@ -40957,7 +41038,8 @@
     "<b><color=Keyword>Fuse</color></b>: Artifact cards\nWhen you <b><color=Keyword>Fuse</color></b> to this card, transform it based on the total cost of the cards fused.\n1: <b><i><color=Keyword>Ominous Artifact α</color></i></b>\n2: <b><i><color=Keyword>Ominous Artifact β</color></i></b>\n3 or more: <b><i><color=Keyword>Ominous Artifact γ</color></i></b>\n<hr><b><color=Keyword>Ward</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Fuse</color></b>: Artifact cards\nWhen you <b><color=Keyword>Fuse</color></b> to this card, transform it based on the total cost of the cards fused.\n1: <b><i><color=Keyword>Ominous Artifact α</color></i></b>\n2: <b><i><color=Keyword>Ominous Artifact β</color></i></b>\n3 or more: <b><i><color=Keyword>Ominous Artifact γ</color></i></b>\n<hr><b><color=Keyword>Ward</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "城堡创造物"
   },
   {
    "card_id": 90072130,
@@ -40992,7 +41074,8 @@
     "<b><color=Keyword>Ambush</color></b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Vier, Heart Slayer</color></i></b>."
    ],
    "eng_text": "<b><color=Keyword>Ambush</color></b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Vier, Heart Slayer</color></i></b>.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "屠戮人偶"
   },
   {
    "card_id": 90073110,
@@ -41032,7 +41115,8 @@
     "<b><color=Keyword>Fuse</color></b>: <b><i><color=Keyword>Ominous Artifact β</color></i></b> and <b><i><color=Keyword>Ominous Artifact γ</color></i></b>\nWhen you've <b><color=Keyword>Fuse</color><color=Keyword>d</color></b> both to this card, transform it into a <b><i><color=Keyword>Masterwork Artifact Ω</color></i></b>.\n<hr>At the end of your turn, restore 3 defense to your leader."
    ],
    "eng_text": "<b><color=Keyword>Fuse</color></b>: <b><i><color=Keyword>Ominous Artifact β</color></i></b> and <b><i><color=Keyword>Ominous Artifact γ</color></i></b>\nWhen you've <b><color=Keyword>Fuse</color><color=Keyword>d</color></b> both to this card, transform it into a <b><i><color=Keyword>Masterwork Artifact Ω</color></i></b>.\n<hr>At the end of your turn, restore 3 defense to your leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "毁灭创造物α"
   },
   {
    "card_id": 90073120,
@@ -41062,7 +41146,8 @@
     "At the end of your turn, deal 3 damage to the enemy leader."
    ],
    "eng_text": "At the end of your turn, deal 3 damage to the enemy leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "毁灭创造物β"
   },
   {
    "card_id": 90073130,
@@ -41092,7 +41177,8 @@
     "At the end of your turn, deal 3 damage to all enemy followers."
    ],
    "eng_text": "At the end of your turn, deal 3 damage to all enemy followers.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "毁灭创造物γ"
   },
   {
    "card_id": 90074110,
@@ -41142,7 +41228,8 @@
     "<b><color=Keyword>Fanfare</color></b>: Deal 5 damage to all enemy followers. Restore 5 defense to your leader.\n<hr><b><color=Keyword>Storm</color></b>\n<b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Aura</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Fanfare</color></b>: Deal 5 damage to all enemy followers. Restore 5 defense to your leader.\n<hr><b><color=Keyword>Storm</color></b>\n<b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Aura</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "卓越创造物Ω"
   },
   {
    "card_id": 90074120,
@@ -41177,7 +41264,8 @@
     "<b><color=Keyword>Ward</color></b>\nYour opponent can't select anything other than this card for abilities."
    ],
    "eng_text": "<b><color=Keyword>Ward</color></b>\nYour opponent can't select anything other than this card for abilities.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "洛伊德"
   },
   {
    "card_id": 90074130,
@@ -41212,7 +41300,8 @@
     "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Follower</color></b> <b><color=Keyword>Strike</color></b>: Deal X damage to the opposing follower. X is this follower's attack."
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Follower</color></b> <b><color=Keyword>Strike</color></b>: Deal X damage to the opposing follower. X is this follower's attack.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "维多利亚"
   },
   {
    "card_id": 90074140,
@@ -41242,7 +41331,8 @@
     "<b><color=Keyword>Rush</color></b>"
    ],
    "eng_text": "<b><color=Keyword>Rush</color></b>",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "伊鞠的小鬼"
   },
   {
    "card_id": 90074150,
@@ -41277,7 +41367,8 @@
     "<b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Last Words</color></b>: Restore 2 defense to your leader."
    ],
    "eng_text": "<b><color=Keyword>Ward</color></b>\n<b><color=Keyword>Last Words</color></b>: Restore 2 defense to your leader.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "击针看守"
   },
   {
    "card_id": 90074210,
@@ -41312,7 +41403,8 @@
     "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Last Words</color></b>: Restore 1 defense to your leader. Summon a <b><i><color=Keyword>Black Psalm, New Revelation</color></i></b>."
    ],
    "eng_text": "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Last Words</color></b>: Restore 1 defense to your leader. Summon a <b><i><color=Keyword>Black Psalm, New Revelation</color></i></b>.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "新约·白之章"
   },
   {
    "card_id": 90074220,
@@ -41347,7 +41439,8 @@
     "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Last Words</color></b>: Deal 1 damage to the enemy leader. Summon a <b><i><color=Keyword>White Psalm, New Revelation</color></i></b>."
    ],
    "eng_text": "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Last Words</color></b>: Deal 1 damage to the enemy leader. Summon a <b><i><color=Keyword>White Psalm, New Revelation</color></i></b>.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "新约·黑之章"
   },
   {
    "card_id": 90074310,
@@ -41392,7 +41485,8 @@
     "Select an allied card on the field and destroy it. Deal 4 damage to a random enemy follower."
    ],
    "eng_text": "Select an allied card on the field and destroy it. Deal 4 damage to a random enemy follower.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "奏绝的独唱"
   },
   {
    "card_id": 90074320,
@@ -41432,7 +41526,8 @@
     "Select an allied follower on the field with a base cost of 5 or more, add a copy of it to your hand without revealing it, and reduce the cost of the copy by 3."
    ],
    "eng_text": "Select an allied follower on the field with a base cost of 5 or more, add a copy of it to your hand without revealing it, and reduce the cost of the copy by 3.",
-   "alt_modes": []
+   "alt_modes": [],
+   "name_chs": "天斧深渊"
   }
  ]
 }

@@ -193,6 +193,10 @@ public sealed partial class CardVm
     private void ApplyDamage(RuntimeEntity t, int amount, bool isAbility)
     {
         if (amount <= 0) return;
+
+        // 潜行（Ambush）铁律：该随从**主动造成伤害时**立即失去潜行。
+        // 攻击宣言时已在 ExecuteCombat 里处理；这里补上「能力造成伤害」的情形。
+        var ambush0 = Schema.Keyword("ambush");
         // 能力伤害必须走世界的统一管线：屏幕（barrier）、超进化免伤、
         // 伤害上限都在那里处理。直接 t.Life -= amount 会全部绕过，
         // 导致法术能无视屏障、能炸死自己回合的超进化随从。

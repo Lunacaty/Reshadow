@@ -139,19 +139,25 @@ public sealed class CombatResolver
         // 7. 攻击方造成伤害
         if (defender.Zone == ZoneRef.Leader)
         {
-            ApplyDamage(defender, atk, attacker.PlayerId, vm);
-            ApplyDrain(attacker, atk, vm);
+            int dealt = ApplyDamage(defender, atk, attacker.PlayerId, vm);
+            ApplyDrain(attacker, dealt, vm);
         }
         else if (defender.Zone == ZoneRef.Board)
         {
             // 8. 被攻击方反击
-            ApplyDamage(defender, atk, attacker.PlayerId, vm);
-            ApplyDrain(attacker, atk, vm);
+            int dealtToDefender = ApplyDamage(defender, atk, attacker.PlayerId, vm);
+            ApplyDrain(attacker, dealtToDefender, vm);
             ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm);
-            ApplyDrain(defender, defender.Attack, vm);
+            // 【虹吸 Drain】只在「主动发动攻击造成伤害」时回血。
+            // 被攻击方的反击不触发它自己的 Drain（官方定义）。
+            // 之前这里也调了 ApplyDrain(defender, ...)，
+            // 于是带 Drain 的随从被打时也会回血。
 
-            // 9. 双方体力 <= 0 的破坏；必杀（Bane）即使 0 伤害也破坏
-            if (attackerHasBane && defender.Zone == ZoneRef.Board) _state.DestroyEntity(defender);
+            // 9. 双方体力 <= 0 的破坏；必杀（Bane）即使 0 伤害也破坏。
+            // 例外：伤害被屏障 Barrier 抵消时， Bane 不生效（R-6.1）。
+            bool blockedByBarrier = dealtToDefender == 0 && Has(defender, "barrier");
+            if (attackerHasBane && !blockedByBarrier && defender.Zone == ZoneRef.Board)
+                _state.DestroyEntity(defender);
             if (defenderHasBane && attacker.Zone == ZoneRef.Board) _state.DestroyEntity(attacker);
         }
 
@@ -175,11 +181,12 @@ public sealed class CombatResolver
     /// <summary>
     /// 统一伤害管线：超进化免伤 -> 易伤 -> 伤害上限 -> 屏障 -> 扣血 -> OnDamaged。
     /// </summary>
-    public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId, CardVm vm = null)
+    /// <summary>统一伤害管线。返回本次**实际扣减**的生命值（被屏障抵消时为 0）。</summary>
+    public int ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId, CardVm vm = null)
     {
-        if (target == null || amount <= 0) return;
+        if (target == null || amount <= 0) return 0;
 
-        if (target.IsSuperEvolved && _state.ActivePlayer == target.PlayerId) return;
+        if (target.IsSuperEvolved && _state.ActivePlayer == target.PlayerId) return 0;
 
         var bonusKey = _schema.Keyword("damage_taken_bonus");
         if (target.KeywordValues.TryGetValue(bonusKey, out var bonus)) amount += bonus;
@@ -187,14 +194,14 @@ public sealed class CombatResolver
         var capKey = _schema.Keyword("damage_cap");
         if (target.KeywordValues.TryGetValue(capKey, out var cap)) amount = Math.Min(amount, cap);
 
-        if (amount <= 0) return;
+        if (amount <= 0) return 0;
 
         var barrierKey = _schema.Keyword("barrier");
         if (target.Keywords.Contains(barrierKey))
         {
             target.Keywords.Remove(barrierKey);
             vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnDamaged, Subject = EntityRef.From(target), Amount = 0 });
-            return;
+            return 0;
         }
 
         target.Life -= amount;
@@ -205,6 +212,7 @@ public sealed class CombatResolver
             Subject = EntityRef.From(target),
             Amount = amount,
         });
+        return amount;
     }
 
     /// <summary>
