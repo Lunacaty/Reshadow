@@ -10,12 +10,18 @@ pack_repo.py —— 把仓库里「被 git 追踪的文件」打包成单个 Mar
   · 按扩展名给代码块加语言标记，渲染更准
   · --json-sample 让大型 JSON 只保留前 N 条记录，结构完整但体积可控
   · 自动统计体积并估算 token，超阈值时警告并给出更窄筛选的建议
+  · 默认排除 LICENSE / .gitignore / *.csproj / *.sln 等与代码无关的文件
+  · --sample-cards N 让卡片 JSON 只保留 N 张，但保持每张结构完整
 
 用法：
   python tools/pack_repo.py                             # 全量
   python tools/pack_repo.py --exclude "data/*"          # 只要代码
   python tools/pack_repo.py --json-sample 3             # 大数据只留 3 条样例
   python tools/pack_repo.py --skip-large 200000         # 跳过大于 200KB 的文件
+  python tools/pack_repo.py --sample-cards 25           # 卡牌库只留 25 张，每张结构完整
+
+默认已排除：LICENSE / .gitignore / *.csproj / *.sln / .godot/ / bin/ / obj/ 等与阅读代码无关的文件。
+产出给其他 AI 时建议：
 """
 
 import argparse
@@ -34,6 +40,19 @@ LANG = {
     '.csproj': 'xml', '.sln': 'ini', '.cfg': 'ini', '.txt': 'text',
     '.gitignore': 'text', '.editorconfig': 'ini',
 }
+
+# 与代码无关、对阅读代码的 AI 属冗余的文件
+DEFAULT_EXCLUDE = [
+    'LICENSE', 'LICENSE.*', 'COPYING', 'COPYING.*',
+    '.gitignore', '.gitattributes', '.editorconfig',
+    '*.csproj', '*.sln', '*.user', '*.suo',
+    'export_presets.cfg', '.env', '*.key', '*.token',
+]
+
+# 默认排除的目录前缀（Godot 元数据、构建产物）
+DEFAULT_EXCLUDE_PREFIX = (
+    '.godot/', '.import/', 'bin/', 'obj/', '.vs/', '.et/', '.gen/', '.pv/',
+)
 
 CODE_EXT = {'.cs', '.py', '.js', '.ts', '.gd', '.glsl', '.sh', '.ps1'}
 DATA_EXT = {'.json', '.csv', '.txt'}
@@ -60,7 +79,11 @@ def is_binary(path):
 
 
 def matched(rel, includes, excludes):
+    if rel.startswith(DEFAULT_EXCLUDE_PREFIX):
+        return False
     if includes and not any(fnmatch.fnmatch(rel, p) for p in includes):
+        return False
+    if any(fnmatch.fnmatch(rel, p) for p in DEFAULT_EXCLUDE):
         return False
     if excludes and any(fnmatch.fnmatch(rel, p) for p in excludes):
         return False
@@ -94,6 +117,31 @@ def sample_json(text, limit, indent):
     if note is None:
         return text, None
     return _json.dumps(d, ensure_ascii=False, indent=indent), note
+
+
+def sample_cards(text, limit, indent):
+    """cards_eng_flat.json 这类卡片库：只保留前 limit 张，每张字段完整。
+
+    与 sample_json 的区别：卡片数据的价值在「字段结构 + 若干真实样例」，
+    不在条数。截断到前 N 张既让 AI 看清结构，又不把几十万 token 花在重复数据上。
+    """
+    try:
+        d = _json.loads(text)
+    except Exception:
+        return text, None
+
+    if not isinstance(d, dict):
+        return sample_json(text, limit, indent)
+
+    for key in ('cards', 'data', 'items'):
+        v = d.get(key)
+        if isinstance(v, list) and len(v) > limit:
+            d = dict(d)
+            d[key] = v[:limit]
+            note = key + ' 共 ' + str(len(v)) + ' 条，此处仅保留前 ' + str(limit) + ' 条（每张结构完整）'
+            return _json.dumps(d, ensure_ascii=False, indent=indent), note
+
+    return text, None
 
 
 def build_tree(paths):
@@ -131,6 +179,8 @@ def main():
     ap.add_argument('--json-sample', type=int, default=0, metavar='N',
                     help='JSON 只保留前 N 条记录（结构不变），0 表示完整保留')
     ap.add_argument('--json-indent', type=int, default=1, help='JSON 采样后的缩进')
+    ap.add_argument('--sample-cards', type=int, default=0, metavar='N',
+                    help='卡片库 JSON 只保留前 N 张（每张字段完整），0 表示完整保留')
     ap.add_argument('--max-bytes', type=int, default=600000, help='警告阈值')
     ap.add_argument('--title', default=None, help='文档标题')
     ap.add_argument('--no-tree', action='store_true', help='不输出目录树')
@@ -191,7 +241,10 @@ def main():
         lang = LANG.get(ext, LANG.get(os.path.basename(rel).lower(), 'text'))
         body = io.open(os.path.join(root, rel), encoding='utf-8', errors='replace').read()
         note = None
-        if args.json_sample and ext == '.json':
+        base = os.path.basename(rel).lower()
+        if args.sample_cards and ext == '.json' and ('cards' in base or 'card' in base):
+            body, note = sample_cards(body, args.sample_cards, args.json_indent)
+        elif args.json_sample and ext == '.json':
             body, note = sample_json(body, args.json_sample, args.json_indent)
         if body.endswith('\n'):
             body = body[:-1]
