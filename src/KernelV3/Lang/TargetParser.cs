@@ -50,6 +50,14 @@ public sealed class TargetParser
 
         // ---- -1. 特殊整体指代（最高优先级拦截）----
 
+        // "all leaders with the highest/lowest defense"
+        if (cur.MatchPhrase("all", "leaders") || cur.MatchPhrase("the", "leaders"))
+        {
+            cur.MatchPhrase("with", "the");
+            while (!cur.IsAtEnd && cur.Current.IsAnyWord("highest", "lowest", "defense", "base", "cost")) cur.Advance();
+            return new TargetSpec { Owner = ZoneScope.Any, Zone = ZoneRef.Leader, Mode = SelectMode.All, IncludeLeader = true };
+        }
+
         // "both leaders" / "all leaders"
         if (cur.MatchPhrase("both", "leaders") || cur.MatchPhrase("all", "leaders"))
             return new TargetSpec { Owner = ZoneScope.Any, Zone = ZoneRef.Leader, Mode = SelectMode.All, IncludeLeader = true };
@@ -72,7 +80,17 @@ public sealed class TargetParser
             return TargetSpec.SelfLeader;
         }
 
-        // "your leader"
+        // "your leader's defense" / "your leader"
+        if (cur.MatchPhrase("your", "leader's"))
+        {
+            cur.TryMatchAnyWord("defense", "life", "attack");
+            return TargetSpec.SelfLeader;
+        }
+        if (cur.MatchPhrase("the", "enemy", "leader's"))
+        {
+            cur.TryMatchAnyWord("defense", "life", "attack");
+            return TargetSpec.OpponentLeader;
+        }
         if (cur.MatchPhrase("your", "leader"))
         {
             if (cur.MatchPhrase("and", "your", "opponent") || cur.MatchPhrase("and", "the", "enemy", "leader"))
@@ -412,6 +430,14 @@ public sealed class TargetParser
                 matched = true;
             }
             else cur.Seek(saveE);
+        }
+
+        // "an allied and enemy follower" -> Any
+        if ((cur.Current.IsAnyWord("allied", "allies")) && cur.Peek().IsWord("and")
+            && cur.Peek(2).IsAnyWord("enemy", "enemies"))
+        {
+            cur.Advance(); cur.Advance(); cur.Advance();
+            owner = ZoneScope.Any; ownerSet = true; matched = true;
         }
 
         // ---- 7. 卡种 / 卡名 ----

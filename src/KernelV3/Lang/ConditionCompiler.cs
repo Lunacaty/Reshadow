@@ -26,9 +26,55 @@ public static class ConditionCompiler
     public static BoolExpr Build(IReadOnlyList<Token> toks, Lexicon lex)
     {
         if (toks == null || toks.Count == 0) return BoolExpr.True;
-        var c = new TokenCursor(toks);
-        var r = ParseCondition(c, lex);
-        return r;
+
+        // 第一个原子能解析就走组合子路径
+        var c1 = new TokenCursor(toks);
+        try { return ParseCondition(c1, lex); }
+        catch (LangException) { }
+
+        // 回退：整段当作「主语 + is/are + 数值比较」
+        var c2 = new TokenCursor(toks);
+        var fallback = TryParseGenericComparison(c2, lex);
+        if (fallback != null) return fallback;
+
+        var raw = string.Join(" ", toks.Select(t => t.Text));
+        throw new LangException("条件无法建模: [" + raw + "]");
+    }
+
+    /// <summary>回退路径：&lt;TargetNP&gt; is N / is N or less / is at least N。</summary>
+    private static BoolExpr TryParseGenericComparison(TokenCursor c, Lexicon lex)
+    {
+        var subject = new TargetParser(lex).TryParse(c);
+        if (subject == null) subject = TargetSpec.Self;
+
+        if (c.MatchWord("is") || c.MatchWord("are"))
+        {
+            var stat = StatKey.Life;
+            if (c.MatchWord("at") && c.MatchWord("least"))
+                return new CompareExpr
+                {
+                    Left = NumExpr.Prop(stat, subject),
+                    Op = CompareOp.Ge,
+                    Right = NumExpr.Const(ReadNumber(c)),
+                };
+            if (c.Current.Kind == TokKind.Number)
+            {
+                int n = c.Current.Value; c.Advance();
+                var op = CompareOp.Eq;
+                if (c.MatchWord("or"))
+                {
+                    if (c.MatchWord("less")) op = CompareOp.Le;
+                    else if (c.MatchWord("more")) op = CompareOp.Ge;
+                }
+                return new CompareExpr
+                {
+                    Left = NumExpr.Prop(stat, subject),
+                    Op = op,
+                    Right = NumExpr.Const(n),
+                };
+            }
+        }
+        return null;
     }
 
     private static BoolExpr ParseCondition(TokenCursor c, Lexicon lex)
@@ -174,6 +220,31 @@ public static class ConditionCompiler
                 Op = CompareOp.Lt,
                 Right = NumExpr.Prop(StatKey.Life, TargetSpec.OpponentLeader),
             };
+
+        // "your leader's defense is N or less" / "this follower's defense is N or less"
+        {
+            int sv = c.Position;
+            if (c.MatchPhrase("your", "leader's"))
+            {
+                if (c.MatchWord("is") && c.Current.Kind == TokKind.Number)
+                {
+                    int n2 = c.Current.Value; c.Advance();
+                    var op = CompareOp.Eq;
+                    if (c.MatchWord("or"))
+                    {
+                        if (c.MatchWord("less")) op = CompareOp.Le;
+                        else if (c.MatchWord("more")) op = CompareOp.Ge;
+                    }
+                    return new CompareExpr
+                    {
+                        Left = NumExpr.Prop(StatKey.Life, TargetSpec.SelfLeader),
+                        Op = op,
+                        Right = NumExpr.Const(n2),
+                    };
+                }
+            }
+            c.Seek(sv);
+        }
 
         // 「主语 + is + 数值比较」
         {

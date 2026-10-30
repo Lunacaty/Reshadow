@@ -130,31 +130,77 @@ public sealed class EnglishCompiler
         tokens = SplitKeywordThenHeader(tokens);
         tokens = SplitAfterQuote(tokens);
 
-        // 按句号切成句子
+        // 按句号切成句子；同时记录每句属于哪个模式选项（-1 = 非选项）
         var sentences = new List<List<Token>>();
+        var sentOptions = new List<int>();
         var cur = new List<Token>();
+        int curOption = -1;
         foreach (var t in tokens)
         {
             if (t.Kind == TokKind.Eof) break;
-            // 选项序号：先把已累积的句子收掉，再跳过序号本身
             if (t.Kind == TokKind.OptionMark)
             {
-                if (cur.Count > 0) { sentences.Add(cur); cur = new List<Token>(); }
+                if (cur.Count > 0) { sentences.Add(cur); sentOptions.Add(curOption); cur = new List<Token>(); }
+                curOption = t.Value;
                 continue;
             }
             if (t.Kind == TokKind.Period)
             {
-                if (cur.Count > 0) { sentences.Add(cur); cur = new List<Token>(); }
+                if (cur.Count > 0) { sentences.Add(cur); sentOptions.Add(curOption); cur = new List<Token>(); }
                 continue;
             }
             cur.Add(t);
         }
-        if (cur.Count > 0) sentences.Add(cur);
+        if (cur.Count > 0) { sentences.Add(cur); sentOptions.Add(curOption); }
 
         // 条件句：把 "If X, Y" 拆成条件 + 动作
         BoolExpr pendingCondition = null;
-        foreach (var sent in sentences)
+        var modeOptions = new List<IReadOnlyList<EffectNode>>();
+        TriggerSpec modeTrigger = null;
+        BoolExpr modeCondition = BoolExpr.True;
+        List<CostSpec> modeCosts = new List<CostSpec>();
+
+        for (int si = 0; si < sentences.Count; si++)
         {
+            var sent = sentences[si];
+
+            // 模式选项句：收集到 modeOptions
+            if (sentOptions[si] >= 0)
+            {
+                var oc = new TokenCursor(sent);
+                try
+                {
+                    var ob = _actions.ParseSequence(oc);
+                    modeOptions.Add(ob);
+                }
+                catch (LangException) { /* 单条选项解析失败不影响其它 */ }
+                continue;
+            }
+
+            // 遇到非选项句时，先把已收集的模式选项落成一个 BranchModeNode
+            if (modeOptions.Count > 0)
+            {
+                result.Add(new AbilityDef
+                {
+                    Trigger = modeTrigger ?? new TriggerSpec { Event = CoreEvent.OnPlay },
+                    Condition = modeCondition,
+                    Costs = modeCosts,
+                    Body = new List<EffectNode>
+                    {
+                        new BranchModeNode
+                        {
+                            Kind = ModeDispatchKind.Choose,
+                            PickCount = NumExpr.Const(1),
+                            Options = modeOptions,
+                        },
+                    },
+                });
+                modeOptions = new List<IReadOnlyList<EffectNode>>();
+                modeTrigger = null;
+                modeCondition = BoolExpr.True;
+                modeCosts = new List<CostSpec>();
+            }
+
             var c = new TokenCursor(sent);
 
             // 纯时机短语：不产生动作
@@ -250,6 +296,26 @@ public sealed class EnglishCompiler
                 Condition = hb.Condition,
                 Costs = hb.Costs,
                 Body = body,
+            });
+        }
+
+        // 收尾：把剩余的模式选项落成 BranchModeNode
+        if (modeOptions.Count > 0)
+        {
+            result.Add(new AbilityDef
+            {
+                Trigger = modeTrigger ?? new TriggerSpec { Event = CoreEvent.OnPlay },
+                Condition = modeCondition,
+                Costs = modeCosts,
+                Body = new List<EffectNode>
+                {
+                    new BranchModeNode
+                    {
+                        Kind = ModeDispatchKind.Choose,
+                        PickCount = NumExpr.Const(1),
+                        Options = modeOptions,
+                    },
+                },
             });
         }
 

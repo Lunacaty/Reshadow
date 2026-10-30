@@ -981,10 +981,12 @@ public sealed class ActionParser
         }
 
         // "set the attack of all enemy followers on the field to 4"
-        if (cur.MatchWord("the") && cur.Peek().IsAnyWord("attack", "defense"))
+        // 注意：必须用 Current 判断，否则 MatchWord("the") 会先把 the 吞掉
+        if (cur.Current.IsWord("the") && cur.Peek().IsAnyWord("attack", "defense"))
         {
+            cur.Advance();
             var statName = cur.Current.Text;
-            cur.Advance(); cur.Advance();
+            cur.Advance();
             cur.TryMatchAnyWord("of");
             var tgt = _target.TryParse(cur) ?? TargetSpec.Previous;
             cur.TryMatchAnyWord("to");
