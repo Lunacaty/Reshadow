@@ -178,7 +178,10 @@ public sealed class TargetParser
         {
             cur.Advance();
             // its defense / its attack → 指代上一条动作的目标
-            cur.TryMatchAnyWord("defense", "attack", "cost", "life");
+            // 不能这里偷吃属性名！
+            // "if its cost is 4" 里的 cost 是条件要读的属性，
+            // 被这里吃掉后，条件层只剩 "is 4"，
+            // 只能盲猜一个默认属性（Life），于是费用变成生命值。
             return new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = TargetSpec.SlotSelected, Mode = SelectMode.All };
         }
         if (cur.Current.IsAnyWord("itself"))
@@ -647,10 +650,13 @@ public sealed class TargetParser
                 matched = true; continue;
             }
             // "with Fuse"（先判断再消耗，避免 MatchWord 抢先吞掉 with）
+            // "with Fuse" 是「这张卡带有 Fuse 能力」，不是「命中上一个融合材料」。
+            // 之前借用 IsPreviousExpr，打印出来是 where is selected，
+            // 语义完全错位。
             if (cur.Current.IsWord("with") && cur.Peek().IsWord("fuse"))
             {
                 cur.Advance(); cur.Advance();
-                wheres.Add(new IsPreviousExpr { Slot = "fuse_material" });
+                wheres.Add(new HasStateExpr { State = UnitState.HasFuse, Of = TargetSpec.Item });
                 matched = true; continue;
             }
 

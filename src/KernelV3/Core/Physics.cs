@@ -135,6 +135,8 @@ public enum UnitState
     AttackedThisTurn,
     EnteredThisTurn,
     CostModified,
+    /// <summary>带有 Fuse 能力（可作为融合主体）。</summary>
+    HasFuse,
     HasLastWords,
     HasOnSpellboost,
     Destroyed,

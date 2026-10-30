@@ -122,6 +122,42 @@ public static class ConditionCompiler
 
     private static BoolExpr ParseAtom(TokenCursor c, Lexicon lex)
     {
+        // "if its cost is 4" / "if its defense is 7" / "if their attack is 3"
+        // 代词 + 属性名 + is N。属性名必须真正读进去，
+        // 否则 cost 会被当成默认的 Life。
+        if (c.Current.IsAnyWord("its", "their"))
+        {
+            int sv = c.Position;
+            c.Advance();
+            var st = c.Current.Text.ToLowerInvariant();
+            if (st is "cost" or "costs" or "attack" or "defense" or "life")
+            {
+                c.Advance();
+                if (c.MatchWord("is") || c.MatchWord("are"))
+                {
+                    var key = st.StartsWith("cost") ? StatKey.Cost
+                            : st.StartsWith("attack") ? StatKey.Attack
+                            : StatKey.Life;
+                    var op = CompareOp.Eq;
+                    if (c.MatchWord("at") && c.MatchWord("least")) op = CompareOp.Ge;
+                    else if (c.MatchWord("at") && c.MatchWord("most")) op = CompareOp.Le;
+                    if (c.Current.Kind == TokKind.Number)
+                    {
+                        int n = c.Current.Value;
+                        c.Advance();
+                        while (!c.IsAtEnd) c.Advance();
+                        return new CompareExpr
+                        {
+                            Left = NumExpr.Prop(key, TargetSpec.Self),
+                            Op = op,
+                            Right = NumExpr.Const(n),
+                        };
+                    }
+                }
+            }
+            c.Seek(sv);
+        }
+
         // ---- 扩展条件语法（官方卡面与渲染器都会产出这些写法）----
 
         // "if X is at least 5" / "if X is 5" — 变量 X / Y / Z

@@ -1653,6 +1653,52 @@ public sealed class ActionParser
             };
         }
 
+        // "set their attack and defense to X/Y"
+        if (cur.Current.IsAnyWord("its", "their")
+            && cur.Peek().IsWord("attack") && cur.Peek(2).IsWord("and"))
+        {
+            cur.Advance(); cur.Advance(); cur.Advance();
+            cur.TryMatchAnyWord("defense", "life");
+            cur.TryMatchAnyWord("to");
+            var atkV = ParseNumExpr(cur);
+            // 分词层没有独立的斜杠 token，它是 Word "/"
+            if (cur.Current.IsWord("/")) cur.Advance();
+            var lifeV = ParseNumExpr(cur);
+            return new List<EffectNode>
+            {
+                new ModifyStatsNode
+                {
+                    Target = TargetSpec.Previous,
+                    Op = StatModOp.Set,
+                    Attack = atkV,
+                    Life = lifeV,
+                },
+            };
+        }
+
+        // "set its defense to 0" / "set their attack to 1"
+        // 代词 + 属性名必须在这里识别。
+        // 之前 TargetParser 会把 it/its 后面的属性名偷吃掉，
+        // 现在不偷吃了，就必须在这里自己读。
+        if (cur.Current.IsAnyWord("its", "their") && cur.Peek().IsAnyWord("defense", "attack", "life"))
+        {
+            cur.Advance();
+            var sn = cur.Current.Text.ToLowerInvariant();
+            cur.Advance();
+            cur.TryMatchAnyWord("to");
+            var attrV = ParseNumExpr(cur);
+            return new List<EffectNode>
+            {
+                new ModifyStatsNode
+                {
+                    Target = TargetSpec.Previous,
+                    Op = StatModOp.Set,
+                    Attack = sn.StartsWith("attack") ? attrV : null,
+                    Life = (sn.StartsWith("defense") || sn.StartsWith("life")) ? attrV : null,
+                },
+            };
+        }
+
         // "set the attack of all enemy followers on the field to 4"
         // 注意：必须用 Current 判断，否则 MatchWord("the") 会先把 the 吞掉
         if (cur.Current.IsWord("the") && cur.Peek().IsAnyWord("attack", "defense"))
@@ -2040,12 +2086,46 @@ public sealed class ActionParser
 
 
     /// <summary>Halve the cost of ...</summary>
+    /// <summary>
+    /// "Halve the cost of X" 与 "Halve the enemy leader's max defense" 是两回事：
+    /// 前者改费用，后者改生命上限。
+    /// 之前一律产出 ModifyCostNode，于是「将对方主战者生命上限减半」
+    /// 被编成了「修改自身费用」。
+    /// </summary>
     private List<EffectNode> ParseHalve(TokenCursor cur)
     {
         cur.ExpectWord("halve");
+
+        // 先看本句剩余词串里有没有 defense / life
+        int probe = cur.Position;
+        bool isLife = false;
+        while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
+        {
+            if (cur.Current.IsAnyWord("defense", "life")) { isLife = true; break; }
+            if (cur.Current.IsAnyWord("cost")) break;
+            cur.Advance();
+        }
+        cur.Seek(probe);
+
         while (!cur.IsAtEnd && !cur.Current.IsAnyWord("of")) cur.Advance();
         cur.TryMatchAnyWord("of");
+        cur.TryMatchAnyWord("max");
         var target = _target.TryParse(cur) ?? TargetSpec.Self;
+
+        if (isLife)
+        {
+            return new List<EffectNode>
+            {
+                new ModifyStatsNode
+                {
+                    Target = target,
+                    Op = StatModOp.Set,
+                    Attack = null,
+                    Life = NumExpr.Div(NumExpr.Prop(StatKey.Life, TargetSpec.Item), NumExpr.Const(2)),
+                },
+            };
+        }
+
         return new List<EffectNode>
         {
             new ModifyCostNode { Target = target, Op = CostModOp.Halve, Value = NumExpr.Const(0) },
@@ -2055,6 +2135,17 @@ public sealed class ActionParser
     private List<EffectNode> ParseAdvanceOrDelay(TokenCursor cur, int sign)
     {
         cur.Advance();   // advance / delay
+
+        // 先看本句剩余词串里提到 crest 还是 count
+        int probeCrest = cur.Position;
+        bool sawCrest = false;
+        while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
+        {
+            if (cur.Current.IsAnyWord("crest", "crests")) { sawCrest = true; break; }
+            cur.Advance();
+        }
+        cur.Seek(probeCrest);
+
         var target = TargetSpec.Self;
         if (cur.MatchPhrase("this", "amulet's", "count") || cur.MatchPhrase("the", "count", "of", "this", "amulet"))
             target = TargetSpec.Self;
@@ -2063,14 +2154,20 @@ public sealed class ActionParser
         else if (cur.MatchPhrase("this", "amulet's") || cur.MatchWord("count"))
         { }
 
+        // 计数器要按名词区分：护符是 countdown，纹章是 crest。
+        // 之前一律写 countdown，于是「Delay the counts of all your crests」
+        // 被编成了「推进自己的吟唱」。
+        var counterName = sawCrest ? "crest" : "countdown";
+
         cur.TryMatchAnyWord("by");
         var val = ParseNumExpr(cur);
         return new List<EffectNode>
         {
             new ModifyCounterNode
             {
+                Target = target != TargetSpec.Self ? target : null,
                 Owner = target?.Owner ?? ZoneScope.Self,
-                Counter = _lex.Counter("countdown"),
+                Counter = _lex.Counter(counterName),
                 Op = CounterOp.Add,
                 Delta = sign < 0 ? NumExpr.Sub(NumExpr.Const(0), val) : val,
             },
@@ -2188,13 +2285,16 @@ public sealed class ActionParser
             cur.TryMatchAnyWord("your", "the");
             cur.TryMatchAnyWord("play", "evolution");
             cur.TryMatchAnyWord("point", "points");
+            // "Fully recover your play points" = 把 pp 直接设为 max_pp。
+            // 之前写成 Fill 0，Fill 的语义是「填到传入值」，
+            // 传 0 等于把能量点清零 —— 与「回满」完全相反。
             return new List<EffectNode>
             {
                 new ModifyCounterNode
                 {
                     Counter = _lex.Counter("pp"),
-                    Op = CounterOp.Fill,
-                    Delta = NumExpr.Const(0),
+                    Op = CounterOp.Set,
+                    Delta = NumExpr.Ctr(_lex.Counter("max_pp")),
                 },
             };
         }
