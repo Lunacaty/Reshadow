@@ -238,6 +238,8 @@ public sealed class PrefixParser
         ("on spellboost",  CoreEvent.OnSpellboost,    null),
         ("on evolve",      CoreEvent.OnEvolve,        null),
         ("engage",         CoreEvent.OnEngage,        null),
+        ("accel",          CoreEvent.OnPlay,          null),
+        ("crystal",        CoreEvent.OnPlay,          null),
         ("enhance",        CoreEvent.OnPlay,          null),
         ("fuse",           CoreEvent.OnFuse,          null),
         ("countdown",      CoreEvent.OnCountdownExpire,null),

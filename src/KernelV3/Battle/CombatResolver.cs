@@ -58,11 +58,12 @@ public sealed class CombatResolver
             if (!storm && isLeaderTarget) { reason = "突进/进化当回合不能攻击主战者"; return false; }
         }
 
-        // 目标过滤
+        // 目标过滤（官方术语表：潜行 / 威慑 / 灵气）
         if (!isLeaderTarget)
         {
-            if (Has(defender, "ambush") || Has(defender, "intimidate"))
-            { reason = "潜伏/威慑的随从不能被选为目标"; return false; }
+            if (Has(defender, "ambush"))    { reason = "潜行(Ambush)的随从不能被攻击"; return false; }
+            if (Has(defender, "intimidate")){ reason = "威慑(Intimidate)的随从不能被随从攻击"; return false; }
+            if (Has(defender, "aura"))      { reason = "灵气(Aura)的随从不能被对手能力选中"; return false; }
         }
 
         // 守护
@@ -96,16 +97,36 @@ public sealed class CombatResolver
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnAttack, Subject = EntityRef.From(attacker) });
 
         int atk = attacker.Attack;
+        bool attackerHasBane = Has(attacker, "bane");
+        bool defenderHasBane = Has(defender, "bane");
+
         if (defender.Zone == ZoneRef.Leader)
         {
             ApplyDamage(defender, atk, attacker.PlayerId, vm);
+            ApplyDrain(attacker, atk, vm);
         }
         else
         {
-            ApplyDamage(defender, atk, attacker.PlayerId, vm);
-            ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm);
+            // 交战时(OnClash)：随从对随从的攻击触发，官方术语表有独立条目
+            vm?.EnqueueEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnClash,
+                Subject = EntityRef.From(attacker),
+                Object = EntityRef.From(defender),
+            });
 
-            if (attacker.IsSuperEvolved && defender.Life <= 0)
+            // 交战双方同时结算（虹吸按各自造成的伤害回复）
+            ApplyDamage(defender, atk, attacker.PlayerId, vm);
+            ApplyDrain(attacker, atk, vm);
+
+            ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm);
+            ApplyDrain(defender, defender.Attack, vm);
+
+            // 毁灭(Bane)：交战时直接破坏对方，不看剩余生命
+            if (attackerHasBane && defender.Zone == ZoneRef.Board) _state.DestroyEntity(defender);
+            if (defenderHasBane && attacker.Zone == ZoneRef.Board) _state.DestroyEntity(attacker);
+
+            if (attacker.IsSuperEvolved && defender.Zone != ZoneRef.Board)
             {
                 var foe = _state.Players[defender.PlayerId].Leader;
                 if (foe != null) ApplyDamage(foe, 1, attacker.PlayerId, vm);
@@ -148,5 +169,21 @@ public sealed class CombatResolver
             Subject = EntityRef.From(target),
             Amount = amount,
         });
+    }
+
+    /// <summary>
+    /// 虹吸(Drain)：通过攻击造成伤害时，主战者回复等量生命。
+    /// 官方术语表原文：通过攻击造成伤害时，将回复主战者与该伤害等量的生命值。
+    /// </summary>
+    private void ApplyDrain(RuntimeEntity source, int amount, CardVm vm)
+    {
+        if (!Has(source, "drain") || amount <= 0) return;
+        var leader = _state.Players[source.PlayerId].Leader;
+        if (leader == null) return;
+        int before = leader.Life;
+        leader.Life = Math.Min(leader.MaxLife, leader.Life + amount);
+        int healed = leader.Life - before;
+        if (healed > 0)
+            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnHealed, Subject = EntityRef.From(leader), Amount = healed });
     }
 }
