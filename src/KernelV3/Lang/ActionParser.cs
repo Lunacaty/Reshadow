@@ -831,6 +831,7 @@ public sealed class ActionParser
                     CardName = crestName,
                     ToOwner = t.Owner,
                     ToZone = ZoneRef.CrestArea,
+                    IsCrest = true,
                     Count = NumExpr.Const(1),
                 });
             return outNodes;
@@ -1533,6 +1534,7 @@ public sealed class ActionParser
                     ToZone = ZoneRef.CrestArea,
                     ToOwner = ZoneScope.Self,
                     Count = NumExpr.Const(1),
+                    IsCrest = true,
                 },
             };
         }

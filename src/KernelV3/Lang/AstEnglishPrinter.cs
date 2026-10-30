@@ -132,7 +132,13 @@ public static class AstEnglishPrinter
                     CardSourceKind.CopyOfPrevious => "copy of previous (same card)",
                     _ => sp.CardName,
                 };
-                sb.Append("spawn " + PrintNum(sp.Count) + " " + what + " to " + sp.ToZone);
+                // 纹章与普通召唤区分开打印：
+                // 二者都是「在一个区域里生成实体」，
+                // 但纹章有同名唯一与区域上限，不能当普通召唤看。
+                if (sp.IsCrest)
+                    sb.Append("gain crest " + what);
+                else
+                    sb.Append("spawn " + PrintNum(sp.Count) + " " + what + " to " + sp.ToZone);
                 break;
             case MoveZoneNode mv:
                 sb.Append("move " + PrintTarget(mv.Target) + " to " + mv.ToZone);

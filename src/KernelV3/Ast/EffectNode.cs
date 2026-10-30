@@ -151,6 +151,14 @@ public sealed class SpawnCardNode : EffectNode
     public int CardId { get; init; }
     public string CardName { get; init; } = "";
     /// <summary>
+    /// 是否是「获得纹章」。
+    /// 纹章与普通召唤都是「在一个区域里生成一个实体」，
+    /// 但它们的规则完全不同（同名唯一 / 区域上限 5 / 不占战场）。
+    /// 没有这个标志，审计时无法将「获得纹章」与「召唤一张卡」区分开。
+    /// </summary>
+    public bool IsCrest { get; init; }
+
+    /// <summary>
     /// 是否是「exact copy」（完整复制）。
     /// exact：继承源目标当前的攻击力、生命值、费用、已获得的关键词与进化状态。
     /// 非 exact：取源目标对应卡号的初始白板状态。

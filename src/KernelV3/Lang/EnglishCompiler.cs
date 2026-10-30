@@ -43,7 +43,12 @@ public sealed class EnglishCompiler
     /// <summary>编译整张卡的效果文本。</summary>
     public Result Compile(string text)
     {
-        _variableBindings.Clear();   // 防止上一张卡的变量跨卡污染
+        // 防止上一张卡的状态跨卡污染。
+        // 两个字典必须一起清：只清 _variableBindings 而漏了 _initialCounters，
+        // 会让「X starts at 2」的初始计数器泄漏给后面每一张卡。
+        // 实测：982 张里有 866 张会凭空多出一条 PassiveAura 计数器能力（真实值 7 张）。
+        _variableBindings.Clear();
+        _initialCounters.Clear();
         var r = new Result();
         if (string.IsNullOrWhiteSpace(text)) return r;
 
@@ -1216,6 +1221,22 @@ public sealed class EnglishCompiler
     /// 把 "this follower's attack" / "your Combo" / "the number of X" 这类右侧描述
     /// 编译成真实的 NumExpr，而不是常数。
     /// </summary>
+    /// <summary>
+    /// 把长句压成可读的计数器名。
+    /// 它不负责语义（语义已由上面的分支处理），
+    /// 只保证同一句话每次得到同一个名字，且不会把整句拼进去。
+    /// </summary>
+    private static string CondenseCounterName(string joined)
+    {
+        var words = joined.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w is not ("the" or "a" or "an" or "of" or "you" or "your" or "have" or "has"
+                                  or "number" or "is" or "are" or "and" or "or" or "in" or "on"
+                                  or "this" or "that" or "each" or "total" or "all"))
+            .Take(4);
+        var name = string.Join("_", words);
+        return string.IsNullOrEmpty(name) ? "unnamed" : name;
+    }
+
     private NumExpr BuildVariableExpr(IReadOnlyList<Token> rest)
     {
         if (rest.Count == 0) return NumExpr.Const(0);
@@ -1329,7 +1350,26 @@ public sealed class EnglishCompiler
             return NumExpr.SumOf(filt, statKey);
         }
 
-        return NumExpr.Ctr(_lex.Counter(joined.Replace(" ", "_")));
+        // 资源计数器：「X is the number of earth sigils you have」这类不能把整句当计数器名。
+        // 之前会生成 the_number_of_earth_sigils_you_have 这种伪造名，
+        // 它会变成独立的原子，把原子池撑大、把覆盖集带偏。
+        {
+            string resKey = null;
+            if (joined.Contains("earth sigil")) resKey = "earth_sigil";
+            else if (joined.Contains("crest")) resKey = "crest";
+            else if (joined.Contains("faith")) resKey = "faith";
+            else if (joined.Contains("clue")) resKey = "clues";
+            else if (joined.Contains("shadow")) resKey = "shadow";
+            else if (joined.Contains("max play point")) resKey = "max_pp";
+            else if (joined.Contains("play point")) resKey = "pp";
+            else if (joined.Contains("evolution point")) resKey = "ep";
+            else if (joined.Contains("super evolution point")) resKey = "sep";
+            else if (joined.Contains("spellboost")) resKey = "spellboost";
+            if (resKey != null) return NumExpr.Ctr(_lex.Counter(resKey));
+        }
+
+        // 最后才是真的无名计数器：用规范化名，而不是整句。
+        return NumExpr.Ctr(_lex.Counter(CondenseCounterName(joined)));
     }
 
     /// <summary>查变量绑定；没有则退回计数器读取。</summary>
