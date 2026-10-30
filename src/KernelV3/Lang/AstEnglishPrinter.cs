@@ -124,9 +124,15 @@ public static class AstEnglishPrinter
                 sb.Append("grant to " + PrintTarget(g.Target) + " \"" + PrintAbility(g.Granted) + "\"");
                 break;
             case SpawnCardNode sp:
-                sb.Append("spawn " + PrintNum(sp.Count) + " " + (sp.SourceKind == CardSourceKind.CopyOfTarget
-                    ? "copy of " + PrintTarget(sp.CopyFrom)
-                    : sp.CardName) + " to " + sp.ToZone);
+                // CopyOfPrevious （"Summon 2 instead"）没有 CardName，
+                // 直接拼 CardName 会得到空串，看起来像卡名丢了。
+                var what = sp.SourceKind switch
+                {
+                    CardSourceKind.CopyOfTarget => "copy of " + PrintTarget(sp.CopyFrom),
+                    CardSourceKind.CopyOfPrevious => "copy of previous (same card)",
+                    _ => sp.CardName,
+                };
+                sb.Append("spawn " + PrintNum(sp.Count) + " " + what + " to " + sp.ToZone);
                 break;
             case MoveZoneNode mv:
                 sb.Append("move " + PrintTarget(mv.Target) + " to " + mv.ToZone);
@@ -212,7 +218,8 @@ public static class AstEnglishPrinter
             NumOp.Counter => "ctr:" + e.Counter.Name,
             NumOp.Property => "prop:" + e.Stat + (e.Of != null ? "(" + PrintTarget(e.Of) + ")" : ""),
             NumOp.Count => "count(" + PrintTarget(e.Of) + ")",
-            NumOp.Sum => "sum(" + PrintTarget(e.Of) + ")",
+            // 必须打印 Stat，否则 sum(攻击) 与 sum(防御) 看起来完全一样。
+            NumOp.Sum => "sum:" + e.Stat + "(" + PrintTarget(e.Of) + ")",
             NumOp.Arith => PrintArith(e),
             NumOp.Cond => "(if " + PrintBool(e.Cond) + " then " + PrintNum(e.Then) + " else " + PrintNum(e.Else) + ")",
             NumOp.Clamp => "clamp(" + PrintNum(e.Args[0]) + "," + PrintNum(e.Args[1]) + "," + PrintNum(e.Args[2]) + ")",

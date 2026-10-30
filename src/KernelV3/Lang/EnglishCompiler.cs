@@ -49,7 +49,7 @@ public sealed class EnglishCompiler
 
         var plain = Preprocess(text);
         var buffer = new List<AbilityDef>();
-        foreach (var (zone, segment) in SplitSegments(plain))
+        foreach (var (zone, segment) in MergeOptionSegments(SplitSegments(plain)))
         {
             if (segment.Trim().Length == 0) continue;
             try
@@ -160,6 +160,19 @@ public sealed class EnglishCompiler
     /// &lt;ev&gt; / &lt;sev&gt; 是**作用域标记**而非普通分隔符：
     /// 段落必须继承 Evolved / SuperEvolved，否则未进化时会白嫖进化后才有的能力。
     /// </summary>
+    /// <summary>该段是不是以编号开头的选项（"1. Storm." / "2. Bane."）。</summary>
+    private static bool IsNumberedOption(string seg)
+    {
+        var t = seg.TrimStart();
+        if (t.Length < 3) return false;
+        int i = 0;
+        while (i < t.Length && char.IsDigit(t[i])) i++;
+        if (i == 0) return false;
+        if (i >= t.Length || t[i] != '.') return false;
+        // "1." 后必须有空格或直接结束，避免误判 "1.5"
+        return i + 1 >= t.Length || t[i+1] == ' ';
+    }
+
     private static IEnumerable<(SectionZone zone, string text)> SplitSegments(string text)
     {
         var buf = new System.Text.StringBuilder();
@@ -178,6 +191,34 @@ public sealed class EnglishCompiler
             buf.Append(c);
         }
         if (buf.Length > 0) yield return (zone, buf.ToString());
+    }
+
+    /// <summary>
+    /// 把紧跟在模式引导句后面的编号选项段并回前一段。
+    /// 官方数据里选项写成多行：
+    ///   "...3 random abilities from the following.\n1. Storm.\n2. Bane."
+    /// 如果不合并，引导句看不到任何选项，模式节点会是空的。
+    /// </summary>
+    private static IEnumerable<(SectionZone zone, string text)> MergeOptionSegments(
+        IEnumerable<(SectionZone zone, string text)> segs)
+    {
+        var pending = new System.Text.StringBuilder();
+        var pendZone = SectionZone.Normal;
+        bool has = false;
+        foreach (var (zone, txt) in segs)
+        {
+            if (IsNumberedOption(txt) && has)
+            {
+                pending.Append(' ').Append(txt.Trim());
+                continue;
+            }
+            if (has) yield return (pendZone, pending.ToString());
+            pending.Clear();
+            pending.Append(txt);
+            pendZone = zone;
+            has = true;
+        }
+        if (has) yield return (pendZone, pending.ToString());
     }
 
     // ---------- 单段编译 ----------
@@ -232,6 +273,8 @@ public sealed class EnglishCompiler
         SectionZone modeZone = zone;
         // 模式块引导句携带的选取数量（"Select 2 Modes to activate"）。
         NumExpr modePick = NumExpr.Const(1);
+        // "Give this follower 3 **random** abilities from the following" —— 随机取，不是玩家挑选。
+        bool modeIsRandom = false;
 
         // 变量声明句先整体摘出：它可能出现在选项块内部
         // （"2. Deal X damage ... X is this follower's attack."），
@@ -306,7 +349,7 @@ public sealed class EnglishCompiler
             // （"1. ... 2. ... Evolve: Select a Mode to activate." 里那个 Evolve 头），
             // 先落盘才能保证两段选项不会被并进同一个 BranchModeNode。
             FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
-                           ref modeCondition, ref modeCosts, ref modeZone, ref modePick);
+                           ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeIsRandom);
 
             var c = new TokenCursor(sent);
 
@@ -441,7 +484,7 @@ public sealed class EnglishCompiler
             // 模式引导句（"Select a Mode to activate." / "Select 2 Modes..."）
             // 本身不产出动作（ParseSelect 把它消费成空 body），但它确定了
             // 后续 "1. 2. 3." 选项块的选取数量，必须先于空 body 判定接住。
-            var pick = ExtractModePick(sent);
+            var pick = ExtractModePick(sent, out var pickIsRandom);
             if (pick != null)
             {
                 modeTrigger = hb.BuildTrigger();
@@ -449,6 +492,7 @@ public sealed class EnglishCompiler
                 modeCosts = hb.Costs;
                 modeZone = zone;
                 modePick = pick;
+                modeIsRandom = pickIsRandom;
                 continue;
             }
 
@@ -481,7 +525,7 @@ public sealed class EnglishCompiler
 
         // 收尾：把剩余的模式选项落成 BranchModeNode
         FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
-                       ref modeCondition, ref modeCosts, ref modeZone, ref modePick);
+                       ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeIsRandom);
 
         // 元模式（Meta-Mode）先行：把 "... 1. ... 2. ... Enhance (3): Activate all of them instead."
         // 合成「条件成立时把前一个模式块的选取数放宽为全部」。
@@ -584,21 +628,32 @@ public sealed class EnglishCompiler
     ///
     /// 返回 null 表示这不是模式引导句。
     /// </summary>
-    private static NumExpr ExtractModePick(IReadOnlyList<Token> sent)
+    private static NumExpr ExtractModePick(IReadOnlyList<Token> sent, out bool isRandom)
     {
+        isRandom = false;
         if (sent.Count == 0) return null;
 
         // 引导句可能带能力头前缀：
         //   "Super-Evolve: Select a Mode to activate."
         // 前缀在 ParseAll 阶段已从游标剥离，但传进来的 sent 仍是**原始整句**，
         // 所以不能只认句首，要在整句里定位 "select"。
+        // 两种引导句：
+        //   "Select a Mode to activate." / "Select 2 Modes to activate."
+        //   "Give this follower 3 random abilities from the following."（无 select/activate）
         int i = -1;
         for (int k = 0; k < sent.Count; k++)
         {
-            if (sent[k].IsAnyWord("select", "activate")) { i = k; break; }
+            if (sent[k].IsAnyWord("select", "activate", "give")) { i = k; break; }
         }
         if (i < 0) return null;
         i++;
+
+        // "give this follower" / "give it" 跳过受予者，直到数字
+        if (sent[i - 1].IsWord("give"))
+        {
+            while (i < sent.Count && sent[i].Kind != TokKind.Number
+                   && !sent[i].IsAnyWord("a", "an")) i++;
+        }
 
         int n = 1;
         bool sawDigit = false;
@@ -624,6 +679,10 @@ public sealed class EnglishCompiler
         }
         if (!leadsBlock) return null;
 
+        // "3 **random** abilities from the following" —— 随机取，不是玩家挑选
+        for (int k = 0; k < sent.Count; k++)
+            if (sent[k].IsWord("random")) { isRandom = true; break; }
+
         return NumExpr.Const(sawDigit ? n : 1);
     }
 
@@ -644,7 +703,8 @@ public sealed class EnglishCompiler
         ref BoolExpr condition,
         ref List<CostSpec> costs,
         ref SectionZone zone,
-        ref NumExpr pick)
+        ref NumExpr pick,
+        ref bool isRandom)
     {
         if (options.Count == 0) return;
 
@@ -657,13 +717,14 @@ public sealed class EnglishCompiler
             {
                 new BranchModeNode
                 {
-                    Kind = ModeDispatchKind.Choose,
+                    Kind = isRandom ? ModeDispatchKind.Random : ModeDispatchKind.Choose,
                     PickCount = pick,
                     Options = options,
                 },
             },
         });
 
+        isRandom = false;
         options = new List<IReadOnlyList<EffectNode>>();
         optionIds = new List<int>();
         trigger = null;
@@ -1015,12 +1076,63 @@ public sealed class EnglishCompiler
             return;
         }
 
-        // "X is ..." —— 真正解析右侧表达式，绝不允许绑成常数 0
+        // "X/Y is ..." / "X and Y are ..."：多个变量共享同一个描述。
+        // 分词后它们是 X / Y is ...，所以要先把变量名收齐。
         if (sent.Count >= 3 && sent[0].IsAnyWord("x", "y", "z"))
         {
-            var varName = sent[0].Text.ToUpperInvariant();
-            var rest = sent.Skip(2).ToList();   // 跳过 "X is"
-            _variableBindings[varName] = BuildVariableExpr(rest);
+            var names = new List<string>();
+            int k = 0;
+            while (k < sent.Count)
+            {
+                if (sent[k].IsAnyWord("x", "y", "z"))
+                {
+                    names.Add(sent[k].Text.ToUpperInvariant());
+                    k++;
+                    // 跳过分隔：/ 或 and 或 ,
+                    while (k < sent.Count && (sent[k].IsWord("/") || sent[k].IsWord("and"))) k++;
+                }
+                else break;
+            }
+            if (names.Count > 0)
+            {
+                // 找 is / are
+                int verb = k;
+                while (verb < sent.Count && !sent[verb].IsAnyWord("is", "are")) verb++;
+                var rest = verb + 1 < sent.Count ? sent.Skip(verb + 1).ToList() : new List<Token>();
+
+                // "X/Y is the total base attack/defense of ..."
+                // 这种写法里 X 取攻击部分、Y 取防御部分，不能共用一个表达式。
+                bool splitByStat = names.Count >= 2 && rest.Count > 3
+                                    && rest.Any(t => t.IsWord("attack"))
+                                    && rest.Any(t => t.IsWord("defense"));
+                if (splitByStat)
+                {
+                    // X 取攻击：把 "attack/defense" 整个双写法压成只剩 attack，
+                    // 否则 lastIndexOf("defense") 会把它误判成 Life。
+                    var atkRest = new List<Token>();
+                    for (int q = 0; q < rest.Count; q++)
+                    {
+                        if (rest[q].IsWord("attack") && q + 2 < rest.Count
+                            && rest[q+1].IsWord("/") && rest[q+2].IsWord("defense"))
+                        {
+                            atkRest.Add(rest[q]);
+                            q += 2;
+                            continue;
+                        }
+                        atkRest.Add(rest[q]);
+                    }
+                    _variableBindings[names[0]] = BuildVariableExpr(atkRest);
+
+                    var defRest = rest.Select(t => t.IsWord("attack")
+                                        ? new Token { Kind = TokKind.Word, Text = "defense", Pos = t.Pos } : t).ToList();
+                    _variableBindings[names[1]] = BuildVariableExpr(defRest);
+                }
+                else
+                {
+                    var expr = BuildVariableExpr(rest);
+                    foreach (var nm in names) _variableBindings[nm] = expr;
+                }
+            }
         }
     }
 
@@ -1037,8 +1149,39 @@ public sealed class EnglishCompiler
         // "the number of <TargetNP>"
         if (c.MatchPhrase("the", "number", "of"))
         {
+            // "the number of clues you have" / "cards in your hand" 之类：
+            // 先试有名资源，再交给目标语法。
+            // 目标语法不认识 "clues you have"，会返回 null，
+            // 然后整句落进兜底变成一个叫
+            // "the_number_of_clues_you_have" 的不存在计数器。
+            var saved = c.Position;
+            if (!c.IsAtEnd)
+            {
+                var res0 = c.Current.Text.ToLowerInvariant();
+                // 这类资源名在目标语法里解析不出来，
+                // 落进兜底就把整句拼成一个不存在的计数器名。
+                var resAlias = res0 switch
+                {
+                    "clue" or "clues" => "clues",
+                    "crest" or "crests" => "crest",
+                    "sigil" or "sigils" => "earth_sigil",
+                    "shadow" or "shadows" => "shadow",
+                    "card" or "cards" => null,
+                    _ => null,
+                };
+                if (resAlias != null)
+                {
+                    c.Advance();
+                    while (!c.IsAtEnd) c.Advance();
+                    return NumExpr.Ctr(_lex.Counter(resAlias));
+                }
+            }
+            c.Seek(saved);
             var tgt = _target.TryParse(c);
             if (tgt != null) return NumExpr.CountOf(tgt);
+            // 还是不行就把剩余词当资源名（如 "cards in your hand"）
+            c.Seek(saved);
+            while (!c.IsAtEnd) c.Advance();
         }
 
         // "your Combo" / "your <资源>"
@@ -1089,6 +1232,27 @@ public sealed class EnglishCompiler
         }
 
         // 兜底：整段作为计数器名（如 "number of cards returned" 已在前面的分支处理）
+        // "the total base attack/defense of allied <Trait> followers destroyed this turn"
+        // 这类描述没有现成计数器，但语义明确：统计被破坏的己方某兵种的属性合。
+        if (joined.Contains("total") && joined.Contains("base"))
+        {
+            // 注意：原文常写作 "attack/defense"，两个词都在。
+            // 不能用「含 defense 就取 Life」判定，否则 X 与 Y 永远相同。
+            // 应取“最后出现的那个词”——分词时 Y 已被换成 defense，
+            // 而 X 保留原文的 "attack/defense"。
+            int ia = joined.LastIndexOf("attack", StringComparison.Ordinal);
+            int idf = joined.LastIndexOf("defense", StringComparison.Ordinal);
+            var statKey = idf > ia ? StatKey.Life : StatKey.Attack;
+            var filt = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Self);
+            foreach (var tr in new[] { "Shikigami", "Artifact", "Golem", "Marine", "Puppetry", "Departed", "Officer", "Pixie", "Clue", "Loot" })
+            {
+                if (!joined.Contains(tr.ToLowerInvariant())) continue;
+                filt = filt.WithWhere(new HasTraitExpr { Trait = _lex.Trait(tr), Of = TargetSpec.Item });
+                break;
+            }
+            return NumExpr.SumOf(filt, statKey);
+        }
+
         return NumExpr.Ctr(_lex.Counter(joined.Replace(" ", "_")));
     }
 
