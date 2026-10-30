@@ -104,6 +104,9 @@ public sealed class TargetSpec
     public const string SlotOpposing = "$opposing";
     public const string SlotSelected = "$selected";
     public const string SlotCreated = "$created";
+
+    /// <summary>\u88AB\u64cd\u4F5C\u7684\u8D44\u6E90\u8BA1\u6570\u5668\uFF08\u5982\u300CReduce your faith's value ... to give it\u300D\u91CC\u7684 it\uFF09\u3002</summary>
+    public const string SlotCounter = "$counter";
     public const string SlotItem = "$item";
 
     // ---------- 常用构造 ----------

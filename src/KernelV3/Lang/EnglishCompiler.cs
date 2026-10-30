@@ -33,6 +33,16 @@ public sealed class EnglishCompiler
         _prefixes = new PrefixParser(lex, _target);
     }
 
+    /// <summary>
+    /// 是否启用设计3 5.3 的代词强制校验。
+    /// 整卡编译为 true；单句语料被强行切开、上下文不完整，应设为 false。
+    /// </summary>
+    public bool StrictPronounCheck
+    {
+        get => _target.StrictPronounCheck;
+        set => _target.StrictPronounCheck = value;
+    }
+
     public sealed class Result
     {
         public List<AbilityDef> Abilities { get; } = new();
@@ -49,6 +59,8 @@ public sealed class EnglishCompiler
         // 实测：982 张里有 866 张会凭空多出一条 PassiveAura 计数器能力（真实值 7 张）。
         _variableBindings.Clear();
         _initialCounters.Clear();
+        // 卡级槽位登记：整张卡编译开始时清空一次。
+        _target.ResetSlots();
         var r = new Result();
         if (string.IsNullOrWhiteSpace(text)) return r;
 
@@ -491,6 +503,17 @@ public sealed class EnglishCompiler
             _target.DefaultPronounSlot = hb.SubjectFilter != null
                 ? TargetSpec.SlotTrigger
                 : null;
+
+            // 每句开头重置槽位登记（设计3 5.3 ScopeRegister）。
+            // 但同一能力内的后续句要能继承前句的绑定，
+            // 所以只在新能力头出现时清空。
+            // 槽位登记是**卡级**的，不是句级。
+            // 设计3 5.3 的 ScopeRegister 要在整张卡内保留绑定：
+            //   "Evolve: Summon 2 copies of Ghost."
+            //   "Super-Evolve: Give them Drain."        <- them 指向前面召出的 Ghost
+            // 如果每句清空，这类跨能力头的合法引用会被误判成「无前序绑定」。
+            // 只在 Compile() 入口清空一次。
+            if (hb.SubjectFilter != null) _target.MarkBound(TargetSpec.SlotTrigger);
 
                 // Countdown (N) 是护符属性：拍下来时为 N，每回合 -1，归零破坏。
                 // 与谢幕曲 / Whenever 等触发完全独立，必须独立成一条能力。

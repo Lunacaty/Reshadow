@@ -139,6 +139,35 @@ public static partial class DocAcceptanceTest
             Ok("d3-S4.4", "Instead 透镜覆写（保留卡名与目标）", lens, body);
         }
 
+        // ---- 设计3 5.3 代词寄存器四种来源 ----
+        {
+            var cases = new (string input, string expect, string label)[]
+            {
+                ("Fanfare: Select an enemy follower on the field and give it Ward.", "$selected", "Select -> $selected"),
+                ("Fanfare: Summon a Knight and give it Ward.", "$created", "Summon -> $created"),
+                ("Fanfare: Add a Knight to your hand and give it +1/+0.", "$created", "Add -> $created"),
+                ("Fanfare: Draw a card and give it +1/+0.", "$created", "Draw -> $created"),
+                ("Whenever an allied follower enters the field, give it Ward.", "$trigger", "Whenever -> $trigger"),
+            };
+            int bad = 0; var detail = new List<string>();
+            foreach (var (input, expect, label) in cases)
+            {
+                var rr = comp.Compile(input);
+                string body = rr.Abilities.Count > 0
+                    ? string.Join("|", rr.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                if (!body.Contains(expect)) { bad++; detail.Add(label + "=>" + body); }
+            }
+            Ok("d3-S5.3", "代词寄存器四种来源全部正确", bad == 0,
+               string.Join(" ; ", detail));
+        }
+        {
+            // 强制校验：无前序绑定时必须报错，绝不静默跳过
+            var rr = comp.Compile("Fanfare: Give it Ward.");
+            Ok("d3-S5.3", "代词无绑定时报错（不静默跳过）",
+               rr.Errors.Count > 0 && rr.Abilities.Count == 0,
+               rr.Errors.Count > 0 ? rr.Errors[0] : "no error");
+        }
+
         // ---- Stage 5：AST 降级 ----
         {
             var r = comp.Compile("Fanfare: Select an enemy follower on the field and destroy it.");

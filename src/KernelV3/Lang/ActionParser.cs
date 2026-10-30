@@ -75,7 +75,32 @@ public sealed class ActionParser
 
             int before = cur.Position;
             var node = ParseOne(cur);
-            if (node != null) result.AddRange(node);
+            if (node != null)
+            {
+                result.AddRange(node);
+                // 登记本句已产生绑定的槽位（设计3 5.3 ScopeRegister）。
+                // 后续句子的 it / them 靠这张登记表判断是否可绑，
+                // 槽位为空时必须报错而不是静默绑到 $selected。
+                // 只有「创建型」动作才登记 $created；Select 由 ParseSelect 自己登记。
+                // 「Discard / Destroy 送墓」也是 MoveZoneNode，但那是移出而非创建，
+                // 不能登记成 $created。
+                foreach (var nd in node)
+                {
+                    switch (nd)
+                    {
+                        case SelectTargetNode: _target.MarkBound(TargetSpec.SlotSelected); break;
+                        case SpawnCardNode: _target.MarkBound(TargetSpec.SlotCreated); break;
+                        // "Evolve this follower" / "Remove Ward from this follower"
+                        // 「本卡」也是可绑定来源，后续的 it 指向它。
+                        case EvolveNode: _target.MarkBound(TargetSpec.SlotSelf); break;
+                        case ModifyStatsNode ms when ms.Target == TargetSpec.Self: _target.MarkBound(TargetSpec.SlotSelf); break;
+                        case ModifyKeywordNode mk when mk.Target == TargetSpec.Self: _target.MarkBound(TargetSpec.SlotSelf); break;
+                        // "Reduce your faith's value by 10 to give it ..."
+                        // 这里的 it 指被操作的资源计数器（信仰 / 纹章等）。
+                        case ModifyCounterNode mc: _target.MarkBound(TargetSpec.SlotCounter); break;
+                    }
+                }
+            }
 
             if (cur.Position == before)
                 throw LangException.At("无法解析的动作", "解析器在此处无法推进", cur, cur.All);
@@ -229,6 +254,9 @@ public sealed class ActionParser
                             Delta = NumExpr.Sub(NumExpr.Const(0), amt),
                         },
                     };
+                    // "Reduce your faith's value by 10 to give it ..."
+                    // 这里的 it 指被削减的那个资源计数器，先登记再解析后续动作。
+                    _target.MarkBound(TargetSpec.SlotCounter);
                     if (cur.MatchWord("to")) nodes.AddRange(ParseSequence(cur));
                     return nodes;
                 }
@@ -530,6 +558,10 @@ public sealed class ActionParser
                 Count = n,
             };
         }
+        // 抽到的牌进入手牌 = 创建了一个新实体，
+        // 后续 "give it ..." 应指向它（设计3 5.3：Add/Draw -> $created）。
+        _target.MarkBound(TargetSpec.SlotCreated);
+
         return new List<EffectNode>
         {
             new MoveZoneNode { Target = from, ToZone = ZoneRef.Hand, OutSlot = TargetSpec.SlotCreated },
@@ -956,12 +988,14 @@ public sealed class ActionParser
 
     private List<EffectNode> ParseSummon(TokenCursor cur)
     {
+        _target.MarkBound(TargetSpec.SlotCreated);
         cur.ExpectWord("summon");
         return ParseSpawnCore(cur, ZoneRef.Board);
     }
 
     private List<EffectNode> ParseAdd(TokenCursor cur)
     {
+        _target.MarkBound(TargetSpec.SlotCreated);
         cur.ExpectWord("add");
         return ParseSpawnCore(cur, ZoneRef.Hand);
     }
@@ -1408,6 +1442,10 @@ public sealed class ActionParser
         var target = _target.TryParse(cur);
         if (target == null)
             throw new LangException("select 后面没有可识别的目标");
+
+        // 立刻登记 $selected：本方法内部会继续解析 ", and <动词>" 链，
+        // 那些后续动作的 it / them 必须能看见这次 Select。
+        _target.MarkBound(TargetSpec.SlotSelected);
 
         var result = new List<EffectNode>
         {
@@ -2144,6 +2182,12 @@ public sealed class ActionParser
     private List<EffectNode> ParseRemove(TokenCursor cur)
     {
         cur.ExpectWord("remove");
+
+        // "Remove Ward from this follower. Give it Intimidate."
+        // 第二个句子的 it 指向被移除能力的那个目标。
+        // 本卡是最常见情形，先登记 $self；若目标是别的实体，
+        // 由后面的 TargetSpec 解析另行覆盖。
+        _target.MarkBound(TargetSpec.SlotSelf);
         if (cur.Current.IsAnyWord("all"))
         {
             cur.Advance();

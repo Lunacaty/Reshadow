@@ -28,6 +28,22 @@ public sealed class TargetParser
     /// </summary>
     public string DefaultPronounSlot { get; set; }
 
+    /// <summary>
+    /// 当前句内已经产生绑定的槽位集合（R-4 / 设计3 5.3）。
+    /// 设计3 的强制校验：遇到 it / them 但对应槽位为空时，
+    /// 必须直接抛编译异常，绝不静默绑到 $selected。
+    /// </summary>
+    public HashSet<string> BoundSlots { get; } = new HashSet<string>();
+
+    /// <summary>当前句是否已出现 Select / Summon / Add / 触发器等可绑定的前序动作。</summary>
+    public void MarkBound(string slot) { if (!string.IsNullOrEmpty(slot)) BoundSlots.Add(slot); }
+
+    /// <summary>本句开始时清空登记。</summary>
+    public void ResetSlots() => BoundSlots.Clear();
+
+    /// <summary>是否启用设计3 5.3 的代词强制校验。整卡为 true，单句语料为 false。</summary>
+    public bool StrictPronounCheck { get; set; } = true;
+
     public TargetParser(Lexicon lex) => _lex = lex;
 
     /// <summary>诊断用：上一次 TryParse 在后置定语循环里消费了多 token。</summary>
@@ -162,10 +178,55 @@ public sealed class TargetParser
             //   · 处于 When/Whenever <主语> enters/evolves/attacks 触发器且本句未 Select → $trigger
             // 之前死写 $selected，导致 30 张
             // "Whenever X enters the field, give it ..." 在触发时去读空的 $selected。
+            // 设计3 5.3 的 ScopeRegister 优先级：
+            //   Select         -> $selected（被消费 1 次即直接合并）
+            //   Summon / Add   -> $created（指向刚入场的实体）
+            //   Whenever/When  -> $trigger
+            // 触发器绑定的优先级最高（DefaultPronounSlot 已置为 $trigger 时直接采纳），
+            // 其次才看本句内既有的绑定。
+            string pronSlot;
+            if (DefaultPronounSlot != null)
+            {
+                pronSlot = DefaultPronounSlot;
+            }
+            else if (BoundSlots.Contains(TargetSpec.SlotSelected))
+            {
+                // Select 优先：设计3 5.3 规定「Select 后 it 直接合并进消费动作」，
+                // 只有没有 Select 时才看 Summon / Add。
+                pronSlot = TargetSpec.SlotSelected;
+            }
+            else if (BoundSlots.Contains(TargetSpec.SlotCreated))
+            {
+                pronSlot = TargetSpec.SlotCreated;
+            }
+            else if (BoundSlots.Contains(TargetSpec.SlotCounter))
+            {
+                pronSlot = TargetSpec.SlotCounter;
+            }
+            else if (BoundSlots.Contains(TargetSpec.SlotSelf))
+            {
+                // "Evolve this follower and give it +1/+0"
+                // "Remove Ward from this follower. Give it Intimidate."
+                // 这里的 it 指本卡自身。
+                pronSlot = TargetSpec.SlotSelf;
+            }
+            else if (StrictPronounCheck)
+            {
+                // 强制校验：代词必须有前序绑定，否则直接报错（设计3 5.3）。
+                // 只在整卡编译时启用：单句语料是被强行切开的，
+                // "Super-Evolve: Give them Drain." 单独存在时没有前文的 Summon。
+                throw new LangException(
+                    "代词 it 缺少前序绑定：本句既没有 Select，也没有 Summon / Add / Draw 或触发器主体");
+            }
+            else
+            {
+                pronSlot = TargetSpec.SlotSelected;
+            }
+
             return new TargetSpec
             {
                 SourceKind = TargetSourceKind.Slot,
-                Slot = DefaultPronounSlot ?? TargetSpec.SlotSelected,
+                Slot = pronSlot,
                 Mode = SelectMode.All,
             };
         }
