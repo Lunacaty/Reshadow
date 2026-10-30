@@ -24,7 +24,10 @@ public sealed partial class CardVm
     private readonly IVmWorld _world;
     private readonly VmEval _eval;
     private readonly List<VmFrame> _frames = new();
-    private readonly Queue<VmEvent> _triggerQueue = new();
+    // 待机列（R-3.3）：同一时机触发的多个能力必须按固定优先级排序，
+    // 而不是简单先进先出。否则「入场曲」和「场上出现时」会按无关顺序结算。
+    // 已入列的条目即锁定，之后剥夺能力不影响它。
+    private readonly List<VmEvent> _triggerQueue = new();
 
     private int _nextChoiceId = 1;
     private int _faultBudget = 5000;
@@ -83,7 +86,12 @@ public sealed partial class CardVm
 
     public void EnqueueEvent(VmEvent ev)
     {
-        if (ev != null) _triggerQueue.Enqueue(ev);
+        if (ev == null) return;
+
+        // 按优先级有序插入（稳定：同优先级保持入列顺序）
+        int i = _triggerQueue.Count;
+        while (i > 0 && _triggerQueue[i - 1].EffectivePriority > ev.EffectivePriority) i--;
+        _triggerQueue.Insert(i, ev);
     }
 
     // ---------- 主循环 ----------
@@ -261,7 +269,9 @@ public sealed partial class CardVm
     /// </summary>
     private void FlushNextTrigger()
     {
-        var ev = _triggerQueue.Dequeue();
+        if (_triggerQueue.Count == 0) return;
+        var ev = _triggerQueue[0];
+        _triggerQueue.RemoveAt(0);
 
         // 候选能力 = 印制在卡上的 + 运行时授予的
         var byEntity = new Dictionary<int, List<(RuntimeEntity e, Ast.AbilityDef ab)>>();

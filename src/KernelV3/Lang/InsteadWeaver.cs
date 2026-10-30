@@ -70,6 +70,72 @@ public static class InsteadWeaver
         };
     }
 
+    /// <summary>
+    /// 透镜覆写：把前一句的“卡身信息”补到替代句上。
+    /// 只补替代句自己没写的部分，不覆盖它已有的值。
+    /// </summary>
+    private static List<EffectNode> ApplyLens(
+        IReadOnlyList<EffectNode> prevBody, List<EffectNode> thenBody)
+    {
+        if (prevBody == null || prevBody.Count == 0 || thenBody == null) return thenBody;
+
+        // 从前一句里找“可被继承”的动作（召唤 / 加手牌 / 伤害）
+        var prevSpawn = prevBody.OfType<SpawnCardNode>().FirstOrDefault();
+        var prevMove = prevBody.OfType<MoveZoneNode>().FirstOrDefault();
+        var prevDmg = prevBody.OfType<DealDamageNode>().FirstOrDefault();
+
+        var result = new List<EffectNode>();
+        foreach (var n in thenBody)
+        {
+            switch (n)
+            {
+                // 替代句的召唤通常读不出卡名（写成 CopyOfPrevious），
+                // 这里直接用前一句的卡身信息覆写，只保留替代句自己的数量与区域。
+                case SpawnCardNode sp when (string.IsNullOrEmpty(sp.CardName) && sp.CardId == 0
+                                            || sp.SourceKind == CardSourceKind.CopyOfPrevious)
+                                          && prevSpawn != null
+                                          && prevSpawn.SourceKind != CardSourceKind.CopyOfPrevious:
+                    result.Add(new SpawnCardNode
+                    {
+                        SourceKind = prevSpawn.SourceKind,
+                        CardId = prevSpawn.CardId,
+                        CardName = prevSpawn.CardName,
+                        CopyFrom = prevSpawn.CopyFrom,
+                        ToOwner = sp.ToOwner,
+                        ToZone = sp.ToZone,
+                        Count = sp.Count,          // 数量用替代句的
+                        OutSlot = sp.OutSlot,
+                    });
+                    break;
+
+                case MoveZoneNode mv when mv.Target == null && prevMove != null:
+                    result.Add(new MoveZoneNode
+                    {
+                        Target = prevMove.Target,
+                        ToZone = mv.ToZone,
+                        IsDestroy = mv.IsDestroy,
+                        OutSlot = mv.OutSlot,
+                    });
+                    break;
+
+                case DealDamageNode d when prevDmg != null && d.Target == null:
+                    result.Add(new DealDamageNode
+                    {
+                        Target = prevDmg.Target,
+                        Amount = d.Amount,
+                        IsAbility = d.IsAbility,
+                        IsSplit = d.IsSplit,
+                    });
+                    break;
+
+                default:
+                    result.Add(n);
+                    break;
+            }
+        }
+        return result;
+    }
+
     /// <summary>把条件型代价转成布尔条件。UsePp / DestroyAlly 属于真代价，不转。</summary>
     private static BoolExpr BuildCostCondition(IReadOnlyList<CostSpec> costs, Lexicon lex)
     {
@@ -175,6 +241,12 @@ public static class InsteadWeaver
                 Body = prev.Body.Concat(thenBody).ToList(),
             };
         }
+
+        // 透镜覆写：替代句往往写得很短，缺卡名 / 缺目标。
+        //   "Summon a Megalorca. If you're in Overflow, summon 2 instead."
+        // 第二句只说了数量，卡名要从前一句透镜继承，
+        // 否则结果就是“召唤 2 张空卡”。
+        thenBody = ApplyLens(prev.Body, thenBody);
 
         var branch = new ConditionalNode
         {

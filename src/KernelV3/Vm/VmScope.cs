@@ -127,4 +127,42 @@ public sealed class VmEvent
     /// 能力效果自动进化只触发 When/Whenever ... evolves 类事件从句。
     /// </summary>
     public bool IsManualEvolve { get; init; }
+
+    /// <summary>
+    /// 待机列入列优先级（数值越小越先），见 R-3.3：
+    ///   10 入场曲 / 进化时 / 超进化时 / 启动
+    ///   20 场上出现时
+    ///   30 攻击方 攻撃时 / 交戦时
+    ///   40 被攻击方 交戦时
+    ///   50 当前回合玩家 纹章 / 信仰
+    ///   60 当前回合玩家 场上卡
+    ///   70 非当前回合玩家 纹章
+    ///   80 非当前回合玩家 场上卡
+    ///   90 直接召唤
+    /// </summary>
+    public int Priority { get; init; } = -1;
+
+    /// <summary>
+    /// 事件的默认入列优先级（R-3.3）。
+    /// 没有显式指定 Priority 时按这里取值。
+    /// </summary>
+    public int EffectivePriority => Priority >= 0 ? Priority : DefaultPriorityOf(Kind);
+
+    private static int DefaultPriorityOf(CoreEvent k) => k switch
+    {
+        // 10：入场曲 / 进化时 / 超进化时 / 启动
+        CoreEvent.OnPlay or CoreEvent.OnEvolve or CoreEvent.OnSuperEvolve
+            or CoreEvent.OnEngage or CoreEvent.OnFuse => 10,
+
+        // 20：场上出现时 / 离场与破坏 / 受伤回复
+        CoreEvent.OnEnterField or CoreEvent.OnLeaveField or CoreEvent.OnDestroy
+            or CoreEvent.OnDamaged or CoreEvent.OnHealed or CoreEvent.OnSummon => 20,
+
+        // 30/40：攻撃时 / 交戦时
+        CoreEvent.OnAttack => 30,
+        CoreEvent.OnClash => 40,
+
+        // 90：直接召唤
+        _ => 60,
+    };
 }

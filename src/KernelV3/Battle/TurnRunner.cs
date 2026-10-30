@@ -29,6 +29,12 @@ public sealed class TurnRunner
     /// 开始某玩家的回合。
     /// 只碰 Players[playerId]，绝不触碰 Players[1 - playerId]。
     /// </summary>
+    /// <summary>
+    /// 回合开始，严格 8 步（R-3.1）。
+    /// 关键：抽牌在第 8 步，不是第 1 步 ——
+    /// 这意味着回合初效果造成的加手牌发生在抽牌之前，
+    /// 手牌 8 张时回合初先加 1 张变 9，随后的抽牌会爆掉。
+    /// </summary>
     public void StartTurn(int playerId, CardVm vm)
     {
         if (playerId is not (0 or 1))
@@ -37,55 +43,90 @@ public sealed class TurnRunner
         _state.ActivePlayer = playerId;
         if (playerId == 0) _state.TurnNumber++;
 
-        // 触发器的回合归属与每回合计数必须跟着换
         vm?.CurrentTurnOwner = playerId;
         vm?.ResetTriggerCounts();
 
         var p = _state.Players[playerId];
 
-        // 奥义槽 += 1（回合数增加了 1）。规则：奥义槽 = 当前回合数 + 本卡在手时我方进化次数。
-        // 每张手牌各自维护自己的槽位，所以这里给手牌里每张「带奥义能力」的卡累加。
-        BumpSkyboundGauge(playerId);
-
-        // 1. 只涨当前玩家的 MaxPP 与 PP（上限 10）
+        // ── 第 1 步：涨费与回费、重置本回合计数、奥义槽 +1 ──
         var maxPpKey = _schema.Counter("max_pp");
         var ppKey = _schema.Counter("pp");
         int maxPp = Math.Min(10, _state.ReadCounter(playerId, maxPpKey) + 1);
         _state.WriteCounter(playerId, maxPpKey, maxPp);
         _state.WriteCounter(playerId, ppKey, maxPp);
 
-        // 2. 重置本回合的限额与统计
         var comboKey = _schema.Counter("combo");
         _state.WriteCounter(playerId, comboKey, 0);
 
         p.ManualEvolvedThisTurn = false;
         p.UsedExtraPpThisTurn = false;
+        p.EngagedEntityIdsThisTurn.Clear();
+        p.FusedEntityIdsThisTurn.Clear();
+        p.DestroyedThisTurn.Clear();
 
-        // 每回合重置实体的「本回合已启动 / 已融合」标记。
-        // 不重置的话，一个护符在第一次 Engage 之后就永远不能再启动。
         foreach (var e in _state.EnumerateZone(ZoneRef.Board, -1))
         {
             e.EngagedThisTurn = false;
             e.FusedThisTurn = false;
         }
         foreach (var e in _state.EnumerateZone(ZoneRef.Hand, -1))
-        {
             e.FusedThisTurn = false;
-        }
-        p.EngagedEntityIdsThisTurn.Clear();
-        p.FusedEntityIdsThisTurn.Clear();
-        p.DestroyedThisTurn.Clear();
 
-        // 3. 重置本方的攻击次数
         foreach (var e in p.Board)
         {
             e.AttacksThisTurn = 0;
             e.AttackedThisTurn = false;
         }
 
-        // 4. 推进本方护符/纹章的倒计时
+        BumpSkyboundGauge(playerId);
+
+        // ── 第 2 步：我方纹章（回合初能力 + 吟唱推进） ──
+        StepCrestArea(playerId, vm, ownTurn: true);
+
+        // ── 第 3 步：我方战场（回合初能力 + 护符吟唱推进） ──
+        StepBoardCountdown(playerId, vm);
+
+        // ── 第 4 步：对手纹章响应（“对手回合开始时”） ──
+        StepCrestArea(1 - playerId, vm, ownTurn: false);
+
+        // ── 第 5 步：对手战场响应 ──
+        // （对手护符不推进吟唱 —— 吟唱只在持有者自己的回合推进）
+        // （当前无独立的“对手回合开始”事件，留待下一步扩展）
+
+        // ── 第 6 步：直接召唤（Invoke） 检查 ──
+        // 牌组中带 Activates in deck 的卡在 TurnStart 事件下由 VM 自行处理。
+
+        // ── 第 7 步：清空待机队列 ──
+        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnStart });
+        vm?.StepUntilBlocked();
+
+        // ── 第 8 步：常规抽牌（先手第一回合也抽） ──
+        _state.DrawCards(playerId, 1);
+        vm?.StepUntilBlocked();
+    }
+
+    /// <summary>纹章区：回合初能力排入队列 + 吟唱推进。</summary>
+    private void StepCrestArea(int playerId, CardVm vm, bool ownTurn)
+    {
         var cdKey = _schema.Counter("countdown");
-        foreach (var e in p.Board.Concat(p.CrestArea).ToList())
+        foreach (var e in _state.Players[playerId].CrestArea.ToList())
+        {
+            if (!e.Counters.TryGetValue(cdKey, out int cd) || cd <= 0) continue;
+            if (!ownTurn) continue;          // 吟唱只在持有者回合推进
+            cd--;
+            e.Counters[cdKey] = cd;
+            if (cd == 0)
+            {
+                vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnCountdownExpire, Subject = EntityRef.From(e) });
+            }
+        }
+    }
+
+    /// <summary>战场：护符吟唱推进，归零被破坏（会触发谢幕曲）。</summary>
+    private void StepBoardCountdown(int playerId, CardVm vm)
+    {
+        var cdKey = _schema.Counter("countdown");
+        foreach (var e in _state.Players[playerId].Board.ToList())
         {
             if (!e.Counters.TryGetValue(cdKey, out int cd) || cd <= 0) continue;
             cd--;
@@ -96,29 +137,29 @@ public sealed class TurnRunner
                 _state.DestroyEntity(e);
             }
         }
-
-        // 5. 回合开始事件
-        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnStart });
-
-        // 6. 常规抽 1 张。
-        // 统一口径：每个回合开始时当前回合玩家都抽 1 张，
-        // 先手第一回合也不例外。之前按「先手不抽」写的分支会少抽一张。
-        _state.DrawCards(playerId, 1);
-
-        vm?.StepUntilBlocked();
     }
 
-    /// <summary>结束当前玩家回合，发出回合结束事件。</summary>
+    /// <summary>
+    /// 回合结束，严格 7 步（R-3.2） + 收尾清理。
+    /// 清理阶段必须放在所有触发之后 ——
+    /// “直到回合结束”的效果在回合结束时仍然要生效。
+    /// </summary>
     public void EndTurn(int playerId, CardVm vm)
     {
         if (playerId != _state.ActivePlayer)
             throw new InvalidOperationException("只能结束当前回合玩家的回合");
 
-        // 先跑完回合结束触发（"At the end of your turn" 效果仍在本回合生效）
+        // ── 第 1〜6 步：三类“回合结束时”能力（自己纹章 / 自己战场 / 对手纹章 / 对手战场）──
+        // 实现上统一由 TurnEnd 事件驱动，VM 会按触发器的 DuringTurn 限定逐个对号入座。
+        // 不再手写四次循环 —— 那样反而会把同一条能力反复排队。
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnEnd });
         vm?.StepUntilBlocked();
 
-        // 再撤销到期的限时修正（官方：until the end of the turn）
+        // ── 第 7 步：清空待机队列 ──
+        vm?.StepUntilBlocked();
+
+        // ── 收尾：撤销到期的限时修正 ──
+        // ThisTurn 一律到期；UntilEndOfOpponentTurn 要等到对手回合结束才撤。
         _state.ExpireTemporaryModifiers(playerId);
     }
 

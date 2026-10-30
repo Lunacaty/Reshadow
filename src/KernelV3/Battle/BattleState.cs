@@ -207,6 +207,14 @@ public sealed class BattleState : IVmWorld
         var list = p.Zone(zone);
         if (list == null) return;
 
+        // 纹章唯一铁律：同名纹章不可重复持有。
+        // 已有纹章 A 时再获得 A，直接忽略（连倒计时也不刷新）。
+        if (zone == ZoneRef.CrestArea && e.Def != null)
+        {
+            bool exists = p.CrestArea.Any(c => c.Def != null && c.Def.CardId == e.Def.CardId);
+            if (exists) { e.Zone = ZoneRef.None; _all.Remove(e); return; }
+        }
+
         int cap = PlayerState.Capacity(zone);
         if (cap >= 0 && list.Count >= cap)
         {

@@ -1094,6 +1094,9 @@ public sealed class ActionParser
             if (sawNum && cur.Current.IsWord("instead"))
             {
                 cur.Advance();
+                // 必须带 instead 占位标记，否则 InsteadWeaver 认不出这是替代句，
+                // 会把它当成独立能力，于是基础句与替代句都执行。
+                nodes.Add(new MacroNode { Macro = _lex.Macro("instead_marker") });
                 nodes.Add(new SpawnCardNode
                 {
                     SourceKind = CardSourceKind.CopyOfPrevious,

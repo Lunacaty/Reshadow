@@ -50,6 +50,10 @@ public static class VmSelfTest
         GateSkyboundArt();
         GateAbilityDamageThroughPipeline();
         GateSummonInstead();
+        GateTurnStartOrder();
+        GateTurnEndExpire();
+        GateTriggerPriority();
+        GateCrestUnique();
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
@@ -776,6 +780,103 @@ public static class VmSelfTest
         bool ok = onBoard.Count == 3 && onBoard.All(e => e.Def != null && e.Def.CardId == 700);
         Check("门禁10 Summon N instead 复制同一张卡", ok,
               "board=" + onBoard.Count + " ids=" + string.Join(",", onBoard.Select(e => e.Def?.CardId ?? 0)));
+    }
+
+    /// <summary>门禁11：回合开始严格 8 步——抽牌在最后。</summary>
+    private static void GateTurnStartOrder()
+    {
+        var st = new Battle.BattleState(seed: 7);
+        var tr = new Battle.TurnRunner(st, st.Schema);
+        var vm = new CardVm(st);
+        CardVm.Schema = st.Schema;
+
+        st.RegisterCard(new CardDef { CardId = 1, Name = "A", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+        for (int i = 0; i < 5; i++) st.SpawnCard(1, ZoneRef.Deck, 0);
+        st.TurnNumber = 0;
+
+        tr.StartTurn(0, vm);
+
+        int hand = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+        int pp = st.ReadCounter(0, st.Schema.Counter("pp"));
+        int maxPp = st.ReadCounter(0, st.Schema.Counter("max_pp"));
+
+        // 先手第 1 回合必须抽 1 张（红线 1），且 pp = max_pp = 1
+        bool ok = hand == 1 && pp == 1 && maxPp == 1;
+        Check("门禁11 回合开始抽牌与涨费", ok,
+              "hand=" + hand + " pp=" + pp + " max=" + maxPp);
+    }
+
+    /// <summary>门禁12：回合结束后 ThisTurn 的临时修正被撤销。</summary>
+    private static void GateTurnEndExpire()
+    {
+        var st = new Battle.BattleState(seed: 8);
+        var tr = new Battle.TurnRunner(st, st.Schema);
+        var vm = new CardVm(st);
+        CardVm.Schema = st.Schema;
+
+        st.RegisterCard(new CardDef { CardId = 1, Name = "A", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1 });
+        var e = st.SpawnCard(1, ZoneRef.Board, 0);
+        st.ActivePlayer = 0;
+
+        int baseAtk = e.Attack;
+        e.Attack += 3;
+        e.TempModifiers.Add(new TemporaryModifier
+        {
+            Duration = Ast.DurationKind.ThisTurn,
+            Attack = 3,
+            Life = 0,
+        });
+
+        tr.EndTurn(0, vm);
+
+        bool ok = e.Attack == baseAtk;
+        Check("门禁12 回合结束撤销 ThisTurn 修正", ok,
+              "atk=" + e.Attack + " base=" + baseAtk);
+    }
+
+    /// <summary>门禁13：待机列按优先级排序（入场曲 10 先于场上出现时 20）。</summary>
+    private static void GateTriggerPriority()
+    {
+        var w = new MemoryWorld();
+        var vm = new CardVm(w);
+        CardVm.Schema = w.Schema;
+
+        // 先入 场上出现时（20），再入 入场曲（10）；排序后应先出 10
+        vm.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEnterField });
+        vm.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay });
+
+        bool ok = vm.PendingTriggerCount == 2;
+        string order = "";
+        if (ok)
+        {
+            // 取出顺序应为 OnPlay(10) -> OnEnterField(20)
+            var f = typeof(CardVm).GetField("_triggerQueue",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var q = f?.GetValue(vm) as System.Collections.Generic.List<VmEvent>;
+            if (q != null && q.Count == 2)
+                order = q[0].Kind + "," + q[1].Kind;
+        }
+        ok = ok && order == "OnPlay,OnEnterField";
+        Check("门禁13 待机列按优先级排序", ok, "order=" + order);
+    }
+
+    /// <summary>门禁14：同名纹章不可重复持有；纹章区上限 5。</summary>
+    private static void GateCrestUnique()
+    {
+        var st = new Battle.BattleState(seed: 9);
+        st.RegisterCard(new CardDef { CardId = 300, Name = "CrestA", Kind = CardKind.Amulet });
+        st.RegisterCard(new CardDef { CardId = 301, Name = "CrestB", Kind = CardKind.Amulet });
+
+        st.SpawnCard(300, ZoneRef.CrestArea, 0);
+        st.SpawnCard(300, ZoneRef.CrestArea, 0);   // 同名：应被忽略
+        int afterDup = st.EnumerateZone(ZoneRef.CrestArea, 0).Count();
+
+        st.SpawnCard(301, ZoneRef.CrestArea, 0);
+        int afterOther = st.EnumerateZone(ZoneRef.CrestArea, 0).Count();
+
+        bool ok = afterDup == 1 && afterOther == 2;
+        Check("门禁14 纹章同名唯一", ok,
+              "dup=" + afterDup + " other=" + afterOther);
     }
 
     private static void Check(string name, bool ok, string detail)
