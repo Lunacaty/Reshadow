@@ -796,21 +796,56 @@ public sealed class BattleState : IVmWorld
 
     /// <summary>
     /// 复制一个实体。
-    /// exact = true：继承当前攻击力 / 生命值 / 费用。
-    /// exact = false：取该卡号的白板初始状态。
+    ///
+    /// 官方术语表把「复制」拆成两种，语义不是程度差别而是完全不同：
+    ///   exact = true  （an exact copy of X）
+    ///       继承源目标**当前**的攻击力 / 当前生命 / 生命上限 / 当前费用 /
+    ///       已获得的关键词与授予能力 / 已进化与超进化状态。
+    ///   exact = false （a copy of X）
+    ///       只是把那张卡的**印刷白板**再拿出来一份。
+    ///
+    /// 两者都**不继承**「本回合已攻击 / 已启动」：复制体是一次全新入场，
+    /// EnteredTurn 由 PlaceInZone 盖成当前回合，召唤失调照常生效。
     /// </summary>
     public RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId, bool exact = true)
     {
         var s = source.Snapshot;
         if (s == null) return null;
 
-        if (!exact)
-        {
-            // 白板复制：只用卡号生成，不带任何当前状态
-            return CreateEntity(s.CardId, toZone, toPlayerId);
-        }
+        // 白板复制：只用卡号生成，CreateEntity 按卡面印刷值装配。
+        if (!exact) return CreateEntity(s.CardId, toZone, toPlayerId);
 
-        return CreateEntity(s.CardId, toZone, toPlayerId, s.Attack, s.Life, s.Cost);
+        var e = CreateEntity(s.CardId, toZone, toPlayerId);
+        if (e == null) return null;
+
+        // 状态必须**逐字段覆盖**，不能借 CreateEntity 的 atk/life/cost 形参：
+        // 那里 0 表示「用印刷值」，一个 0 攻随从会被复制成它的印刷攻击力。
+        e.Attack = s.Attack;
+        e.Life = s.Life;
+        // 上限单独搬 —— 之前只搬了 Life，CreateEntity 把 MaxLife 写成 Life，
+        // 于是 7/6（上限 9）的复制体上限也变成 6，治疗量被永久吃掉。
+        e.MaxLife = s.MaxLife;
+        e.Cost = s.Cost;
+        e.IsEvolved = s.IsEvolved;
+        e.IsSuperEvolved = s.IsSuperEvolved;
+
+        // 关键词与特性：CreateEntity 装的是**卡面印的**，exact 要的是**现在有的**。
+        e.Keywords.Clear();
+        foreach (var k in s.Keywords) e.Keywords.Add(k);
+        e.Traits.Clear();
+        foreach (var t in s.Traits) e.Traits.Add(t);
+
+        // 授予能力不写在 CardDef 里（GrantAbility 单独记账），必须按实体逐条搬。
+        foreach (var (ge, gab) in _granted.ToList())
+            if (ge != null && ge.EntityId == s.EntityId) _granted.Add((e, gab));
+
+        // 「本回合已攻击 / 已启动」显式清掉：新实体即使默认值正确，
+        // 也不该依赖默认值来表达一条规则。
+        e.AttackedThisTurn = false;
+        e.AttacksThisTurn = 0;
+        e.EngagedThisTurn = false;
+
+        return e;
     }
 
     /// <summary>

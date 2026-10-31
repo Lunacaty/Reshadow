@@ -1069,17 +1069,27 @@ public sealed class ActionParser
         var nodes = new List<EffectNode>();
 
         // ---------- 分支 1：复制体 "an exact copy of <X>" / "N copies of <X>" ----------
+        //
+        // 「exact」是语义分水岭，不是一个可以省略的修饰词：
+        //   an exact copy of X —— 复制体继承源目标**当前**的攻/血/上限/费用/关键词/进化；
+        //   a copy of X        —— 只是把那张卡的**印刷白板**再拿出来一份。
+        // 旧实现两个分支都只置 isCopy，「exact」被吞掉、两种句子编出同一棵 AST，
+        // 于是运行期无从区分（SpawnCardNode.IsExactCopy 恒 false）。
         int save0 = cur.Position;
         NumExpr copyCount = NumExpr.Const(1);
         bool isCopy = false;
+        bool isExact = false;
 
         if (cur.MatchPhrase("an", "exact", "copy") || cur.MatchPhrase("an", "exact", "copies"))
+        {
             isCopy = true;
+            isExact = true;
+        }
         else if (cur.Current.Kind == TokKind.Number && cur.Peek().IsAnyWord("exact", "copy", "copies"))
         {
             copyCount = NumExpr.Const(cur.Current.Value);
             cur.Advance();
-            cur.TryMatchAnyWord("exact");
+            isExact = cur.TryMatchAnyWord("exact");
             cur.TryMatchAnyWord("copy", "copies");
             isCopy = true;
         }
@@ -1113,6 +1123,10 @@ public sealed class ActionParser
                     ToZone = toZone,
                     ToOwner = ZoneScope.Self,
                     Count = copyCount,
+                    // 卡名来源没有「当前状态」可继承（那张卡不一定在场上），
+                    // 但标志仍要如实落下：让 "exact" 在 AST 里继续可见，
+                    // 而不是又一次被悄悄吞掉。
+                    IsExactCopy = isExact,
                 });
                 return nodes;
             }
@@ -1125,6 +1139,9 @@ public sealed class ActionParser
                 ToZone = toZone,
                 ToOwner = ZoneScope.Self,
                 Count = copyCount,
+                // 只有「an exact copy」继承源目标的当前状态；
+                // 少了这个词就是「把那张卡再印一份」，取白板。
+                IsExactCopy = isExact,
             });
             return nodes;
         }
