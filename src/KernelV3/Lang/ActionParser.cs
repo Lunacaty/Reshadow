@@ -417,6 +417,34 @@ public sealed class ActionParser
 
     // ---------- 伤害 ----------
 
+    /// <summary>
+    /// 给「原文根本没写目标、由解析器兜底」的 TargetSpec 打标记。
+    ///
+    /// InsteadWeaver 的透镜要在「替代句自己写了目标」时保持原样，
+    /// 在「没写目标」时才继承前一句 —— 这两种情况的 TargetSpec 字段值可能完全一样
+    /// （"deal 4 damage" 兜底出来的 All/Board/Opponent 与 "to all enemy followers"
+    /// 只差 Where），所以判据只能是这个显式标记，不能是值判等。
+    /// </summary>
+    private static TargetSpec OmittedTargetSpec(TargetSpec t) => new()
+    {
+        SourceKind = t.SourceKind,
+        Owner = t.Owner,
+        Zone = t.Zone,
+        Slot = t.Slot,
+        CardId = t.CardId,
+        CardName = t.CardName,
+        Where = t.Where,
+        Sort = t.Sort,
+        SortDescending = t.SortDescending,
+        TopN = t.TopN,
+        DistinctByName = t.DistinctByName,
+        Mode = t.Mode,
+        Count = t.Count,
+        History = t.History,
+        IncludeLeader = t.IncludeLeader,
+        OmittedFields = TargetField.All,
+    };
+
     private List<EffectNode> ParseDeal(TokenCursor cur)
     {
         cur.ExpectWord("deal");
@@ -447,7 +475,11 @@ public sealed class ActionParser
                 cur.TryMatchAnyWord("between");
             }
             cur.TryMatchAnyWord("to");
-            target = _target.TryParse(cur) ?? TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent);
+            // 读不出目标才兜底成「敌方场上随从」，并整体置上 OmittedFields：
+            // 这个标记是替代句透镜唯一可靠的依据 —— 兜底值与显式写出的
+            // "to all enemy followers" 在 Owner/Zone/Mode/Count 上完全一样。
+            target = NormalizeAllCount(_target.TryParse(cur)
+                ?? OmittedTargetSpec(TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent)));
         }
         // "... and 2 damage to your leader" —— 第二段伤害
         while (cur.Current.IsWord("and") && cur.Peek(1).Kind == TokKind.Number && cur.Peek(2).IsWord("damage"))
@@ -455,7 +487,7 @@ public sealed class ActionParser
             cur.Advance();
             int amt2 = cur.Current.Value; cur.Advance(); cur.Advance();
             cur.TryMatchAnyWord("to");
-            var t2 = _target.TryParse(cur) ?? TargetSpec.OpponentLeader;
+            var t2 = NormalizeAllCount(_target.TryParse(cur) ?? OmittedTargetSpec(TargetSpec.OpponentLeader));
             extraDmg.Add(new DealDamageNode { Target = t2, Amount = NumExpr.Const(amt2), IsAbility = true });
         }
 
@@ -467,12 +499,44 @@ public sealed class ActionParser
         if (target.IncludeLeader && target.Zone != Core.ZoneRef.Leader)
             dmgNodes.Add(new DealDamageNode
             {
-                Target = TargetSpec.OpponentLeader,
+                Target = NormalizeAllCount(TargetSpec.OpponentLeader),
                 Amount = amount,
                 IsAbility = true,
             });
         dmgNodes.AddRange(extraDmg);
         return dmgNodes;
+    }
+
+    /// <summary>
+    /// Mode=All 时 Count 不参与选取（VmEval 的 All 分支直接返回整个池）。
+    /// 但 TargetParser 总会留下默认的 Count=Const(1)，打印器如实渲染成
+    /// "All n=1"，看起来就像「全体只打 1 个」。这里把 All 下的数量统一置空，
+    /// 让 "to all enemy followers" 与 "to an enemy follower" 在 AST 上可区分。
+    /// 只动 Mode 为 All 的形态，First / Random / Choose 的数量原样保留 ——
+    /// 它们真的需要这个数量。
+    /// </summary>
+    private static TargetSpec NormalizeAllCount(TargetSpec t)
+    {
+        if (t == null || t.Mode != Core.SelectMode.All || t.Count == null) return t;
+        return new TargetSpec
+        {
+            SourceKind = t.SourceKind,
+            Owner = t.Owner,
+            Zone = t.Zone,
+            Slot = t.Slot,
+            CardId = t.CardId,
+            CardName = t.CardName,
+            Where = t.Where,
+            Sort = t.Sort,
+            SortDescending = t.SortDescending,
+            TopN = t.TopN,
+            DistinctByName = t.DistinctByName,
+            Mode = t.Mode,
+            Count = null,
+            History = t.History,
+            IncludeLeader = t.IncludeLeader,
+            OmittedFields = t.OmittedFields,
+        };
     }
 
     // ---------- 抽牌 ----------
@@ -587,7 +651,7 @@ public sealed class ActionParser
         else amount = ParseNumExpr(cur);
         cur.TryMatchAnyWord("defense", "defense,", "health");
         cur.TryMatchAnyWord("to");
-        var target = _target.TryParse(cur) ?? TargetSpec.Self;
+        var target = NormalizeAllCount(_target.TryParse(cur) ?? OmittedTargetSpec(TargetSpec.Self));
         return new List<EffectNode>
         {
             new RestoreLifeNode { Target = target, Amount = amount, FullRestore = full },

@@ -157,6 +157,76 @@ public static partial class Regress
             Check("4 超进化只召唤 2 张（不是 1+2=3）", super == 2, "实际 " + super);
         }
 
+        // ---- 用例 5：透镜数组化 —— 显式目标不得被前句污染 ----
+        //
+        // 「Deal 2 to an enemy follower. If Overflow, deal 4 to ALL enemy followers instead.」
+        // 替代句显式写了 all，Mode / Count / Where 都是它自己的；
+        // 旧实现整体判「Target 是不是兜底值」，把前句的 Choose/1 继承了过来，
+        // Then 分支变成「全体里选 1 个」。
+        {
+            var r = comp.Compile(
+                "Fanfare: Deal 2 damage to an enemy follower. If you're in Overflow, deal 4 damage to all enemy followers instead.");
+            var branch = r.Abilities.SelectMany(a => a.Body).OfType<ConditionalNode>().FirstOrDefault();
+            var thenDmg = branch?.Then.OfType<DealDamageNode>().FirstOrDefault();
+            var elseDmg = branch?.Else.OfType<DealDamageNode>().FirstOrDefault();
+
+            bool thenAll = thenDmg?.Target != null
+                           && thenDmg.Target.Owner == ZoneScope.Opponent
+                           && thenDmg.Target.Zone == ZoneRef.Board
+                           && thenDmg.Target.Mode == SelectMode.All
+                           && thenDmg.Target.Count == null;
+            bool elseChoose = elseDmg?.Target != null
+                              && elseDmg.Target.Owner == ZoneScope.Opponent
+                              && elseDmg.Target.Zone == ZoneRef.Board
+                              && elseDmg.Target.Mode == SelectMode.Choose;
+
+            Check("5 显式 all 的替代句：Then 保持全体（Mode=All，无 Count）", thenAll,
+                  "then=" + DescribeTarget(thenDmg?.Target));
+            Check("5 前句的 Choose 不被带进 Then，Else 仍是单个 Choose", elseChoose,
+                  "else=" + DescribeTarget(elseDmg?.Target));
+        }
+
+        // ---- 用例 6：透镜反向 —— 前句全体、替代句单个 ----
+        //
+        // 与用例 5 互为镜像：如果继承是「无脑向前句靠」而不是逐字段判断，
+        // 这里 Then 会被压成 All。
+        {
+            var r = comp.Compile(
+                "Fanfare: Deal 2 damage to all enemy followers. If you're in Overflow, deal 4 damage to an enemy follower instead.");
+            var branch = r.Abilities.SelectMany(a => a.Body).OfType<ConditionalNode>().FirstOrDefault();
+            var thenDmg = branch?.Then.OfType<DealDamageNode>().FirstOrDefault();
+            var elseDmg = branch?.Else.OfType<DealDamageNode>().FirstOrDefault();
+
+            bool thenChoose = thenDmg?.Target != null
+                              && thenDmg.Target.Mode == SelectMode.Choose
+                              && thenDmg.Target.Count != null
+                              && IsConst(thenDmg.Target.Count, 1);
+            bool elseAll = elseDmg?.Target != null
+                           && elseDmg.Target.Mode == SelectMode.All
+                           && elseDmg.Target.Count == null;
+
+            Check("6 反向：Then 保持单个 Choose（不被前句的 All 污染）", thenChoose,
+                  "then=" + DescribeTarget(thenDmg?.Target));
+            Check("6 反向：Else 保持全体 All", elseAll,
+                  "else=" + DescribeTarget(elseDmg?.Target));
+        }
+
+        // ---- 用例 7：恢复的替代句显式写了目标 ----
+        {
+            var r = comp.Compile(
+                "Fanfare: Restore 2 defense to your leader. If you're in Overflow, restore 4 defense instead.");
+            var branch = r.Abilities.SelectMany(a => a.Body).OfType<ConditionalNode>().FirstOrDefault();
+            var thenR = branch?.Then.OfType<RestoreLifeNode>().FirstOrDefault();
+            var elseR = branch?.Else.OfType<RestoreLifeNode>().FirstOrDefault();
+
+            bool both = thenR?.Target != null && elseR?.Target != null
+                        && thenR.Target.Owner == ZoneScope.Self && thenR.Target.Zone == ZoneRef.Leader
+                        && elseR.Target.Owner == ZoneScope.Self && elseR.Target.Zone == ZoneRef.Leader;
+
+            Check("7 恢复：替代句没写目标时整段继承（两分支都是我方主战者）", both,
+                  "then=" + PrintTarget(thenR?.Target) + " else=" + PrintTarget(elseR?.Target));
+        }
+
         log.Insert(0, fail == 0 ? "OK " + pass + "/" + (pass + fail) : "FAILED " + fail + " of " + (pass + fail));
         return string.Join("\n", log);
     }
@@ -185,6 +255,12 @@ public static partial class Regress
 
     private static string PrintTarget(TargetSpec t)
         => t == null ? "null" : t.SourceKind + ":" + t.Owner + "/" + t.Zone;
+
+    /// <summary>把目标连同 Mode / Count 一起打出来 —— 只打来源看不到「全体 vs 单个」。</summary>
+    private static string DescribeTarget(TargetSpec t)
+        => t == null
+            ? "null"
+            : t.SourceKind + ":" + t.Owner + "/" + t.Zone + " " + t.Mode + " n=" + PrintAmount(t.Count);
 
     /// <summary>整棵条件树里是否出现「SuperEvolved 的否定」。</summary>
     private static bool HasSuperEvolvedNegation(BoolExpr e)

@@ -108,11 +108,13 @@ public static class InsteadWeaver
                 case DealDamageNode d when prevDmg != null:
                     result.Add(new DealDamageNode
                     {
-                        // 只有替代句根本没写目标时才继承。
-                        // "Fanfare: Deal 2 damage to the enemy leader. If you're in Overflow, deal 4 damage instead."
-                        // 第二句读不出目标，解析器给了兜底的「敌方场上随从」，
-                        // 若原样保留，Overflow 分支会去打随从而不是主战者。
-                        Target = IsDefaultDealTarget(d.Target) ? prevDmg.Target : d.Target,
+                        // 透镜只补替代句自己没写的字段，逐字段判断。
+                        // "Fanfare: Deal 2 damage to an enemy follower. If you're in Overflow,
+                        //  deal 4 damage to all enemy followers instead."
+                        // 替代句显式写了 all enemy followers —— Mode / Count / Where 都必须
+                        // 保留它自己的值；只有 "deal 4 damage" 这种压根没写目标、
+                        // 由 ParseDeal 兜底的 TargetSpec 才整段继承前句。
+                        Target = InheritTarget(d.Target, prevDmg.Target),
                         Amount = d.Amount,
                         IsAbility = d.IsAbility,
                         IsSplit = d.IsSplit,
@@ -122,7 +124,7 @@ public static class InsteadWeaver
                 case RestoreLifeNode r when prevRestore != null:
                     result.Add(new RestoreLifeNode
                     {
-                        Target = IsDefaultRestoreTarget(r.Target) ? prevRestore.Target : r.Target,
+                        Target = InheritTarget(r.Target, prevRestore.Target),
                         Amount = r.Amount,
                         FullRestore = r.FullRestore,
                     });
@@ -137,34 +139,42 @@ public static class InsteadWeaver
     }
 
     /// <summary>
-    /// 这个伤害目标是不是解析器的兜底值（替代句压根没写目标）。
+    /// 逐字段透镜：只把替代句「没写」的字段换成前句的值。
     ///
-    /// ParseDeal 在 "deal N damage" 后面读不到 "to &lt;target&gt;" 时，
-    /// 会用 TargetSpec.InZone(Board, Opponent) 兜底 —— 也就是「敌方场上随从」。
-    /// 原型是：Zone 来源 / 主战者以外 / 无 Where / All / 非随机 /
-    /// 非历史 / 非指定卡 / 数量 1。命中就该让透镜用前一句的目标覆盖它。
+    /// 判据是 TargetSpec.OmittedFields（解析器兜底时打的位集），不是值判等：
+    /// "deal 4 damage" 兜底出的 All/Board/Opponent 与显式写出的
+    /// "deal 4 damage to all enemy followers" 在 Owner/Zone/Mode/Count 上完全一致，
+    /// 值判等一定会把显式目标压成前句的 Choose/1。
+    ///
+    /// 未写目标（整段兜底）时返回 prev；写了目标时，未置位的字段一律保留 own 的值。
     /// </summary>
-    private static bool IsDefaultDealTarget(TargetSpec t)
-        => IsDefaultZoneTarget(t);
+    private static TargetSpec InheritTarget(TargetSpec own, TargetSpec prev)
+    {
+        if (own == null) return prev;
+        if (prev == null || !own.IsOmitted) return own;
 
-    /// <summary>恢复同理：读不到目标时 ParseRestore 兜底成 TargetSpec.Self（$self 槽位）。</summary>
-    private static bool IsDefaultRestoreTarget(TargetSpec t)
-        => t != null && t.SourceKind == TargetSourceKind.Slot
-           && t.Slot == TargetSpec.SlotSelf
-           && (t.Where == null || ReferenceEquals(t.Where, BoolExpr.True));
-
-    private static bool IsDefaultZoneTarget(TargetSpec t)
-        => t != null
-           && t.SourceKind == TargetSourceKind.Zone
-           && t.Zone == Core.ZoneRef.Board
-           && (t.Where == null || ReferenceEquals(t.Where, BoolExpr.True))
-           && t.Mode == Core.SelectMode.All
-           && !t.IncludeLeader
-           && t.History == Core.HistoryScope.None
-           && t.Sort == Core.SortKey.None
-           && t.TopN == 0
-           && !t.DistinctByName
-           && t.Count is { Op: NumOp.Const, Value: 1 };
+        var f = own.OmittedFields;
+        return new TargetSpec
+        {
+            SourceKind = f.HasFlag(TargetField.SourceKind) ? prev.SourceKind : own.SourceKind,
+            Owner = f.HasFlag(TargetField.Owner) ? prev.Owner : own.Owner,
+            Zone = f.HasFlag(TargetField.Zone) ? prev.Zone : own.Zone,
+            Slot = f.HasFlag(TargetField.Slot) ? prev.Slot : own.Slot,
+            CardId = f.HasFlag(TargetField.Card) ? prev.CardId : own.CardId,
+            CardName = f.HasFlag(TargetField.Card) ? prev.CardName : own.CardName,
+            Where = f.HasFlag(TargetField.Where) ? prev.Where : own.Where,
+            Sort = f.HasFlag(TargetField.Sort) ? prev.Sort : own.Sort,
+            SortDescending = f.HasFlag(TargetField.Sort) ? prev.SortDescending : own.SortDescending,
+            TopN = f.HasFlag(TargetField.TopN) ? prev.TopN : own.TopN,
+            DistinctByName = f.HasFlag(TargetField.DistinctByName) ? prev.DistinctByName : own.DistinctByName,
+            Mode = f.HasFlag(TargetField.Mode) ? prev.Mode : own.Mode,
+            Count = f.HasFlag(TargetField.Count) ? prev.Count : own.Count,
+            History = f.HasFlag(TargetField.History) ? prev.History : own.History,
+            IncludeLeader = f.HasFlag(TargetField.IncludeLeader) ? prev.IncludeLeader : own.IncludeLeader,
+            // 继承完成，新目标不再有「兜底」成分。
+            OmittedFields = TargetField.None,
+        };
+    }
 
     /// <summary>把条件型代价转成布尔条件。UsePp / DestroyAlly 属于真代价，不转。</summary>
     private static BoolExpr BuildCostCondition(IReadOnlyList<CostSpec> costs, Lexicon lex)
