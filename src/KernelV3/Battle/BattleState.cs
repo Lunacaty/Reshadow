@@ -232,6 +232,15 @@ public sealed class BattleState : IVmWorld
         Token(90005150, "Kindled Blade", CardKind.Spell, 2, 0, 0, null);
         Token(90005160, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null);
 
+        // 融合链的两端：Gear of Ambition（可融合的护符）与 Striker Artifact（变身目标）。
+        // 它们互为对方的变身/融合对象，少注册一个，整条融合链在运行时断在半路 ——
+        // 而且断法是「变身后 Def 仍是旧卡」，看起来什么都没发生。
+        Token(90005170, "Striker Artifact", CardKind.Follower, 3, 2, 2, new[] { "Artifact" }, "rush");
+        Token(90005180, "Gear of Ambition", CardKind.Amulet, 1, 0, 0, new[] { "Artifact" });
+        Token(90005190, "Fortifier Artifact", CardKind.Follower, 4, 3, 3, new[] { "Artifact" }, "ward");
+        Token(90001234, "Shoddy Plaything", CardKind.Follower, 6, 1, 3, null, "ward");
+        Token(90001235, "Prostrating Coward", CardKind.Follower, 5, 4, 5, null, "bane", "ward");
+
         // Apocalypse Deck 的四张（Mjerrabaine 换牌库后必须能打出）。
         Token(90004110, "Silent Rider", CardKind.Follower, 6, 8, 8, null, "storm");
         Token(90004120, "Servant of Cocytus", CardKind.Follower, 1, 13, 13, null);

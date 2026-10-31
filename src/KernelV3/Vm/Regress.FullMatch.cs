@@ -43,12 +43,90 @@ public static partial class Regress
             seeds.Add("seed" + seed + ":" + detail);
         }
 
-        Chk("对局-1 十局全部正常终局", finished == 10,
+        // 不变量 7（正常终局）：十局都要在有限回合内结束、胜负合法、VM 未熔断。
+        // 它单独成一条，因为前六条查的是「某一刻状态是否干净」，
+        // 而这一条查的是「整局能不能收敛」—— 死循环与永不结束只在这一条上暴露。
+        Chk("对局-7 正常终局（有限回合 / 胜负合法 / 未熔断）", finished == 10,
             finished + "/10 完成  " + string.Join("  ", seeds.Take(10)));
+
+        // 另外六条不变量各自独立成项，便于失败时一眼看出是哪一类。
+        var inv = FullMatchInvariantReport();
+        Chk("不变量-1 区域容量（战场≤5 手牌≤9 纹章≤5）", inv.capacity, inv.capacityDetail);
+        Chk("不变量-2 区域归属唯一（实体不能同时在两个区）", inv.zones, inv.zonesDetail);
+        Chk("不变量-3 计数器上下限", inv.counters, inv.countersDetail);
+        Chk("不变量-4 场上无死尸/无空壳", inv.dead, inv.deadDetail);
+        Chk("不变量-5 纹章同名唯一", inv.crestUnique, inv.crestUniqueDetail);
+        Chk("不变量-6 可堆叠护符唯一", inv.stackable, inv.stackableDetail);
 
         log.AppendLine();
         log.AppendLine("=== 完整对局 " + pass + "/" + total + " ===");
         return log.ToString();
+    }
+
+    /// <summary>六条不变量在两局完整对局里的独立通过情况。</summary>
+    private static (bool capacity, string capacityDetail,
+                    bool zones, string zonesDetail,
+                    bool counters, string countersDetail,
+                    bool dead, string deadDetail,
+                    bool crestUnique, string crestUniqueDetail,
+                    bool stackable, string stackableDetail) FullMatchInvariantReport()
+    {
+        // 用「违规信息的前缀」归类：CheckInvariants 的返回值本身就写明了是哪一类，
+        // 于是不必再写六份重复的扫描逻辑。
+        string seen = null;
+        int checkedSteps = 0;
+        for (int seed = 1; seed <= 3 && seen == null; seed++)
+        {
+            var (v, steps) = ScanOneMatch(seed);
+            checkedSteps += steps;
+            seen = v;
+        }
+
+        // 没有任何违规 = 六条全部成立。
+        if (seen == null)
+        {
+            string okd = checkedSteps + " 步内未发现违规";
+            return (true, okd, true, okd, true, okd, true, okd, true, okd, true, okd);
+        }
+
+        bool capHit = seen.Contains("> 5") || seen.Contains("> 9") || seen.Contains("纹章区");
+        bool zoneHit = seen.Contains("同时存在") || seen.Contains("列表里但 Zone=");
+        bool ctrHit = seen.Contains("越界") || seen.Contains("为负");
+        bool deadHit = seen.Contains("死随从") || seen.Contains("空壳");
+        bool crestHit = seen.Contains("同 id 纹章");
+        bool stackHit = seen.Contains("土之印") || seen.Contains("线索");
+        return (!capHit, capHit ? seen : "OK", !zoneHit, zoneHit ? seen : "OK",
+                !ctrHit, ctrHit ? seen : "OK", !deadHit, deadHit ? seen : "OK",
+                !crestHit, crestHit ? seen : "OK", !stackHit, stackHit ? seen : "OK");
+    }
+
+    /// <summary>跑一局，返回第一个不变量违规信息与本局步数。</summary>
+    private static (string violation, int steps) ScanOneMatch(int seed)
+    {
+        var ctx = CompileContext.Create(seed).Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier")
+            .Traits("Pixie", "Artifact", "Loot", "Clue", "Golem", "Officer")
+            .Build();
+        var st = ctx.State;
+        var comp = new EnglishCompiler(ctx.Lexicon);
+        var pool = BuildMatchCardPool(ctx, comp, st);
+
+        var mr = new MatchRunner(st, st.Schema) { AutoChoicePolicy = FirstLegalChoicePolicy.Instance };
+        mr.Start(seed % 2, BuildDeck(pool, seed), BuildDeck(pool, seed + 100));
+        mr.Mulligan(0, Array.Empty<RuntimeEntity>());
+        mr.Mulligan(1, Array.Empty<RuntimeEntity>());
+        mr.ConfirmMulligan();
+
+        int steps = 0;
+        while (mr.Phase == MatchPhase.Playing && steps < 4000)
+        {
+            steps++;
+            var v = CheckInvariants(st);
+            if (v != null) return (v, steps);
+            var actions = mr.GetLegalActions();
+            if (actions.Count == 0) return ("没有合法动作", steps);
+            mr.Execute(PickAction(actions));
+        }
+        return (CheckInvariants(st), steps);
     }
 
     // ---------------------------------------------------------------- 单局

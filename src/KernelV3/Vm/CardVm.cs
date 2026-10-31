@@ -718,9 +718,17 @@ public sealed partial class CardVm
             // 列进来等于给它们开一条「不校验主体」的后门，
             // 而 TurnStart 必须只让「事件主体就是自己」的能力触发，
             // 否则所有同名卡的未激活进度会被共享（实测 seq-7 的 mask 串成一串）。
+            // 「你做了某件事」类事件：主体是**玩家**，不是某张卡。
+            //
+            // OnFuse 属此类：「Whenever you Fuse,」没有宾语，说的是「你每次融合」，
+            // 而事件的 Subject 是融合主体卡 —— 拿它跟监听者比必然不等，
+            // 于是 Ancient Cannon 这类「你融合我就打 2」永远不会触发。
+            // 注意带宾语的写法（"Whenever you Fuse a Loot card"）有 SubjectFilter，
+            // 走的是上面的 else 分支，不受这里影响。
             bool playerLevelEvent = ev.Kind == CoreEvent.OnSelectMode
                                  || ev.Kind == CoreEvent.OnEarthRite
-                                 || ev.Kind == CoreEvent.OnSpellboost;
+                                 || ev.Kind == CoreEvent.OnSpellboost
+                                 || ev.Kind == CoreEvent.OnFuse;
             if (!playerLevelEvent
                 && ev.Subject != null && ev.Subject.Value.EntityId != owner.EntityId) return false;
         }

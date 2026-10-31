@@ -475,7 +475,14 @@ public sealed class PrefixParser
             }
             else if (cur.MatchWord("play")) { b.Event = CoreEvent.OnPlay; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchWord("discard")) { b.Event = CoreEvent.OnDiscard; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
-            else if (cur.MatchPhrase("fuse", "to", "this", "card")) { b.Event = CoreEvent.OnFuse; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
+            else if (cur.MatchPhrase("fuse", "to", "this", "card"))
+            {
+                b.Event = CoreEvent.OnFuse; b.EventExplicit = true;
+                b.SubjectFilter = TargetSpec.Self;
+                // 「当你融合到**这张卡**上」—— 融合发生在手牌里，主体此刻在 Hand。
+                // 不标监听区，「When you Fuse to this card」在手牌融合时永不触发。
+                b.ActiveZone = ActiveZoneScope.Hand;
+            }
             // "When you've Fused both to this card, ..."（已融合完成）
             // 这条是卡面实际走到的分支：TryConsumeFusePrefix 只吃 "Fuse:" 冒号头，
             // "When you've Fused ..." 整句落在 when 从句里，条件就在这里丢的。
@@ -483,6 +490,8 @@ public sealed class PrefixParser
             {
                 b.Event = CoreEvent.OnFuse; b.EventExplicit = true;
                 b.SubjectFilter = TargetSpec.Self;
+                // 同上：融合主体在手牌里，监听区必须是 Hand。
+                b.ActiveZone = ActiveZoneScope.Hand;
                 ConsumeFusedToCardClause(cur, b);
             }
             else if (cur.MatchWord("activate") || cur.MatchWord("engage")) { b.Event = CoreEvent.OnEngage; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
@@ -495,7 +504,13 @@ public sealed class PrefixParser
             else if (cur.MatchWord("fuse"))
             {
                 b.Event = CoreEvent.OnFuse; b.EventExplicit = true;
-                b.SubjectFilter = _target.TryParse(cur) ?? TargetSpec.Self;
+                // 两种写法语义完全不同：
+                //   "Whenever you Fuse a Loot card"  → 有宾语，按宾语过滤材料
+                //   "Whenever you Fuse,"              → 无宾语，是**玩家级**事件
+                // 后者若回退成 $self，就变成「只有当融合主体是这张卡时才触发」，
+                // 而卡面说的是「你每次融合都触发」（Ancient Cannon 正是这种）。
+                var fuseTarget = _target.TryParse(cur);
+                b.SubjectFilter = fuseTarget;
             }
             else if (cur.MatchWord("summon")) { b.Event = CoreEvent.OnSummon; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchWord("attack")) { b.Event = CoreEvent.OnAttack; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }

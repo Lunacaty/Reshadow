@@ -691,11 +691,38 @@ public static class ConditionCompiler
         }
 
         // "at least N differently named allied Artifact followers have entered the field this match"
+        // "at least N other allied copies of X have entered the field this match"
         if (c.MatchPhrase("at", "least"))
         {
             int n = ReadNumber(c);
             var tgt = new TargetParser(lex).TryParse(c);
             c.AdvanceToClauseBoundary();
+
+            // 计数语义必须归一化：
+            //   · Mode=Choose 是「玩家选 N 个」的动作语义，用于**计数**毫无意义，
+            //     留着它会让 count 走选择分支、结果恒为候选数而不是实际张数。
+            //   · 历史池（...this match）的候选来自历史记录，区域必须随之归一，
+            //     否则会去「当前场上」数，而历史上进过场又已离场的那些一个都数不到。
+            if (tgt != null)
+            {
+                // 先把要读的字段取出来：对象初始化器里 `tgt.X` 读的是**新对象**的字段
+                // （此时还没赋值），不是旧对象 —— 直接写在初始化器里会静默读到 null/None。
+                var old = tgt;
+                tgt = new TargetSpec
+                {
+                    SourceKind = old.SourceKind, Owner = old.Owner,
+                    Zone = old.History == HistoryScope.None
+                         ? old.Zone
+                         : old.History == HistoryScope.EnteredThisMatch ? ZoneRef.Board : ZoneRef.Cemetery,
+                    Slot = old.Slot, CardId = old.CardId, CardName = old.CardName,
+                    Where = old.Where, Sort = old.Sort, SortDescending = old.SortDescending,
+                    TopN = old.TopN, DistinctByName = old.DistinctByName,
+                    DuplicatesOnly = old.DuplicatesOnly,
+                    Mode = SelectMode.All, Count = null,
+                    History = old.History, IncludeLeader = false,
+                };
+            }
+
             return new CompareExpr
             {
                 Left = NumExpr.CountOf(tgt ?? new TargetSpec
