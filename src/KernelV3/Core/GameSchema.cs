@@ -90,9 +90,15 @@ public sealed class GameSchema
         // 不含当前正在上场的这张（入场曲结算完才 +1），护符不算。
         ("rally", 0, 999),
         ("evolve_count", 0, 99),
-        // 融合：fuse_count 记融合次数，fuse_cost 记累计材料费用
+        // 融合有三个语义完全不同的计数器，卡面用哪个必须逐个对：
+        //   fuse_count —— 融合**次数**        「If you've Fused to this card」
+        //   fuse_cost  —— 材料**总费用**      「based on the total cost of the cards fused」
+        //   fuse_kinds —— **不同卡号的数量**  「Fused both」/「differently named cards Fused」
+        // 三者全部挂在**实体上**（baseCard.Counters），不是玩家级：
+        // 卡面写的是「Fused to **this card**」，是这张卡各自的累计。
         ("fuse_count", 0, 99),
         ("fuse_cost", 0, 99),
+        ("fuse_kinds", 0, 99),
         // 奥义槽 = 当前回合数 + 本卡在手时自己随从进化/超进化的次数。
         // 奥义 >= 10 可发动，解放奥义 >= 15。
         ("skybound_gauge", 0, 99),

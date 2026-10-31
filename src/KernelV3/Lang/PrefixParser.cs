@@ -187,9 +187,12 @@ public sealed class PrefixParser
         if (cur.Current.Kind == TokKind.Comma) cur.Advance();
 
         if (!fusedBoth) return;
+        // "both" 指的是**两种不同材料**都到位（Ominous Artifact α 的
+        // Fuse 行限定了只能是 β 和 γ），所以判据是「融合种类数 >= 2」，
+        // 不是「融合次数 >= 2」—— 喂两张同名材料次数也是 2，但那不算 both。
         b.Condition = BoolExpr.And(b.Condition, new CompareExpr
         {
-            Left = NumExpr.Ctr(_lex.Counter("fuse_count")),
+            Left = NumExpr.Ctr(_lex.Counter("fuse_kinds")),
             Op = CompareOp.Ge,
             Right = NumExpr.Const(2),
         });

@@ -82,6 +82,23 @@ public sealed class RuntimeEntity
     public bool FusedThisTurn { get; set; }
 
     /// <summary>
+    /// 这张卡历史上融合过的**材料卡号**集合（同卡号只记一次）。
+    ///
+    /// 对应卡面「the number of differently named cards Fused to this card」
+    /// 与「When you've Fused both to this card」。
+    /// 必须存集合而不是只留计数：喂两张同名材料算 1 种，不是 2 种。
+    /// 实体进出区域时清空（与 fuse_count / fuse_cost / fuse_kinds 一起），
+    /// 但三个计数器本身保留在卡上，供入场曲读取。
+    /// </summary>
+    public HashSet<int> FusedKinds { get; } = new();
+
+    /// <summary>
+    /// 这块材料是被哪张卡吞掉的（融合主体的 EntityId，0 表示不是融合材料）。
+    /// 用于在主体离场时精确清空它名下的素材，而不误伤别的卡的材料。
+    /// </summary>
+    public int FusedIntoId { get; set; }
+
+    /// <summary>
     /// 这是否是一个信仰实体（住在纹章区，但不算纹章）。
     /// 纹章相关的效果必须按这个标志排除信仰。
     /// </summary>

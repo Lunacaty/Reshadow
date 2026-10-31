@@ -26,6 +26,17 @@ public enum ZoneRef
     ExArea,
     CrestArea,
     Leader,
+
+    /// <summary>
+    /// 融合素材区：被融合吞掉的材料实体停在这里（**实体保留**，不再销毁）。
+    ///
+    /// 与「彻底移除」相比，保留实体让三件事成立：
+    ///   1. fuse_kinds 能按材料卡号去重计数（同名只算一种）
+    ///   2. UI 可以展示「这张卡吃了什么」
+    ///   3. 后续若出现「按材料属性判定的效果」有据可查
+    /// 材料进这里**不算离场**：不进墓场、不加 shadow、不触发谢幕曲。
+    /// </summary>
+    FuseMaterial,
 }
 
 /// <summary>归属方。</summary>

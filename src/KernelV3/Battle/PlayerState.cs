@@ -50,6 +50,12 @@ public sealed class PlayerState
     /// <summary>纹章区，上限 5，独立于 Board，不占用场上格子。</summary>
     public List<RuntimeEntity> CrestArea { get; } = new();
 
+    /// <summary>
+    /// 融合素材区：被融合吞掉的材料实体停在这里，**不销毁**。
+    /// 材料进这里不算离场（不进墓场、不加 shadow、不触发谢幕曲）。
+    /// </summary>
+    public List<RuntimeEntity> FuseMaterial { get; } = new();
+
     /// <summary>玩家级计数器：pp / max_pp / ep / sep / shadow / combo / rally / faith / clues …</summary>
     public Dictionary<int, int> Counters { get; } = new();
 
@@ -98,6 +104,7 @@ public sealed class PlayerState
         ZoneRef.Banished => Banished,
         ZoneRef.ExArea => ExArea,
         ZoneRef.CrestArea => CrestArea,
+        ZoneRef.FuseMaterial => FuseMaterial,
         _ => null,
     };
 

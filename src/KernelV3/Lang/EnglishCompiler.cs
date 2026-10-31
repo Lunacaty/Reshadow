@@ -60,6 +60,9 @@ public sealed class EnglishCompiler
         _variableBindings.Clear();
         _initialCounters.Clear();
         _fuseTiers.Clear();
+        _fuseTierByCost = false;
+        _fuseHostAbility = null;
+        _actions.FuseTierByCost = false;
         _lastBuiltAbility = null;
         // 卡级槽位登记：整张卡编译开始时清空一次。
         _target.ResetSlots();
@@ -226,6 +229,17 @@ public sealed class EnglishCompiler
         int i = 0;
         while (i < t.Length && char.IsDigit(t[i])) i++;
         if (i == 0) return false;
+
+        // 融合分档表用冒号：「1: Ominous Artifact α」/「3 or more: ...」。
+        // 它同样必须并回前一段，否则三档被段落符切成三段，
+        // 各自编译成独立能力，分档表就永远合不起来。
+        if (i < t.Length && t[i] == ':') return true;
+        if (i < t.Length && t[i] == ' ')
+        {
+            var rest = t.Substring(i).TrimStart();
+            if (rest.StartsWith("or more:") || rest.StartsWith("or less:")) return true;
+        }
+
         if (i >= t.Length || t[i] != '.') return false;
         // "1." 后必须有空格或直接结束，避免误判 "1.5"
         return i + 1 >= t.Length || t[i+1] == ' ';
@@ -675,6 +689,35 @@ public sealed class EnglishCompiler
 
             var body = _actions.ParseSequence(c);
             c.AssertEnd(Trunc(segment));
+
+            // 取走「刚解析过 transform based on total cost」的标志。
+            // 那句话本身不产出动作，但它是分档表的宿主：没有它，
+            // 随后三档会各自独立落成 OnPlay 能力（". 1: A. 2: B. 3: C."），
+            // 打出时三档同时判定，可能同时召唤多个随从。
+            if (_actions.FuseTierByCost)
+            {
+                _actions.FuseTierByCost = false;
+                _fuseTierByCost = true;
+                if (body.Count == 0)
+                {
+                    // 建一条空的宿主能力，分档表会挂进它的 Body。
+                    var host = new AbilityDef
+                    {
+                        Trigger = hb.BuildTrigger(),
+                        Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs)),
+                        Costs = hb.Costs,
+                        Body = new List<EffectNode>(),
+                    };
+                    result.Add(host);
+                    currentAbility = host;
+                    _lastBuiltAbility = host;
+                    // 单独留引用：后面的档位句会把 currentAbility 覆盖掉，
+                    // 而分档表必须挂回这条 host，不能挂到最后一个档位句上。
+                    _fuseHostAbility = host;
+                    continue;
+                }
+            }
+
             if (body.Count == 0) continue;
 
             // 无新头、无新代价、无新条件，且前面已有能力：
@@ -731,7 +774,14 @@ public sealed class EnglishCompiler
         // 收尾：融合变身表并进它所修饰的那条能力
         // 档位表常被换行切成独立段落（"…transform it…\n1: A\n2: B\n3 or more: C"），
         // 本段没有能力时回落到上一段落成的能力。
-        FlushFuseTable(result, currentAbility ?? _lastBuiltAbility);
+        // 分档判据由那句正文的措辞决定（total cost → fuse_cost，否则 fuse_count）。
+        // 只在没被 ParseTransform 显式置位时，才用文本兜底判定。
+        // 否则 host 能力（Body 为空、早已不含那句 transform）会把标志冲掉，
+        // 分档表又退回 fuse_count + Spawn。
+        if (!_fuseTierByCost) _fuseTierByCost = MentionsTotalCost(_lastBuiltAbility ?? currentAbility);
+        FlushFuseTable(result, _fuseHostAbility ?? currentAbility ?? _lastBuiltAbility);
+        _fuseHostAbility = null;
+        _fuseTierByCost = false;
         _fuseHeader = null;
 
         // 元模式（Meta-Mode）先行：把 "... 1. ... 2. ... Enhance (3): Activate all of them instead."
@@ -1261,12 +1311,39 @@ public sealed class EnglishCompiler
     /// <summary>当前段里累积的融合变身表档位（跨句累积，段末一次性落盘）。</summary>
     private readonly List<(int lo, int hi, string cardName, int cardId)> _fuseTiers = new();
 
+    /// <summary>
+    /// 分档表前面那句是否声明「按融合材料的**总费用**分档」。
+    /// 官方只有 Striker / Fortifier Artifact 这样写；其余分档表（如
+    /// 「Summon a Fused follower. 1: …」）分的是融合**次数**。
+    /// 判据来自 SourceText，因为这条信息只存在于原始句子里，AST 上没有痕迹。
+    /// </summary>
+    private static bool MentionsTotalCost(AbilityDef ab)
+    {
+        if (ab == null) return false;
+        foreach (var n in ab.Body ?? Array.Empty<EffectNode>())
+        {
+            var text = AstEnglishPrinter.PrintNode(n) ?? "";
+            if (text.Contains("total cost", StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
     /// <summary>上一次落盘的能力。跨段落延续，用于把被换行切开的后续表接回原句。</summary>
     private AbilityDef _lastBuiltAbility;
 
     /// <summary>变身表紧跟在能力头之后时，落盘用的头（"Fanfare: 1: A …"）。</summary>
     private AbilityHeaderBuilder _fuseHeader;
     private SectionZone _fuseZone = SectionZone.Normal;
+
+    /// <summary>
+    /// 本段的分档判据是否按「材料总费用」——由分档表前面那句的措辞决定：
+    ///   「...based on the total cost of the cards fused」→ true（fuse_cost）
+    ///   其余（「Summon a Fused follower.」等）            → false（fuse_count）
+    /// </summary>
+    private bool _fuseTierByCost;
+
+    /// <summary>分档表要挂回去的那条 host 能力（由 transform 句建立）。</summary>
+    private AbilityDef _fuseHostAbility;
 
     /// <summary>
     /// 解析 "1: A 2: B 3 or more: C" 变身表。
@@ -1329,7 +1406,20 @@ public sealed class EnglishCompiler
     {
         if (_fuseTiers.Count == 0) return;
 
-        var fuseCount = NumExpr.Ctr(_lex.Counter("fuse_count"));
+        // 分档判据取决于卡面用的是哪种句式，两种都在官方卡池里出现：
+        //
+        //   「transform it based on the total cost of the cards fused」
+        //     → 判据 **fuse_cost**（材料总费用），动作是 Transform
+        //     → Striker Artifact：一次喂 3 张 1 费材料直接进「3 or more」档
+        //
+        //   「Summon a Fused follower. 1: A. 2: B. 3 or more: C.」
+        //     → 判据 **fuse_count**（融合次数），动作是 Spawn
+        //
+        // 判据只能来自前一句的措辞，不能一律取一个：
+        // 用 fuse_count 分 cost 表会让「一次喂 3 张」永远到不了第三档；
+        // 用 fuse_cost 分 count 表会让「融合 2 次」在不同费用下跳错档。
+        bool byCost = _fuseTierByCost;
+        var fuseCount = NumExpr.Ctr(_lex.Counter(byCost ? "fuse_cost" : "fuse_count"));
 
         IReadOnlyList<EffectNode> chain = Array.Empty<EffectNode>();
         for (int i = _fuseTiers.Count - 1; i >= 0; i--)
@@ -1345,20 +1435,32 @@ public sealed class EnglishCompiler
                 new ConditionalNode
                 {
                     Condition = cond,
+                    // 动作由同一个 byCost 决定：
+                    //   total cost 句式 → **Transform**（这张卡自己变成那一档，不召唤）
+                    //   其余句式        → **Spawn**（召唤那一档的随从上场）
+                    //
+                    // 早期一律 Spawn，于是 Striker Artifact 融合后场上多出随从、
+                    // 而它自己没变 —— 卡面写的是 transform it。
                     Then = new List<EffectNode>
                     {
-                        new SpawnCardNode
-                        {
-                            SourceKind = CardSourceKind.CardId,
-                            // CardId 必须一起带上：DoSpawn 只按 CardId 生成实体，
-                            // 只写 CardName 的节点永远产出空实体（旧实现即如此，
-                            // 于是整个变身表在运行期是死的）。
-                            CardId = cardId,
-                            CardName = card,
-                            ToZone = ZoneRef.Board,
-                            ToOwner = ZoneScope.Self,
-                            Count = NumExpr.Const(1),
-                        },
+                        byCost
+                            ? (EffectNode)new TransformNode
+                            {
+                                Target = TargetSpec.Self,
+                                IntoCardId = cardId,
+                                IntoCardName = card,
+                            }
+                            : new SpawnCardNode
+                            {
+                                SourceKind = CardSourceKind.CardId,
+                                // CardId 必须一起带上：DoSpawn 只按 CardId 生成实体，
+                                // 只写 CardName 的节点永远产出空实体。
+                                CardId = cardId,
+                                CardName = card,
+                                ToZone = ZoneRef.Board,
+                                ToOwner = ZoneScope.Self,
+                                Count = NumExpr.Const(1),
+                            },
                     },
                     Else = chain,
                 },

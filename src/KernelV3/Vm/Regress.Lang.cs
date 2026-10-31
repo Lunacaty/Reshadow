@@ -119,8 +119,9 @@ public static partial class Regress
         // ── 6. "When you've Fused both to this card," 必须带 fuse_count >= 2 ──
         {
             var r = comp.Compile("When you've Fused both to this card, deal 4 damage to the enemy leader.");
+            // 分档判据现在是实体级 fuse_kinds（融合种类数）。
             bool hasCond = AstEnglishPrinter.PrintBool(r.Abilities.FirstOrDefault()?.Condition)
-                              .Contains("fuse_count");
+                              .Contains("fuse_kinds");
 
             // 条件必须真正可求值：融合 1 次为假，2 次为真。
             bool evals = FuseBothConditionEvaluates(comp, out bool once, out bool twice);
@@ -309,9 +310,12 @@ public static partial class Regress
         RegisterTierCards(st);
 
         var before = new HashSet<int>(st.EnumerateZone(ZoneRef.Board, 0).Select(e => e.EntityId));
-        st.WriteCounter(0, st.Schema.Counter("fuse_count"), fuseCount);
         st.WriteCounter(0, st.Schema.Counter("pp"), 10);
         var card = st.SpawnCard(450, ZoneRef.Hand, 0);
+        // 这句是「Summon a Fused follower」形态，分档判据是**融合次数**
+        // （实体级 fuse_count）。只有「based on the total cost of the cards
+        // fused」那种写法才用 fuse_cost。
+        card.Counters[st.Schema.Counter("fuse_count")] = fuseCount;
         tr.PlayCard(0, card, vm);
 
         // 变身卡自身也上了场，排除它只留召唤出来的那一档
@@ -336,7 +340,8 @@ public static partial class Regress
         st.RegisterCard(LangCard(460, r.Abilities));
         var card = st.SpawnCard(460, ZoneRef.Hand, 0);
         var eval = new VmEval(st);
-        var ctr = st.Schema.Counter("fuse_count");
+        // both 判据是**实体级**的 fuse_kinds（融合种类数），不是融合次数。
+        var ctr = st.Schema.Counter("fuse_kinds");
 
         bool Eval()
         {
@@ -351,8 +356,8 @@ public static partial class Regress
             return eval.EvalBool(r.Abilities[0].Condition, sc);
         }
 
-        st.WriteCounter(0, ctr, 1); once = Eval();
-        st.WriteCounter(0, ctr, 2); twice = Eval();
+        card.Counters[ctr] = 1; once = Eval();
+        card.Counters[ctr] = 2; twice = Eval();
         return !once && twice;
     }
 

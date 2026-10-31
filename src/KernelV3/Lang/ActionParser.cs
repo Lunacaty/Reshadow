@@ -27,6 +27,13 @@ public sealed class ActionParser
 
     /// <summary>调试开关：打印 ParseGive 的每一步。</summary>
 
+    /// <summary>
+    /// 刚刚解析过「transform it based on the total cost of the cards fused」。
+    /// 编译器读完一段后取走这个标志，用来决定随后那张分档表按 fuse_cost 还是
+    /// fuse_count 分档、以及每档动作是 Transform 还是 Spawn。
+    /// </summary>
+    public bool FuseTierByCost { get; set; }
+
     public ActionParser(Lexicon lex, Func<IReadOnlyList<Token>, AbilityDef> compileQuotedAbility,
                         TargetParser target = null)
     {
@@ -1574,34 +1581,15 @@ public sealed class ActionParser
         // 这里用一个标记性的条件节点表达「按融合费用选择」，不再走宏。
         if (basedIdx >= 0 && (intoIdx < 0 || basedIdx < intoIdx))
         {
-            return new List<EffectNode>
-            {
-                new ConditionalNode
-                {
-                    Condition = new CompareExpr
-                    {
-                        Left = NumExpr.Ctr(_lex.Counter("fuse_cost")),
-                        Op = CompareOp.Ge,
-                        Right = NumExpr.Const(1),
-                    },
-                    Then = new List<EffectNode>
-                    {
-                        new TransformNode
-                        {
-                            Target = TargetSpec.Self,
-                            CopySource = new TargetSpec
-                            {
-                                SourceKind = TargetSourceKind.Zone,
-                                Zone = ZoneRef.Deck,
-                                Owner = ZoneScope.Self,
-                                Mode = SelectMode.Random,
-                                Count = NumExpr.Const(1),
-                            },
-                        },
-                    },
-                    Else = new List<EffectNode>(),
-                },
-            };
+            // 通知编译器：紧随其后的分档表按**材料总费用**分档，动作是 Transform。
+            FuseTierByCost = true;
+            // 这句本身**不产出动作**：变形成哪一张由紧随其后的分档表决定，
+            // 分档表由 EnglishCompiler.FlushFuseTable 按 fuse_cost 合成。
+            //
+            // 早期这里会生成「transform into copy of 牌库随机一张」——
+            // 既丢掉了分档表，又让这张卡随机变成牌库里的任意一张，
+            // 与卡面「based on the total cost of the cards fused」完全无关。
+            return new List<EffectNode>();
         }
 
         // 分界之前是目标

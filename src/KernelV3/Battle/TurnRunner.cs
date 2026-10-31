@@ -437,10 +437,29 @@ public sealed class TurnRunner
             totalCost += m.Cost;
         }
 
-        var fuseCount = _schema.Counter("fuse_count");
-        var fuseCost = _schema.Counter("fuse_cost");
-        _state.WriteCounter(playerId, fuseCount, _state.ReadCounter(playerId, fuseCount) + 1);
-        _state.WriteCounter(playerId, fuseCost, _state.ReadCounter(playerId, fuseCost) + totalCost);
+        // 三个计数器全部挂在**这张卡**上，不是玩家级 —— 卡面写的是
+        // 「Fused to **this card**」，是这张卡各自的累计。
+        //   fuse_count：融合了几次
+        //   fuse_cost ：材料总费用（Striker / Fortifier 的分档判据）
+        //   fuse_kinds：不同卡号的数量（Ominous Artifact α 的 both / Sinciro 的 X）
+        var fuseCountKey = _schema.Counter("fuse_count");
+        var fuseCostKey = _schema.Counter("fuse_cost");
+        var fuseKindsKey = _schema.Counter("fuse_kinds");
+
+        baseCard.Counters.TryGetValue(fuseCountKey, out int fc);
+        baseCard.Counters.TryGetValue(fuseCostKey, out int fcost);
+        baseCard.Counters[fuseCountKey] = fc + 1;
+        baseCard.Counters[fuseCostKey] = fcost + totalCost;
+
+        // 种类数按「这张卡历史融合过的不同卡号」计。
+        // 记录放在 FusedKinds 集合里而不是只留一个整数，
+        // 否则同名材料重复喂会把 kinds 也算上去。
+        foreach (var m in materials)
+        {
+            int mid = m.Def?.CardId ?? 0;
+            if (mid != 0) baseCard.FusedKinds.Add(mid);
+        }
+        baseCard.Counters[fuseKindsKey] = baseCard.FusedKinds.Count;
 
         // 被融合吞掉的材料卡「离场但不在任何区域」（76-c 2.3-C）：
         // 不进墓场、不加 shadow、不触发 OnDiscard / OnLeaveField / 谢幕曲。
@@ -448,9 +467,22 @@ public sealed class TurnRunner
         // 还顺带把墓场计数与 shadow 数都算高了。
         foreach (var m in materials)
         {
-            _state.MoveEntity(m, ZoneRef.None, playerId);   // 摘出手牌，EntrySerial++
-            m.Zone = ZoneRef.None;                          // PlaceInZone 对 None 不落任何容器
-            _state.RemoveEntity(m);                         // 连 _all 一起摘掉：GetLive 永远取不到
+            // 材料进**融合素材区**，实体保留（不再销毁）。
+            //
+            // 之前是 MoveEntity(None) + RemoveEntity，材料彻底消失：
+            // 既没法按卡号去重数 fuse_kinds，UI 也展示不了这张卡吃了什么。
+            // 迁移仍走 MoveEntity，但目标区是 FuseMaterial —— 那里不在
+            // 「离开战场」的判定范围内（材料本来就在手牌），所以不会误发
+            // OnLeaveField；下方再显式挡掉 OnDiscard。
+            bool wasInHand = m.Zone == ZoneRef.Hand;
+            m.FusedIntoId = baseCard.EntityId;
+            _state.MoveEntity(m, ZoneRef.FuseMaterial, playerId);
+            if (wasInHand && m.Zone != ZoneRef.FuseMaterial)
+            {
+                // 极端兜底：迁移被拒时至少别让它留在手牌里当双份材料。
+                m.Zone = ZoneRef.None;
+                _state.RemoveEntity(m);
+            }
         }
 
         baseCard.FusedThisTurn = true;

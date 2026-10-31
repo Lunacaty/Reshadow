@@ -355,12 +355,17 @@ public static partial class Regress
         int cemAfter = st.EnumerateZone(ZoneRef.Cemetery, 0).Count();
         int shadowAfter = st.ReadCounter(0, st.Schema.Counter("shadow"));
         bool notInCemetery = !st.EnumerateZone(ZoneRef.Cemetery, -1).Any(x => x == mA || x == mB);
-        bool outOfPlay = mA.Zone == ZoneRef.None && mB.Zone == ZoneRef.None
+        // 材料现在停在**融合素材区**（实体保留），不再被销毁成 None。
+        // 仍然要求：已离开手牌、未进墓场、未被放逐。
+        bool outOfPlay = mA.Zone == ZoneRef.FuseMaterial && mB.Zone == ZoneRef.FuseMaterial
                          && !st.EnumerateZone(ZoneRef.Hand, 0).Any(x => x == mA || x == mB);
         bool noDiscard = !st.EventLog.Any(x => x.Kind == CoreEvent.OnDiscard);
         bool noLeave = !st.EventLog.Any(x => x.Kind == CoreEvent.OnLeaveField);
-        bool counts = st.ReadCounter(0, st.Schema.Counter("fuse_count")) == 1
-                      && st.ReadCounter(0, st.Schema.Counter("fuse_cost")) == 5;
+        // 三个融合计数器是**实体级**的（卡面写 Fused to **this card**），
+        // 不再记在玩家身上。
+        int fc = baseCard.Counters.TryGetValue(st.Schema.Counter("fuse_count"), out var fcv) ? fcv : 0;
+        int fcost = baseCard.Counters.TryGetValue(st.Schema.Counter("fuse_cost"), out var fcostv) ? fcostv : 0;
+        bool counts = fc == 1 && fcost == 5;
         bool onFuseFired = st.Players[1].Leader.Life == 19;
 
         chk("5-6a 融合材料离场但不进墓场",
@@ -371,8 +376,7 @@ public static partial class Regress
             "shadow " + shadowBefore + " -> " + shadowAfter + " discard=" + !noDiscard + " leave=" + !noLeave);
         chk("5-6c fuse_count / fuse_cost 正确累计，OnFuse 照发",
             counts && onFuseFired,
-            "count=" + st.ReadCounter(0, st.Schema.Counter("fuse_count"))
-            + " cost=" + st.ReadCounter(0, st.Schema.Counter("fuse_cost"))
+            "count=" + fc + " cost=" + fcost
             + " 敌方主战者=" + st.Players[1].Leader.Life);
     }
 

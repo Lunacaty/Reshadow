@@ -713,6 +713,27 @@ public sealed class BattleState : IVmWorld
         }
     }
 
+    /// <summary>
+    /// 清空某张卡名下停放的融合材料实体。
+    /// 只清实体，卡上的 fuse_count / fuse_cost / fuse_kinds 全部保留。
+    /// </summary>
+    private void ClearFuseMaterials(RuntimeEntity baseCard)
+    {
+        if (baseCard == null) return;
+        foreach (var p in Players)
+        {
+            for (int i = p.FuseMaterial.Count - 1; i >= 0; i--)
+            {
+                var m = p.FuseMaterial[i];
+                if (m == null) { p.FuseMaterial.RemoveAt(i); continue; }
+                if (m.FusedIntoId != baseCard.EntityId) continue;
+                p.FuseMaterial.RemoveAt(i);
+                m.Zone = ZoneRef.None;
+                _all.Remove(m);
+            }
+        }
+    }
+
     /// <summary>把实体从当前区域移除。</summary>
     private void Detach(RuntimeEntity e)
     {
@@ -753,6 +774,14 @@ public sealed class BattleState : IVmWorld
         // 迁入战场的路径不止 SpawnCard：能力把牌库/手牌/墓地的卡搬上场也走这里。
         // 不在这里通知，「进入战场时」与连携对这条路径一律失明。
         if (!leftBoard && toZone == ZoneRef.Board) NotifySummoned(e);
+
+        // 融合素材区在卡离开手牌（打出 / 被变化 / 被烧毁 / 被弃牌）时清空。
+        // 清的是**实体**，fuse_count / fuse_cost / fuse_kinds 三个计数器留在卡上 ——
+        // 否则 Sinciro 打出时 Fanfare 读到 fuse_kinds = 0，整条逻辑断掉。
+        if (toZone != ZoneRef.FuseMaterial && (toZone == ZoneRef.Board
+            || toZone == ZoneRef.Cemetery || toZone == ZoneRef.Banished
+            || toZone == ZoneRef.None || toZone == ZoneRef.Deck))
+            ClearFuseMaterials(e);
     }
 
     /// <summary>
