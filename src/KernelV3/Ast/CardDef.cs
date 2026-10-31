@@ -113,6 +113,15 @@ public sealed class CardDef
 
     public IReadOnlyList<AbilityDef> Abilities { get; init; } = Array.Empty<AbilityDef>();
 
+    /// <summary>
+    /// 这张卡是否有 `Fuse: ...` 材料声明。
+    ///
+    /// 材料声明段本身不产出能力（它只是告诉玩家能喂什么），
+    /// 但「with Fuse」这类**谓词**问的正是「这张卡能不能融合」。
+    /// 只查 OnFuse 能力会把纯材料声明卡误判成不能融合。
+    /// </summary>
+    public bool HasFuse { get; init; }
+
     /// <summary>原始英文文本（仅诊断用，不参与执行）。</summary>
     public string SourceText { get; init; } = "";
 

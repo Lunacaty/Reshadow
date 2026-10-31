@@ -66,6 +66,9 @@ public sealed class EnglishCompiler
 
         /// <summary>结晶模式（本体费用不够时按护符打出）。</summary>
         public Ast.CardDef CrystallizeDef { get; set; }
+
+        /// <summary>卡面是否有 `Fuse: ...` 材料声明（供「with Fuse」谓词判定）。</summary>
+        public bool HasFuse { get; set; }
     }
 
     /// <summary>编译整张卡的效果文本。</summary>
@@ -90,9 +93,11 @@ public sealed class EnglishCompiler
         BuildAltModeDefs(pre);
         _actions.CrestDefResolver = () => pre.CrestDef;
 
+        _sawFuseDecl = false;
         var r = CompileCore(text);
         r.CrestDef = pre.CrestDef ?? r.CrestDef;
         r.FaithDef = pre.FaithDef ?? r.FaithDef;
+        r.HasFuse = _sawFuseDecl;
         _actions.CrestDefResolver = null;
         return r;
     }
@@ -171,6 +176,9 @@ public sealed class EnglishCompiler
 
     /// <summary>当前正在编译的卡名（供 alt_modes 定义命名）。</summary>
     private string _currentCardName;
+
+    /// <summary>本卡是否出现过 Fuse 材料声明（由 CompileSegment 置位）。</summary>
+    private bool _sawFuseDecl;
 
     /// <summary>
     /// 把 alt_modes 里的 Crest / Faith 段各自编译成一个完整 CardDef 挂到 Result 上。
@@ -687,6 +695,7 @@ public sealed class EnglishCompiler
             // 循环剥离所有句首前缀（回合 / 频率 / 边界 / 头 / 事件 / 条件）
             var hb = new AbilityHeaderBuilder();
             _prefixes.ParseAll(c, hb);
+            if (hb.HasFuse) _sawFuseDecl = true;
 
             // 剥离掉能力头之后才露出来的变身表，例如
             //   "Fanfare: 1: A. 2: B. 3 or more: C."

@@ -307,7 +307,7 @@ public sealed class VmEval
 
     private readonly Dictionary<VmScope, Dictionary<int, int[]>> _splits = new();
 
-    private static bool MatchState(RuntimeEntity e, UnitState s) => s switch
+    private bool MatchState(RuntimeEntity e, UnitState s) => s switch
     {
         UnitState.Damaged => e.Life < e.MaxLife,
         UnitState.Evolved => e.IsEvolved,
@@ -319,8 +319,36 @@ public sealed class VmEval
         // 因此它是「攻击目标是不是随从」在触发阶段唯一可读的判据；
         // 缺了它，「Whenever X attacks a follower」只能退化成恒假谓词。
         UnitState.AttackedLeaderLastTurn => e.AttackedLeaderLastTurn,
+
+        // 「whose cost has been changed」/「with Fuse」/「with Last Words」/
+        // 「with On Spellboost」—— 这四种谓词 TargetParser 都会产出，
+        // 但这里一直没有分支，一律落进 default 的 false。
+        // 于是卡面上写着「取一张带 Fuse 的随从」时永远取不到任何东西。
+        UnitState.CostModified => e.Def != null && e.Cost != e.Def.BaseCost,
+        // 「with Fuse」问的是「这张卡能不能融合」（有没有 Fuse: 材料声明），
+        // 不是「有没有 OnFuse 触发器」—— 材料声明段本身不产出能力。
+        UnitState.HasFuse => e.Def?.HasFuse == true || HasAbilityOf(e, Core.CoreEvent.OnFuse),
+        UnitState.HasLastWords => HasAbilityOf(e, Core.CoreEvent.OnDestroy),
+        UnitState.HasOnSpellboost => HasAbilityOf(e, Core.CoreEvent.OnSpellboost),
         _ => false,
     };
+
+    /// <summary>
+    /// 实体（或它身上挂的授予能力）是否声明了指定事件的能力。
+    /// 「with Fuse」这类谓词问的是「它有没有这条能力」，不是「关键词表里有没有」。
+    /// </summary>
+    private bool HasAbilityOf(RuntimeEntity e, Core.CoreEvent ev)
+    {
+        if (e?.Def?.Abilities != null)
+            foreach (var ab in e.Def.Abilities)
+                if (ab?.Trigger != null && ab.Trigger.Event == ev) return true;
+        // 运行时授予的能力在 IVmWorld.GrantedAbilities 里，不在实体上。
+        if (e != null)
+            foreach (var (ge, gab) in _world.GrantedAbilities)
+                if (ge != null && ge.EntityId == e.EntityId
+                    && gab?.Trigger != null && gab.Trigger.Event == ev) return true;
+        return false;
+    }
 
     /// <summary>
     /// 从快照判状态。历史池（墓地/本局被破坏）里的条目只能落到这里 ——

@@ -43,6 +43,9 @@ public sealed class AbilityHeaderBuilder
     /// <summary>并列的第二个事件（"play or Fuse"）。null 表示只有 Event 一个。</summary>
     public CoreEvent? SecondaryEvent;
 
+    /// <summary>本段出现过 `Fuse: <材料>` 声明头（材料段本身不产出能力）。</summary>
+    public bool HasFuse;
+
     /// <summary>护符的初始吟唱值。属于卡牌属性，不是代价。</summary>
     public int? CountdownValue;
 
@@ -152,6 +155,8 @@ public sealed class PrefixParser
 
         b.Event = CoreEvent.OnFuse;
         b.EventExplicit = true;
+        // 材料声明段不产出能力，所以「这张卡能不能融合」必须单独记一个事实位。
+        b.HasFuse = true;
 
         // 消费融合材料描述，直到下一个已知头/触发词/事件从句
         while (!cur.IsAtEnd &&
