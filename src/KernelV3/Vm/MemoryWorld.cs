@@ -182,7 +182,15 @@ public sealed class MemoryWorld : IVmWorld
         EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
     }
 
-    public void EmitEvent(VmEvent ev) => EventLog.Add(ev);
+    /// <summary>事件转发出口（由 CardVm 注册）。null 时只记录不转发。</summary>
+    public Action<VmEvent> TriggerSink { get; set; }
+
+    public void EmitEvent(VmEvent ev)
+    {
+        if (ev == null) return;
+        EventLog.Add(ev);
+        TriggerSink?.Invoke(ev);
+    }
 
     public RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId)
     {

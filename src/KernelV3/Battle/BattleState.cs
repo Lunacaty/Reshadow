@@ -446,7 +446,23 @@ public sealed class BattleState : IVmWorld
 
     /// <summary>事件出口。VM 会把事件转成触发器，真正的入队由 CardVm 负责。</summary>
     public List<VmEvent> EventLog { get; } = new();
-    public void EmitEvent(VmEvent ev) { if (ev != null) EventLog.Add(ev); }
+
+    /// <summary>
+    /// 事件转发出口（IVmWorld.TriggerSink），由 CardVm 构造时注册。
+    ///
+    /// 之前这里只写 EventLog，VM 侧完全收不到 ——
+    /// 回合初抽牌的 OnDraw、能力伤害的 OnDamaged、能力破坏的 OnDestroy
+    /// 全都止步于日志，触发器一次都不会响应。
+    /// 转发只负责入队，结算顺序仍由 CardVm.StepUntilBlocked 独占。
+    /// </summary>
+    public Action<VmEvent> TriggerSink { get; set; }
+
+    public void EmitEvent(VmEvent ev)
+    {
+        if (ev == null) return;
+        EventLog.Add(ev);
+        TriggerSink?.Invoke(ev);
+    }
 
     public void ClearEvents() => EventLog.Clear();
 
@@ -607,7 +623,24 @@ public sealed class BattleState : IVmWorld
     /// 否则屏障、超进化免伤、伤害上限全部被绕过。
     /// </summary>
     public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId)
-        => new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId);
+    {
+        if (target == null || amount <= 0) return;
+
+        // CombatResolver 的伤害管线只负责数值与屏障，它的 vm 参数在这里是 null ——
+        // 也就是说能力伤害过去既不进 EventLog、也不进触发队列，
+        // 「当受到伤害时」对任何能力伤害一律失明。
+        // 由这里补发一条 OnDamaged：EventLog 与触发队列都拿得到，
+        // 而战斗伤害走 CombatResolver 自己的 vm 通道，不会重复。
+        int dealt = new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId);
+        if (dealt <= 0) return;   // 屏障吸收 / 超进化免伤：没有伤害就没有受伤事件
+
+        EmitEvent(new VmEvent
+        {
+            Kind = CoreEvent.OnDamaged,
+            Subject = EntityRef.From(target),
+            Amount = dealt,
+        });
+    }
 
     /// <summary>IVmWorld 接口实现：能力破坏，受保护拦截。</summary>
     void IVmWorld.DestroyEntity(RuntimeEntity e) => DestroyEntity(e);

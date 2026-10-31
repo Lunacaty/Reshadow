@@ -45,7 +45,26 @@ public sealed partial class CardVm
     {
         _world = world ?? throw new ArgumentNullException(nameof(world));
         _eval = new VmEval(world);
+
+        // 世界发出的事件必须进得了触发队列，否则「每当抽牌时」这类能力
+        // 只对显式 EnqueueEvent 的几处（入场曲 / 攻撃时 / 回合头）有效。
+        // 这里注册的是**唯一的**转发通道：世界先记账再调它，
+        // 而它只入队不推进 —— 结算时机仍由 StepUntilBlocked 独占。
+        _world.TriggerSink = OnWorldEvent;
     }
+
+    /// <summary>
+    /// 世界事件的转发落点。
+    ///
+    /// 只入队，不推进，也不写 EventLog（世界已经写过了）。
+    /// 转发只发生在世界的 EmitEvent 里，而 EnqueueEvent 的显式调用点
+    /// （入场曲 / 攻撃时 / 回合头 / 进化）走的是另一条路，两者没有交集，
+    /// 所以同一条事件不会被既转发又入队两次。
+    ///
+    /// 递归由 StepUntilBlocked 的步数上限兜住：事件触发出的能力再发事件时
+    /// 仍然排进同一个队列，由同一层主循环取用，不会增加调用栈深度。
+    /// </summary>
+    private void OnWorldEvent(VmEvent ev) => EnqueueEvent(ev);
 
     public VmStatus Status { get; private set; } = VmStatus.Idle;
     public PendingChoice Pending { get; private set; }
@@ -450,9 +469,7 @@ public sealed partial class CardVm
         else
         {
             if (ev.Subject == null) return false;
-            var scope0 = new VmScope { Owner = ZoneScope.Self, Controller = owner.PlayerId };
-            var pool0 = _eval.ResolveRef(trig.SubjectFilter, scope0);
-            if (!pool0.Any(r => r.EntityId == ev.Subject.Value.EntityId)) return false;
+            if (!SubjectMatches(trig.SubjectFilter, ev.Subject.Value, owner)) return false;
         }
 
         // 4. 副体过滤：Follower Strike 要求「攻击目标是随从」
@@ -476,7 +493,69 @@ public sealed partial class CardVm
         return true;
     }
 
-    /// <summary>把主体过滤表达式套到事件主体上求值。</summary>
+    /// <summary>
+    /// 把主体过滤表达式套到事件主体上求值。
+    ///
+    /// 判据的顺序很要紧：**通用「一张牌」过滤器先按归属判，其余一律按区域解析**。
+    ///
+    /// 为什么需要第一条：编译器为 "a card" 兜底出来的是一个
+    /// 「Self 场上任取一个」的选择器 —— 区域是 Board、无条件、不具名。
+    /// 而这类句子的主体在事件发生的那一刻根本不在场上：
+    ///   · "Whenever you play a card" —— 法术打出时它还在手牌区结算
+    ///   · "Whenever you draw a card" —— 抽到的牌在牌库/手牌之间移动
+    /// 按区域解析必然找不到它，于是手牌监听卡对法术永远失明（实测 15 / 20）。
+    ///
+    /// 这条豁免**只对「不具名、无附加条件」的过滤器生效**，而且仍然要求
+    /// 归属对得上（Self / Opponent / Any）。具名卡（CardId / CardName）、
+    /// 带条件（is Follower / 费用 / 攻击力）、限定历史池或排序的过滤器
+    /// 一律走原来的区域解析 —— 那才是它们真正的语义。
+    /// 它也不是 ActsAsOnField 的放宽：那条只对「事件主体自身 · OnPlay」生效，
+    /// 这里是「别的卡在监听」时的主体解析，两者的作用面互不重叠。
+    /// </summary>
+    private bool SubjectMatches(TargetSpec filter, EntityRef subject, RuntimeEntity owner)
+    {
+        if (IsGenericCardFilter(filter) && SubjectBelongsTo(filter.Owner, owner.PlayerId, subject))
+            return true;
+
+        var scope0 = new VmScope { Owner = ZoneScope.Self, Controller = owner.PlayerId };
+        var pool0 = _eval.ResolveRef(filter, scope0);
+        return pool0.Any(r => r.EntityId == subject.EntityId);
+    }
+
+    /// <summary>
+    /// 「一张牌」的兜底选择器：场上、不具名、不筛条件、不排序、不查历史。
+    ///
+    /// 区域必须是 Board —— 编译器给 "a card" 兜底的就是 Board，
+    /// 而 "your leader"（Leader）、"your hand"（Hand）这类选择器**不能**
+    /// 被当成泛化主体，否则「主战者受到伤害」会被一张随从的伤害满足。
+    /// </summary>
+    private static bool IsGenericCardFilter(TargetSpec t)
+    {
+        if (t == null) return false;
+        if (t.SourceKind != TargetSourceKind.Zone) return false;
+        if (t.Zone != ZoneRef.Board) return false;
+        if (t.CardId != 0 || !string.IsNullOrEmpty(t.CardName)) return false;
+        if (t.Slot is { Length: > 0 }) return false;
+        if (t.History != HistoryScope.None) return false;
+        if (t.DistinctByName) return false;
+        if (t.Sort != SortKey.None || t.SortDescending || t.TopN != 0) return false;
+        if (t.Where != null && !(t.Where is ConstBoolExpr cb && cb.Value)) return false;
+        return true;
+    }
+
+    /// <summary>事件主体是不是过滤表达式要求的归属方发出的。</summary>
+    private static bool SubjectBelongsTo(ZoneScope wanted, int watcherPlayer, EntityRef subject)
+    {
+        int ownerId = subject.Snapshot?.PlayerId ?? -1;
+        if (ownerId is < 0 or > 1) return false;
+        return wanted switch
+        {
+            ZoneScope.Self => ownerId == watcherPlayer,
+            ZoneScope.Opponent => ownerId == 1 - watcherPlayer,
+            ZoneScope.Any => true,
+            _ => false,
+        };
+    }
 
 
     /// <summary>用快照判断已离场实体是否满足过滤（谢幕曲读 LKI 时用）。</summary>

@@ -91,6 +91,21 @@ public interface IVmWorld
     /// <summary>产生一个事件，供触发器系统收集。</summary>
     void EmitEvent(VmEvent ev);
 
+    /// <summary>
+    /// 事件接收者 —— EmitEvent 写完 EventLog 之后，由它把**同一条**事件交给 VM。
+    ///
+    /// 没有这个出口时，BattleState 与 VM 之间没有任何连接：
+    /// 回合初抽牌、能力伤害、能力破坏发出的事件全部只进了 EventLog，
+    /// 于是「每当抽牌时」「当受到伤害时」「谢幕曲」对所有非战斗来源一律失明。
+    ///
+    /// 语义契约（实现必须全部满足）：
+    ///   1. 先写 EventLog，再转发 —— 记账不因转发失败而缺漏
+    ///   2. 每条事件只转发一次，且与入日志的顺序一致
+    ///   3. null 表示只记录不转发（没有 VM 的单测就是这种状态）
+    /// 转发**只入队**，不在这里推进结算；结算仍由 CardVm.StepUntilBlocked 独占。
+    /// </summary>
+    Action<VmEvent> TriggerSink { get; set; }
+
     /// <summary>按卡号生成一张新卡并放进指定区域。</summary>
     RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId);
 

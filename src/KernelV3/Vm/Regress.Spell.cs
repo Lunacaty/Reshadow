@@ -88,6 +88,14 @@ public static partial class Regress
         // ── 4. 只执行一次：移区不得造成重复触发 ──
         // 手牌里同时放一张印着 Fanfare 的旁观卡和一张手牌监听卡：
         // 旁观卡若被豁免误伤会多打 3 点，法术若触发两次会多打 2 点。
+        //
+        // 期望 13 = 20 - 2（本卡入场曲）- 5×1（手牌监听卡响应 1 次）。
+        //   若为 11   → 法术自身能力结算了两次（多扣 2）
+        //   若为 10   → 旁观卡被区域豁免误伤（多扣 3）
+        //   若为 8    → 两者同时发生
+        // 手牌监听卡对**法术**打出响应 1 次是官方语义（"play a card" 包含法术）；
+        // 本条早期版本把「对法术 0 响应」写进期望，那是触发链路的既有缝隙，
+        // 已在本轮修复（见 Regress.Trigger.cs），此处守的是修复后的正确数值。
         {
             var st = NewSpellState(seed: 313, out var tr, out var vm);
             var spellR = comp.Compile("Fanfare: Deal 2 damage to the enemy leader.");
@@ -103,19 +111,25 @@ public static partial class Regress
             var card = st.SpawnCard(401, ZoneRef.Hand, 0);
             tr.PlayCard(0, card, vm);
             int enemy = st.Players[1].Leader.Life;
-            Check("spell-4 法术能力只结算一次（18，不是 16/13）、旁观卡未被豁免",
-                  enemy == 18 && b1.Zone == ZoneRef.Hand && b2.Zone == ZoneRef.Hand,
-                  $"enemyLeader={enemy} fanfareBystander={b1.Zone} handListener={b2.Zone}");
+            Check("spell-4 法术能力只结算一次（13 = 2 + 5×1；11=法术触发两次，10=旁观卡被误伤）",
+                  enemy == 13 && b1.Zone == ZoneRef.Hand && b2.Zone == ZoneRef.Hand,
+                  $"enemyLeader={enemy}（13 期望 / 11 法术结算两次 / 10 旁观卡误伤）" +
+                  $" fanfareBystander={b1.Zone} handListener={b2.Zone}");
         }
 
         // ── 5. 手牌监听卡的响应次数不因「法术有了能力」而改变 ──
         // 这是豁免边界的判据：唯一变量是「被法术自身的 Fanfare 结算过」，
         // 手牌监听卡（Activates in hand）的触发次数必须前后一致。
         //
-        // 对照的是「同一张卡但身上没有能力」—— 而不是「打出随从」：
-        // 手牌监听卡的 SubjectFilter（"play a card"）只在 Board 里解析，
-        // 于是它对**所有**法术打出都不响应、对随从打出响应 1 次。
-        // 这是触发链路的既有缝隙，与本改动无关（基线实测同样如此）。
+        // 口径：withAb = 2（法术 Fanfare）+ 5×1（监听 1 次）= 7
+        //       withoutAb = 0 + 5×1 = 5
+        //
+        // 本条早期版本断言 hitsWith == 0（对法术 0 响应）—— 那是
+        // 「SubjectFilter 只在 Board 里解析」这条触发链路缝隙造成的，
+        // 缝隙已在本轮修复（T2，见 Regress.Trigger.cs）。
+        // 修复后本条反而更强：它现在断言响应次数**恰好是 1**
+        // （不是 0 = 又回去了，也不是 2 = 双重触发），
+        // 同时仍守住「法术自身有没有入场曲不影响监听卡的响应次数」这个原始意图。
         {
             int PlaySpell(bool withFanfare, out int handListenerHits)
             {
@@ -139,10 +153,10 @@ public static partial class Regress
 
             int withAb = PlaySpell(true, out int hitsWith);
             int withoutAb = PlaySpell(false, out int hitsWithout);
-            Check("spell-5 手牌监听卡响应次数不因法术结算而改变（有/无入场曲同值）",
-                  withAb == 2 && withoutAb == 0 && hitsWith == hitsWithout && hitsWith == 0,
-                  $"withFanfareDealt={withAb} withoutFanfareDealt={withoutAb} " +
-                  $"hitsWith={hitsWith} hitsWithout={hitsWithout}");
+            Check("spell-5 手牌监听卡对法术打出响应恰好 1 次，且不因入场曲而改变",
+                  withAb == 7 && withoutAb == 5 && hitsWith == hitsWithout && hitsWith == 1,
+                  $"withFanfareDealt={withAb}（7 = 2+5×1）withoutFanfareDealt={withoutAb}（5 = 0+5×1）" +
+                  $" hitsWith={hitsWith} hitsWithout={hitsWithout}（0=缝隙仍在，2=双重触发）");
         }
 
         // ── 6. 随从 / 护符的入场曲完全不退化 ──
