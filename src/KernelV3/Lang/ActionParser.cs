@@ -219,9 +219,35 @@ public sealed class ActionParser
             case "double": return ParseDouble(cur);
             case "increase":
             {
-                // "Increase the number of Modes you can select by 1"
                 int svNum = cur.Position;
                 cur.Advance();
+
+                // "Increase this faith's value by 1" / "increase your faith's value by N"
+                // 这是信仰增长的标准写法，此前完全没有分支，整句停在 [this]。
+                if (cur.MatchPhrase("this", "faith's", "value")
+                    || cur.MatchPhrase("your", "faith's", "value")
+                    || cur.MatchPhrase("this", "crest's", "count")
+                    || cur.MatchPhrase("your", "crest's", "count"))
+                {
+                    var ctr = "faith";
+                    cur.TryMatchAnyWord("by");
+                    var inc = ParseNumExpr(cur);
+                    return new List<EffectNode>
+                    {
+                        new ModifyCounterNode
+                        {
+                            Target = TargetSpec.Self,
+                            Owner = ZoneScope.Self,
+                            Counter = _lex.Counter(ctr),
+                            Op = CounterOp.Add,
+                            Delta = inc,
+                        },
+                    };
+                }
+                cur.Seek(svNum);
+                cur.Advance();
+
+                // "Increase the number of Modes you can select by 1"
                 if (cur.MatchPhrase("the", "number", "of", "modes"))
                 {
                     while (!cur.IsAtEnd && !cur.Current.IsWord("by")) cur.Advance();

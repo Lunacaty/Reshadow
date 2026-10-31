@@ -536,6 +536,39 @@ public static class ConditionCompiler
             };
         }
 
+        // ---- 信仰值 / 纹章个数的直接比较 ----
+        // "If your faith's value is at least 5" / "if this crest's count is 3"
+        // 这类不带 "you have" 的写法此前完全没有分支，整句报「条件无法建模」。
+        {
+            int fvSave = c.Position;
+            bool sawFaith = false, sawCrest = false;
+            if (c.MatchPhrase("your", "faith's", "value") || c.MatchPhrase("this", "faith's", "value"))
+                sawFaith = true;
+            else if (c.MatchPhrase("your", "crest's", "count") || c.MatchPhrase("this", "crest's", "count"))
+                sawCrest = true;
+
+            if (sawFaith || sawCrest)
+            {
+                c.MatchWord("is");
+                var op = CompareOp.Ge;
+                if (c.MatchPhrase("at", "least")) op = CompareOp.Ge;
+                else if (c.MatchPhrase("at", "most")) op = CompareOp.Le;
+                var n = ReadNumber(c);
+                if (c.MatchWord("or"))
+                {
+                    if (c.MatchWord("more")) op = CompareOp.Ge;
+                    else if (c.MatchWord("less")) op = CompareOp.Le;
+                }
+                return new CompareExpr
+                {
+                    Left = NumExpr.Ctr(lex.Counter(sawFaith ? "faith" : "crest")),
+                    Op = op,
+                    Right = NumExpr.Const(n),
+                };
+            }
+            c.Seek(fvSave);
+        }
+
         // ---- 资源 / 手牌 / 场上计数类 ----
 
         // "both players <谓词>" —— 双主语，必须展开成两侧合取。

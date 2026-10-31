@@ -573,8 +573,9 @@ public sealed class EnglishCompiler
             // 先落盘才能保证两段选项不会被并进同一个 BranchModeNode。
             FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
                            ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeKind,
-                           modeDepth);
+                           modeDepth, modeGrantTarget);
             modeDepth.Clear();
+            modeGrantTarget = null;
 
             var c = new TokenCursor(sent);
 
@@ -771,6 +772,9 @@ public sealed class EnglishCompiler
             var pick = ExtractModePick(sent, out var pickKind);
             if (pick != null)
             {
+                // "Give <目标> N random abilities from the following" 的受予者。
+                // 不解析它，模式块就是空壳：选项正确却不知道该挂给谁。
+                modeGrantTarget = TryExtractModeGrantTarget(sent);
                 modeTrigger = hb.BuildTrigger();
                 modeCondition = AndCosts(hb.Condition, hb.Costs);
                 modeCosts = hb.Costs;
@@ -930,8 +934,9 @@ public sealed class EnglishCompiler
         // 收尾：把剩余的模式选项落成 BranchModeNode
         FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
                        ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeKind,
-                       modeDepth);
+                       modeDepth, modeGrantTarget);
         modeDepth.Clear();
+        modeGrantTarget = null;
 
         // 收尾：融合变身表并进它所修饰的那条能力
         // 档位表常被换行切成独立段落（"…transform it…\n1: A\n2: B\n3 or more: C"），
@@ -1051,6 +1056,31 @@ public sealed class EnglishCompiler
     ///
     /// 返回 null 表示这不是模式引导句。
     /// </summary>
+    /// <summary>
+    /// "Give <目标> N random abilities from the following" 里的受予者。
+    /// 只对以 give 引导的模式句有意义；其余返回 null（模式块没有受予者）。
+    /// </summary>
+    private TargetSpec TryExtractModeGrantTarget(IReadOnlyList<Token> sent)
+    {
+        int gi = -1;
+        for (int k = 0; k < sent.Count; k++)
+            if (sent[k].IsWord("give")) { gi = k; break; }
+        if (gi < 0) return null;
+
+        var rest = new List<Token>();
+        for (int k = gi + 1; k < sent.Count; k++)
+        {
+            if (sent[k].Kind == TokKind.Number) break;
+            if (sent[k].IsAnyWord("random", "abilities", "ability", "from", "the", "following")) break;
+            rest.Add(sent[k]);
+        }
+        if (rest.Count == 0) return null;
+        return _target.TryParse(new TokenCursor(rest));
+    }
+
+    /// <summary>模式块「Give <目标> N random abilities」的受予者。</summary>
+    private TargetSpec modeGrantTarget;
+
     private static NumExpr ExtractModePick(IReadOnlyList<Token> sent, out ModeDispatchKind kind)
     {
         kind = ModeDispatchKind.Choose;
@@ -1147,7 +1177,8 @@ public sealed class EnglishCompiler
         ref SectionZone zone,
         ref NumExpr pick,
         ref ModeDispatchKind kind,
-        List<int> depths = null)
+        List<int> depths = null,
+        TargetSpec grantTarget = null)
     {
         if (options.Count == 0) return;
 
@@ -1203,6 +1234,9 @@ public sealed class EnglishCompiler
                     Kind = kind,
                     PickCount = pick,
                     Options = options,
+                    // "Give <目标> N random abilities from the following" 的受予者。
+                    // 为 null 表示「模式是玩家自己选的」，与受予者无关（Select a Mode）。
+                    GrantTarget = grantTarget,
                 },
             },
         });
@@ -1459,6 +1493,17 @@ public sealed class EnglishCompiler
             for (int i = 1; i < Math.Min(sent.Count, 8); i++)
                 if (sent[i].IsAnyWord("is", "are", "starts")) return true;
         }
+
+        // "This faith's value starts at 0." —— 信仰的初始值声明。
+        // 它不是动作，而是资源计数器的初值，必须在编译期登记到 _initialCounters。
+        // 不识别的话整句会被当成动作解析，停在 [This] 报「无法推进」。
+        if (sent.Count >= 5
+            && sent[0].IsWord("this")
+            && sent[1].IsAnyWord("faith's", "crest's")
+            && sent[2].IsWord("value")
+            && sent[3].IsWord("starts"))
+            return true;
+
         return false;
     }
 
@@ -1676,6 +1721,18 @@ public sealed class EnglishCompiler
             _variableBindings["Y"] = NumExpr.SplitOf(ctr, 1);
             _variableBindings["Z"] = NumExpr.SplitOf(ctr, 2);
             return;
+        }
+
+        // "This faith's value starts at N" —— 信仰初始值，直接写进 faith 计数器。
+        if (sent.Count >= 5 && sent[0].IsWord("this") && sent[2].IsWord("value"))
+        {
+            string ctrName = sent[1].IsAnyWord("crest's") ? "crest" : "faith";
+            for (int k = 3; k < sent.Count; k++)
+            {
+                if (sent[k].Kind != TokKind.Number) continue;
+                _initialCounters[ctrName] = sent[k].Value;
+                return;
+            }
         }
 
         // "X starts at 0"

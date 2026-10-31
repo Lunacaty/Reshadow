@@ -289,6 +289,15 @@ public sealed partial class CardVm
             Pending = null;
             Status = VmStatus.Running;
 
+            // 「Whenever you select Modes, ...」的触发点：玩家确认选择之后、
+            // 选项执行之前。信仰靠它每次 +1。
+            _world.EmitEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnSelectMode,
+                PlayerId = frame.Scope.ResolvePlayer(frame.Scope.Owner),
+            });
+            StepUntilBlocked();
+
             if (branchNode != null)
             {
                 // 多选模式按**选项编号升序**执行，与玩家点选顺序无关（76-c 6.2-7）。

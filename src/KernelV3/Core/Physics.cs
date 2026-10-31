@@ -100,6 +100,9 @@ public enum CoreEvent
     OnSpellboost,
     OnCountdownExpire,
 
+    /// <summary>选择了 Mode（"Whenever you select Modes, increase this faith's value by 1"）。</summary>
+    OnSelectMode,
+
     // 判负条件
     OnDeckOut,
 

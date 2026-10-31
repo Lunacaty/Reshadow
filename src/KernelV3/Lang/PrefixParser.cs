@@ -440,6 +440,13 @@ public sealed class PrefixParser
                 b.SubjectFilter = TargetSpec.Self;
                 if (cur.Current.Kind == TokKind.Comma) cur.Advance();
             }
+            // "Whenever you select Modes, ..." —— 选择 Mode 本身是一个事件。
+            else if (cur.MatchPhrase("select", "modes") || cur.MatchPhrase("select", "mode"))
+            {
+                b.Event = CoreEvent.OnSelectMode; b.EventExplicit = true;
+                b.SubjectFilter = null;   // 「你」选择的，不是某张卡的状态
+                if (cur.Current.Kind == TokKind.Comma) cur.Advance();
+            }
             else if (cur.MatchWord("draw")) { b.Event = CoreEvent.OnDraw; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("play", "or", "fuse"))
             {
