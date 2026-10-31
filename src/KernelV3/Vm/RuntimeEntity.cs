@@ -99,6 +99,21 @@ public sealed class RuntimeEntity
     public int FusedIntoId { get; set; }
 
     /// <summary>
+    /// 激奏 / 结晶打出前的本体卡面定义。
+    ///
+    /// 结晶护符在场上必须**保持** CrystallizeDef —— 那是它有吟唱与谢幕曲的依据。
+    /// 只有回到手牌（洗白为印刷值）时才还原成本体，手牌里必须显示本体卡面。
+    /// </summary>
+    public Ast.CardDef OriginalDef { get; set; }
+
+    /// <summary>
+    /// 「Remove Last Words」是否已生效。
+    /// 谢幕曲是一条 AbilityDef（OnDestroy），不是关键词，
+    /// 单纯 Keywords.Remove("last words") 拦不住它 —— 必须单独记一个事实位。
+    /// </summary>
+    public bool LastWordsRemoved { get; set; }
+
+    /// <summary>
     /// 这是否是一个信仰实体（住在纹章区，但不算纹章）。
     /// 纹章相关的效果必须按这个标志排除信仰。
     /// </summary>

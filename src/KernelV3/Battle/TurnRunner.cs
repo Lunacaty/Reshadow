@@ -197,10 +197,12 @@ public sealed class TurnRunner
         // "Can't be played"（融合专用配件卡）禁止打出
         if (card.Keywords.Contains(_schema.Keyword("cannot_be_played"))) return false;
 
-        // 随从与护符：战场已满 5 张时禁止打出
+        // 随从与护符：战场已满 5 张时禁止按**本体**打出。
+        // 但「满场」不该拦住激奏 —— 激奏按法术结算，根本不占格子。
+        // 所以这里只记下事实，真正的拦截放到确认走本体路径之后再判。
         bool isFollowerOrAmulet = card.Def.Kind == Ast.CardKind.Follower
                                   || card.Def.Kind == Ast.CardKind.Amulet;
-        if (isFollowerOrAmulet && p.Board.Count >= PlayerState.MaxBoard) return false;
+        bool boardFull = p.Board.Count >= PlayerState.MaxBoard;
 
         var ppKey = _schema.Counter("pp");
         int pp = _state.ReadCounter(playerId, ppKey);
@@ -216,13 +218,18 @@ public sealed class TurnRunner
         // 规则的顺序是：能按本体打出就必须按本体，只有不够时才允许这两者。
         if (pp < pay)
         {
+            // 激奏：按法术结算，不占战场格子，满场也允许。
             if (card.Def?.AccelerateDef != null && pp >= card.Def.AccelerateDef.BaseCost)
                 return PlayAsAltMode(playerId, card, card.Def.AccelerateDef, isAccelerate: true, vm);
+            // 结晶：按护符进场，占格子，满场不允许。
             if (card.Def?.CrystallizeDef != null && pp >= card.Def.CrystallizeDef.BaseCost
-                && p.Board.Count < PlayerState.MaxBoard)
+                && !boardFull)
                 return PlayAsAltMode(playerId, card, card.Def.CrystallizeDef, isAccelerate: false, vm);
             return false;
         }
+
+        // 能按本体打出时的满场拦截。
+        if (isFollowerOrAmulet && boardFull) return false;
 
         // ── 2. 法术的手选目标预检（随从/护符不受限）──
         if (card.Def.Kind == Ast.CardKind.Spell && !HasLegalTargetForSpell(card)) return false;
@@ -296,11 +303,24 @@ public sealed class TurnRunner
         if (pp < cost) return false;
 
         var original = card.Def;
+
+        // 激奏按法术结算，必须先在**法术形态下**做目标预检 ——
+        // 否则一张需要指定目标的激奏在没有合法目标时照样能打出去。
+        if (isAccelerate)
+        {
+            var probe = card.Def;
+            card.Def = altDef;
+            bool legal = HasLegalTargetForSpell(card);
+            card.Def = probe;
+            if (!legal) return false;
+        }
+
         _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), pp);
         _state.WriteCounter(playerId, ppKey, pp - cost);
         _state.WriteCounter(playerId, _schema.Counter("combo"),
             _state.ReadCounter(playerId, _schema.Counter("combo")) + 1);
 
+        card.OriginalDef = original;
         card.Def = altDef;
         card.Cost = cost;
 
@@ -313,19 +333,35 @@ public sealed class TurnRunner
             var shadowKey = _schema.Counter("shadow");
             _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
             BumpSpellboost(playerId, vm);
+            // 进墓地后还原：手牌 / 墓地里的这张卡必须显示本体卡面。
+            card.Def = original;
+            card.OriginalDef = null;
         }
         else
         {
-            // 结晶：按护符进场，装配它自己的吟唱与关键词。
-            _state.MoveEntity(card, ZoneRef.Board, playerId);
+            // 结晶：按护符进场。
+            //
+            // 必须先洗掉本体随从的一切：手牌里它已经带着本体的身材与关键词。
+            // 不清就变成「带守护和必杀的结晶护符」。
+            card.Attack = 0;
+            card.Life = 0;
+            card.MaxLife = 0;
+            card.Keywords.Clear();
+            card.KeywordValues.Clear();
+            card.Counters.Clear();
+            card.TempModifiers.Clear();
             _state.MountInnateProperties(card);
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEnterField, Subject = EntityRef.From(card) });
+
+            // MoveEntity 内部已通过 NotifySummoned 发过 OnEnterField，这里只补 OnPlay。
+            _state.MoveEntity(card, ZoneRef.Board, playerId);
             vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
             vm?.StepUntilBlocked();
         }
 
-        // 还原本体卡面：这张卡之后若被回手 / 回收，手牌里必须是本体。
-        card.Def = original;
+        // 结晶路径**不能**在这里还原本体 Def —— 它现在是一张场上的护符，
+        // 吟唱与谢幕曲都挂在 CrystallizeDef 上，还原等于把它变回随从，
+        // 吟唱到期时也找不到谢幕曲了。
+        // 还原交给 ResetToPrintedValues（回手 / 回收时读 OriginalDef）。
         return true;
     }
 

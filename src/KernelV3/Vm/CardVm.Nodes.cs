@@ -553,6 +553,14 @@ public sealed partial class CardVm
     /// </summary>
     private void ResetToPrintedValues(RuntimeEntity t)
     {
+        // 激奏 / 结晶打出的卡，在手牌里必须显示**本体**卡面。
+        // OriginalDef 是打出时记下的本体定义，回手 / 回收时据此还原。
+        if (t.OriginalDef != null)
+        {
+            t.Def = t.OriginalDef;
+            t.OriginalDef = null;
+        }
+
         var def = t.Def;
         t.Attack = def?.BaseAttack ?? t.Attack;
         t.Life = def?.BaseLife ?? t.Life;
