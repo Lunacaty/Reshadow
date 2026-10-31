@@ -435,10 +435,18 @@ public static partial class DocAcceptanceTest
             st.TurnNumber = 5;
             st.WriteCounter(0, st.Schema.Counter("pp"), 10);
             st.WriteCounter(0, st.Schema.Counter("shadow"), 5);
+            // 牌库要有牌，否则抽牌是空操作。
+            for (int i = 0; i < 6; i++) st.SpawnCard(16, ZoneRef.Deck, 0);
             var c = st.SpawnCard(16, ZoneRef.Hand, 0);
+            int handBefore = st.EnumerateZone(ZoneRef.Hand, 0).Count();
             tr.PlayCard(0, c, vm);
             int shadowLeft = st.ReadCounter(0, st.Schema.Counter("shadow"));
-            Ok("c-6.2-4", "Necromancy 扣除墓场", shadowLeft <= 5, $"shadowLeft={shadowLeft}");
+            int handAfter = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+            // 播出的那张离开手牌（−1），Necromancy 的"抽 1 张"（+1），净 0；
+            // 抽牌没生效时 handAfter 会是 0。
+            Ok("c-6.2-4", "Necromancy 扣除墓场并抽到牌",
+               shadowLeft == 2 && handAfter == handBefore,
+               $"shadowLeft={shadowLeft} hand={handBefore}->{handAfter}");
         }
 
         // 6.2-5 奥义阈值

@@ -1539,8 +1539,13 @@ public sealed class EnglishCompiler
                 CostKind.Necromance => Compare("shadow", c.Amount),
                 // Earth Rite (N)：需要破坏自己 N 个护符 —— 用 earth_sigil 计数判定
                 CostKind.DestroyAlly => Compare("earth_sigil", c.Amount),
-                // Enhance (N) / Engage (N)：需要 N 点 PP
-                CostKind.UsePp => Compare("pp", c.Amount),
+                // Enhance (N)：判档读「打出前」的 PP（TurnRunner.PlayCard 写入）。
+                // 读当前 pp 是错的 —— 费用已经扣掉，5 费打 Enhance (4) 时只剩 1，判定必然失败。
+                // Engage (N)：不生成条件。档位由 TurnRunner.EngageAmulet 这个入口检查并扣费，
+                // 这里再判一次就会和入口互相打架。
+                CostKind.UsePp => IsEnhanceCost(c)
+                    ? Compare("pp_at_play", c.Amount)
+                    : null,
                 // Countdown (N)：护符每回合减 1，减到 0 触发。
                 // 它不是"条件"而是"初始计数"，但数值必须留在 AST 里 ——
                 // 之前一律 continue 跳过，Countdown (4) 的 4 就整条蒸发了。
@@ -1551,6 +1556,9 @@ public sealed class EnglishCompiler
             acc = BoolExpr.And(acc, expr);
         }
         return acc;
+
+        static bool IsEnhanceCost(CostSpec c)
+            => c.Label != null && c.Label.Equals("enhance", StringComparison.OrdinalIgnoreCase);
 
         CompareExpr Compare(string counter, NumExpr amount) => new()
         {

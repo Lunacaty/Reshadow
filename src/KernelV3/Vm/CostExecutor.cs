@@ -36,8 +36,10 @@ public static class CostExecutor
             int need = Value(c.Amount);
             switch (c.Kind)
             {
+                // PP 的唯一扣费入口是 TurnRunner.PlayCard（按最高可付档）与
+                // TurnRunner.EngageAmulet（扣 N 点）。这里绝不能再判一次：
+                // 判定时 PP 已经被扣过，再判必然失败，整条能力（含基础部分）被吞掉。
                 case CostKind.UsePp:
-                    if (world.ReadCounter(playerId, ppKey) < need) return false;
                     break;
 
                 case CostKind.Necromance:
@@ -77,8 +79,8 @@ public static class CostExecutor
             int need = Value(c.Amount);
             switch (c.Kind)
             {
+                // 同上：费用已由 TurnRunner 扣过，再扣一次就是双重扣费。
                 case CostKind.UsePp:
-                    world.WriteCounter(playerId, ppKey, world.ReadCounter(playerId, ppKey) - need);
                     break;
                 case CostKind.Necromance:
                     world.WriteCounter(playerId, shadowKey, world.ReadCounter(playerId, shadowKey) - need);

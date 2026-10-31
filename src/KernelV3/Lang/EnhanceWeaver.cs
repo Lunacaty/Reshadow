@@ -30,7 +30,10 @@ public static class EnhanceWeaver
     /// </summary>
     public static List<AbilityDef> Weave(List<AbilityDef> abilities, Lexicon lex)
     {
-        if (abilities == null || abilities.Count < 2) return abilities;
+        // 只有 1 条能力时也要走后面的分支构造：
+        // "Enhance (4): Give this follower +3/+3." 这种单条 Enhance 卡，
+        // 之前被 Count < 2 挡在门外，档位判定就退化成一个「先扣费再判当前 PP」的死条件。
+        if (abilities == null || abilities.Count < 1) return abilities;
 
         var result = new List<AbilityDef>();
         var consumed = new HashSet<int>();

@@ -170,10 +170,16 @@ public static partial class DocAcceptanceTest
             st.ActivePlayer = 0;
             st.TurnNumber = 5;
             st.WriteCounter(0, st.Schema.Counter("pp"), 5);
+            // 牌库要有牌，否则"抽牌"是空操作，断言只能看见扣费、看不见抽牌。
+            for (int i = 0; i < 6; i++) st.SpawnCard(7, ZoneRef.Deck, 0);
             var card = st.SpawnCard(7, ZoneRef.Hand, 0);
             tr.PlayCard(0, card, vm);
             int left = st.ReadCounter(0, st.Schema.Counter("pp"));
-            Ok("b-规则6", "Enhance 强制按最高档扣费", left == 1, $"ppLeft={left}");
+            // 起始手牌只有被播出的那一张：打出 −1，基础抽 1 + Enhance 抽 2 = 净 3。
+            // 只断言扣费的话，抽牌整个坏掉也照样绿。
+            int hand = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+            Ok("b-规则6", "Enhance 强制按最高档扣费并执行高档效果",
+               left == 1 && hand == 3, $"ppLeft={left} hand={hand}");
         }
 
         // 规则 7：土之印层数与执行统一
