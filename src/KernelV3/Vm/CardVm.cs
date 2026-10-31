@@ -46,6 +46,13 @@ public sealed partial class CardVm
         _world = world ?? throw new ArgumentNullException(nameof(world));
         _eval = new VmEval(world);
 
+        // 符号表必须与世界对齐：SymbolId 的 Id 由 GameSchema 分配，
+        // 而 BattleState.ReadCounter 按整数 Id 索引字典。
+        // 若虚拟机与对局各持一个 CreateDefault() 实例，运行时动态注册的符号
+        // （mode_activated_mask / cards_returned_to_hand / fuse_kinds …）
+        // 会在两个实例里拿到不同 Id —— 读计数器直接串槽。
+        if (world is Battle.BattleState bs0 && bs0.Schema != null) Schema = bs0.Schema;
+
         // 世界发出的事件必须进得了触发队列，否则「每当抽牌时」这类能力
         // 只对显式 EnqueueEvent 的几处（入场曲 / 攻撃时 / 回合头）有效。
         // 这里注册的是**唯一的**转发通道：世界先记账再调它，
@@ -356,9 +363,17 @@ public sealed partial class CardVm
             }
         }
 
+        // 待压栈的能力：必须先「按主客场+旧新顺序」正向判完条件与代价，
+        // 再倒序压进 LIFO 帧栈（倒序压栈才能正序执行）。
+        // 不能把外层循环直接倒过来 —— 那样排在后面的能力会先扣掉 necromancy 的墓场
+        // 与 earth rite 的土之印，前面的能力反而没资源可用。
+        var toPush = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope)>();
+
         foreach (var kv in byEntity)
         {
             var e = kv.Value[0].e;
+            // 沉默：被剥夺能力的实体不再响应任何印制能力或已授予能力。
+            if (e.IsSilenced) continue;
             foreach (var (_, ab) in kv.Value)
             {
                 if (ab.Trigger == null) continue;
@@ -394,9 +409,14 @@ public sealed partial class CardVm
                 if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey)) continue;
                 CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey);
 
-                PushBody(ab.Body, scope);
+                toPush.Add((ab.Body, scope));
             }
         }
+
+        // 倒序压栈 = 正序执行（_frames 是后进先出）。
+        // 正序压栈会让整批能力的执行顺序反转，违反 76-c 4.1 铁律 2。
+        for (int i = toPush.Count - 1; i >= 0; i--)
+            PushBody(toPush[i].body, toPush[i].scope);
     }
 
     private static void AddCandidate(

@@ -17,8 +17,16 @@ namespace ShadowverseFan.KernelV3.Lang;
 
 public sealed class Lexicon
 {
-    /// <summary>符号注册表。Lang 层一切符号必须经由它取得真实 Id。</summary>
-    public GameSchema Schema { get; } = GameSchema.CreateDefault();
+    /// <summary>
+    /// 符号注册表。Lang 层一切符号必须经由它取得真实 Id。
+    ///
+    /// 必须可注入：SymbolId 的 Id 由 GameSchema 分配，而 BattleState.ReadCounter
+    /// 是按整数 Id 索引字典的。若编译器与对局各持一个 CreateDefault() 实例，
+    /// 两边对同一个符号名会分配出不同的 Id，动态注册的计数器直接串槽。
+    /// </summary>
+    public GameSchema Schema { get; }
+
+    public Lexicon(GameSchema schema = null) => Schema = schema ?? GameSchema.CreateDefault();
 
     private readonly Dictionary<string, int> _cardNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _cardIds = new(StringComparer.OrdinalIgnoreCase);
