@@ -414,8 +414,15 @@ public sealed class VmEval
 
     private bool RefHasTrait(EntityRef r, SymbolId<TraitTag> trait)
     {
-        var live = RefLive(r);
-        if (live != null) return live.Traits.Contains(trait);
+        // 活体优先，但**快照作为补充**：快照是在实体创建那一刻拍的，
+        // 之后由效果追加的兵种（如把一张牌视作 Loot / Departed）不在快照里。
+        // 只认快照会让「Whenever you play a Loot card」这类判定恒假 ——
+        // 那张牌确实是 Loot，只是它变成 Loot 的时间晚于快照。
+        // 载体优先（按 EntityId 找回，容忍流水号变化），其次快照。
+        // 用 RefLive 会把「刚移过区、EntrySerial 已 ++」的实体判成已死，
+        // 于是只剩快照 —— 而快照是创建那一刻拍的，不含后来追加的兵种。
+        var carrier = RefCarrier(r);
+        if (carrier != null && carrier.Traits.Contains(trait)) return true;
         return r.Snapshot != null && r.Snapshot.Traits.Contains(trait);
     }
 

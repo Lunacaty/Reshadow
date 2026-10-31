@@ -44,6 +44,20 @@ public sealed class MacroTag { }
 /// </summary>
 public readonly record struct SymbolId<T>(int Id, string Name)
 {
+    /// <summary>
+    /// 相等性**只按 Id**，不按 Name。
+    ///
+    /// 理由：Id 是 GameSchema 分配的唯一身份，Name 只是给人和打印器看的标签。
+    /// 同一个符号在不同 Schema 实例里可能以不同大小写首次注册
+    /// （Lexicon 用 "loot"、BattleState 用 "Loot"），Id 相同、Name 不同。
+    /// 若按 default record 的「(Id, Name) 全等」比较，
+    /// 一张卡身上的 trait 与条件里的 trait 会被判成两个不同的东西 ——
+    /// 实测 `HasTraitExpr` 因此对明明带着 Loot 的卡恒判 false。
+    /// </summary>
+    public bool Equals(SymbolId<T> other) => Id == other.Id;
+
+    public override int GetHashCode() => Id;
+
     /// <summary>空符号。任何使用空符号的 AST 节点在编译期就应被拒绝。</summary>
     public static SymbolId<T> Invalid => new(-1, "");
 

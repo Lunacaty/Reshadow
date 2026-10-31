@@ -690,6 +690,9 @@ public sealed partial class CardVm
     // 正确做法：直接检验 subject 这个**候选**是否满足 filter 的归属/卡号/Where。
     bool MatchOne(EntityRef cand)
     {
+        // filter 是**判定**（这张卡符不符合），不是「从池子里挑几张」。
+        // 编译器给触发器主语留下的 Mode 可能是 Choose（沿用了动作语义），
+        // 但主体判定里 Choose 毫无意义 —— 候选只有一个，谈不上挑。
         if (!SubjectBelongsTo(filter.Owner, owner.PlayerId, cand)) return false;
         if (filter.CardId > 0 && (cand.Snapshot?.CardId ?? 0) != filter.CardId) return false;
         if (!string.IsNullOrEmpty(filter.CardName)

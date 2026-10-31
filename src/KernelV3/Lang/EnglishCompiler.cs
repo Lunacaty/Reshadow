@@ -1871,6 +1871,29 @@ public sealed class EnglishCompiler
                 c.Seek(fp);
             }
 
+            // "X is the number of destroyed followers this match" 这类历史池计数。
+            // TargetParser 认得历史限定语，但这里必须自己构造 TargetSpec ——
+            // 吃 "the number of" 之后剩下的短语形状太自由，交给目标语法容易跑偏。
+            {
+                int hp = c.Position;
+                var hs = new System.Text.StringBuilder();
+                while (!c.IsAtEnd) { hs.Append(c.Current.Text).Append(' '); c.Advance(); }
+                var h = hs.ToString().ToLowerInvariant();
+                if (h.Contains("destroyed") && h.Contains("this match"))
+                    return NumExpr.CountOf(new TargetSpec { SourceKind = TargetSourceKind.Zone,
+                        Owner = ZoneScope.Self, Zone = ZoneRef.Cemetery,
+                        Mode = SelectMode.All, History = HistoryScope.DestroyedThisMatch });
+                if (h.Contains("destroyed") && h.Contains("this turn"))
+                    return NumExpr.CountOf(new TargetSpec { SourceKind = TargetSourceKind.Zone,
+                        Owner = ZoneScope.Self, Zone = ZoneRef.Cemetery,
+                        Mode = SelectMode.All, History = HistoryScope.DestroyedThisTurn });
+                if (h.Contains("entered the field") && h.Contains("this match"))
+                    return NumExpr.CountOf(new TargetSpec { SourceKind = TargetSourceKind.Zone,
+                        Owner = ZoneScope.Self, Zone = ZoneRef.Board,
+                        Mode = SelectMode.All, History = HistoryScope.EnteredThisMatch });
+                c.Seek(hp);
+            }
+
             // "X is the number of cards you returned [to your hand this turn]"
             // TargetParser 吃完 "cards" 就停下，剩下的 "you returned ..." 无人消费，
             // 结果 X 被当成「我方场上卡牌数量」—— 语义完全错位。
