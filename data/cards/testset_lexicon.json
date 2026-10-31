@@ -1,0 +1,487 @@
+[
+ {
+  "id": 81000000,
+  "name": "A1 Fanfare",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Draw a card."
+ },
+ {
+  "id": 81000001,
+  "name": "A2 Evolve",
+  "text": "<b><color=Keyword>Evolve</color></b>: Deal 2 damage to the enemy leader."
+ },
+ {
+  "id": 81000002,
+  "name": "A3 SuperEvolve",
+  "text": "<b><color=Keyword>Super-Evolve</color></b>: Restore 3 defense to your leader."
+ },
+ {
+  "id": 81000003,
+  "name": "A4 LastWords",
+  "text": "<b><color=Keyword>Last Words</color></b>: Draw 2 cards."
+ },
+ {
+  "id": 81000004,
+  "name": "A5 Spellboost",
+  "text": "<b><color=Keyword>On Spellboost</color></b>: Deal 1 damage to all enemy followers."
+ },
+ {
+  "id": 81000005,
+  "name": "A6 Clash",
+  "text": "<b><color=Keyword>Clash</color></b>: Deal 1 damage to the opposing follower."
+ },
+ {
+  "id": 81000006,
+  "name": "A7 Strike",
+  "text": "<b><color=Keyword>Strike</color></b>: Draw a card."
+ },
+ {
+  "id": 81000007,
+  "name": "A8 Engage",
+  "text": "<b><color=Keyword>Engage</color></b> (1): Draw a card."
+ },
+ {
+  "id": 81000008,
+  "name": "A9 Enhance",
+  "text": "<b><color=Keyword>Enhance</color></b> (4): Give this follower +3/+3."
+ },
+ {
+  "id": 81000009,
+  "name": "A10 Combo",
+  "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Combo</color></b> (3) - Evolve this follower."
+ },
+ {
+  "id": 81000010,
+  "name": "A11 Necromancy",
+  "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Necromancy</color></b> (4) - Give this follower <b><color=Keyword>Storm</color></b>."
+ },
+ {
+  "id": 81000011,
+  "name": "A12 EarthRite",
+  "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color></b> (1) - Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>."
+ },
+ {
+  "id": 81000012,
+  "name": "A13 Skybound",
+  "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Skybound Art</color></b> - Deal 5 damage to 2 random enemy followers."
+ },
+ {
+  "id": 81000013,
+  "name": "A14 SuperSkybound",
+  "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Super Skybound Art</color></b> - Deal 3 damage to the enemy leader."
+ },
+ {
+  "id": 81000014,
+  "name": "A15 TurnEnd",
+  "text": "At the end of your turn, restore 1 defense to your leader."
+ },
+ {
+  "id": 81000015,
+  "name": "A16 TurnStart",
+  "text": "At the start of your turn, draw a card."
+ },
+ {
+  "id": 81000016,
+  "name": "A17 WheneverEnter",
+  "text": "Whenever an allied follower enters the field, give it <b><color=Keyword>Ward</color></b>."
+ },
+ {
+  "id": 81000017,
+  "name": "A18 WheneverEnterOfficer",
+  "text": "Whenever an allied <b><color=Keyword>Officer</color></b> follower enters the field, give this follower +1/+0 until the end of the turn."
+ },
+ {
+  "id": 81000018,
+  "name": "A19 InHand",
+  "text": "Activates in hand. Whenever you <b><color=Keyword>Engage</color></b> an amulet, draw a card."
+ },
+ {
+  "id": 81000019,
+  "name": "A20 InDeck",
+  "text": "Activates in deck. At the end of your turn, destroy this card."
+ },
+ {
+  "id": 81000020,
+  "name": "B1 Select",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and destroy it."
+ },
+ {
+  "id": 81000021,
+  "name": "B2 SelectGive",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Select an allied follower on the field and give it <b><color=Keyword>Rush</color></b>."
+ },
+ {
+  "id": 81000022,
+  "name": "B3 DealLeader",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Deal 3 damage to the enemy leader."
+ },
+ {
+  "id": 81000023,
+  "name": "B4 DealRandom",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Deal 2 damage to a random enemy follower."
+ },
+ {
+  "id": 81000024,
+  "name": "B5 DealSplit",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Deal 7 damage split between all enemy followers."
+ },
+ {
+  "id": 81000025,
+  "name": "B6 Restore",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Restore 2 defense to your leader."
+ },
+ {
+  "id": 81000026,
+  "name": "B7 Draw",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Draw 2 cards."
+ },
+ {
+  "id": 81000027,
+  "name": "B8 Summon",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Knight</color></i></b>."
+ },
+ {
+  "id": 81000028,
+  "name": "B9 Add",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Knight</color></i></b> to your hand."
+ },
+ {
+  "id": 81000029,
+  "name": "B10 AddCopies",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Add 2 copies of <b><i><color=Keyword>Knight</color></i></b> to your hand."
+ },
+ {
+  "id": 81000030,
+  "name": "B11 GiveStats",
+  "text": "<b><color=Keyword>Enhance</color></b> (4): Give this follower +3/+3."
+ },
+ {
+  "id": 81000031,
+  "name": "B12 GiveKeyword",
+  "text": "<b><color=Keyword>Strike</color></b>: Give this follower <b><color=Keyword>Barrier</color></b>."
+ },
+ {
+  "id": 81000032,
+  "name": "B13 GiveMulti",
+  "text": "<b><color=Keyword>Enhance</color></b> (6): Give this follower +2/+2 and <b><color=Keyword>Ambush</color></b>."
+ },
+ {
+  "id": 81000033,
+  "name": "B14 Remove",
+  "text": "<b><color=Keyword>Evolve</color></b>: Remove <b><color=Keyword>Ward</color></b> from this follower."
+ },
+ {
+  "id": 81000034,
+  "name": "B15 RemoveAll",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field, remove all abilities from it, and deal it 3 damage."
+ },
+ {
+  "id": 81000035,
+  "name": "B16 SetAttack",
+  "text": "<b><color=Keyword>Super-Evolve</color></b>: Set the attack of all enemy followers on the field to 4."
+ },
+ {
+  "id": 81000036,
+  "name": "B17 SetMaxDefense",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Set your leader's max defense to 1."
+ },
+ {
+  "id": 81000037,
+  "name": "B18 Halve",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Halve the enemy leader's max defense."
+ },
+ {
+  "id": 81000038,
+  "name": "B19 HalveCost",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Halve the cost of all cards in your deck."
+ },
+ {
+  "id": 81000039,
+  "name": "B20 Swap",
+  "text": "Whenever you <b><color=Keyword>Engage</color></b> a Clue amulet, swap this follower's attack and defense and give it +1/+0."
+ },
+ {
+  "id": 81000040,
+  "name": "B21 ReduceCost",
+  "text": "<b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1."
+ },
+ {
+  "id": 81000041,
+  "name": "B22 Destroy",
+  "text": "<b><color=Keyword>Engage</color></b>: Destroy this card."
+ },
+ {
+  "id": 81000042,
+  "name": "B23 Banish",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Banish all duplicates from your deck."
+ },
+ {
+  "id": 81000043,
+  "name": "B24 BanishFilter",
+  "text": "<b><color=Keyword>Evolve</color></b>: Select an enemy follower on the field with 3 defense or less and banish it."
+ },
+ {
+  "id": 81000044,
+  "name": "B25 Discard",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Discard your hand."
+ },
+ {
+  "id": 81000045,
+  "name": "B26 Return",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Return your hand to deck."
+ },
+ {
+  "id": 81000046,
+  "name": "B27 ReturnCard",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Return this card to hand."
+ },
+ {
+  "id": 81000047,
+  "name": "B28 Transform",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Transform a random spell in your hand into an <b><i><color=Keyword>Ersatz Elimination</color></i></b>."
+ },
+ {
+  "id": 81000048,
+  "name": "B29 EvolveVerb",
+  "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Combo</color></b> (3) - Evolve this follower."
+ },
+ {
+  "id": 81000049,
+  "name": "B30 GainSigil",
+  "text": "<b><color=Keyword>Engage</color></b> (1): Gain an earth sigil."
+ },
+ {
+  "id": 81000050,
+  "name": "B31 GainMaxPp",
+  "text": "Gain 1 max play point."
+ },
+ {
+  "id": 81000051,
+  "name": "B32 Consume",
+  "text": "Consume 2 clues to destroy a random enemy follower with the highest attack."
+ },
+ {
+  "id": 81000052,
+  "name": "B33 Recover",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Recover 2 play points."
+ },
+ {
+  "id": 81000053,
+  "name": "B34 SpellboostVerb",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Spellboost your hand 2 times."
+ },
+ {
+  "id": 81000054,
+  "name": "B35 Reanimate",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Reanimate (4)."
+ },
+ {
+  "id": 81000055,
+  "name": "B36 Advance",
+  "text": "Countdown (3) <b><color=Keyword>Engage</color></b> (1): Advance this amulet's count by 1."
+ },
+ {
+  "id": 81000056,
+  "name": "B37 Delay",
+  "text": "<b><color=Keyword>Engage</color></b> (1): Delay the count of this amulet by 1."
+ },
+ {
+  "id": 81000057,
+  "name": "B38 Invoke",
+  "text": "Activates in deck. At the start of your turn, if allied followers have evolved at least 6 times this match, Invoke this card."
+ },
+ {
+  "id": 81000058,
+  "name": "B39 Replace",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Replace your deck with the Apocalypse Deck."
+ },
+ {
+  "id": 81000059,
+  "name": "B40 Replicate",
+  "text": "<b><color=Keyword>Evolve</color></b>: Replicate the effects of this card's Fanfare ability."
+ },
+ {
+  "id": 81000060,
+  "name": "B41 DoTimes",
+  "text": "<b><color=Keyword>Evolve</color></b>: <b><color=Keyword>Necromancy</color></b> (4) - Do this 2 times: \"Deal 2 damage to a random enemy follower.\""
+ },
+ {
+  "id": 81000061,
+  "name": "B42 Activate",
+  "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color></b> (2) - Activate 2 random abilities from the following. 1. Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>. 2. Restore 2 defense to your leader. 3. Gain 3 earth sigils."
+ },
+ {
+  "id": 81000062,
+  "name": "B43 GainCrest",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Gain Crest: <b><i><color=Keyword>Test Crest</color></i></b>."
+ },
+ {
+  "id": 81000063,
+  "name": "B44 ExactCopy",
+  "text": "<b><color=Keyword>Evolve</color></b>: Select an Artifact follower in your hand that costs 5 or less and summon an exact copy of it."
+ },
+ {
+  "id": 81000064,
+  "name": "C1 Mode",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Select a Mode to activate. 1. Draw a card. 2. Deal 2 damage to the enemy leader."
+ },
+ {
+  "id": 81000065,
+  "name": "C2 ModeAll",
+  "text": "Select a Mode to activate. If there are at least 2 allied cards on the field, activate all of them instead. 1. Draw a card. 2. Restore 2 defense to your leader."
+ },
+ {
+  "id": 81000066,
+  "name": "C3 Sequence",
+  "text": "At the end of your turn, activate an ability in sequence from the following. 1. Draw a card. 2. Restore 2 defense to your leader."
+ },
+ {
+  "id": 81000067,
+  "name": "C4 VariableX",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Deal X damage to the enemy leader. X is the number of cards in your hand."
+ },
+ {
+  "id": 81000068,
+  "name": "C5 XStarts",
+  "text": "X starts at 2. <b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1. Deal X damage to the enemy leader."
+ },
+ {
+  "id": 81000069,
+  "name": "C6 Instead",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Restore 2 defense to your leader. <b><color=Keyword>Super-Evolve</color></b>: Restore 4 defense instead."
+ },
+ {
+  "id": 81000070,
+  "name": "C7 Overflow",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Deal 2 damage to the enemy leader. If you're in <b><color=Keyword>Overflow</color></b>, deal 4 damage instead."
+ },
+ {
+  "id": 81000071,
+  "name": "C8 CondCost",
+  "text": "When this card is discarded, if its cost is 4, add an <b><i><color=Keyword>Test Blade</color></i></b> to your hand."
+ },
+ {
+  "id": 81000072,
+  "name": "C9 CondBaseCost",
+  "text": "<b><color=Keyword>Fanfare</color></b>: If there's an allied follower on the field with a base cost of 5 or more, draw a card."
+ },
+ {
+  "id": 81000073,
+  "name": "C10 UntilEnd",
+  "text": "Select an enemy follower on the field, set its defense to 1, and, until the end of your opponent's turn, give it \"Can't attack.\""
+ },
+ {
+  "id": 81000074,
+  "name": "C11 PuncturedDef",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field with 3 defense or less and banish it."
+ },
+ {
+  "id": 81000075,
+  "name": "D1 Countdown",
+  "text": "Countdown (2)\n<b><color=Keyword>Last Words</color></b>: Draw a card."
+ },
+ {
+  "id": 81000076,
+  "name": "D2 MultiAbility",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Draw a card.\nAt the end of your turn, restore 1 defense to your leader."
+ },
+ {
+  "id": 81000077,
+  "name": "D3 ThreeDomains",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Draw a card.<ev><b><color=Keyword>Evolve</color></b>: Draw 2 cards.<sev><b><color=Keyword>Super-Evolve</color></b>: Draw 3 cards."
+ },
+ {
+  "id": 81000078,
+  "name": "D4 SharedHeader",
+  "text": "<b><color=Keyword>Engage</color></b>: Destroy this card. Select an allied follower on the field and give it <b><color=Keyword>Rush</color></b>."
+ },
+ {
+  "id": 81000079,
+  "name": "D5 QuotedInner",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Give this follower \"Whenever an allied follower enters the field, draw a card.\""
+ },
+ {
+  "id": 81000080,
+  "name": "D6 Fuse",
+  "text": "<b><color=Keyword>Fuse</color></b>: Forestcraft cards\n<b><color=Keyword>Fanfare</color></b>: Draw a card."
+ },
+ {
+  "id": 81000081,
+  "name": "D7 NestedMode",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Select a Mode to activate.\n  1. Select a Mode to activate.\n     1. Draw a card.\n     2. Restore 2 defense to your leader.\n  2. Deal 4 damage to all enemy followers."
+ },
+ {
+  "id": 81000082,
+  "name": "E1 Ward",
+  "text": "<b><color=Keyword>Ward</color></b>"
+ },
+ {
+  "id": 81000083,
+  "name": "E2 Storm",
+  "text": "<b><color=Keyword>Storm</color></b>"
+ },
+ {
+  "id": 81000084,
+  "name": "E3 Rush",
+  "text": "<b><color=Keyword>Rush</color></b>"
+ },
+ {
+  "id": 81000085,
+  "name": "E4 Bane",
+  "text": "<b><color=Keyword>Bane</color></b>"
+ },
+ {
+  "id": 81000086,
+  "name": "E5 Drain",
+  "text": "<b><color=Keyword>Drain</color></b>"
+ },
+ {
+  "id": 81000087,
+  "name": "E6 Ambush",
+  "text": "<b><color=Keyword>Ambush</color></b>"
+ },
+ {
+  "id": 81000088,
+  "name": "E7 Aura",
+  "text": "<b><color=Keyword>Aura</color></b>"
+ },
+ {
+  "id": 81000089,
+  "name": "E8 Intimidate",
+  "text": "<b><color=Keyword>Intimidate</color></b>"
+ },
+ {
+  "id": 81000090,
+  "name": "E9 Barrier",
+  "text": "<b><color=Keyword>Barrier</color></b>"
+ },
+ {
+  "id": 81000091,
+  "name": "E10 Multi",
+  "text": "<b><color=Keyword>Ward</color></b> <b><color=Keyword>Bane</color></b> <b><color=Keyword>Drain</color></b>"
+ },
+ {
+  "id": 81000092,
+  "name": "Knight",
+  "text": ""
+ },
+ {
+  "id": 81000093,
+  "name": "Guardian Golem",
+  "text": ""
+ },
+ {
+  "id": 81000094,
+  "name": "Ersatz Elimination",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Draw a card."
+ },
+ {
+  "id": 81000095,
+  "name": "Test Blade",
+  "text": "<b><color=Keyword>Fanfare</color></b>: Draw a card."
+ },
+ {
+  "id": 81000096,
+  "name": "Test Crest",
+  "text": ""
+ }
+]

@@ -1,76 +1,20 @@
-# 卡牌文本数据
+# 卡牌数据
 
-数据来源：**sva.hypd.asia/en**
+本目录分两部分：
 
-本目录**只包含英文与中文两种语言的文本**，不含任何卡面立绘、图片路径或图片哈希。
+| 类别 | 文件 | 用途 | 进 64 号文档 |
+|---|---|---|---|
+| **官方卡池** | `cards_eng_flat.json`（1.1 MB）<br>`sva_cards_text.json`（1.0 MB） | 参考数据，编译器的真实语料来源 | ❌ 排除 |
+| **测试卡池** | `testset_cards.json`（39 KB）<br>`testset_lexicon.json`（15 KB）<br>`testset_sentences.json`（11 KB） | 回归测试专用，覆盖全部要素 | ✅ 追踪 |
 
----
-
-## 文件
-
-| 文件 | 卡片数 | 体积 | 内容 |
-|---|---:|---:|---|
-| `sva_cards_text.json` | 904 | 1.0 MB | 原始记录（英/中双语） |
-| `cards_eng_flat.json` | 982 | 1.0 MB | 扁平化英文，编译器直接消费 |
+官方卡池体积大，只作参考，不进文档。测试卡池是手工设计的，进文档。
 
 ---
 
-## 剥离的字段
+## 官方卡池
 
-导出时丢弃以下字段，可用 `grep -c "textures/" data/cards/*.json` 验证为 0：
-
-| 类别 | 字段 |
-|---|---|
-| 图片 / 纹理 | `textures` `skin_names` `card_image_hash` `card_banner_image_hash` |
-| 日文 | `name_jpn` `tribe_name_jpn` `text_jpn` `type_jpn` `name_romaji` `text_romaji` |
-| 韩文 | `name_kor` `tribe_name_kor` `text_kor` `type_kor` |
-| 繁体中文 | `name_cht` `tribe_name_cht` `text_cht` `type_cht` |
-| 拼音 | `name_pinyin` `text_pinyin` |
-
-校验：文件内假名（平假名 / 片假名）字符数为 **0**，`.png` 出现次数为 **0**。
-
----
-
-## sva_cards_text.json
-
-原始 API 记录，逐条保留英/中双语文本。
-
-### 字段
-
-| 字段 | 说明 |
-|---|---|
-| `card_id` | 卡片 ID |
-| `base_card_id` | 基础卡 ID（进化前后同源） |
-| `card_set_id` | 卡包 ID |
-| `name_eng` `name_chs` | 英文 / 中文卡名 |
-| `type` | 卡种（随从 / 法术 / 护符） |
-| `class` | 职业 |
-| `cost` `atk` `life` `rarity` | 数值 |
-| `tribe` `tribe_name_eng` | 兵种 |
-| `is_evolution` | 是否进化形态 |
-| `evolves_to` | 进化后的 card_id |
-| `skills` | 技能 ID 列表 |
-| `skill_texts` | **技能文本**，`key` + `text_eng` + `text_chs` |
-| `alt_modes` | 抉择分支 |
-| `voice_variants` | 语音变体 ID（无音频） |
-
-### skill_texts 示例
-
-```json
-{
-  "key": "SD_10001110_01",
-  "text_eng": "<b><color=Keyword>Enhance</color> (4)</b>: Give this follower +3/+3.",
-  "text_chs": "【<color=Keyword>爆能强化</color>_4】本随从+3/+3。"
-}
-```
-
----
-
-## cards_eng_flat.json
-
-把 `skill_texts` 按卡合并后的扁平结构，顶层为 `{ "_schema", "cards" }`。
-
-**编译器只读这个文件。**
+`cards_eng_flat.json` 是把 `sva_cards_text.json` 的 `skill_texts` 按卡合并后的扁平结构，
+顶层为 `{ "_schema", "cards" }`。**编译器只读这个文件。**
 
 ### HTML 标记处理
 
@@ -91,27 +35,58 @@
 
 ---
 
-## 重新导出
+## 测试卡池
 
-```python
-import json, io
+**设计约束：用语必须与官方一致，不自造写法。**
 
-DROP = {
-    'textures','skin_names','card_image_hash','card_banner_image_hash',
-    'name_jpn','tribe_name_jpn','text_jpn','type_jpn','name_romaji','text_romaji',
-    'name_kor','tribe_name_kor','text_kor','type_kor',
-    'name_cht','tribe_name_cht','text_cht','type_cht',
-    'name_pinyin','text_pinyin',
-}
+所有句式都是从官方卡池 `cards_eng_flat.json` 里抽取原句后仿写的。
+例：官方只有 `to your hand` / `to hand`，**没有** `to its hand`。
 
-def strip(o):
-    if isinstance(o, dict):
-        return {k: strip(v) for k, v in o.items() if k not in DROP}
-    if isinstance(o, list):
-        return [strip(x) for x in o]
-    return o
+### 格式约定
 
-d = json.load(io.open('assets/api/sva_cards_raw.json', encoding='utf-8'))
-io.open('data/cards/sva_cards_text.json','w',encoding='utf-8').write(
-    json.dumps(strip(d), ensure_ascii=False, indent=1))
+| 类别 | 写法 |
+|---|---|
+| 能力头 / 关键词 | `<b><color=Keyword>Fanfare</color></b>:` |
+| 卡名引用 | `<b><i><color=Keyword>Knight</color></i></b>` |
+| 能力头分隔 | 冒号 `:`（Fanfare / Evolve / Enhance / Engage / Last Words） |
+| 条件前缀 | 短横 ` - `（Combo / Necromancy / Earth Rite / Skybound Art） |
+
+### 覆盖的维度
+
+**触发器 20 种**
+`Fanfare` `Evolve` `Super-Evolve` `Last Words` `On Spellboost` `Clash` `Strike`
+`Engage` `Enhance` `Combo` `Necromancy` `Earth Rite` `Skybound Art` `Super Skybound Art`
+`At the start of your turn` `At the end of your turn`
+`Whenever <主语> enters the field` `Activates in hand` `Activates in deck`
+
+**动词 44 种**
+`Select` `Deal`（单体/随机/分裂）`Restore` `Draw` `Summon` `Add` `Give`
+（属性/关键词/多授予）`Remove`（单词/全能力）`Set`（攻击/生命上限）`Halve`（防御/费用）
+`Swap` `Reduce` `Destroy` `Banish` `Discard` `Return` `Transform` `Evolve`
+`Gain` `Consume` `Recover` `Spellboost` `Reanimate` `Advance` `Delay`
+`Invoke` `Replace` `Replicate` `Do this N times` `Activate N random` `Gain Crest` `exact copy`
+
+**条件与模式 11 种**
+`Mode` `activate all of them instead` `activate in sequence`
+`X is the number of...` `X starts at N` `instead` `Overflow`
+`if its cost is N` `with a base cost of N or more` `with N defense or less`
+`until the end of your opponent's turn`
+
+**分段与格式 7 种**
+`Countdown` `同卡多能力` `<ev>/<sev> 三域` `共享能力头的多动作`
+`引号内嵌能力` `Fuse 行` `缩进嵌套模式`
+
+**战斗关键词 10 种**
+`Ward` `Storm` `Rush` `Bane` `Drain` `Ambush` `Aura` `Intimidate` `Barrier` `多关键词叠加`
+
+### 重新生成
+
+```bash
+python tools/gen_testset.py
+```
+
+### 验证
+
+```
+TESTSET 97 pass=97 err=0
 ```

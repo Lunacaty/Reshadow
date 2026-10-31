@@ -1,0 +1,322 @@
+[
+ {
+  "group": "testset",
+  "sentences": [
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Draw a card."
+   },
+   {
+    "text": "<b><color=Keyword>Evolve</color></b>: Deal 2 damage to the enemy leader."
+   },
+   {
+    "text": "<b><color=Keyword>Super-Evolve</color></b>: Restore 3 defense to your leader."
+   },
+   {
+    "text": "<b><color=Keyword>Last Words</color></b>: Draw 2 cards."
+   },
+   {
+    "text": "<b><color=Keyword>On Spellboost</color></b>: Deal 1 damage to all enemy followers."
+   },
+   {
+    "text": "<b><color=Keyword>Clash</color></b>: Deal 1 damage to the opposing follower."
+   },
+   {
+    "text": "<b><color=Keyword>Strike</color></b>: Draw a card."
+   },
+   {
+    "text": "<b><color=Keyword>Engage</color></b> (1): Draw a card."
+   },
+   {
+    "text": "<b><color=Keyword>Enhance</color></b> (4): Give this follower +3/+3."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Combo</color></b> (3) - Evolve this follower."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Necromancy</color></b> (4) - Give this follower <b><color=Keyword>Storm</color></b>."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color></b> (1) - Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Skybound Art</color></b> - Deal 5 damage to 2 random enemy followers."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Super Skybound Art</color></b> - Deal 3 damage to the enemy leader."
+   },
+   {
+    "text": "At the end of your turn, restore 1 defense to your leader."
+   },
+   {
+    "text": "At the start of your turn, draw a card."
+   },
+   {
+    "text": "Whenever an allied follower enters the field, give it <b><color=Keyword>Ward</color></b>."
+   },
+   {
+    "text": "Whenever an allied <b><color=Keyword>Officer</color></b> follower enters the field, give this follower +1/+0 until the end of the turn."
+   },
+   {
+    "text": "Activates in hand."
+   },
+   {
+    "text": "Whenever you <b><color=Keyword>Engage</color></b> an amulet, draw a card."
+   },
+   {
+    "text": "Activates in deck."
+   },
+   {
+    "text": "At the end of your turn, destroy this card."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and destroy it."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Select an allied follower on the field and give it <b><color=Keyword>Rush</color></b>."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Deal 3 damage to the enemy leader."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Deal 2 damage to a random enemy follower."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Deal 7 damage split between all enemy followers."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Restore 2 defense to your leader."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Draw 2 cards."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Knight</color></i></b>."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Knight</color></i></b> to your hand."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Add 2 copies of <b><i><color=Keyword>Knight</color></i></b> to your hand."
+   },
+   {
+    "text": "<b><color=Keyword>Strike</color></b>: Give this follower <b><color=Keyword>Barrier</color></b>."
+   },
+   {
+    "text": "<b><color=Keyword>Enhance</color></b> (6): Give this follower +2/+2 and <b><color=Keyword>Ambush</color></b>."
+   },
+   {
+    "text": "<b><color=Keyword>Evolve</color></b>: Remove <b><color=Keyword>Ward</color></b> from this follower."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field, remove all abilities from it, and deal it 3 damage."
+   },
+   {
+    "text": "<b><color=Keyword>Super-Evolve</color></b>: Set the attack of all enemy followers on the field to 4."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Set your leader's max defense to 1."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Halve the enemy leader's max defense."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Halve the cost of all cards in your deck."
+   },
+   {
+    "text": "Whenever you <b><color=Keyword>Engage</color></b> a Clue amulet, swap this follower's attack and defense and give it +1/+0."
+   },
+   {
+    "text": "<b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1."
+   },
+   {
+    "text": "<b><color=Keyword>Engage</color></b>: Destroy this card."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Banish all duplicates from your deck."
+   },
+   {
+    "text": "<b><color=Keyword>Evolve</color></b>: Select an enemy follower on the field with 3 defense or less and banish it."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Discard your hand."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Return your hand to deck."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Return this card to hand."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Transform a random spell in your hand into an <b><i><color=Keyword>Ersatz Elimination</color></i></b>."
+   },
+   {
+    "text": "<b><color=Keyword>Engage</color></b> (1): Gain an earth sigil."
+   },
+   {
+    "text": "Gain 1 max play point."
+   },
+   {
+    "text": "Consume 2 clues to destroy a random enemy follower with the highest attack."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Recover 2 play points."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Spellboost your hand 2 times."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Reanimate (4)."
+   },
+   {
+    "text": "Countdown (3) <b><color=Keyword>Engage</color></b> (1): Advance this amulet's count by 1."
+   },
+   {
+    "text": "<b><color=Keyword>Engage</color></b> (1): Delay the count of this amulet by 1."
+   },
+   {
+    "text": "At the start of your turn, if allied followers have evolved at least 6 times this match, Invoke this card."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Replace your deck with the Apocalypse Deck."
+   },
+   {
+    "text": "<b><color=Keyword>Evolve</color></b>: Replicate the effects of this card's Fanfare ability."
+   },
+   {
+    "text": "<b><color=Keyword>Evolve</color></b>: <b><color=Keyword>Necromancy</color></b> (4) - Do this 2 times: \"Deal 2 damage to a random enemy follower.\""
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color></b> (2) - Activate 2 random abilities from the following."
+   },
+   {
+    "text": "1."
+   },
+   {
+    "text": "Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>."
+   },
+   {
+    "text": "2."
+   },
+   {
+    "text": "Restore 2 defense to your leader."
+   },
+   {
+    "text": "3."
+   },
+   {
+    "text": "Gain 3 earth sigils."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Gain Crest: <b><i><color=Keyword>Test Crest</color></i></b>."
+   },
+   {
+    "text": "<b><color=Keyword>Evolve</color></b>: Select an Artifact follower in your hand that costs 5 or less and summon an exact copy of it."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Select a Mode to activate."
+   },
+   {
+    "text": "Draw a card."
+   },
+   {
+    "text": "Deal 2 damage to the enemy leader."
+   },
+   {
+    "text": "Select a Mode to activate."
+   },
+   {
+    "text": "If there are at least 2 allied cards on the field, activate all of them instead."
+   },
+   {
+    "text": "At the end of your turn, activate an ability in sequence from the following."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Deal X damage to the enemy leader."
+   },
+   {
+    "text": "X is the number of cards in your hand."
+   },
+   {
+    "text": "X starts at 2."
+   },
+   {
+    "text": "Deal X damage to the enemy leader."
+   },
+   {
+    "text": "<b><color=Keyword>Super-Evolve</color></b>: Restore 4 defense instead."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Deal 2 damage to the enemy leader."
+   },
+   {
+    "text": "If you're in <b><color=Keyword>Overflow</color></b>, deal 4 damage instead."
+   },
+   {
+    "text": "When this card is discarded, if its cost is 4, add an <b><i><color=Keyword>Test Blade</color></i></b> to your hand."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: If there's an allied follower on the field with a base cost of 5 or more, draw a card."
+   },
+   {
+    "text": "Select an enemy follower on the field, set its defense to 1, and, until the end of your opponent's turn, give it \"Can't attack.\""
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field with 3 defense or less and banish it."
+   },
+   {
+    "text": "Countdown (2)"
+   },
+   {
+    "text": "<b><color=Keyword>Last Words</color></b>: Draw a card."
+   },
+   {
+    "text": "<b><color=Keyword>Evolve</color></b>: Draw 2 cards."
+   },
+   {
+    "text": "<b><color=Keyword>Super-Evolve</color></b>: Draw 3 cards."
+   },
+   {
+    "text": "Select an allied follower on the field and give it <b><color=Keyword>Rush</color></b>."
+   },
+   {
+    "text": "<b><color=Keyword>Fanfare</color></b>: Give this follower \"Whenever an allied follower enters the field, draw a card.\""
+   },
+   {
+    "text": "<b><color=Keyword>Fuse</color></b>: Forestcraft cards"
+   },
+   {
+    "text": "Deal 4 damage to all enemy followers."
+   },
+   {
+    "text": "<b><color=Keyword>Ward</color></b>"
+   },
+   {
+    "text": "<b><color=Keyword>Storm</color></b>"
+   },
+   {
+    "text": "<b><color=Keyword>Rush</color></b>"
+   },
+   {
+    "text": "<b><color=Keyword>Bane</color></b>"
+   },
+   {
+    "text": "<b><color=Keyword>Drain</color></b>"
+   },
+   {
+    "text": "<b><color=Keyword>Ambush</color></b>"
+   },
+   {
+    "text": "<b><color=Keyword>Aura</color></b>"
+   },
+   {
+    "text": "<b><color=Keyword>Intimidate</color></b>"
+   },
+   {
+    "text": "<b><color=Keyword>Barrier</color></b>"
+   },
+   {
+    "text": "<b><color=Keyword>Ward</color></b> <b><color=Keyword>Bane</color></b> <b><color=Keyword>Drain</color></b>"
+   }
+  ]
+ }
+]
