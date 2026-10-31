@@ -545,14 +545,16 @@ public sealed class ActionParser
         {
             new DealDamageNode { Target = target, Amount = amount, IsAbility = true, IsSplit = splitFlag },
         };
-        // "deal 6 damage to them and the enemy leader" —— TargetParser 已把 and the enemy leader 折进 IncludeLeader
-        if (target.IncludeLeader && target.Zone != Core.ZoneRef.Leader)
-            dmgNodes.Add(new DealDamageNode
-            {
-                Target = NormalizeAllCount(TargetSpec.OpponentLeader),
-                Amount = amount,
-                IsAbility = true,
-            });
+        // IncludeLeader 一律由 VmEval.ResolveRef 统一展开成「场上随从 + 主战者」。
+        //
+        // 这里**不能再手工补一条打主战者的节点**：
+        //   · 「Deal X damage to all enemies」会变成 随从 X + 主战者 X（各一条），
+        //     而第一条的 Target 本身已带 IncludeLeader，主战者被打了 **两次**；
+        //   · 「Deal 7 damage split between all enemies」会先分 7 点给随从，
+        //     再满额打主战者 7 点，共 14 点；
+        //   · 同理要打在 ParseRestore / 其它按 Target 结算的动作上时，
+        //     这条手工补丁根本覆盖不到，主战者永远回不上血。
+        // 展开交给求值层，AST 上就只有一个干净的节点。
         dmgNodes.AddRange(extraDmg);
         return dmgNodes;
     }

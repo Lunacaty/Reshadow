@@ -495,6 +495,20 @@ public sealed class VmEval
             pool = filtered;
         }
 
+        // IncludeLeader："all enemies" / "all allies" 要同时覆盖随从与主战者。
+        //
+        // 以前这条展开写在 ActionParser.ParseDeal 里（手工补一条打主战者的节点），
+        // 只对「造成伤害」生效，而且会让主战者被打两次（原 Target 自己已带标记）。
+        // 放到求值层后，伤害 / 回复 / 修属性等一切按 Target 结算的动作都自动正确，
+        // 且 AST 上只有**一个**节点。
+        if (t.IncludeLeader && t.Zone == ZoneRef.Board && t.SourceKind == TargetSourceKind.Zone)
+        {
+            // 场上的护符没有生命值，不该被「全体随从+主战者」类效果选中。
+            pool = pool.Where(r => RefDef(r)?.Kind == Ast.CardKind.Follower).ToList();
+            foreach (var ld in _world.EnumerateZone(ZoneRef.Leader, scope.ResolvePlayer(t.Owner)))
+                pool.Add(EntityRef.From(ld));
+        }
+
         // 名称去重
         if (t.DistinctByName)
         {

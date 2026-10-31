@@ -1785,6 +1785,33 @@ public sealed class EnglishCompiler
         // "the number of <TargetNP>"
         if (c.MatchPhrase("the", "number", "of"))
         {
+            // "X is the number of differently named cards Fused to this card"
+            //   → 实体级 fuse_kinds（不同名材料的种类数）
+            // "X is the number of cards Fused to this card"
+            //   → fuse_count（融合次数）
+            //
+            // 不接这条的话，TargetParser 吃完 "differently named cards" 就停下，
+            // 把 "Fused to this card" 丢在流里，X 退回默认的「我方场上不同名卡数」——
+            // 数据源整个错了（卡面说的是**这张卡**吃进去的材料）。
+            {
+                int fp = c.Position;
+                bool sawFused = false;
+                bool sawDiffNamed = false;
+                while (!c.IsAtEnd)
+                {
+                    if (c.Current.IsAnyWord("fused", "fuse")) { sawFused = true; break; }
+                    if (c.Current.IsAnyWord("differently")) sawDiffNamed = true;
+                    if (c.Current.Kind == TokKind.Period) break;
+                    c.Advance();
+                }
+                if (sawFused)
+                {
+                    while (!c.IsAtEnd) c.Advance();
+                    return NumExpr.Ctr(_lex.Counter(sawDiffNamed ? "fuse_kinds" : "fuse_count"));
+                }
+                c.Seek(fp);
+            }
+
             // "X is the number of cards you returned [to your hand this turn]"
             // TargetParser 吃完 "cards" 就停下，剩下的 "you returned ..." 无人消费，
             // 结果 X 被当成「我方场上卡牌数量」—— 语义完全错位。
