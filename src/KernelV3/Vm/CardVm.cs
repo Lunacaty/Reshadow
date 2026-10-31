@@ -538,7 +538,26 @@ public sealed partial class CardVm
         if (IsGenericCardFilter(filter) && SubjectBelongsTo(filter.Owner, owner.PlayerId, subject))
             return true;
 
-        var scope0 = new VmScope { Owner = ZoneScope.Self, Controller = owner.PlayerId };
+        // 判定作用域必须带上 Source / Trigger 两枚锚点。
+        //
+        // 编译器为「本卡自己」写出的主体过滤器是一个 **槽位** 目标
+        // （SourceKind=Slot, Slot=$self），「事件主体」同理是 $trigger。
+        // 槽位解析读的是 Registers，而 VmEval.ResolveRef 对 $self / $trigger
+        // 的兜底回退分别指向 scope.Source / scope.Trigger。
+        //
+        // 此前这里只塞了 Controller，两个锚点都是 null，于是
+        //   "Whenever this follower takes damage, give this follower +1/+0"
+        // 这类「本卡自身」监听器的 SubjectFilter 恒解析为空池 —— 条件永远不成立，
+        // 能力一次都不会触发（实测：伤害 2 点后 attack 仍是 2，能力静默空转）。
+        // 这不是把 $trigger 泛化到所有场景：谁的锚点对应哪个槽位由 ResolveRef
+        // 已有的分支决定，$self 仍然只指向本卡。
+        var scope0 = new VmScope
+        {
+            Owner = ZoneScope.Self,
+            Controller = owner.PlayerId,
+            Source = EntityRef.From(owner),
+            Trigger = subject,
+        };
         var pool0 = _eval.ResolveRef(filter, scope0);
         return pool0.Any(r => r.EntityId == subject.EntityId);
     }

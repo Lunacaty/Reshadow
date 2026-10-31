@@ -583,7 +583,23 @@ public sealed class BattleState : IVmWorld
         list.Add(e);
 
         if (zone == ZoneRef.Board)
+        {
+            // 召唤失调的唯一写入点。
+            //
+            // 此前只有 TurnRunner.PlayCard 会写 EnteredTurn，于是 Summon / Reanimate /
+            // Invoke / 复制等**所有能力召唤路径**造出来的实体 EnteredTurn 恒为 0，
+            // 而 TurnNumber 已经涨到 5+，CombatResolver.CanAttack 的
+            // 「EnteredTurn >= TurnNumber」恒假 —— 召唤出来的随从当回合就能打脸。
+            //
+            // 进战场的路径不止一条（MoveEntity / CreateEntity 都经过这里），
+            // 把盖章点放在这里才能覆盖全部；PlayCard 已经写过一次同样的值，重复无害。
+            //
+            // 基准取 TurnNumber：它在 TurnRunner.StartTurn 里**只有 player 0 回合**才 +1，
+            // 所以它是「轮次」而不是「半步」。先手回合 N 与后手回合 N 同属一轮，
+            // 这与「上回合入场的随从下一轮可攻击」的判定基准一致。
+            e.EnteredTurn = TurnNumber;
             p.EnteredThisMatch.Add(e.TakeSnapshot());
+        }
     }
 
     /// <summary>把实体从当前区域移除。</summary>
@@ -713,6 +729,23 @@ public sealed class BattleState : IVmWorld
         {
             foreach (var e in p.Board.ToList())
             {
+                // 「生命归零即破坏」只对**随从**成立。
+                //
+                // 护符没有生命值这个概念：它的 Life 恒为 0（BaseLife 没写就是 0），
+                // 而这条判定原来对场上所有实体一视同仁 —— 于是任何护符一拍下来
+                // 就被判成「已经死了」，第一个 SBA 就把它送进墓地。
+                // 实测：Fanfare 打出普通护符后 ProcessStateBasedActions 立即
+                // 把它变成 zone=Cemetery，全卡池的护符等于都不存在。
+                //
+                // 护符的死亡条件只有两条，都不在这里：
+                //   · Countdown 归 0 —— TurnRunner.StepBoardCountdown
+                //   · 土之印 / Clue 层数归 0 —— WriteCounter(byRule: true)
+                // 卡面效果明确破坏走 DestroyEntity，受护符保护规则约束。
+                //
+                // 超进化随从的 Life<=0 仍然要在这里破坏：本方法不是「能否破坏」的
+                // 判定，而是「已经死了」的收尾，所以它不经过 DestroyEntity 的
+                // 超进化免破坏 / 护符保护拦截（见 DestroyByState）。
+                if (e.Def?.Kind != Ast.CardKind.Follower) continue;
                 if (e.Life > 0) continue;
                 DestroyByState(e);
                 n++;
