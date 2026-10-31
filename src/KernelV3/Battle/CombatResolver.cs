@@ -47,6 +47,12 @@ public sealed class CombatResolver
         if (!isLeaderTarget && defender.Zone != ZoneRef.Board) { reason = "目标不在场上"; return false; }
         if (defender.PlayerId == attacker.PlayerId) { reason = "不能攻击自己方的目标"; return false; }
 
+        // 护符没有攻击力和生命值，不能被攻击，也不会被打（76-c 1.1）。
+        // 少了这道守卫，护符的 Life 会被打成负数并永久留在场上：
+        // ProcessStateBasedActions 按 Kind 跳过非随从，没人回收它。
+        if (!isLeaderTarget && defender.Def != null && defender.Def.Kind != Ast.CardKind.Follower)
+        { reason = "护符不能被攻击"; return false; }
+
         // 攻击次数上限
         int maxAttacks = 1;
         var maxKey = _schema.Keyword("max_attacks_per_turn");
@@ -130,9 +136,17 @@ public sealed class CombatResolver
 
         _state.ProcessStateBasedActions();
 
+        // 溢出伤害只结算一次：第 4 步（能力击杀）与第 10 步（交战击杀）
+        // 用同一个判据「defender.Zone != Board」，若不设闸门，
+        // 能力击杀会在第 4 步打 1 点、第 10 步再打 1 点（实测 20→18）。
+        bool overflowPaid = false;
+
         // 4. 超进化溢出 1 点（第 2 步用能力破坏对方随从时）
         if (attacker.IsSuperEvolved && isFollowerTarget && defender.Zone != ZoneRef.Board)
-            OverflowDamage(attacker, defender);
+        {
+            OverflowDamage(attacker, defender, vm);
+            overflowPaid = true;
+        }
 
         // 5/6. 双方因【攻撃時】/【交戦時】诱发的效果
         vm?.StepUntilBlocked();
@@ -176,8 +190,8 @@ public sealed class CombatResolver
         _state.ProcessStateBasedActions();
 
         // 10. 超进化溢出 1 点（交战破坏对方随从时）
-        if (attacker.IsSuperEvolved && isFollowerTarget && defender.Zone != ZoneRef.Board)
-            OverflowDamage(attacker, defender);
+        if (!overflowPaid && attacker.IsSuperEvolved && isFollowerTarget && defender.Zone != ZoneRef.Board)
+            OverflowDamage(attacker, defender, vm);
 
         // 11/12. 被破坏随从的谢幕曲等诱发效果
         // 顺序铁律（R-3.2 第 11/12 步）：
@@ -195,10 +209,14 @@ public sealed class CombatResolver
         _state.ProcessStateBasedActions();
     }
 
-    private void OverflowDamage(RuntimeEntity attacker, RuntimeEntity defender)
+    /// <summary>
+    /// 超进化溢出 1 点。必须把 vm 传下去：3 参版 ApplyDamage 不派发 OnDamaged，
+    /// 于是溢出伤害不会触犯「每当受到伤害时」类能力，也不会计入 Wrath。
+    /// </summary>
+    private void OverflowDamage(RuntimeEntity attacker, RuntimeEntity defender, CardVm vm)
     {
         var foe = _state.Players[defender.PlayerId].Leader;
-        if (foe != null) ApplyDamage(foe, 1, attacker.PlayerId);
+        if (foe != null) ApplyDamage(foe, 1, attacker.PlayerId, vm);
     }
 
     /// <summary>

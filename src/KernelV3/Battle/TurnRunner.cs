@@ -574,6 +574,11 @@ public sealed class TurnRunner
         var evoKey = _schema.Counter("evolve_count");
         _state.WriteCounter(playerId, evoKey, _state.ReadCounter(playerId, evoKey) + 1);
 
+        // 奥义槽 = TurnNumber + 进化次数 + 超进化次数。
+        // 之前只有**自动**进化会调 BumpSkyboundGauge（CardVm.Nodes.cs:604），
+        // 手动进化反而从不调用 —— 于是靠进化攒奥义的卡永远攒不起来。
+        BumpSkyboundGauge(playerId);
+
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEvolve, Subject = EntityRef.From(e), IsManualEvolve = true });
         if (super)
             vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnSuperEvolve, Subject = EntityRef.From(e), IsManualEvolve = true });

@@ -120,6 +120,23 @@ public sealed partial class CardVm
         _triggerQueue.Insert(i, ev);
     }
 
+    /// <summary>
+    /// 终局判定：一方主战者生命归 0、牌组抽空判负、或持有胜利卡牌。
+    /// 三条来源与 TurnRunner 的胜负判定保持一致。
+    /// </summary>
+    private static bool IsGameOver(Battle.BattleState bs)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            var p = bs.Players[i];
+            if (p == null) continue;
+            if (p.Leader != null && p.Leader.Life <= 0) return true;
+            if (p.LostByDeckOut) return true;
+            if (p.WonByVictoryCard) return true;
+        }
+        return false;
+    }
+
     // ---------- 主循环 ----------
 
     /// <summary>
@@ -136,6 +153,18 @@ public sealed partial class CardVm
             {
                 // 不变量：有挂起选择时绝不推进
                 if (Pending != null) { Status = VmStatus.WaitingForInput; return Status; }
+
+                // 终局铁律：主战者生命归 0 之后，任何后续结算都必须停止。
+                // 少了这一步，主战者归 0 后仍会继续跑谢幕曲 ——
+                // 实测「击杀后谢幕曲把主战者奶回 2 点」，对局永远结束不了。
+                if (_world is Battle.BattleState bsNow && IsGameOver(bsNow))
+                {
+                    _frames.Clear();
+                    _triggerQueue.Clear();
+                    Pending = null;
+                    Status = VmStatus.GameOver;
+                    return Status;
+                }
 
                 // 帧栈空：把下一个事件转成帧
                 if (_frames.Count == 0)
