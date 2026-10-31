@@ -145,19 +145,42 @@ public sealed class PrefixParser
             cur.Advance();
         }
 
-        // "When you've Fused both to this card," —— 融合条件从句，消费掉整个从句
+        // "When you've Fused both to this card," —— 融合条件从句。
+        // 从句本身要消费掉，但它携带的条件不能一起丢：
+        // "both" 的意思是「两个融合材料都到位了」，即 fuse_count >= 2，
+        // 少了这一条，一次融合就会提前满足能力条件。
         if (cur.Current.IsAnyWord("when", "whenever"))
         {
             int probe = cur.Position;
             cur.Advance();
             if (cur.Current.IsAnyWord("you've", "you"))
-            {
-                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Comma) cur.Advance();
-                if (cur.Current.Kind == TokKind.Comma) cur.Advance();
-            }
+                ConsumeFusedToCardClause(cur, b);
             else cur.Seek(probe);
         }
         return true;
+    }
+
+    /// <summary>
+    /// 消费 "you've Fused [both] to this card," 的剩余部分，并按是否出现 both
+    /// 折出 fuse_count 下限条件。调用前 cur 必须停在 you've / you 之后。
+    /// </summary>
+    private void ConsumeFusedToCardClause(TokenCursor cur, AbilityHeaderBuilder b)
+    {
+        bool fusedBoth = false;
+        while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Comma)
+        {
+            if (cur.Current.IsWord("both")) fusedBoth = true;
+            cur.Advance();
+        }
+        if (cur.Current.Kind == TokKind.Comma) cur.Advance();
+
+        if (!fusedBoth) return;
+        b.Condition = BoolExpr.And(b.Condition, new CompareExpr
+        {
+            Left = NumExpr.Ctr(_lex.Counter("fuse_count")),
+            Op = CompareOp.Ge,
+            Right = NumExpr.Const(2),
+        });
     }
 
     // ---------- 1. During your turn, ----------
@@ -400,11 +423,13 @@ public sealed class PrefixParser
             else if (cur.MatchWord("discard")) { b.Event = CoreEvent.OnDiscard; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("fuse", "to", "this", "card")) { b.Event = CoreEvent.OnFuse; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
             // "When you've Fused both to this card, ..."（已融合完成）
+            // 这条是卡面实际走到的分支：TryConsumeFusePrefix 只吃 "Fuse:" 冒号头，
+            // "When you've Fused ..." 整句落在 when 从句里，条件就在这里丢的。
             else if (cur.MatchWord("fused") || cur.MatchPhrase("fuse", "d"))
             {
                 b.Event = CoreEvent.OnFuse; b.EventExplicit = true;
                 b.SubjectFilter = TargetSpec.Self;
-                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Comma) cur.Advance();
+                ConsumeFusedToCardClause(cur, b);
             }
             else if (cur.MatchWord("activate") || cur.MatchWord("engage")) { b.Event = CoreEvent.OnEngage; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("perform", "earth", "rite")) { b.Event = CoreEvent.OnCountdownExpire; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
@@ -466,12 +491,53 @@ public sealed class PrefixParser
         if (cur.MatchPhrase("is", "banished")) return CoreEvent.OnBanish;
         if (cur.MatchPhrase("takes", "damage"))
         {
+            // "takes damage but isn't destroyed" = 受到伤害后仍然存活。
+            // 旧实现塞的是 UnitState.None —— VmEval.MatchState 对它恒返回 false，
+            // 取反后恒真，等于「任何伤害都触发」，条件形同虚设。
+            // 伤害管线是「先扣血、再发 OnDamaged」，所以判定时读 $trigger 的当前生命
+            // 就是「这一击之后它还活着」。已离场的实体快照停在 <=0，同样判否。
             if (cur.MatchPhrase("but", "isn't", "destroyed"))
                 b.Condition = BoolExpr.And(b.Condition,
-                    BoolExpr.Not(new HasStateExpr { State = UnitState.None, Of = TargetSpec.Item }));
+                    new CompareExpr
+                    {
+                        Left = NumExpr.Prop(StatKey.Life, TargetSpec.Trigger),
+                        Op = CompareOp.Gt,
+                        Right = NumExpr.Const(0),
+                    });
             return CoreEvent.OnDamaged;
         }
-        if (cur.MatchWord("attacks")) return CoreEvent.OnAttack;
+        if (cur.MatchWord("attacks"))
+        {
+            // "attacks a follower" / "attacks a leader" —— 攻击目标的副体限定。
+            // 这里必须把宾语真正消费掉：以前只认动词就返回 OnAttack，
+            // 剩下的 "a follower" 落到动作解析器上，整句直接报「无法推进」。
+            int atkSave = cur.Position;
+            if (cur.MatchPhrase("a", "follower") || cur.MatchPhrase("an", "enemy", "follower")
+                || cur.MatchPhrase("an", "allied", "follower"))
+            {
+                // 目标是随从 == 目标不是主战者。
+                // CombatResolver 在发 OnAttack **之前**写定 AttackedLeaderLastTurn，
+                // 触发判定阶段它就是「本次攻击的目标是不是主战者」。
+                b.Condition = BoolExpr.And(b.Condition,
+                    BoolExpr.Not(new HasStateExpr
+                    {
+                        State = UnitState.AttackedLeaderLastTurn,
+                        Of = TargetSpec.Trigger,
+                    }));
+            }
+            else if (cur.MatchPhrase("a", "leader") || cur.MatchPhrase("the", "enemy", "leader")
+                     || cur.MatchPhrase("the", "opposing", "leader"))
+            {
+                b.Condition = BoolExpr.And(b.Condition,
+                    new HasStateExpr
+                    {
+                        State = UnitState.AttackedLeaderLastTurn,
+                        Of = TargetSpec.Trigger,
+                    });
+            }
+            else cur.Seek(atkSave);
+            return CoreEvent.OnAttack;
+        }
         // super-evolves 可能被词法拆成 super / - / evolves
         if (cur.Current.IsWord("super"))
         {
