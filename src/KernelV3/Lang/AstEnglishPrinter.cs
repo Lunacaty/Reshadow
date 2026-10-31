@@ -110,9 +110,20 @@ public static class AstEnglishPrinter
             case ModifyStatsNode m:
                 // Swap 没有数值，打 0/0 会让审查误以为是编译器丢了值。
                 if (m.Op == Ast.StatModOp.Swap)
+                {
                     sb.Append("modifystats Swap to " + PrintTarget(m.Target));
+                }
                 else
-                    sb.Append("modifystats " + m.Op + " " + PrintNum(m.Attack) + "/" + PrintNum(m.Life) + " to " + PrintTarget(m.Target));
+                {
+                    // 攻/防分隔符用 "/"，但两侧若是复合表达式必须加括号：
+                    //   "+X/+X" 会打成 "count(...)/count(...)"，看上去和真除法一模一样，
+                    //   审计时必然误判成算错（本会话已经栽过一次）。
+                    //   真除法在 PrintNum 里本身带空格（"A / B"），再加上括号就彻底分得开。
+                    string atk = PrintNum(m.Attack), life = PrintNum(m.Life);
+                    if (NeedsParen(m.Attack)) atk = "(" + atk + ")";
+                    if (NeedsParen(m.Life)) life = "(" + life + ")";
+                    sb.Append("modifystats " + m.Op + " " + atk + "/" + life + " to " + PrintTarget(m.Target));
+                }
                 break;
             case ModifyCostNode mc:
                 sb.Append("modifycost " + mc.Op + " " + PrintNum(mc.Value) + " to " + PrintTarget(mc.Target));
@@ -249,6 +260,14 @@ public static class AstEnglishPrinter
             Core.ZoneScope.Opponent => "@opp",
             _ => "@any",
         };
+
+    /// <summary>
+    /// 该数值表达式打印出来是否需要加括号。
+    /// 常量与单个名字不需要；任何复合式（count / prop / 算术）都需要 ——
+    /// 否则在 "攻/防" 这种以斜杠分隔的位置上会被读成除法。
+    /// </summary>
+    private static bool NeedsParen(NumExpr e) => e != null
+        && e.Op != NumOp.Const && e.Op != NumOp.Counter && e.Op != NumOp.Property;
 
     private static string PrintArith(NumExpr e)
     {
