@@ -291,13 +291,12 @@ public sealed partial class CardVm
 
             if (branchNode != null)
             {
-                // 帧栈后进先出，倒序压入才能正序执行
-                for (int i = chosenModes.Count - 1; i >= 0; i--)
-                {
-                    int idx = chosenModes[i];
-                    if (idx >= 0 && idx < branchNode.Options.Count)
-                        PushBody(branchNode.Options[idx], frame.Scope.Derive());
-                }
+                // 多选模式按**选项编号升序**执行，与玩家点选顺序无关（76-c 6.2-7）。
+                // 先升序排一遍，再倒序压栈 —— 帧栈后进先出，倒序压入才正序执行。
+                var ordered = chosenModes.Where(x => x >= 0 && x < branchNode.Options.Count)
+                                         .OrderBy(x => x).ToList();
+                for (int i = ordered.Count - 1; i >= 0; i--)
+                    PushBody(branchNode.Options[ordered[i]], frame.Scope.Derive());
             }
             return;
         }

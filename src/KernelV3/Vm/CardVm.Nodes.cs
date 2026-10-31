@@ -453,6 +453,16 @@ public sealed partial class CardVm
             {
                 bool fromHand = t.Zone == ZoneRef.Hand;
                 bool fromBoard = t.Zone == ZoneRef.Board;
+
+                // 「X is the number of cards you returned」的计数写入点。
+                // 之前只有读取点（EnglishCompiler:1533），全仓库没有任何地方写它，
+                // 于是 Shakdoh 的 Draw X 恒为 0 —— AST 看着对、运行期一张都抽不回。
+                if ((fromHand || fromBoard) && n.ToZone == ZoneRef.Deck)
+                {
+                    var retKey = Schema.Counter("cards_returned_to_hand");
+                    _world.WriteCounter(t.PlayerId, retKey,
+                        _world.ReadCounter(t.PlayerId, retKey) + 1);
+                }
                 if (fromBoard && n.ToZone != ZoneRef.Board)
                     _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(t) });
                 _world.MoveEntity(t, n.ToZone, t.PlayerId);
@@ -774,6 +784,16 @@ public sealed partial class CardVm
         var opts = n.Options;
         if (opts == null || opts.Count == 0) return false;
         int pick = Math.Clamp(_eval.EvalNum(n.PickCount, frame.Scope), 1, opts.Count);
+
+        // 「Increase the number of Modes you can select by 1」的光环。
+        // mode_count 早就在卡面上编译出来了（ActionParser:177），但运行时从没人读。
+        // 只对 Choose 生效：Random / Sequence 的取数由卡面自己写死，不是玩家可选数。
+        if (n.Kind == ModeDispatchKind.Choose)
+        {
+            var bonusKey = Schema.Counter("mode_count");
+            int bonus = _world.ReadCounter(frame.Scope.ResolvePlayer(frame.Scope.Owner), bonusKey);
+            if (bonus > 0) pick = Math.Clamp(pick + bonus, 1, opts.Count);
+        }
 
         switch (n.Kind)
         {

@@ -40,6 +40,8 @@ public static class MetaModeWeaver
         if (abilities == null || abilities.Count == 0) return abilities;
 
         var result = new List<AbilityDef>();
+        // 外层按 abilities 原序走一遍；result 里的 null 只是「还没走到这一格」的占位，
+        // 最终返回前统一压缩掉。
         foreach (var cur in abilities)
         {
             if (!IsMetaMode(cur))
@@ -52,7 +54,7 @@ public static class MetaModeWeaver
             int idx = -1;
             for (int i = result.Count - 1; i >= 0; i--)
             {
-                if (result[i].Body != null && result[i].Body.Any(n => n is BranchModeNode))
+                if (result[i]?.Body != null && result[i].Body.Any(n => n is BranchModeNode))
                 {
                     idx = i;
                     break;
@@ -73,9 +75,14 @@ public static class MetaModeWeaver
                 }
                 if (idx >= 0)
                 {
-                    // 后面的模式块还没循环到：先把它们原样放进 result，
+                    // 后面的模式块还没循环到：必须先用占位把 result 补齐到 idx，
                     // 再按下面的通常路径改写。
-                    while (result.Count <= idx) result.Add(abilities[result.Count]);
+                    //
+                    // 这里**只能补 null 占位**，不能补能力本体：外层 foreach 之后
+                    // 还会从 abilities 里把同一条能力再走一遍，补了就落盘两次。
+                    // 实测 Slice of Domesticity 因此编出 abil=4 / BranchMode=2 / Invoke=2
+                    // （应为 1/1/1），效果直接翻倍。
+                    while (result.Count <= idx) result.Add(null);
                 }
             }
 
@@ -138,6 +145,8 @@ public static class MetaModeWeaver
             };
         }
 
+        // 压缩掉「还没走到」的 null 占位。
+        result.RemoveAll(a => a == null);
         return result;
     }
 

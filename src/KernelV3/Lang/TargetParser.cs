@@ -224,16 +224,25 @@ public sealed class TargetParser
             //   Whenever/When  -> $trigger
             // 触发器绑定的优先级最高（DefaultPronounSlot 已置为 $trigger 时直接采纳），
             // 其次才看本句内既有的绑定。
+            // 优先级：本句内新产生的绑定 > 触发器初始值。
+            //
+            // 触发器槽位只是**初始值**，句内一旦出现 Select / Summon / Add，
+            // 代词就该指向那个更新的目标（U-5 裁决：「swap this follower's attack
+            // and defense and give it +1/+0」里的 it 指本卡，不指触发源）。
+            // 之前的实现让 DefaultPronounSlot 无条件最高优先，
+            // 于是 BoundSlots 的 $selected / $created 分支永远走不到。
             string pronSlot;
-            if (DefaultPronounSlot != null)
+            if (BoundSlots.Contains(TargetSpec.SlotSelected))
+            {
+                pronSlot = TargetSpec.SlotSelected;
+            }
+            else if (BoundSlots.Contains(TargetSpec.SlotCreated))
+            {
+                pronSlot = TargetSpec.SlotCreated;
+            }
+            else if (DefaultPronounSlot != null)
             {
                 pronSlot = DefaultPronounSlot;
-            }
-            else if (BoundSlots.Contains(TargetSpec.SlotSelected))
-            {
-                // Select 优先：设计3 5.3 规定「Select 后 it 直接合并进消费动作」，
-                // 只有没有 Select 时才看 Summon / Add。
-                pronSlot = TargetSpec.SlotSelected;
             }
             else if (BoundSlots.Contains(TargetSpec.SlotCreated))
             {

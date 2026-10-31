@@ -583,6 +583,15 @@ public sealed class EnglishCompiler
                 ? TargetSpec.SlotTrigger
                 : null;
 
+            // 新的能力头就是新的作用域：$selected / $created 这类「本句内新产生的目标」
+            // 不得跨能力头继承。
+            //   "Fanfare: Summon a Megalorca."  <hr>  "Whenever X enters, give it Ward."
+            // 若不清，第二条的 it 会去读第一条留下的 $created（那是个早已死掉的引用），
+            // 而正确目标是触发主体 $trigger。
+            // $trigger 本身由上面的 DefaultPronounSlot 重新给出，不受影响。
+            _target.ResetSlots();
+            if (hb.SubjectFilter != null) _target.MarkBound(TargetSpec.SlotTrigger);
+
             // 每句开头重置槽位登记（设计3 5.3 ScopeRegister）。
             // 但同一能力内的后续句要能继承前句的绑定，
             // 所以只在新能力头出现时清空。
