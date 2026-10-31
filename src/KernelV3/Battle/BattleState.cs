@@ -118,7 +118,28 @@ public sealed class BattleState : IVmWorld
     }
 
     private static bool MentionsFaithNode(EffectNode n)
-        => n != null && MentionsFaithNum(ReflectNum(n));
+    {
+        if (n == null) return false;
+        if (MentionsFaithNum(ReflectNum(n))) return true;
+        // 必须递归进复合节点：「Reduce your faith's value by 10 to ...」
+        // 现在整段被包在 ConditionalNode 里（资源不足时不许白嫖），
+        // 只看顶层节点会把这张卡判成「不用信仰」，SetupFaith 于是不生成信仰实体。
+        if (n is ConditionalNode c)
+            return MentionsFaithBool(c.Condition)
+                || (c.Then ?? Array.Empty<EffectNode>()).Any(MentionsFaithNode)
+                || (c.Else ?? Array.Empty<EffectNode>()).Any(MentionsFaithNode);
+        return false;
+    }
+
+    /// <summary>条件表达式里是否引用了 faith 计数器。</summary>
+    private static bool MentionsFaithBool(BoolExpr b) => b switch
+    {
+        null => false,
+        CompareExpr cmp => MentionsFaithNum(cmp.Left) || MentionsFaithNum(cmp.Right),
+        AndExpr and => (and.Items ?? Array.Empty<BoolExpr>()).Any(MentionsFaithBool),
+        OrExpr or => (or.Items ?? Array.Empty<BoolExpr>()).Any(MentionsFaithBool),
+        _ => false,
+    };
 
     private static NumExpr ReflectNum(EffectNode n) => n switch
     {

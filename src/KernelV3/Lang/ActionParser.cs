@@ -312,7 +312,8 @@ public sealed class ActionParser
                         Delta = NumExpr.Sub(NumExpr.Const(0), amt),
                     },
                 };
-                if (cur.MatchWord("to")) nodes.AddRange(ParseSequence(cur));
+                if (cur.MatchWord("to"))
+                    return PayThenDo(_lex.Counter("pp"), amt, nodes, ParseSequence(cur));
                 return nodes;
             }
             case "invoke":
@@ -344,7 +345,9 @@ public sealed class ActionParser
                     // "Reduce your faith's value by 10 to give it ..."
                     // 这里的 it 指被削减的那个资源计数器，先登记再解析后续动作。
                     _target.MarkBound(TargetSpec.SlotCounter);
-                    if (cur.MatchWord("to")) nodes.AddRange(ParseSequence(cur));
+                    if (cur.MatchWord("to"))
+                        // 信仰不足 10 时不能「扣成 0 然后白嫖」。
+                        return PayThenDo(_lex.Counter("faith"), amt, nodes, ParseSequence(cur));
                     return nodes;
                 }
                 cur.Seek(sv);
@@ -1757,6 +1760,33 @@ public sealed class ActionParser
         return new List<EffectNode> { new TransformNode { Target = target, CopySource = copySrc } };
     }
 
+    /// <summary>
+    /// 「消耗 N 点资源 **才能** 做某事」：把「扣费 + 效果」包进同一条件分支。
+    ///
+    /// 不能直接串成「先扣再执行」：WriteCounter 会把负数钳到 0，
+    /// 资源不足时扣费静默变成 0，而后续效果照常全额结算 —— 0 信仰白嫖、
+    /// 0 线索白嫖炸场。扣费与效果必须同生共死。
+    /// </summary>
+    private List<EffectNode> PayThenDo(Core.SymbolId<Core.CounterTag> counter, NumExpr amount,
+                                       List<EffectNode> payNodes, List<EffectNode> effectNodes)
+    {
+        var body = new List<EffectNode>(payNodes);
+        body.AddRange(effectNodes);
+        return new List<EffectNode>
+        {
+            new ConditionalNode
+            {
+                Condition = new CompareExpr
+                {
+                    Left = NumExpr.Ctr(counter),
+                    Op = CompareOp.Ge,
+                    Right = amount,
+                },
+                Then = body,
+            },
+        };
+    }
+
     // ---------- 攻防倍化 ----------
 
     /// <summary>
@@ -2781,7 +2811,8 @@ public sealed class ActionParser
         if (cur.Current.IsWord("to") || cur.Current.Kind == TokKind.Comma)
         {
             if (cur.Current.IsWord("to")) cur.Advance();
-            nodes.AddRange(ParseSequence(cur));
+            // 线索不足时不能「扣成 0 然后白嫖炸场」。
+            return PayThenDo(_lex.Counter("clues"), count, nodes, ParseSequence(cur));
         }
         return nodes;
     }
