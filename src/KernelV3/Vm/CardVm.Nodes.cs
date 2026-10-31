@@ -341,11 +341,17 @@ public sealed partial class CardVm
                 case KeywordOp.Remove:
                     t.Keywords.Remove(n.Keyword);
                     t.KeywordValues.Remove(n.Keyword);
+                    // 谢幕曲是一条 AbilityDef（OnDestroy），不是关键词 ——
+                    // 光从关键词表里删掉「last words」拦不住它照常触发。
+                    if (string.Equals(n.Keyword.Name, "last words", StringComparison.OrdinalIgnoreCase))
+                        t.LastWordsRemoved = true;
                     break;
                 case KeywordOp.SilenceAll:
                     t.Keywords.Clear();
                     t.KeywordValues.Clear();
                     t.IsSilenced = true;
+                    // 沉默同样要清掉挂上去的授予能力，否则它们还能继续触发。
+                    if (_world is Battle.BattleState bsS) bsS.ClearGrantedAbilities(t);
                     break;
             }
         }
@@ -579,10 +585,16 @@ public sealed partial class CardVm
         t.Counters.Clear();
         if (def == null) return;
 
+        // 回手也清空一切已获得的授予能力与「谢幕曲已移除」标记（76-c 第 5 章）。
+        if (_world is Battle.BattleState bsG)
+        {
+            bsG.ClearGrantedAbilities(t);
+            bsG.MountInnateProperties(t);
+        }
+        t.LastWordsRemoved = false;
         // 兵种、裸关键词、初始计数器、PassiveAura 装配、Countdown ——
         // 与 CreateEntity / TransformEntity 共用同一个装配点，
         // 三处各写一份必然漂移（回手后关键词没了、吟唱没恢复都是这么来的）。
-        if (_world is Battle.BattleState bs) bs.MountInnateProperties(t);
     }
 
     /// <summary>

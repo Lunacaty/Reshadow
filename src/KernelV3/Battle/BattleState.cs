@@ -1313,6 +1313,11 @@ public sealed class BattleState : IVmWorld
         e.AttackedThisTurn = false;
         e.AttackedLeaderLastTurn = false;
 
+        // 变身清空一切已获得的授予能力与「谢幕曲已移除」标记（76-c 第 5 章）。
+        // 只清 Keywords 不清 _granted，会让授予的 Ward 在变身之后依然生效。
+        ClearGrantedAbilities(e);
+        e.LastWordsRemoved = false;
+
         // 清空旧状态之后必须**重新装配新卡的常驻属性**。
         // 不调这一步，任何卡变身成带 Rush / Storm / Ward / Countdown 的卡之后
         // 都是一张纯白板（实测 Gear of Ambition → Striker Artifact 丢了 Rush）。
@@ -1326,6 +1331,19 @@ public sealed class BattleState : IVmWorld
 
     public void GrantAbility(RuntimeEntity e, AbilityDef ability)
         => _granted.Add((e, ability));
+
+    /// <summary>
+    /// 清掉挂在某个实体身上的全部授予能力。
+    ///
+    /// 变身 / 回手 / 沉默都必须调它 —— 76-c 第 5 章：「回手与变身清空
+    /// 一切已获得的能力」。只清 Keywords 不清 _granted，
+    /// 会让「在本回合获得 Ward」这类授予在变身之后依然生效。
+    /// </summary>
+    public void ClearGrantedAbilities(RuntimeEntity e)
+    {
+        if (e == null) return;
+        _granted.RemoveAll(x => x.e != null && x.e.EntityId == e.EntityId);
+    }
 
     public IReadOnlyList<(RuntimeEntity e, AbilityDef ab)> GrantedAbilities => _granted;
 

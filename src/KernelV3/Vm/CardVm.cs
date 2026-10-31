@@ -417,10 +417,18 @@ public sealed partial class CardVm
         foreach (var e in candidates)
         {
             if (e.Def == null) { }
+            // 「Remove Last Words」移除的是 OnDestroy 能力本身，
+            // 而谢幕曲不是关键词，从关键词表删「last words」拦不住它 ——
+            // 必须在候选阶段就整条跳过。
+            bool lastWordsRemoved = e.LastWordsRemoved;
             if (e.Def != null)
             {
                 foreach (var ab in e.Def.Abilities)
+                {
+                    if (lastWordsRemoved && ab?.Trigger != null
+                        && ab.Trigger.Event == CoreEvent.OnDestroy) continue;
                     AddCandidate(byEntity, e, ab);
+                }
             }
 
             // 运行时授予的能力（GrantAbility）不写在 CardDef 里，必须单独扫
