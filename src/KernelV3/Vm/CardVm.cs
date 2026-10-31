@@ -370,6 +370,11 @@ public sealed partial class CardVm
         // 墓地里的卡不会因为这条扫描而响应别人的死亡。
         AddZone(ZoneRef.Cemetery, curP);
         AddZone(ZoneRef.Cemetery, othP);
+        // 放逐区同样要扫：「When this card leaves the field, banish it.」的卡
+        // 在事件送达时**已经在放逐区**，不扫这里它的离场时能力永远不会触发
+        // （实测：被放逐的卡「离场时打 3 点」打 0 点）。
+        AddZone(ZoneRef.Banished, curP);
+        AddZone(ZoneRef.Banished, othP);
 
         foreach (var e in candidates)
         {
@@ -534,8 +539,13 @@ public sealed partial class CardVm
         //   · 只对「事件主体就是这张卡」生效，且用 EntrySerial 锁定身份 ——
         //     EntityId 永不复用，EntrySerial 在移区时 +1，两者同时相等才说明
         //     这具尸体正是本次事件的主体，而不是另一张同名卡。
+        // 「离场时」与「谢幕曲」都发生在实体**已经离开战场之后**：
+        //   · OnDestroy    → 事件在移入墓地后发出
+        //   · OnLeaveField → 事件在移出后发出（Banish 的落点是放逐区）
+        // 只认墓地的豁免会让被放逐的卡完全收不到自己的离场时能力 ——
+        // 实测「When this card leaves the field, deal 3 damage」在 Banish 路径下打 0 点。
         bool graveSelf = need == ZoneRef.Board
-                         && owner.Zone == ZoneRef.Cemetery
+                         && (owner.Zone == ZoneRef.Cemetery || owner.Zone == ZoneRef.Banished)
                          && (ev.Kind == CoreEvent.OnDestroy || ev.Kind == CoreEvent.OnLeaveField)
                          && ev.Subject != null
                          && ev.Subject.Value.EntityId == owner.EntityId
