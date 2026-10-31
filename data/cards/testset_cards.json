@@ -1,1363 +1,533 @@
 {
- "_schema": "handcrafted test pool (official phrasing)",
+ "_schema": "testset-v2-element-coverage",
  "cards": [
   {
    "card_id": 81000000,
-   "name_eng": "Wayfarer Apprentice",
+   "name_eng": "Indomitable Fighter",
    "type": 1,
-   "cost": 1,
-   "atk": 1,
-   "life": 1,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Draw a card."
+   "cost": 2,
+   "atk": 2,
+   "life": 2,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Draw a card.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Select an enemy follower on the field and deal it 2 damage.</ev>\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Deal X damage to all enemy followers. X is the number of cards in your hand.</sev>",
+   "covered": [
+    "Fanfare",
+    "Evolve",
+    "Super-Evolve",
+    "hr",
+    "ev",
+    "sev",
+    "Select+and",
+    "an enemy follower",
+    "all enemy followers",
+    "X is the number"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Draw a card."
+   "expect": "pass"
   },
   {
    "card_id": 81000001,
-   "name_eng": "Bladeborn Adept",
-   "type": 1,
+   "name_eng": "Detective's Lens",
+   "type": 2,
    "cost": 2,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Evolve</color></b>: Deal 2 damage to the enemy leader."
+   "atk": null,
+   "life": null,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Fairy</color></i></b> to your hand.\n<hr><b><color=Keyword>Countdown</color> (2)</b>\n<hr><b><color=Keyword>Engage</color></b>: Destroy this card. Select an allied follower on the field and give it <color=Keyword>Rush</color>.",
+   "covered": [
+    "Fanfare",
+    "Engage",
+    "Countdown",
+    "Destroy this",
+    "allied follower",
+    "Give keyword",
+    "Add to hand",
+    "多动作并列"
    ],
-   "eng_text": "<b><color=Keyword>Evolve</color></b>: Deal 2 damage to the enemy leader."
+   "expect": "pass"
   },
   {
    "card_id": 81000002,
-   "name_eng": "Marrowstone Colossus",
-   "type": 1,
-   "cost": 3,
-   "atk": 3,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Super-Evolve</color></b>: Restore 3 defense to your leader."
+   "name_eng": "Bug Alert",
+   "type": 3,
+   "cost": 1,
+   "atk": null,
+   "life": null,
+   "eng_text": "Destroy all enemy followers with 3 attack or less. Draw a card.",
+   "covered": [
+    "法术正文无头",
+    "all enemy followers",
+    "or less",
+    "两动作并列"
    ],
-   "eng_text": "<b><color=Keyword>Super-Evolve</color></b>: Restore 3 defense to your leader."
+   "expect": "pass"
   },
   {
    "card_id": 81000003,
-   "name_eng": "Dying Ember Sprite",
+   "name_eng": "Amataz, Origin Blader",
    "type": 1,
-   "cost": 4,
+   "cost": 3,
    "atk": 2,
    "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Last Words</color></b>: Draw 2 cards."
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Give this follower +X/+X. X is the number of Pixie followers in your hand.\n<hr><b><color=Keyword>Ward</color></b>\n<hr><ev><b><color=Keyword>Evolve</color></b>: Do this X times: \"Deal 1 damage to a random enemy follower.\" X is the number of Pixie followers in your hand.</ev>",
+   "covered": [
+    "Fanfare",
+    "Evolve",
+    "Ward",
+    "X is the number",
+    "Do this N times",
+    "引号能力",
+    "random enemy follower",
+    "Give stats",
+    "3段hr"
    ],
-   "eng_text": "<b><color=Keyword>Last Words</color></b>: Draw 2 cards."
+   "expect": "pass"
   },
   {
    "card_id": 81000004,
-   "name_eng": "Runeweaver Novice",
-   "type": 3,
+   "name_eng": "Prostrating Coward",
+   "type": 1,
    "cost": 5,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>On Spellboost</color></b>: Deal 1 damage to all enemy followers."
+   "atk": 4,
+   "life": 5,
+   "eng_text": "When this follower enters the field, restore 2 defense to your leader.\n<hr><b><color=Keyword>Bane</color></b>\n<b><color=Keyword>Ward</color></b>",
+   "covered": [
+    "When enters field(裸)",
+    "Bane",
+    "Ward",
+    "restore",
+    "your leader",
+    "裸关键词并列"
    ],
-   "eng_text": "<b><color=Keyword>On Spellboost</color></b>: Deal 1 damage to all enemy followers."
+   "expect": "pass",
+   "alt_modes": [
+    {
+     "type_key": "crystallize",
+     "type_eng": "Crystallize",
+     "cost": 2,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Prostrating Coward</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 81000005,
-   "name_eng": "Duelist of the Reach",
+   "name_eng": "Shoddy Plaything",
    "type": 1,
    "cost": 6,
-   "atk": 3,
+   "atk": 1,
    "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Clash</color></b>: Deal 1 damage to the opposing follower."
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Draw 3 cards.\n<hr><b><color=Keyword>Ward</color></b>",
+   "covered": [
+    "Fanfare",
+    "Draw N",
+    "Ward"
    ],
-   "eng_text": "<b><color=Keyword>Clash</color></b>: Deal 1 damage to the opposing follower."
+   "expect": "pass",
+   "alt_modes": [
+    {
+     "type_key": "accelerate",
+     "type_eng": "Accelerate",
+     "cost": 2,
+     "text_eng": "Summon a <b><i><color=Keyword>Shoddy Plaything</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 81000006,
-   "name_eng": "Swiftwing Skirmisher",
+   "name_eng": "Aria, Lady of the Woods",
    "type": 1,
-   "cost": 7,
-   "atk": 3,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Strike</color></b>: Draw a card."
+   "cost": 6,
+   "atk": 4,
+   "life": 4,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Aria, Lady of the Woods</i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Summon 3 copies of <b><i><color=Keyword>Fairy</color></i></b>.</ev>",
+   "covered": [
+    "Fanfare",
+    "Evolve",
+    "Gain Crest",
+    "Summon N copies"
    ],
-   "eng_text": "<b><color=Keyword>Strike</color></b>: Draw a card."
+   "expect": "pass",
+   "alt_modes": [
+    {
+     "type_key": "crest",
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>."
+    }
+   ]
   },
   {
    "card_id": 81000007,
-   "name_eng": "Leyline Conduit",
-   "type": 2,
-   "cost": 1,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Engage</color></b> (1): Draw a card."
-   ],
-   "eng_text": "<b><color=Keyword>Engage</color></b> (1): Draw a card."
-  },
-  {
-   "card_id": 81000008,
-   "name_eng": "Stalwart Recruit",
+   "name_eng": "Sham-Nacha, Heir to Entwining",
    "type": 1,
    "cost": 2,
    "atk": 2,
    "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Enhance</color></b> (4): Give this follower +3/+3."
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Reduce your faith's value by 10 to give it \"Increase the number of Modes you can select by 1.\"",
+   "covered": [
+    "Fanfare",
+    "Reduce faith",
+    "引号能力",
+    "give to faith"
    ],
-   "eng_text": "<b><color=Keyword>Enhance</color></b> (4): Give this follower +3/+3."
-  },
-  {
-   "card_id": 81000009,
-   "name_eng": "Tempo Virtuoso",
-   "type": 1,
-   "cost": 3,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Combo</color></b> (3) - Evolve this follower."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Combo</color></b> (3) - Evolve this follower."
+   "expect": "fail",
+   "alt_modes": [
+    {
+     "type_key": "faith",
+     "type_eng": "Faith",
+     "cost": 0,
+     "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <color=Keyword>Mode</color><color=Keyword>s</color>, increase this faith's value by 1."
+    }
+   ]
   },
   {
    "card_id": 81000010,
-   "name_eng": "Gravecaller Initiate",
-   "type": 1,
+   "name_eng": "Witch's New Brew",
+   "type": 2,
    "cost": 3,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Necromancy</color></b> (4) - Give this follower <b><color=Keyword>Storm</color></b>."
+   "atk": null,
+   "life": null,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: If you're in <color=Keyword>Overflow</color>, draw 2 cards. Otherwise, draw a card.",
+   "covered": [
+    "Fanfare",
+    "Overflow 条件",
+    "Otherwise 分支"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Necromancy</color></b> (4) - Give this follower <b><color=Keyword>Storm</color></b>."
+   "expect": "pass"
   },
   {
    "card_id": 81000011,
-   "name_eng": "Sigilwright Adept",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color></b> (1) - Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>."
+   "name_eng": "Runeblade Conductor",
+   "type": 1,
+   "cost": 4,
+   "atk": 3,
+   "life": 3,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and deal it X damage. X is your <color=Keyword>Combo</color> count.",
+   "covered": [
+    "Fanfare",
+    "Combo 条件",
+    "Select+and",
+    "X is your Combo"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color></b> (1) - Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>."
+   "expect": "pass"
   },
   {
    "card_id": 81000012,
-   "name_eng": "Skybound Vanguard",
+   "name_eng": "Blaze Destroyer",
    "type": 1,
-   "cost": 5,
-   "atk": 3,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Skybound Art</color></b> - Deal 5 damage to 2 random enemy followers."
+   "cost": 7,
+   "atk": 6,
+   "life": 6,
+   "eng_text": "Activates in hand. <b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1.",
+   "covered": [
+    "Activates in hand",
+    "On Spellboost",
+    "Reduce cost"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Skybound Art</color></b> - Deal 5 damage to 2 random enemy followers."
+   "expect": "pass"
   },
   {
    "card_id": 81000013,
-   "name_eng": "Skybound Ascendant",
-   "type": 1,
-   "cost": 7,
-   "atk": 4,
-   "life": 4,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Super Skybound Art</color></b> - Deal 3 damage to the enemy leader."
+   "name_eng": "Godwood Staff",
+   "type": 2,
+   "cost": 2,
+   "atk": null,
+   "life": null,
+   "eng_text": "At the end of your turn, <b><color=Keyword>Combo</color> (3)</b> - Draw a card.\n<hr><b><color=Keyword>Engage</color></b>: Destroy this card. Select another allied card on the field and give it <color=Keyword>Ward</color>.",
+   "covered": [
+    "At the end of your turn(裸)",
+    "Combo 代价头",
+    "Engage",
+    "another 排除自身",
+    "Give keyword"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Super Skybound Art</color></b> - Deal 3 damage to the enemy leader."
+   "expect": "pass"
   },
   {
    "card_id": 81000014,
-   "name_eng": "Warden of Twilight",
-   "type": 2,
-   "cost": 1,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "At the end of your turn, restore 1 defense to your leader."
+   "name_eng": "Edelweiss, Sagelight Ward",
+   "type": 1,
+   "cost": 5,
+   "atk": 3,
+   "life": 4,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color> (2)</b> - Evolve this follower.\n<hr><ev>When this follower evolves, deal 4 damage to a random enemy follower.</ev>",
+   "covered": [
+    "Fanfare",
+    "Earth Rite 代价(非头)",
+    "Evolve this",
+    "When evolves(裸)",
+    "random enemy follower"
    ],
-   "eng_text": "At the end of your turn, restore 1 defense to your leader."
+   "expect": "pass"
   },
   {
    "card_id": 81000015,
-   "name_eng": "Harbinger of Dawn",
-   "type": 2,
-   "cost": 1,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "At the start of your turn, draw a card."
-   ],
-   "eng_text": "At the start of your turn, draw a card."
-  },
-  {
-   "card_id": 81000016,
-   "name_eng": "Shepherd of Kin",
+   "name_eng": "Reno, Luxwing Featherfolk",
    "type": 1,
-   "cost": 9,
+   "cost": 3,
    "atk": 2,
    "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Whenever an allied follower enters the field, give it <b><color=Keyword>Ward</color></b>."
+   "eng_text": "<b><color=Keyword>Clash</color></b>: Deal 1 damage to the enemy leader.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give this follower \"Can attack 2 times per turn.\"</sev>",
+   "covered": [
+    "Clash",
+    "Super-Evolve",
+    "the enemy leader",
+    "引号关键词",
+    "Can attack N times"
    ],
-   "eng_text": "Whenever an allied follower enters the field, give it <b><color=Keyword>Ward</color></b>."
-  },
-  {
-   "card_id": 81000017,
-   "name_eng": "Standard-Bearer of the Host",
-   "type": 1,
-   "cost": 9,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Whenever an allied <b><color=Keyword>Officer</color></b> follower enters the field, give this follower +1/+0 until the end of the turn."
-   ],
-   "eng_text": "Whenever an allied <b><color=Keyword>Officer</color></b> follower enters the field, give this follower +1/+0 until the end of the turn."
-  },
-  {
-   "card_id": 81000018,
-   "name_eng": "Cunning Broker",
-   "type": 1,
-   "cost": 11,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Activates in hand. Whenever you <b><color=Keyword>Engage</color></b> an amulet, draw a card."
-   ],
-   "eng_text": "Activates in hand. Whenever you <b><color=Keyword>Engage</color></b> an amulet, draw a card."
-  },
-  {
-   "card_id": 81000019,
-   "name_eng": "Lurking Sentry",
-   "type": 1,
-   "cost": 12,
-   "atk": 3,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Activates in deck. At the end of your turn, destroy this card."
-   ],
-   "eng_text": "Activates in deck. At the end of your turn, destroy this card."
+   "expect": "pass"
   },
   {
    "card_id": 81000020,
-   "name_eng": "Bounty Hunter",
+   "name_eng": "Ghost",
    "type": 1,
    "cost": 1,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and destroy it."
+   "atk": 1,
+   "life": 1,
+   "eng_text": "<b><color=Keyword>Storm</color></b>\n<hr>When this card leaves the field, banish it.\n<hr>At the end of your turn, banish this card.",
+   "covered": [
+    "Storm",
+    "When leaves field(裸)",
+    "banish it",
+    "At the end of your turn",
+    "banish this"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and destroy it."
+   "expect": "pass"
   },
   {
    "card_id": 81000021,
-   "name_eng": "Field Commander",
+   "name_eng": "Sinciro, Heir to Usurpation",
    "type": 1,
-   "cost": 2,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Select an allied follower on the field and give it <b><color=Keyword>Rush</color></b>."
+   "cost": 6,
+   "atk": 5,
+   "life": 5,
+   "eng_text": "<b><color=Keyword>Fuse</color></b>: Loot cards\n<hr><b><color=Keyword>Fanfare</color></b>: Deal X damage to all enemies. X is the number of differently named cards <color=Keyword>Fuse</color><color=Keyword>d</color> to this card.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Replicate the effects of this card's <color=Keyword>Fanfare</color> ability.</sev>",
+   "covered": [
+    "Fuse 头",
+    "differently named",
+    "all enemies",
+    "Super-Evolve",
+    "Replicate the effects"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Select an allied follower on the field and give it <b><color=Keyword>Rush</color></b>."
+   "expect": "pass"
   },
   {
    "card_id": 81000022,
-   "name_eng": "Cinder Bolt",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Deal 3 damage to the enemy leader."
+   "name_eng": "Striker Artifact",
+   "type": 1,
+   "cost": 3,
+   "atk": 2,
+   "life": 2,
+   "eng_text": "<b><color=Keyword>Fuse</color></b>: Artifact cards\n<hr>When you <color=Keyword>Fuse</color> to this card, transform it based on the total cost of the cards fused.\n1: <b><i><color=Keyword>Ominous Artifact α</color></i></b>\n2: <b><i><color=Keyword>Ominous Artifact β</color></i></b>\n3 or more: <b><i><color=Keyword>Ominous Artifact γ</color></i></b>\n<hr><b><color=Keyword>Rush</color></b>",
+   "covered": [
+    "Fuse 头",
+    "When you Fuse",
+    "transform",
+    "分档表",
+    "or more",
+    "Rush"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Deal 3 damage to the enemy leader."
+   "expect": "fail"
   },
   {
    "card_id": 81000023,
-   "name_eng": "Scattershot Volley",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Deal 2 damage to a random enemy follower."
+   "name_eng": "Slaus, Revolving Wheel of Fortune",
+   "type": 1,
+   "cost": 5,
+   "atk": 3,
+   "life": 3,
+   "eng_text": "<b><color=Keyword>Ambush</color></b>\n<hr>At the end of your turn, if this follower is evolved, give your opponent <b><i>Crest: Slaus, Revolving Wheel of Fortune</i></b>.",
+   "covered": [
+    "Ambush",
+    "At the end of your turn",
+    "If this is evolved",
+    "give opponent Crest"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Deal 2 damage to a random enemy follower."
+   "expect": "fail"
   },
   {
    "card_id": 81000024,
-   "name_eng": "Sunder Wave",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Deal 7 damage split between all enemy followers."
+   "name_eng": "Sandalphon, Primarch Successor",
+   "type": 1,
+   "cost": 8,
+   "atk": 5,
+   "life": 5,
+   "eng_text": "Activates in deck. At the start of your turn, if allied followers have evolved at least 6 times this match, <color=Keyword>Invoke</color> this card.",
+   "covered": [
+    "Activates in deck",
+    "At the start of your turn",
+    "at least N times",
+    "Invoke"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Deal 7 damage split between all enemy followers."
+   "expect": "fail"
   },
   {
    "card_id": 81000025,
-   "name_eng": "Soothing Litany",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Restore 2 defense to your leader."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Restore 2 defense to your leader."
-  },
-  {
-   "card_id": 81000026,
-   "name_eng": "Wandering Scholar",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Draw 2 cards."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Draw 2 cards."
-  },
-  {
-   "card_id": 81000027,
-   "name_eng": "Beastcaller",
-   "type": 1,
-   "cost": 4,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Knight</color></i></b>."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Knight</color></i></b>."
-  },
-  {
-   "card_id": 81000028,
-   "name_eng": "Relic Seeker",
+   "name_eng": "Obsessed Test Subject",
    "type": 1,
    "cost": 3,
    "atk": 2,
    "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Knight</color></i></b> to your hand."
+   "eng_text": "When this follower enters the field, if at least 5 other allied copies of <b><i><color=Keyword>Obsessed Test Subject</color></i></b> have entered the field this match, destroy all enemy followers.",
+   "covered": [
+    "When enters field(裸)",
+    "if at least N other",
+    "this match",
+    "all enemy followers"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Knight</color></i></b> to your hand."
-  },
-  {
-   "card_id": 81000029,
-   "name_eng": "Twin Relic Seeker",
-   "type": 1,
-   "cost": 3,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Add 2 copies of <b><i><color=Keyword>Knight</color></i></b> to your hand."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Add 2 copies of <b><i><color=Keyword>Knight</color></i></b> to your hand."
+   "expect": "fail"
   },
   {
    "card_id": 81000030,
-   "name_eng": "Battle Standard",
-   "type": 1,
-   "cost": 2,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Enhance</color></b> (4): Give this follower +3/+3."
+   "name_eng": "Pascale's Dance",
+   "type": 2,
+   "cost": 3,
+   "atk": null,
+   "life": null,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color> (10)</b> - Double the attack and defense of an allied follower.",
+   "covered": [
+    "Earth Rite 高消耗(代价)",
+    "Double",
+    "an allied follower"
    ],
-   "eng_text": "<b><color=Keyword>Enhance</color></b> (4): Give this follower +3/+3."
+   "expect": "fail"
   },
   {
    "card_id": 81000031,
-   "name_eng": "Aegis Warden",
+   "name_eng": "Mjerrabaine, Great Manifest",
    "type": 1,
-   "cost": 2,
-   "atk": 1,
-   "life": 1,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Strike</color></b>: Give this follower <b><color=Keyword>Barrier</color></b>."
+   "cost": 8,
+   "atk": 6,
+   "life": 6,
+   "eng_text": "When you gain this crest, replace your deck with a deck of 40 cards.",
+   "covered": [
+    "replace deck",
+    "40 cards"
    ],
-   "eng_text": "<b><color=Keyword>Strike</color></b>: Give this follower <b><color=Keyword>Barrier</color></b>."
+   "expect": "fail"
   },
   {
    "card_id": 81000032,
-   "name_eng": "Shadow Cloak",
-   "type": 1,
-   "cost": 3,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Enhance</color></b> (6): Give this follower +2/+2 and <b><color=Keyword>Ambush</color></b>."
+   "name_eng": "Octrice, Hollowness Manifest",
+   "type": 2,
+   "cost": 4,
+   "atk": null,
+   "life": null,
+   "eng_text": "<b><color=Keyword>Countdown</color> (8)</b>\n<hr>Whenever you play or <color=Keyword>Fuse</color> a Loot card, advance this crest's count by 1.\n<hr><b><color=Keyword>Last Words</color></b>: Add a <b><i><color=Keyword>Remnant of Hollowness</color></i></b> to your hand.",
+   "covered": [
+    "Countdown",
+    "Whenever you play or Fuse",
+    "advance count",
+    "Last Words"
    ],
-   "eng_text": "<b><color=Keyword>Enhance</color></b> (6): Give this follower +2/+2 and <b><color=Keyword>Ambush</color></b>."
+   "expect": "fail"
   },
   {
    "card_id": 81000033,
-   "name_eng": "Disarming Strike",
-   "type": 1,
-   "cost": 3,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Evolve</color></b>: Remove <b><color=Keyword>Ward</color></b> from this follower."
+   "name_eng": "Glittering Gold",
+   "type": 3,
+   "cost": 1,
+   "atk": null,
+   "life": null,
+   "eng_text": "Select a Mode to activate.\n 1. Draw a card.\n 2. Deal 2 damage to the enemy leader.\n 3. Restore 2 defense to your leader.",
+   "covered": [
+    "Select a Mode",
+    "ridx 选项块",
+    "三选一"
    ],
-   "eng_text": "<b><color=Keyword>Evolve</color></b>: Remove <b><color=Keyword>Ward</color></b> from this follower."
+   "expect": "pass"
   },
   {
    "card_id": 81000034,
-   "name_eng": "Nullifying Beam",
-   "type": 3,
-   "cost": 4,
+   "name_eng": "City of Babelon",
+   "type": 2,
+   "cost": 1,
    "atk": null,
    "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field, remove all abilities from it, and deal it 3 damage."
+   "eng_text": "<b><color=Keyword>Countdown</color> (1)</b>\n<hr>At the end of your turn, activate an ability in sequence from the following.\n 1. Deal 2 damage to a random enemy follower.\n 2. Draw a card.\n 3. Restore 2 defense to your leader.",
+   "covered": [
+    "Countdown",
+    "in sequence",
+    "三选项顺序执行"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field, remove all abilities from it, and deal it 3 damage."
+   "expect": "pass"
   },
   {
    "card_id": 81000035,
-   "name_eng": "League Enforcer",
+   "name_eng": "Shakdoh, Nightblossom",
    "type": 1,
-   "cost": 5,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Super-Evolve</color></b>: Set the attack of all enemy followers on the field to 4."
+   "cost": 7,
+   "atk": 5,
+   "life": 5,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Do this 2 times: \"Return your hand to deck. Draw X cards. X is the number of cards you returned. Then, if you have at least 4 cards with the same cost in your hand, deal 4 damage to all enemies.\"\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Replicate the effects of this card's <color=Keyword>Fanfare</color> ability.</sev>",
+   "covered": [
+    "Do this N times",
+    "引号多句",
+    "X is the number",
+    "Then,",
+    "same cost",
+    "all enemies",
+    "Replicate"
    ],
-   "eng_text": "<b><color=Keyword>Super-Evolve</color></b>: Set the attack of all enemy followers on the field to 4."
+   "expect": "fail"
   },
   {
    "card_id": 81000036,
-   "name_eng": "Culling Verdict",
-   "type": 3,
-   "cost": 5,
+   "name_eng": "Adventurers' Guild",
+   "type": 2,
+   "cost": 2,
    "atk": null,
    "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Set your leader's max defense to 1."
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Draw a follower.\n<hr><b><color=Keyword>Engage</color></b>: Destroy this card. Select an allied follower on the field and give it <color=Keyword>Rush</color>. Draw a card.",
+   "covered": [
+    "Fanfare",
+    "Draw a follower(类型限定)",
+    "Engage",
+    "三动作并列"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Set your leader's max defense to 1."
+   "expect": "pass"
   },
   {
    "card_id": 81000037,
-   "name_eng": "Sovereign's Judgment",
-   "type": 3,
-   "cost": 5,
+   "name_eng": "Ancient Cannon",
+   "type": 2,
+   "cost": 3,
    "atk": null,
    "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Halve the enemy leader's max defense."
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Gear of Ambition</color></i></b> to your hand.\n<hr>Whenever you <color=Keyword>Fuse</color>, deal 2 damage to a random enemy follower.",
+   "covered": [
+    "Add named card",
+    "Whenever you Fuse",
+    "random enemy follower"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Halve the enemy leader's max defense."
+   "expect": "pass"
   },
   {
    "card_id": 81000038,
-   "name_eng": "Thrifty Merchant",
-   "type": 3,
-   "cost": 5,
+   "name_eng": "Gear of Ambition",
+   "type": 2,
+   "cost": 1,
    "atk": null,
    "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Halve the cost of all cards in your deck."
+   "eng_text": "<b><color=Keyword>Fuse</color></b>: Artifact amulets\n<hr>When you <color=Keyword>Fuse</color> to this card, transform it into a <b><i><color=Keyword>Striker Artifact</color></i></b>.\n<hr>Can't be played.",
+   "covered": [
+    "Fuse 头",
+    "transform into named",
+    "Can't be played"
    ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Halve the cost of all cards in your deck."
+   "expect": "fail"
   },
   {
    "card_id": 81000039,
-   "name_eng": "Twin-Faced Trickster",
+   "name_eng": "Yuna, Occult Hunter",
    "type": 1,
-   "cost": 2,
-   "atk": 1,
+   "cost": 4,
+   "atk": 3,
    "life": 5,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Whenever you <b><color=Keyword>Engage</color></b> a Clue amulet, swap this follower's attack and defense and give it +1/+0."
+   "eng_text": "<b><color=Keyword>Ward</color></b>\n<hr><b><color=Keyword>Last Words</color></b>: Add a <b><i><color=Keyword>Ghost</color></i></b> and <b><i><color=Keyword>Bat</color></i></b> to your hand.",
+   "covered": [
+    "Ward",
+    "Last Words",
+    "Add 两卡并列"
    ],
-   "eng_text": "Whenever you <b><color=Keyword>Engage</color></b> a Clue amulet, swap this follower's attack and defense and give it +1/+0."
-  },
-  {
-   "card_id": 81000040,
-   "name_eng": "Studious Apprentice",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1."
-   ],
-   "eng_text": "<b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1."
-  },
-  {
-   "card_id": 81000041,
-   "name_eng": "Fading Sigil",
-   "type": 2,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Engage</color></b>: Destroy this card."
-   ],
-   "eng_text": "<b><color=Keyword>Engage</color></b>: Destroy this card."
-  },
-  {
-   "card_id": 81000042,
-   "name_eng": "Purifying Light",
-   "type": 3,
-   "cost": 4,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Banish all duplicates from your deck."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Banish all duplicates from your deck."
-  },
-  {
-   "card_id": 81000043,
-   "name_eng": "Meticulous Inquisitor",
-   "type": 3,
-   "cost": 4,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Evolve</color></b>: Select an enemy follower on the field with 3 defense or less and banish it."
-   ],
-   "eng_text": "<b><color=Keyword>Evolve</color></b>: Select an enemy follower on the field with 3 defense or less and banish it."
-  },
-  {
-   "card_id": 81000044,
-   "name_eng": "Reckless Gambler",
-   "type": 3,
-   "cost": 1,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Discard your hand."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Discard your hand."
-  },
-  {
-   "card_id": 81000045,
-   "name_eng": "Recall Sigil",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Return your hand to deck."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Return your hand to deck."
-  },
-  {
-   "card_id": 81000046,
-   "name_eng": "Retreating Scout",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Return this card to hand."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Return this card to hand."
-  },
-  {
-   "card_id": 81000047,
-   "name_eng": "Transmuter of Spells",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Transform a random spell in your hand into an <b><i><color=Keyword>Ersatz Elimination</color></i></b>."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Transform a random spell in your hand into an <b><i><color=Keyword>Ersatz Elimination</color></i></b>."
-  },
-  {
-   "card_id": 81000048,
-   "name_eng": "Ascendant Mentor",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Combo</color></b> (3) - Evolve this follower."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Combo</color></b> (3) - Evolve this follower."
-  },
-  {
-   "card_id": 81000049,
-   "name_eng": "Deep Leyline",
-   "type": 2,
-   "cost": 1,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Engage</color></b> (1): Gain an earth sigil."
-   ],
-   "eng_text": "<b><color=Keyword>Engage</color></b> (1): Gain an earth sigil."
-  },
-  {
-   "card_id": 81000050,
-   "name_eng": "Vessel of Surge",
-   "type": 3,
-   "cost": 6,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Gain 1 max play point."
-   ],
-   "eng_text": "Gain 1 max play point."
-  },
-  {
-   "card_id": 81000051,
-   "name_eng": "Investigator's Verdict",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Consume 2 clues to destroy a random enemy follower with the highest attack."
-   ],
-   "eng_text": "Consume 2 clues to destroy a random enemy follower with the highest attack."
-  },
-  {
-   "card_id": 81000052,
-   "name_eng": "Font of Vigor",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Recover 2 play points."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Recover 2 play points."
-  },
-  {
-   "card_id": 81000053,
-   "name_eng": "Arcane Attunement",
-   "type": 3,
-   "cost": 1,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Spellboost your hand 2 times."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Spellboost your hand 2 times."
-  },
-  {
-   "card_id": 81000054,
-   "name_eng": "Grave Awakening",
-   "type": 3,
-   "cost": 4,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Reanimate (4)."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Reanimate (4)."
-  },
-  {
-   "card_id": 81000055,
-   "name_eng": "Sands of Time",
-   "type": 2,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Countdown (3) <b><color=Keyword>Engage</color></b> (1): Advance this amulet's count by 1."
-   ],
-   "eng_text": "Countdown (3) <b><color=Keyword>Engage</color></b> (1): Advance this amulet's count by 1."
-  },
-  {
-   "card_id": 81000056,
-   "name_eng": "Lagging Ward",
-   "type": 2,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Engage</color></b> (1): Delay the count of this amulet by 1."
-   ],
-   "eng_text": "<b><color=Keyword>Engage</color></b> (1): Delay the count of this amulet by 1."
-  },
-  {
-   "card_id": 81000057,
-   "name_eng": "Portent of Return",
-   "type": 1,
-   "cost": 5,
-   "atk": 3,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Activates in deck. At the start of your turn, if allied followers have evolved at least 6 times this match, Invoke this card."
-   ],
-   "eng_text": "Activates in deck. At the start of your turn, if allied followers have evolved at least 6 times this match, Invoke this card."
-  },
-  {
-   "card_id": 81000058,
-   "name_eng": "Apocalyptic Ledger",
-   "type": 3,
-   "cost": 6,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Replace your deck with the Apocalypse Deck."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Replace your deck with the Apocalypse Deck."
-  },
-  {
-   "card_id": 81000059,
-   "name_eng": "Echoing Herald",
-   "type": 1,
-   "cost": 4,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Evolve</color></b>: Replicate the effects of this card's Fanfare ability."
-   ],
-   "eng_text": "<b><color=Keyword>Evolve</color></b>: Replicate the effects of this card's Fanfare ability."
-  },
-  {
-   "card_id": 81000060,
-   "name_eng": "Relentless Barrage",
-   "type": 1,
-   "cost": 5,
-   "atk": 3,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Evolve</color></b>: <b><color=Keyword>Necromancy</color></b> (4) - Do this 2 times: \"Deal 2 damage to a random enemy follower.\""
-   ],
-   "eng_text": "<b><color=Keyword>Evolve</color></b>: <b><color=Keyword>Necromancy</color></b> (4) - Do this 2 times: \"Deal 2 damage to a random enemy follower.\""
-  },
-  {
-   "card_id": 81000061,
-   "name_eng": "Kaleidoscope Sigil",
-   "type": 3,
-   "cost": 6,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color></b> (2) - Activate 2 random abilities from the following. 1. Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>. 2. Restore 2 defense to your leader. 3. Gain 3 earth sigils."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color></b> (2) - Activate 2 random abilities from the following. 1. Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>. 2. Restore 2 defense to your leader. 3. Gain 3 earth sigils."
-  },
-  {
-   "card_id": 81000062,
-   "name_eng": "Herald of the Mark",
-   "type": 1,
-   "cost": 5,
-   "atk": 3,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Gain Crest: <b><i><color=Keyword>Test Crest</color></i></b>."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Gain Crest: <b><i><color=Keyword>Test Crest</color></i></b>."
-  },
-  {
-   "card_id": 81000063,
-   "name_eng": "Mirror Artisan",
-   "type": 3,
-   "cost": 5,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Evolve</color></b>: Select an Artifact follower in your hand that costs 5 or less and summon an exact copy of it."
-   ],
-   "eng_text": "<b><color=Keyword>Evolve</color></b>: Select an Artifact follower in your hand that costs 5 or less and summon an exact copy of it."
-  },
-  {
-   "card_id": 81000064,
-   "name_eng": "Prism Sigil",
-   "type": 3,
-   "cost": 4,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Select a Mode to activate. 1. Draw a card. 2. Deal 2 damage to the enemy leader."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Select a Mode to activate. 1. Draw a card. 2. Deal 2 damage to the enemy leader."
-  },
-  {
-   "card_id": 81000065,
-   "name_eng": "Convergent Prism",
-   "type": 3,
-   "cost": 5,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Select a Mode to activate. If there are at least 2 allied cards on the field, activate all of them instead. 1. Draw a card. 2. Restore 2 defense to your leader."
-   ],
-   "eng_text": "Select a Mode to activate. If there are at least 2 allied cards on the field, activate all of them instead. 1. Draw a card. 2. Restore 2 defense to your leader."
-  },
-  {
-   "card_id": 81000066,
-   "name_eng": "Sequential Ward",
-   "type": 3,
-   "cost": 5,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "At the end of your turn, activate an ability in sequence from the following. 1. Draw a card. 2. Restore 2 defense to your leader."
-   ],
-   "eng_text": "At the end of your turn, activate an ability in sequence from the following. 1. Draw a card. 2. Restore 2 defense to your leader."
-  },
-  {
-   "card_id": 81000067,
-   "name_eng": "Tallying Scholar",
-   "type": 3,
-   "cost": 4,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Deal X damage to the enemy leader. X is the number of cards in your hand."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Deal X damage to the enemy leader. X is the number of cards in your hand."
-  },
-  {
-   "card_id": 81000068,
-   "name_eng": "Kindled Study",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "X starts at 2. <b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1. Deal X damage to the enemy leader."
-   ],
-   "eng_text": "X starts at 2. <b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1. Deal X damage to the enemy leader."
-  },
-  {
-   "card_id": 81000069,
-   "name_eng": "Duel of Wits",
-   "type": 3,
-   "cost": 4,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Restore 2 defense to your leader. <b><color=Keyword>Super-Evolve</color></b>: Restore 4 defense instead."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Restore 2 defense to your leader. <b><color=Keyword>Super-Evolve</color></b>: Restore 4 defense instead."
-  },
-  {
-   "card_id": 81000070,
-   "name_eng": "Tidecaller Relic",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Deal 2 damage to the enemy leader. If you're in <b><color=Keyword>Overflow</color></b>, deal 4 damage instead."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Deal 2 damage to the enemy leader. If you're in <b><color=Keyword>Overflow</color></b>, deal 4 damage instead."
-  },
-  {
-   "card_id": 81000071,
-   "name_eng": "Eld Lance Fragment",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "When this card is discarded, if its cost is 4, add a <b><i><color=Keyword>Kindled Blade</color></i></b> to your hand."
-   ],
-   "eng_text": "When this card is discarded, if its cost is 4, add a <b><i><color=Keyword>Kindled Blade</color></i></b> to your hand."
-  },
-  {
-   "card_id": 81000072,
-   "name_eng": "Vanguard Surveyor",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: If there's an allied follower on the field with a base cost of 5 or more, draw a card."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: If there's an allied follower on the field with a base cost of 5 or more, draw a card."
-  },
-  {
-   "card_id": 81000073,
-   "name_eng": "Binding Verse",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Select an enemy follower on the field, set its defense to 1, and, until the end of your opponent's turn, give it \"Can't attack.\""
-   ],
-   "eng_text": "Select an enemy follower on the field, set its defense to 1, and, until the end of your opponent's turn, give it \"Can't attack.\""
-  },
-  {
-   "card_id": 81000074,
-   "name_eng": "Piercing Verdict",
-   "type": 3,
-   "cost": 4,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field with 3 defense or less and banish it."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field with 3 defense or less and banish it."
-  },
-  {
-   "card_id": 81000075,
-   "name_eng": "Ticking Ward",
-   "type": 2,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "Countdown (2)\n<b><color=Keyword>Last Words</color></b>: Draw a card."
-   ],
-   "eng_text": "Countdown (2)\n<b><color=Keyword>Last Words</color></b>: Draw a card."
-  },
-  {
-   "card_id": 81000076,
-   "name_eng": "Twofold Sigil",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Draw a card.\nAt the end of your turn, restore 1 defense to your leader."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Draw a card.\nAt the end of your turn, restore 1 defense to your leader."
-  },
-  {
-   "card_id": 81000077,
-   "name_eng": "Metamorphic Adept",
-   "type": 1,
-   "cost": 2,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Draw a card.<ev><b><color=Keyword>Evolve</color></b>: Draw 2 cards.<sev><b><color=Keyword>Super-Evolve</color></b>: Draw 3 cards."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Draw a card.<ev><b><color=Keyword>Evolve</color></b>: Draw 2 cards.<sev><b><color=Keyword>Super-Evolve</color></b>: Draw 3 cards."
-  },
-  {
-   "card_id": 81000078,
-   "name_eng": "Relic of Passage",
-   "type": 2,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Engage</color></b>: Destroy this card. Select an allied follower on the field and give it <b><color=Keyword>Rush</color></b>."
-   ],
-   "eng_text": "<b><color=Keyword>Engage</color></b>: Destroy this card. Select an allied follower on the field and give it <b><color=Keyword>Rush</color></b>."
-  },
-  {
-   "card_id": 81000079,
-   "name_eng": "Whispering Mask",
-   "type": 3,
-   "cost": 4,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Give this follower \"Whenever an allied follower enters the field, draw a card.\""
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Give this follower \"Whenever an allied follower enters the field, draw a card.\""
-  },
-  {
-   "card_id": 81000080,
-   "name_eng": "Fusion Codifier",
-   "type": 1,
-   "cost": 2,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fuse</color></b>: Forestcraft cards\n<b><color=Keyword>Fanfare</color></b>: Draw a card."
-   ],
-   "eng_text": "<b><color=Keyword>Fuse</color></b>: Forestcraft cards\n<b><color=Keyword>Fanfare</color></b>: Draw a card."
-  },
-  {
-   "card_id": 81000081,
-   "name_eng": "Nested Prism Sigil",
-   "type": 3,
-   "cost": 6,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Select a Mode to activate.\n  1. Select a Mode to activate.\n     1. Draw a card.\n     2. Restore 2 defense to your leader.\n  2. Deal 4 damage to all enemy followers."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Select a Mode to activate.\n  1. Select a Mode to activate.\n     1. Draw a card.\n     2. Restore 2 defense to your leader.\n  2. Deal 4 damage to all enemy followers."
-  },
-  {
-   "card_id": 81000082,
-   "name_eng": "Bulwark Sentinel",
-   "type": 1,
-   "cost": 2,
-   "atk": 1,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Ward</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Ward</color></b>"
-  },
-  {
-   "card_id": 81000083,
-   "name_eng": "Gale Runner",
-   "type": 1,
-   "cost": 3,
-   "atk": 2,
-   "life": 1,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Storm</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Storm</color></b>"
-  },
-  {
-   "card_id": 81000084,
-   "name_eng": "Charging Raider",
-   "type": 1,
-   "cost": 2,
-   "atk": 2,
-   "life": 1,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Rush</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Rush</color></b>"
-  },
-  {
-   "card_id": 81000085,
-   "name_eng": "Venomtooth Stalker",
-   "type": 1,
-   "cost": 4,
-   "atk": 1,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Bane</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Bane</color></b>"
-  },
-  {
-   "card_id": 81000086,
-   "name_eng": "Leeching Fiend",
-   "type": 1,
-   "cost": 4,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Drain</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Drain</color></b>"
-  },
-  {
-   "card_id": 81000087,
-   "name_eng": "Veiled Prowler",
-   "type": 1,
-   "cost": 3,
-   "atk": 3,
-   "life": 1,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Ambush</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Ambush</color></b>"
-  },
-  {
-   "card_id": 81000088,
-   "name_eng": "Warded Escort",
-   "type": 1,
-   "cost": 3,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Aura</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Aura</color></b>"
-  },
-  {
-   "card_id": 81000089,
-   "name_eng": "Grim Overseer",
-   "type": 1,
-   "cost": 3,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Intimidate</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Intimidate</color></b>"
-  },
-  {
-   "card_id": 81000090,
-   "name_eng": "Barrier Sentinel",
-   "type": 1,
-   "cost": 4,
-   "atk": 2,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Barrier</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Barrier</color></b>"
-  },
-  {
-   "card_id": 81000091,
-   "name_eng": "Trial of Many Trials",
-   "type": 1,
-   "cost": 5,
-   "atk": 3,
-   "life": 3,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Ward</color></b> <b><color=Keyword>Bane</color></b> <b><color=Keyword>Drain</color></b>"
-   ],
-   "eng_text": "<b><color=Keyword>Ward</color></b> <b><color=Keyword>Bane</color></b> <b><color=Keyword>Drain</color></b>"
-  },
-  {
-   "card_id": 81000092,
-   "name_eng": "Knight",
-   "type": 1,
-   "cost": 1,
-   "atk": 1,
-   "life": 1,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    ""
-   ],
-   "eng_text": ""
-  },
-  {
-   "card_id": 81000093,
-   "name_eng": "Guardian Golem",
-   "type": 1,
-   "cost": 2,
-   "atk": 2,
-   "life": 2,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    ""
-   ],
-   "eng_text": ""
-  },
-  {
-   "card_id": 81000094,
-   "name_eng": "Ersatz Elimination",
-   "type": 3,
-   "cost": 3,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Draw a card."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Draw a card."
-  },
-  {
-   "card_id": 81000095,
-   "name_eng": "Kindled Blade",
-   "type": 3,
-   "cost": 2,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    "<b><color=Keyword>Fanfare</color></b>: Draw a card."
-   ],
-   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Draw a card."
-  },
-  {
-   "card_id": 81000096,
-   "name_eng": "Sigil of Resolve",
-   "type": 4,
-   "cost": 0,
-   "atk": null,
-   "life": null,
-   "class": "neutral",
-   "tribe_name_eng": "",
-   "eng_texts": [
-    ""
-   ],
-   "eng_text": ""
+   "expect": "pass"
   }
  ]
 }
