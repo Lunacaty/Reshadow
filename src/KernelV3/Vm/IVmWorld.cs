@@ -65,6 +65,21 @@ public interface IVmWorld
 
     /// <summary>把实体放进某区域（会触发 EntrySerial++）。</summary>
     void MoveEntity(RuntimeEntity e, ZoneRef toZone, int toPlayerId);
+
+    /// <summary>
+    /// 抽牌（牌库顶 → 手牌）—— **唯一**的抽牌管线。
+    ///
+    /// 语义契约（实现必须全部满足）：
+    ///   1. 每张成功抽到的牌发一条 OnDraw，Subject = 那张牌
+    ///   2. 牌库为空仍要抽时：发一条 OnDeckOut 并立即停止，剩余张数不再抽；
+    ///      抽空判负由实现层记录（BattleState: LostByDeckOut / WonByVictoryCard）
+    ///   3. 手牌溢出（≥ 上限）的那张按爆牌规则处理：进墓地 + shadow+1 + 不发 OnDiscard
+    ///
+    /// 能力抽牌必须走这里。VM 自己 MoveEntity 会同时绕开上面三条规则 ——
+    /// 「每当抽牌时」永远不响应、牌库抽空也不会判负。
+    /// </summary>
+    void DrawCards(int playerId, int count);
+
     /// <summary>破坏（进墓场 + 触发 OnDestroy + 墓场 +1）。与 MoveEntity 不同，后者只移动不触发。</summary>
     void DestroyEntity(RuntimeEntity e);
     /// <summary>统一伤害管线（屏障 / 超进化免伤 / 伤害上限）。能力伤害必须走这里，不能直接扣血。</summary>

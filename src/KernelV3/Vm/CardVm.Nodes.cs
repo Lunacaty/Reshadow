@@ -362,8 +362,64 @@ public sealed partial class CardVm
         return false;
     }
 
+    /// <summary>
+    /// 这个 MoveZone 是不是「普通抽牌」（牌库顶 → 手牌）。
+    ///
+    /// 判据必须全部成立，缺一条就不是抽牌：
+    ///   · 目标来自区域枚举（不是槽位 / 具名卡）
+    ///   · 来源区 = Deck、目的地 = Hand
+    ///   · Mode = First（牌库顶那一张；Random / Choose / All 都是「检索」）
+    ///   · 没有 Where 过滤、没有排序、没有历史池、没有 TopN / 同名校验
+    ///
+    /// 带过滤的「从牌库搜索一张牌加手牌」卡面同样被编译成
+    /// MoveZone(Deck → Hand)，但它**不是**抽牌：不能发 OnDraw，
+    /// 更不能因为牌库里没搜到就判 DECK_OUT 负。
+    /// </summary>
+    private static bool IsPlainDraw(MoveZoneNode n)
+    {
+        var t = n.Target;
+        if (t == null) return false;
+        if (t.SourceKind != TargetSourceKind.Zone) return false;
+        if (t.Zone != ZoneRef.Deck || n.ToZone != ZoneRef.Hand) return false;
+        if (t.Mode != SelectMode.First) return false;
+        if (t.History != HistoryScope.None) return false;
+        if (t.Sort != SortKey.None || t.SortDescending || t.TopN != 0) return false;
+        if (t.DistinctByName || t.CardId != 0 || !string.IsNullOrEmpty(t.CardName)) return false;
+        if (t.Where != null && !(t.Where is ConstBoolExpr cb && cb.Value)) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// 抽牌走世界的统一管线（OnDraw / 牌库抽空 / 爆牌全部由实现层负责）。
+    /// 返回抽到的实体，供 $created 使用。
+    /// </summary>
+    private List<RuntimeEntity> DrawThroughPipeline(MoveZoneNode n, VmScope scope)
+    {
+        int count = Math.Max(0, _eval.EvalNum(n.Target.Count, scope));
+        // owner 为 Any 时无法落到单一玩家：只能按施放者抽，绝不猜成「双方各抽」。
+        int playerId = scope.ResolvePlayer(n.Target.Owner);
+        if (playerId is < 0 or > 1) playerId = scope.Controller;
+        if (count == 0) return new List<RuntimeEntity>();
+
+        // 记录抽牌前的牌库，抽完取差集就是「这次真的抽到了哪些」。
+        // 不能读事件：OnDraw 只进 EventLog，VM 侧拿不到本次的抽牌结果。
+        var before = new HashSet<int>(_world.EnumerateZone(ZoneRef.Deck, playerId)
+                                            .Select(e => e.EntityId));
+        _world.DrawCards(playerId, count);
+        return _world.EnumerateZone(ZoneRef.Hand, playerId)
+                     .Where(e => !before.Contains(e.EntityId))
+                     .ToList();
+    }
+
     private bool DoMoveZone(MoveZoneNode n, VmScope scope)
     {
+        // 能力抽牌必须走统一管线：自己 MoveEntity 会绕开 OnDraw 与抽空判负。
+        if (IsPlainDraw(n))
+        {
+            scope.Bind(n.OutSlot, DrawThroughPipeline(n, scope));
+            return false;
+        }
+
         var targets = ResolveOrBlock(n.Target, scope, n.OutSlot);
         if (targets == null) return true;   // 已挂起等玩家选
         var moved = new List<RuntimeEntity>();
