@@ -604,7 +604,13 @@ public sealed partial class CardVm
                          && (owner.Zone == ZoneRef.Cemetery
                              || owner.Zone == ZoneRef.Banished
                              || (owner.Zone == ZoneRef.None && owner.Def?.Kind == CardKind.Crest))
-                         && (ev.Kind == CoreEvent.OnDestroy || ev.Kind == CoreEvent.OnLeaveField)
+                         // 「当这张卡被弃掉 / 被放逐时」的触发点是**离场之后**，
+                         // 事件到达时这张卡已经在墓地 / 放逐区，光看 Zone 会被挡下。
+                         // 只放行 OnDestroy / OnLeaveField 会让这两类卡 100% 永不触发。
+                         && (ev.Kind == CoreEvent.OnDestroy
+                             || ev.Kind == CoreEvent.OnLeaveField
+                             || ev.Kind == CoreEvent.OnBanish
+                             || ev.Kind == CoreEvent.OnDiscard)
                          && ev.Subject != null
                          && ev.Subject.Value.EntityId == owner.EntityId
                          && ev.Subject.Value.EntrySerial == owner.EntrySerial;

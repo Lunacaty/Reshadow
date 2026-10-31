@@ -508,9 +508,30 @@ public sealed partial class CardVm
                 //   "Do this 2 times: 'Return your hand to deck. Draw X cards.
                 //    X is the number of cards you returned.'"
                 // 累加会让第二轮读到第一轮的余数（5 → 10），一次抽 10 张。
-                if (fromBoard && n.ToZone != ZoneRef.Board)
-                    _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(t) });
-                _world.MoveEntity(t, n.ToZone, t.PlayerId);
+                bool isBanish = n.ToZone == ZoneRef.Banished;
+                var bsBanish = _world as Battle.BattleState;
+
+                if (isBanish && bsBanish != null)
+                {
+                    // 放逐必须走 BanishEntity：它内部统一 MoveEntity + 发 OnBanish。
+                    // 之前这里只调 MoveEntity，于是「当这张卡被放逐时」永远不触发，
+                    // 「每当有卡被放逐」也全场失明。
+                    bsBanish.BanishEntity(t);
+                }
+                else
+                {
+                    // OnLeaveField 由 BattleState.MoveEntity 在 leftBoard 时统一发出。
+                    // 这里再手发一次会让每次能力移区都触发两遍「离场时」。
+                    // 只有 MemoryWorld（自测桩）不替我们发，才由这里补。
+                    if (fromBoard && n.ToZone != ZoneRef.Board && bsBanish == null)
+                        _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(t) });
+
+                    _world.MoveEntity(t, n.ToZone, t.PlayerId);
+
+                    // MemoryWorld 没有 BanishEntity，放逐事件在这里补发。
+                    if (isBanish && bsBanish == null)
+                        _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnBanish, Subject = EntityRef.From(t) });
+                }
 
                 // 回手 → 卡面重置为印刷值：手牌里的卡不是「场上的那个随从」。
                 // 之前回手只换区，5/1 已进化 MaxLife=4 的随从会带着全部临时状态
