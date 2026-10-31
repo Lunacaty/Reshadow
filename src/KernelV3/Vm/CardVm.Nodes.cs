@@ -587,8 +587,11 @@ public sealed partial class CardVm
             {
                 // 纹章走自己的集成点：同名唯一与区域上限都在 GainCrest 里处理，
                 // 而且失败时安静返回 null（不进墓地、不触发事件）。
+                //
+                // 必须把主人卡内嵌的 CrestDef 一并传下去：那才是带 Abilities 的定义。
+                // 只传名字的话，GainCrest 只能现造空壳，纹章于是「拿得到但没有能力」。
                 e = _world is Battle.BattleState bsc
-                    ? bsc.GainCrest(n.CardId, n.CardName, scope.ResolvePlayer(n.ToOwner))
+                    ? bsc.GainCrest(n.CardId, n.CardName, scope.ResolvePlayer(n.ToOwner), n.CrestDef)
                     : null;
             }
             else

@@ -163,8 +163,12 @@ public sealed class BattleState : IVmWorld
         }
         // crest 作为玩家级读取时，语义是「你有几个纹章」——
         // 以纹章区里的实体个数为准，不读那个镜像计数器。
+        //
+        // **必须排除信仰**：信仰与纹章共用纹章区（两者都占一格、都同名唯一），
+        // 但 76-c 第一章明写「在卡牌文本判定中，纹章不包括信仰」。
+        // 不排除的话，3 纹章 + 1 信仰会读成 4，所有「你有 N 个纹章」都偏大。
         if (counter.Name == "crest")
-            return Players[playerId].CrestArea.Count;
+            return Players[playerId].CrestArea.Count(e => e != null && !e.IsFaith);
 
         return Players[playerId].Counters.TryGetValue(counter.Id, out var v) ? v : 0;
     }
@@ -223,17 +227,53 @@ public sealed class BattleState : IVmWorld
     /// 纹章不是普通召唤：它自有同名唯一与区域上限两道门槛，
     /// 而且两道都是「安静失败」——不进墓地、不触发任何事件。
     /// </summary>
-    public RuntimeEntity GainCrest(int cardId, string cardName, int playerId)
+    public RuntimeEntity GainCrest(int cardId, string cardName, int playerId, CardDef crestDef = null)
     {
         if (playerId is < 0 or > 1) return null;
 
         CardDef def = null;
-        if (cardId > 0) _cardPool.TryGetValue(cardId, out def);
+
+        // 优先用主人卡内嵌的定义：那是唯一带 Abilities 的来源。
+        // 没有它才会退到卡池按名字查 —— 而那一步有两个已知陷阱：
+        //   1. 查到的多半是空壳，纹章拿得到但没有能力；
+        //   2. 若卡池里存在**同名随从**（Aria, Lady of the Woods 就是），
+        //      会把随从本体当成纹章塞进纹章区，卡种、身材全错。
+        if (crestDef != null)
+        {
+            // 树章必须有自己的号段 id，**绝不能沿用主人卡的 CardId**：
+            // Aria 的随从卡与她的纹章同名不同物，共用 id 会让 CreateEntity
+            // 从卡池取到随从定义 —— 纹章的 Abilities 直接变成空。
+            // 一律走 ResolveCrestCardId 合成（它在同一卡名下是幂等的）。
+            int synth = ResolveCrestCardId(crestDef.Name ?? cardName ?? CrestFallbackName);
+            if (synth <= 0) return null;
+            def = crestDef.CardId == synth
+                ? crestDef
+                : new CardDef
+                {
+                    CardId = synth,
+                    Name = crestDef.Name,
+                    Kind = crestDef.Kind,
+                    BaseCost = crestDef.BaseCost,
+                    BaseAttack = crestDef.BaseAttack,
+                    BaseLife = crestDef.BaseLife,
+                    Abilities = crestDef.Abilities,
+                    InnateKeywords = crestDef.InnateKeywords,
+                    InnateCounters = crestDef.InnateCounters,
+                    SourceText = crestDef.SourceText,
+                };
+            cardId = synth;
+            _cardPool[cardId] = def;
+        }
+
+        if (def == null && cardId > 0) _cardPool.TryGetValue(cardId, out def);
         if (def == null && !string.IsNullOrEmpty(cardName))
         {
+            // 按名字兜底时**只认 Crest 卡种**：绝不能把同名随从当纹章。
             foreach (var kv in _cardPool)
             {
-                if (kv.Value != null && kv.Value.Name == cardName) { def = kv.Value; cardId = kv.Key; break; }
+                if (kv.Value == null || kv.Value.Name != cardName) continue;
+                if (kv.Value.Kind != CardKind.Crest && kv.Value.Kind != CardKind.Faith) continue;
+                def = kv.Value; cardId = kv.Key; break;
             }
         }
         if (def == null)

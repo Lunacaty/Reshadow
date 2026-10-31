@@ -48,10 +48,50 @@ public sealed class EnglishCompiler
         public List<AbilityDef> Abilities { get; } = new();
         public List<string> Errors { get; } = new();
         public bool Ok => Errors.Count == 0;
+
+        /// <summary>
+        /// 本卡生成的那个**纹章**的完整定义（含编译好的 Abilities）。
+        /// 只有卡面写了「Gain Crest: &lt;同名&gt;」且 alt_modes 里确实有 Crest 段时才非空。
+        /// 调用方负责把它挂到 CardDef.CrestDef 上，运行时 GainCrest 才有能力可装。
+        /// </summary>
+        public Ast.CardDef CrestDef { get; set; }
+
+        /// <summary>本卡生成的那个**信仰**的完整定义。</summary>
+        public Ast.CardDef FaithDef { get; set; }
     }
 
     /// <summary>编译整张卡的效果文本。</summary>
-    public Result Compile(string text)
+    /// <summary>
+    /// 编译一张卡。
+    ///
+    /// altModes 是这张卡自己的 alt_modes（形如
+    /// <c>[("Crest", 0, "Whenever an allied Pixie follower enters the field, give it Storm.")]</c>）。
+    /// 纹章/信仰/结晶/激奏的**效果定义**只存在于这里，卡面正文只写「Gain Crest: &lt;同名&gt;」。
+    /// 不传的话，纹章实体会按名字现造空壳 —— 名字对、能力全空。
+    /// </summary>
+    public Result Compile(string text,
+                          IReadOnlyList<(string typeEng, int cost, string textEng)> altModes = null,
+                          string cardName = null)
+    {
+        _altModes = altModes;
+        _currentCardName = cardName;
+
+        // 先把 alt_modes 里的纹章/信仰定义编出来，供动作解析器在生成
+        // 「Gain Crest: ...」时一并带上。必须早于正文编译。
+        var pre = new Result();
+        BuildAltModeDefs(pre);
+        _actions.CrestDefResolver = () => pre.CrestDef;
+
+        var r = CompileCore(text);
+        r.CrestDef = pre.CrestDef ?? r.CrestDef;
+        r.FaithDef = pre.FaithDef ?? r.FaithDef;
+        _actions.CrestDefResolver = null;
+        return r;
+    }
+
+    private IReadOnlyList<(string typeEng, int cost, string textEng)> _altModes;
+
+    private Result CompileCore(string text)
     {
         // 防止上一张卡的状态跨卡污染。
         // 两个字典必须一起清：只清 _variableBindings 而漏了 _initialCounters，
@@ -113,7 +153,49 @@ public sealed class EnglishCompiler
             });
         }
 
+        // 纹章 / 信仰的**效果定义**只存在于主人卡的 alt_modes 里。
+        // 卡面正文只写「Gain Crest: <同名>」，定义在别处 —— 不在这里编译，
+        // 运行时只能按名字现造空壳，纹章「拿得到但没有能力」。
+        BuildAltModeDefs(r);
+
         return r;
+    }
+
+    /// <summary>当前正在编译的卡名（供 alt_modes 定义命名）。</summary>
+    private string _currentCardName;
+
+    /// <summary>
+    /// 把 alt_modes 里的 Crest / Faith 段各自编译成一个完整 CardDef 挂到 Result 上。
+    /// Crystallize / Accelerate 不在这里处理：它们是**出牌模式**，不是独立实体。
+    /// </summary>
+    private void BuildAltModeDefs(Result r)
+    {
+        if (_altModes == null || _altModes.Count == 0) return;
+
+        foreach (var (typeEng, cost, textEng) in _altModes)
+        {
+            if (string.IsNullOrWhiteSpace(textEng)) continue;
+            bool isCrest = string.Equals(typeEng, "Crest", StringComparison.OrdinalIgnoreCase);
+            bool isFaith = string.Equals(typeEng, "Faith", StringComparison.OrdinalIgnoreCase);
+            if (!isCrest && !isFaith) continue;
+            if (isCrest && r.CrestDef != null) continue;
+            if (isFaith && r.FaithDef != null) continue;
+
+            // 官方 alt 段不会自引用，这里不再传 altModes，避免无限递归。
+            var sub = new EnglishCompiler(_lex).Compile(textEng);
+            var def = new Ast.CardDef
+            {
+                // CardId 留 0：纹章在运行期按名字合成号段
+                // （BattleState.ResolveCrestCardId），信仰走 FaithEntityIdBase 偏移。
+                CardId = 0,
+                Name = _currentCardName ?? "",
+                Kind = isCrest ? Ast.CardKind.Crest : Ast.CardKind.Faith,
+                BaseCost = cost,
+                Abilities = sub.Abilities,
+                SourceText = textEng,
+            };
+            if (isCrest) r.CrestDef = def; else r.FaithDef = def;
+        }
     }
 
     /// <summary>铁律二：把引号内的 token 流编译成一个 AbilityDef。</summary>

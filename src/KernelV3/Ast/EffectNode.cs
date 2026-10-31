@@ -159,6 +159,12 @@ public sealed class SpawnCardNode : EffectNode
     public bool IsCrest { get; init; }
 
     /// <summary>
+    /// 纹章/信仰的**效果定义**，由主人卡编译期内嵌（见 CardDef.CrestDef）。
+    /// 运行时 GainCrest 直接用它成立实体，不再按卡名现造空壳。
+    /// </summary>
+    public CardDef CrestDef { get; init; }
+
+    /// <summary>
     /// 是否是「exact copy」（完整复制）。
     /// exact：继承源目标当前的攻击力、生命值、费用、已获得的关键词与进化状态。
     /// 非 exact：取源目标对应卡号的初始白板状态。

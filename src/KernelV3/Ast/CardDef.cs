@@ -108,4 +108,20 @@ public sealed class CardDef
 
     /// <summary>原始英文文本（仅诊断用，不参与执行）。</summary>
     public string SourceText { get; init; } = "";
+
+    /// <summary>
+    /// 这张卡自己会生成的那个**纹章**的完整定义（含 Abilities）。
+    ///
+    /// 纹章与信仰在局内是独立实体，但在**效果定义上不是独立卡片**：
+    /// 它们的能力文本来自主人卡的 alt_modes（「Gain Crest: <同名>」那条），
+    /// 必须随主人卡一起编译进 AST。
+    ///
+    /// 不内嵌的话，运行时只能按**卡名**去卡池里现造一个空壳 CardDef ——
+    /// 名字对得上，能力全空；更糟的是若卡池里恰好有同名随从，
+    /// 还会把那个随从卡当成纹章塞进纹章区。
+    /// </summary>
+    public CardDef CrestDef { get; init; }
+
+    /// <summary>这张卡自己生成的那个**信仰**的完整定义（含 Abilities）。</summary>
+    public CardDef FaithDef { get; init; }
 }

@@ -124,6 +124,13 @@ public sealed class TurnRunner
             if (cd == 0)
             {
                 vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnCountdownExpire, Subject = EntityRef.From(e) });
+                // 吟唱归 0 的纹章**必须离开纹章区**（76-c 2.2 第 2 步）。
+                // 之前只发了个事件，纹章永远留在场上，纹章区越堆越多。
+                //
+                // 「失去纹章」与「被破坏」不同：不进墓场、不加 shadow，
+                // 但若它带谢幕曲，仍要在墓地收到 OnDestroy —— 所以走
+                // DestroyEntity(byRule) 而不是静默移除。
+                _state.DestroyEntity(e, byRule: true);
             }
         }
     }

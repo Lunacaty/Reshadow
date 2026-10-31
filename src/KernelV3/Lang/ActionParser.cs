@@ -34,6 +34,14 @@ public sealed class ActionParser
     /// </summary>
     public bool FuseTierByCost { get; set; }
 
+    /// <summary>
+    /// 取「本卡自己那个纹章/信仰的定义」。由 EnglishCompiler 注入。
+    /// 纹章的效果定义只存在于主人卡的 alt_modes，动作解析器看不到它，
+    /// 只能通过这个回调在生成 SpawnCardNode 时把定义一起带上。
+    /// </summary>
+    public Func<Ast.CardDef> CrestDefResolver { get; set; }
+
+
     public ActionParser(Lexicon lex, Func<IReadOnlyList<Token>, AbilityDef> compileQuotedAbility,
                         TargetParser target = null)
     {
@@ -954,15 +962,22 @@ public sealed class ActionParser
         {
             cur.Advance();
             cur.TryMatch(TokKind.Colon);
-            var sb = new System.Text.StringBuilder();
+            // 卡名本身可能带逗号（「Aria, Lady of the Woods」），
+            // 所以不能遇到 Comma 就停 —— 那会把名字截成「Aria,」。
+            // 先收集到句号，再用词法层的最长卡名匹配还原：
+            // Lexicon 认得完整名字时直接取它，认不出才退回整段文本。
+            var raw = new System.Text.StringBuilder();
             while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period
-                   && cur.Current.Kind != TokKind.Comma && !cur.Current.IsWord("and"))
+                   && !cur.Current.IsWord("and"))
             {
-                if (sb.Length > 0) sb.Append(' ');
-                sb.Append(cur.Current.Text);
+                if (raw.Length > 0) raw.Append(' ');
+                raw.Append(cur.Current.Text);
                 cur.Advance();
             }
-            var crestName = sb.ToString();
+            var rawName = raw.ToString().Trim();
+            // 去掉尾随的逗号/句点残留（「…, 」这类）。
+            rawName = rawName.TrimEnd(',', '.', ' ');
+            var crestName = rawName;
             foreach (var t in targets)
                 outNodes.Add(new SpawnCardNode
                 {
@@ -971,6 +986,9 @@ public sealed class ActionParser
                     ToOwner = t.Owner,
                     ToZone = ZoneRef.CrestArea,
                     IsCrest = true,
+                    // 主人卡自己在编译期注入的那个纹章定义（含 Abilities）。
+                    // 为空时运行时只能按名字造空壳。
+                    CrestDef = CrestDefResolver?.Invoke(),
                     Count = NumExpr.Const(1),
                 });
             return outNodes;
@@ -1678,6 +1696,9 @@ public sealed class ActionParser
                     ToOwner = ZoneScope.Self,
                     Count = NumExpr.Const(1),
                     IsCrest = true,
+                    // 主人卡编译期注入的纹章定义（含 Abilities）。
+                    // 为空时运行时只能按名字造空壳 —— 纹章拿得到但没有能力。
+                    CrestDef = CrestDefResolver?.Invoke(),
                 },
             };
         }
