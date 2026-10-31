@@ -130,7 +130,7 @@ public sealed class TurnRunner
                 // 「失去纹章」与「被破坏」不同：不进墓场、不加 shadow，
                 // 但若它带谢幕曲，仍要在墓地收到 OnDestroy —— 所以走
                 // DestroyEntity(byRule) 而不是静默移除。
-                _state.DestroyEntity(e, byRule: true);
+                _state.ExpireCrest(e);
             }
         }
     }

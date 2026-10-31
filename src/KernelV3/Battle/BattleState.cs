@@ -303,6 +303,10 @@ public sealed class BattleState : IVmWorld
         // 而不是玩家级的 crest 计数器（那个是「你有几个纹章」）。
         var crestKey = Schema.Counter("crest");
         e.Counters[crestKey] = 1;
+
+        // 「When you gain this crest」的触发点：纹章进入纹章区就算获得。
+        // 不发这条事件，Mjerrabaine 那类「获得纹章时换牌库」永远不会执行。
+        NotifySummoned(e);
         return e;
     }
 
@@ -991,6 +995,26 @@ public sealed class BattleState : IVmWorld
     }
 
     public void RemoveEntity(RuntimeEntity e) => _all.Remove(e);
+
+    /// <summary>
+    /// 吟唱归 0 的纹章到期：移出纹章区，并让它的「谢幕曲」照常触发。
+    ///
+    /// 不能复用 DestroyEntity —— 它第一行就是 `if (e.Zone != Board) return;`，
+    /// 纹章在 CrestArea，会被静默跳过（实测：纹章永远卡在纹章区，
+    /// Octrice 的 Last Words 一次都不触发）。
+    /// 也不能把它塞进墓地：纹章到期限不属于「被破坏」，不该污染墓地与 shadow。
+    ///
+    /// 做法：先移出纹章区（落点 Banished，与「失去纹章」语义一致），
+    /// 再发 OnLeaveField / OnDestroy 让谢幕曲有机会响应；
+    /// 实体本身留在放逐区可查，GetLive 仍能取到。
+    /// </summary>
+    public void ExpireCrest(RuntimeEntity e)
+    {
+        if (e == null || e.Zone != ZoneRef.CrestArea) return;
+        MoveEntity(e, ZoneRef.Banished, e.PlayerId);
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
+    }
 
     // ---------- 状态结算 SBA ----------
 

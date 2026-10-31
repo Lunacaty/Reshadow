@@ -425,7 +425,8 @@ public sealed partial class CardVm
             foreach (var (_, ab) in kv.Value)
             {
                 if (ab.Trigger == null) continue;
-                if (ab.Trigger.Event != ev.Kind) continue;
+                // 并列事件："Whenever you play or Fuse a Loot card" 两个都要能触发。
+                if (ab.Trigger.Event != ev.Kind && ab.Trigger.SecondaryEvent != ev.Kind) continue;
 
                 // Evolve: / Super-Evolve: 冒号头只认玩家手动花费 EP/SEP 的进化。
                 // 能力效果自动进化（"Evolve this follower"）不触发这两类头，

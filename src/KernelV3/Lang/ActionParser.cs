@@ -2612,10 +2612,11 @@ public sealed class ActionParser
         else if (cur.MatchPhrase("this", "amulet's") || cur.MatchWord("count"))
         { }
 
-        // 计数器要按名词区分：护符是 countdown，纹章是 crest。
-        // 之前一律写 countdown，于是「Delay the counts of all your crests」
-        // 被编成了「推进自己的吟唱」。
-        var counterName = sawCrest ? "crest" : "countdown";
+        // 计数器永远是 countdown —— 护符与**纹章**都用它存「剩余吟唱」。
+        // 玩家级的 crest 计数器是「你有几个纹章」，与推进完全无关；
+        // 之前按名词分流到 "crest"，于是 Octrice 推的是纹章个数，
+        // 它自己的 Countdown (8) 纹丝不动。
+        var counterName = "countdown";
 
         cur.TryMatchAnyWord("by");
         var val = ParseNumExpr(cur);
@@ -2623,7 +2624,9 @@ public sealed class ActionParser
         {
             new ModifyCounterNode
             {
-                Target = target != TargetSpec.Self ? target : null,
+                // Target 必须指向**实体**：置 null 会改成玩家级计数器，
+                // 护符 / 纹章自己的 countdown 永远不会变。
+                Target = target ?? TargetSpec.Self,
                 Owner = target?.Owner ?? ZoneScope.Self,
                 Counter = _lex.Counter(counterName),
                 Op = CounterOp.Add,

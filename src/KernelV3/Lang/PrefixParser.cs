@@ -40,6 +40,9 @@ public sealed class AbilityHeaderBuilder
     /// <summary>是否已经显式设置了事件（用于 During 的 PassiveAura 兜底不覆盖真实事件）。</summary>
     public bool EventExplicit;
 
+    /// <summary>并列的第二个事件（"play or Fuse"）。null 表示只有 Event 一个。</summary>
+    public CoreEvent? SecondaryEvent;
+
     /// <summary>护符的初始吟唱值。属于卡牌属性，不是代价。</summary>
     public int? CountdownValue;
 
@@ -49,6 +52,7 @@ public sealed class AbilityHeaderBuilder
     public TriggerSpec BuildTrigger() => new()
     {
         Event = Event,
+        SecondaryEvent = SecondaryEvent,
         SubjectFilter = SubjectFilter,
         SecondaryFilter = SecondaryFilter,
         ActiveZone = ActiveZone,
@@ -428,10 +432,21 @@ public sealed class PrefixParser
         if (!isYou && cur.MatchPhrase("you", "have")) isYou = true;
         if (isYou)
         {
-            if (cur.MatchWord("draw")) { b.Event = CoreEvent.OnDraw; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
+            // "When you gain this crest, ..." —— 触发时机是「获得这个纹章」，
+            // 不是「打出这张卡」。落成 OnPlay 会让它在纹章经别的途径获得时永不触发。
+            if (cur.MatchPhrase("gain", "this", "crest") || cur.MatchPhrase("gain", "a", "crest"))
+            {
+                b.Event = CoreEvent.OnEnterField; b.EventExplicit = true;
+                b.SubjectFilter = TargetSpec.Self;
+                if (cur.Current.Kind == TokKind.Comma) cur.Advance();
+            }
+            else if (cur.MatchWord("draw")) { b.Event = CoreEvent.OnDraw; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("play", "or", "fuse"))
             {
-                b.Event = CoreEvent.OnPlay; b.EventExplicit = true;
+                // 两个事件并列：打出与融合都要触发。
+                b.Event = CoreEvent.OnPlay;
+                b.SecondaryEvent = CoreEvent.OnFuse;
+                b.EventExplicit = true;
                 b.SubjectFilter = _target.TryParse(cur);
             }
             else if (cur.MatchWord("play")) { b.Event = CoreEvent.OnPlay; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }

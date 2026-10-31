@@ -17,6 +17,13 @@ public sealed class TriggerSpec
 {
     public Core.CoreEvent Event { get; init; } = Core.CoreEvent.OnPlay;
 
+    /// <summary>
+    /// 第二个可触发的事件。用于「Whenever you play **or Fuse** a Loot card」
+    /// 这类一句话里并列两个事件的写法：主语与效果完全相同，只差事件种类。
+    /// 拆成两条能力会让效果执行两次（同一张牌打出时既算 play 又算 fuse 以外的重复）。
+    /// </summary>
+    public Core.CoreEvent? SecondaryEvent { get; init; }
+
     /// <summary>谁触发才算数？null 表示「本卡自己」（Self）。</summary>
     public TargetSpec SubjectFilter { get; init; }
 
