@@ -42,6 +42,13 @@ public sealed class Token
     public int Value { get; init; }
     public int CardId { get; init; }
     public int Pos { get; init; }
+
+    /// <summary>
+    /// 该 token 所在行的缩进层级（行首空格的列数）。
+    /// 模式编号块靠它判层级：缩进相同的 1./2. 是同层兄弟。
+    /// XML 注释 / 生成器产出的 token 默认为 0。
+    /// </summary>
+    public int Indent { get; init; }
     public IReadOnlyList<Token> Inner { get; init; } = Array.Empty<Token>();
 
     public bool IsWord(string w) =>

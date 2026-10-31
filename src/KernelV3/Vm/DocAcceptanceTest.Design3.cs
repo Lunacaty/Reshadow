@@ -57,6 +57,38 @@ public static partial class DocAcceptanceTest
             Ok("d3-S5.1.2", "Do this N times + 引号模式可编译", ok2 && body.Contains("modes"), body);
         }
 
+        // ---- 设计3 5.1.2 情况 2：缩进表层级的嵌套模式（DIY 能力）----
+        {
+            var nested = comp.Compile(string.Join("\n", new[]
+            {
+                "Fanfare: Select a Mode to activate.",
+                "  1. Select a Mode to activate.",
+                "     1. Draw a card.",
+                "     2. Restore 2 defense to your leader.",
+                "  2. Deal 4 damage to all enemy followers.",
+            }));
+            var outer = nested.Abilities.SelectMany(a => a.Body).OfType<BranchModeNode>().FirstOrDefault();
+            bool outerOk = outer != null && outer.Options.Count == 2;
+            bool innerOk = outer != null && outer.Options[0].OfType<BranchModeNode>().Any(b => b.Options.Count == 2);
+            bool siblingOk = outer != null && !outer.Options[1].OfType<BranchModeNode>().Any();
+            Ok("d3-S5.1.2", "缩进嵌套模式（情况 2）",
+               outerOk && innerOk && siblingOk,
+               (outer?.Options.Count.ToString() ?? "null") + "/" + innerOk + "/" + siblingOk);
+        }
+        {
+            var flatModes = comp.Compile(string.Join("\n", new[]
+            {
+                "Fanfare: Select a Mode to activate.",
+                "  1. Draw a card.",
+                "  2. Deal 4 damage to all enemy followers.",
+            }));
+            var bm = flatModes.Abilities.SelectMany(a => a.Body).OfType<BranchModeNode>().FirstOrDefault();
+            bool flatOk = bm != null && bm.Options.Count == 2
+                       && !bm.Options.Any(o => o.OfType<BranchModeNode>().Any());
+            Ok("d3-S5.1.2", "同缩进的选项保持平铺", flatOk,
+               bm?.Options.Count.ToString() ?? "null");
+        }
+
         // ---- Stage 2：闭环词法分析器 ----
         {
             // 卡名最长前缀匹配（含句号的卡名）

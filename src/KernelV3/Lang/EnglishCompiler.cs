@@ -194,10 +194,17 @@ public sealed class EnglishCompiler
         // 之前把 \n 抹成空格，两种情形被迫归成一种，
         // 直接造成 Countdown / Fuse / Ward 与后续能力粘连。
         s = s.Replace("\r\n", "\n").Replace('\r', '\n');
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"\n[ \t]+", "\n");
+        // 保留行首缩进：DIY 的嵌套模式靠它表层级。
+        // 之前用 \n[ \t]+ -> \n 把缩进全删了。
         s = s.Replace("\n", "\u0001");
 
+        // 行首缩进很容易被空白压缩吃掉（上一版 5 个空格被压成 3 个）。
+        // 做法：先把「\u0001 + 连续空白」整体换成同长的 \u0000 占位，
+        // 压缩完再换回空格。这样不论缩进多少层都不会丢。
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\u0001([ \t]+)",
+            m => "\u0001" + new string('\u0000', m.Groups[1].Length));
         s = System.Text.RegularExpressions.Regex.Replace(s, @"[ \t]+", " ");
+        s = s.Replace('\u0000', ' ');
         return s.Trim();
     }
 
@@ -258,7 +265,10 @@ public sealed class EnglishCompiler
         {
             if (IsNumberedOption(txt) && has)
             {
-                pending.Append(' ').Append(txt.Trim());
+                // 用 \u0001 连接，并**保留段首缩进**。
+                // DIY 的嵌套模式靠缩进表层级；之前用 ' ' + txt.Trim()
+                // 把缩进删掉了，层级信息随之丢失。
+                pending.Append('').Append(txt);
                 continue;
             }
             if (has) yield return (pendZone, pending.ToString());
@@ -286,23 +296,66 @@ public sealed class EnglishCompiler
         var sentOptions = new List<int>();
         var cur = new List<Token>();
         int curOption = -1;
+        // 嵌套层级表：缩进相同的编号是同层兄弟，更深的属于内层块。
+        var sentDepth = new List<int>();
+        var indentLevels = new List<int>();
+        int curDepth = 0;
+
+        void PushSentence()
+        {
+            if (cur.Count == 0) return;
+            sentences.Add(cur);
+            sentOptions.Add(curOption);
+            sentDepth.Add(curDepth);
+            cur = new List<Token>();
+        }
+
         foreach (var t in tokens)
         {
             if (t.Kind == TokKind.Eof) break;
             if (t.Kind == TokKind.OptionMark)
             {
-                if (cur.Count > 0) { sentences.Add(cur); sentOptions.Add(curOption); cur = new List<Token>(); }
+                // 先收尾前一句（它属于上一个序号），再更新本句的层级。
+                PushSentence();
+
+                int indent = t.Indent;
+                if (indentLevels.Count == 0)
+                {
+                    indentLevels.Add(indent);
+                    curDepth = 0;
+                }
+                else
+                {
+                    int found = indentLevels.IndexOf(indent);
+                    if (found >= 0)
+                    {
+                        curDepth = found;
+                        while (indentLevels.Count > found + 1) indentLevels.RemoveAt(indentLevels.Count - 1);
+                    }
+                    else if (indent > indentLevels[^1])
+                    {
+                        indentLevels.Add(indent);
+                        curDepth = indentLevels.Count - 1;
+                    }
+                    else
+                    {
+                        indentLevels.Clear();
+                        indentLevels.Add(indent);
+                        curDepth = 0;
+                    }
+                }
+
                 curOption = t.Value;
                 continue;
             }
             if (t.Kind == TokKind.Period)
             {
-                if (cur.Count > 0) { sentences.Add(cur); sentOptions.Add(curOption); cur = new List<Token>(); }
+                PushSentence();
                 continue;
             }
             cur.Add(t);
         }
-        if (cur.Count > 0) { sentences.Add(cur); sentOptions.Add(curOption); }
+        PushSentence();
 
         // ★ 选项块终结：选项只延续到「下一个能力头」出现为止。
         // 少了这一步，"... 2. Deal 2 damage. Enhance (3): Activate all of them instead."
@@ -316,6 +369,8 @@ public sealed class EnglishCompiler
         var modeOptions = new List<IReadOnlyList<EffectNode>>();
         // 与 modeOptions 平行的序号表：同一个编号的连续句子并进同一个选项。
         var modeOptionIds = new List<int>();
+        // 与 modeOptions 平行的深度表：序列里每项来自第几层嵌套。
+        var modeDepth = new List<int>();
         TriggerSpec modeTrigger = null;
         BoolExpr modeCondition = BoolExpr.True;
         List<CostSpec> modeCosts = new List<CostSpec>();
@@ -387,14 +442,17 @@ public sealed class EnglishCompiler
                     };
                 }
 
-                if (modeOptions.Count > 0 && modeOptionIds[^1] == sentOptions[si])
+                // 带层级信息的键：同一层的同一编号才并入同一个选项。
+                int optKey = sentDepth[si] * 100 + sentOptions[si];
+                if (modeOptions.Count > 0 && modeOptionIds[^1] == optKey)
                 {
                     ((List<EffectNode>)modeOptions[^1]).AddRange(ob);
                 }
                 else
                 {
                     modeOptions.Add(ob);
-                    modeOptionIds.Add(sentOptions[si]);
+                    modeOptionIds.Add(optKey);
+                    modeDepth.Add(sentDepth[si]);
                 }
                 continue;
             }
@@ -404,7 +462,9 @@ public sealed class EnglishCompiler
             // （"1. ... 2. ... Evolve: Select a Mode to activate." 里那个 Evolve 头），
             // 先落盘才能保证两段选项不会被并进同一个 BranchModeNode。
             FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
-                           ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeIsRandom);
+                           ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeIsRandom,
+                           modeDepth);
+            modeDepth.Clear();
 
             var c = new TokenCursor(sent);
 
@@ -614,7 +674,9 @@ public sealed class EnglishCompiler
 
         // 收尾：把剩余的模式选项落成 BranchModeNode
         FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
-                       ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeIsRandom);
+                       ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeIsRandom,
+                       modeDepth);
+        modeDepth.Clear();
 
         // 元模式（Meta-Mode）先行：把 "... 1. ... 2. ... Enhance (3): Activate all of them instead."
         // 合成「条件成立时把前一个模式块的选取数放宽为全部」。
@@ -793,9 +855,50 @@ public sealed class EnglishCompiler
         ref List<CostSpec> costs,
         ref SectionZone zone,
         ref NumExpr pick,
-        ref bool isRandom)
+        ref bool isRandom,
+        List<int> depths = null)
     {
         if (options.Count == 0) return;
+
+        // P3：按深度把选项组装成嵌套模式树。
+        // 从最深层开始，把同层选项收成一个子 BranchModeNode，
+        // 挂到上一层最后一个选项的末尾，逐层上收。
+        if (depths != null && depths.Count == options.Count)
+        {
+            var opts = new List<IReadOnlyList<EffectNode>>(options);
+            var ds = new List<int>(depths);
+            int maxD = 0;
+            foreach (var x in ds) if (x > maxD) maxD = x;
+
+            for (int d = maxD; d >= 1; d--)
+            {
+                var childIdx = new List<int>();
+                for (int q = 0; q < ds.Count; q++) if (ds[q] == d) childIdx.Add(q);
+                if (childIdx.Count == 0) continue;
+
+                int parentIdx = -1;
+                for (int q = childIdx[0] - 1; q >= 0; q--)
+                    if (ds[q] < d) { parentIdx = q; break; }
+                if (parentIdx < 0) continue;
+
+                var childOpts = childIdx.Select(q => opts[q]).ToList();
+                var merged = new List<EffectNode>(opts[parentIdx]);
+                merged.Add(new BranchModeNode
+                {
+                    Kind = ModeDispatchKind.Choose,
+                    PickCount = NumExpr.Const(1),
+                    Options = childOpts,
+                });
+                opts[parentIdx] = merged;
+
+                for (int q = childIdx.Count - 1; q >= 0; q--)
+                {
+                    opts.RemoveAt(childIdx[q]);
+                    ds.RemoveAt(childIdx[q]);
+                }
+            }
+            options = opts;
+        }
 
         result.Add(new AbilityDef
         {
@@ -816,6 +919,8 @@ public sealed class EnglishCompiler
         isRandom = false;
         options = new List<IReadOnlyList<EffectNode>>();
         optionIds = new List<int>();
+        // 深度表是值传参，清空不到调用方的 modeDepth，
+        // 所以调用方要在调用后自行 Clear()。
         trigger = null;
         condition = BoolExpr.True;
         costs = new List<CostSpec>();

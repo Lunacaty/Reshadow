@@ -105,7 +105,8 @@ public sealed class Tokenizer
         {
             char c = text[i];
 
-            if (char.IsWhiteSpace(c)) { i++; continue; }
+            //  是段落分隔符：当空白跳过（行首缩进靠 Pos 回溯原文得到）。
+            if (char.IsWhiteSpace(c) || c == '') { i++; continue; }
 
             // 引号块：递归分词
             if (c == '"')
@@ -267,6 +268,27 @@ public sealed class Tokenizer
         }
 
         tokens.Add(Eof());
+
+        // 统一回填缩进：按 Pos 往上找到行首，数行首空格。
+        // 模式编号块靠它判层级——缩进相同的 1./2. 才是同层兄弟。
+        var indents = new Dictionary<int, int>();
+        for (int k = 0; k < tokens.Count; k++)
+        {
+            var tk = tokens[k];
+            if (tk.Kind == TokKind.Eof) continue;
+            int pos = tk.Pos;
+            if (!indents.TryGetValue(pos, out var ind))
+            {
+                int lineStart = pos;
+                while (lineStart > 0 && text[lineStart - 1] != '\n' && text[lineStart - 1] != '\u0001') lineStart--;
+                int q = lineStart;
+                while (q < text.Length && (text[q] == ' ' || text[q] == '	')) q++;
+                ind = q - lineStart;
+                indents[pos] = ind;
+            }
+            if (ind != 0) tokens[k] = new Token { Kind = tk.Kind, Text = tk.Text, Value = tk.Value, Pos = tk.Pos, Inner = tk.Inner, Indent = ind };
+        }
+
         return tokens;
     }
 
