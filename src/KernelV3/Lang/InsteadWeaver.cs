@@ -167,6 +167,9 @@ public static class InsteadWeaver
             SortDescending = f.HasFlag(TargetField.Sort) ? prev.SortDescending : own.SortDescending,
             TopN = f.HasFlag(TargetField.TopN) ? prev.TopN : own.TopN,
             DistinctByName = f.HasFlag(TargetField.DistinctByName) ? prev.DistinctByName : own.DistinctByName,
+            // DuplicatesOnly 没有自己的 TargetField 位，与 DistinctByName 同属「去重族」，
+            // 随它一起继承：透镜不该把「只要重复份」悄悄变成「全都要」。
+            DuplicatesOnly = f.HasFlag(TargetField.DistinctByName) ? prev.DuplicatesOnly : own.DuplicatesOnly,
             Mode = f.HasFlag(TargetField.Mode) ? prev.Mode : own.Mode,
             Count = f.HasFlag(TargetField.Count) ? prev.Count : own.Count,
             History = f.HasFlag(TargetField.History) ? prev.History : own.History,

@@ -51,6 +51,24 @@ public sealed class TokenCursor
 
     public void Advance() { if (_pos < _tokens.Count) _pos++; }
 
+    /// <summary>
+    /// 跳过本从句的剩余词，**在从句边界前停下**。
+    ///
+    /// 这是「本分支已经解析完了，剩下的都是本句的冗余尾缀」的标准收尾动作。
+    /// 严禁直接写 `while (!c.IsAtEnd) c.Advance();`：那会连后面的
+    /// `and <条件2>` / `or less` 一起吃掉，复合条件被静默截断。
+    /// 边界 = 句读（Period / Comma / OptionMark）或并列连词（and / or / then）。
+    /// </summary>
+    public void AdvanceToClauseBoundary()
+    {
+        while (!IsAtEnd)
+        {
+            if (Current.Kind is TokKind.Period or TokKind.Comma or TokKind.OptionMark) break;
+            if (Current.IsAnyWord("and", "or", "then")) break;
+            Advance();
+        }
+    }
+
     public bool TryMatch(TokKind kind)
     {
         if (Current.Kind != kind) return false;

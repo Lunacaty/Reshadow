@@ -1905,7 +1905,7 @@ public sealed class EnglishCompiler
                 }
                 if (sawFused)
                 {
-                    while (!c.IsAtEnd) c.Advance();
+                    c.AdvanceToClauseBoundary();
                     return NumExpr.Ctr(_lex.Counter(sawDiffNamed ? "fuse_kinds" : "fuse_count"));
                 }
                 c.Seek(fp);
@@ -1933,7 +1933,7 @@ public sealed class EnglishCompiler
                                                 || c.MatchPhrase("returned"));
                 if (sawReturned)
                 {
-                    while (!c.IsAtEnd) c.Advance();
+                    c.AdvanceToClauseBoundary();
                     return NumExpr.Ctr(_lex.Counter("cards_returned_to_hand"));
                 }
                 c.Seek(rv);
@@ -1961,7 +1961,7 @@ public sealed class EnglishCompiler
                 if (resAlias != null)
                 {
                     c.Advance();
-                    while (!c.IsAtEnd) c.Advance();
+                    c.AdvanceToClauseBoundary();
                     return NumExpr.Ctr(_lex.Counter(resAlias));
                 }
             }
@@ -1970,7 +1970,7 @@ public sealed class EnglishCompiler
             if (tgt != null) return NumExpr.CountOf(tgt);
             // 还是不行就把剩余词当资源名（如 "cards in your hand"）
             c.Seek(saved);
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
         }
 
         // "your Combo" / "your <资源>"

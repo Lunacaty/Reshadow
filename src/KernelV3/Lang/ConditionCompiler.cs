@@ -192,7 +192,7 @@ public static class ConditionCompiler
                 {
                     int v = c.Current.Value;
                     c.Advance();
-                    while (!c.IsAtEnd) c.Advance();
+                    c.AdvanceToClauseBoundary();
                     return new CompareExpr
                     {
                         Left = NumExpr.Ctr(lex.Counter(vn)),
@@ -219,7 +219,7 @@ public static class ConditionCompiler
                 c.Advance();
                 c.TryMatchAnyWord("or");
                 c.TryMatchAnyWord("more");
-                while (!c.IsAtEnd) c.Advance();
+                c.AdvanceToClauseBoundary();
                 return new CompareExpr
                 {
                     Left = NumExpr.Prop(StatKey.Countdown, TargetSpec.Self),
@@ -238,7 +238,7 @@ public static class ConditionCompiler
             if (c.Current.IsAnyWord("super")) { isSuper = true; c.Advance(); c.TryMatch(TokKind.Dash); }
             var word = c.Current.Text.ToLowerInvariant();
             c.Advance();
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
             var st = word switch
             {
                 "evolved" => isSuper ? UnitState.SuperEvolved : UnitState.Evolved,
@@ -258,7 +258,7 @@ public static class ConditionCompiler
             if (c.Current.IsAnyWord("super")) { isSuper2 = true; c.Advance(); c.TryMatch(TokKind.Dash); }
             var w2 = c.Current.Text.ToLowerInvariant();
             c.Advance();
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
             var st2 = w2 switch
             {
                 "evolved" => isSuper2 ? UnitState.SuperEvolved : UnitState.Evolved,
@@ -301,7 +301,7 @@ public static class ConditionCompiler
 
         if (c.MatchPhrase("you've", "fused") || c.MatchPhrase("you", "have", "fused"))
         {
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
             return new CompareExpr
             {
                 Left = NumExpr.Ctr(lex.Counter("fuse_count")),
@@ -312,7 +312,7 @@ public static class ConditionCompiler
 
         if (c.MatchPhrase("an", "allied", "follower", "attacked", "a", "leader"))
         {
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
             return new HasStateExpr { State = UnitState.AttackedLeaderLastTurn, Of = TargetSpec.Self };
         }
 
@@ -680,7 +680,7 @@ public static class ConditionCompiler
         // "you've played cards with base costs of 1, 2, ... this match"
         if (c.MatchPhrase("you've", "played", "cards"))
         {
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
             // 需要 8 个不同基础费用各至少打出 1 次
             return new CompareExpr
             {
@@ -695,7 +695,7 @@ public static class ConditionCompiler
         {
             int n = ReadNumber(c);
             var tgt = new TargetParser(lex).TryParse(c);
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
             return new CompareExpr
             {
                 Left = NumExpr.CountOf(tgt ?? new TargetSpec
@@ -713,7 +713,7 @@ public static class ConditionCompiler
         {
             c.MatchPhrase("at", "least");
             int n = ReadNumber(c);
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
             return new CompareExpr
             {
                 Left = NumExpr.Ctr(lex.Counter("evolve_count")),
@@ -732,7 +732,7 @@ public static class ConditionCompiler
             int topN = 0;
             if (c.Current.Kind == TokKind.Number) { topN = c.Current.Value; c.Advance(); }
             c.TryMatchAnyWord("highest", "lowest");
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
 
             var handSelf = new TargetSpec
             {
@@ -782,7 +782,7 @@ public static class ConditionCompiler
                                 || c.MatchPhrase("an", "enemy", "leader"));
             c.TryMatchAnyWord("a", "an", "the");
             c.TryMatchAnyWord("follower", "followers", "leader");
-            while (!c.IsAtEnd) c.Advance();
+            c.AdvanceToClauseBoundary();
             var onLeader = new HasStateExpr
             {
                 State = UnitState.AttackedLeaderLastTurn,

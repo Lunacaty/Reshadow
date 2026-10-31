@@ -400,7 +400,7 @@ public sealed class VmEval
         return 0;
     }
 
-    private static int ReadStat(RuntimeEntity e, StatKey k) => k switch
+    private int ReadStat(RuntimeEntity e, StatKey k) => k switch
     {
         StatKey.Attack => e.Attack,
         StatKey.Life => e.Life,
@@ -413,8 +413,29 @@ public sealed class VmEval
         // 「if countdown is at least 2」永远读到 0，条件恒假。
         StatKey.Countdown => ReadCountdown(e.Counters),
         StatKey.ChantCount => ReadCountdown(e.Counters),
+
+        // 玩家与区域级计数。这些键由 ConditionCompiler 生产、NaturalPrinter 打印，
+        // 但 ReadStat 一直没有分支 —— 「你的手牌有几张」读出来恒为 0。
+        // 属性求值的锚点决定问的是谁：$self / $trigger 取该实体的控制者，
+        // 其余（含主战者）取 owner 侧的玩家。
+        StatKey.HandCount => _world.EnumerateZone(ZoneRef.Hand, StatPlayer(e)).Count(),
+        StatKey.DeckCount => _world.EnumerateZone(ZoneRef.Deck, StatPlayer(e)).Count(),
+        StatKey.BoardCount => _world.EnumerateZone(ZoneRef.Board, StatPlayer(e)).Count(),
+        StatKey.CemeteryCount => _world.EnumerateZone(ZoneRef.Cemetery, StatPlayer(e)).Count(),
+        StatKey.BanishedCount => _world.EnumerateZone(ZoneRef.Banished, StatPlayer(e)).Count(),
+        StatKey.PlayPoint => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("pp")),
+        StatKey.MaxPlayPoint => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("max_pp")),
+        StatKey.EvolvePoint => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("ep")),
+        StatKey.MaxEvolvePoint => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("sep")),
+        StatKey.TurnIndex => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("turn_index")),
+        StatKey.DamageDealtThisTurn => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("damage_dealt_this_turn")),
+        StatKey.CardsPlayedThisTurn => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("cards_played_this_turn")),
+        StatKey.CardsPlayedThisMatch => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("cards_played_this_match")),
         _ => 0,
     };
+
+    /// <summary>属性求值问的是哪个玩家的计数：卡牌看它的控制者，主战者看它自己。</summary>
+    private static int StatPlayer(RuntimeEntity e) => e?.PlayerId ?? 0;
 
     // ---------- 引用级读取：活体优先，离场退回快照 ----------
     //

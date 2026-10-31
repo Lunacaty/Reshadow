@@ -45,6 +45,14 @@ public interface IVmWorld
     /// <summary>按卡号找实体（用于「召唤某张具体卡」）。</summary>
     IEnumerable<RuntimeEntity> FindByCardId(ZoneRef zone, int playerId, int cardId);
 
+    /// <summary>
+    /// 本局使用的符号表。
+    /// 计数器 / 关键词 / 兵种都靠它把名字解析成稳定 Id ——
+    /// 求值器需要它才能把 StatKey 映射到具体的计数器，
+    /// 而不是自己再 new 一份（那会造成 SymbolId 串号）。
+    /// </summary>
+    GameSchema Schema { get; }
+
     /// <summary>读计数器（PP / 墓地 / 连击 / 玩家自定义资源）。</summary>
     int ReadCounter(int playerId, SymbolId<CounterTag> counter);
 

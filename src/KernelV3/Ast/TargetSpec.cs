@@ -127,9 +127,12 @@ public sealed class TargetSpec
     /// <summary>我方主战者。</summary>
     public TargetSpec WithWhere(BoolExpr extra) => new()
     {
+        // 每个字段都必须显式拷贝：漏一个，经过一次条件追加之后该字段就静默消失。
+        // tools/check_ast_traps.py 会逐个核对这张清单，漏了直接构建失败。
         SourceKind = SourceKind, Owner = Owner, Zone = Zone, Slot = Slot,
         CardId = CardId, CardName = CardName, Sort = Sort,
         SortDescending = SortDescending, DistinctByName = DistinctByName, DuplicatesOnly = DuplicatesOnly,
+        TopN = TopN, History = History,
         Mode = Mode, Count = Count,
         IncludeLeader = IncludeLeader,
         OmittedFields = OmittedFields & ~TargetField.Where,
