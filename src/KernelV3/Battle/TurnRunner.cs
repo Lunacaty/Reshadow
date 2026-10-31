@@ -203,6 +203,45 @@ public sealed class TurnRunner
     /// <summary>
     /// 从手牌打出一张牌（R-2.3 操作 A）。
     /// </summary>
+    /// <summary>
+    /// 这张牌现在能不能打出。纯查询，不改状态。
+    ///
+    /// 供 GetLegalActions 枚举与 UI 置灰使用。它与 PlayCard 的前置判定
+    /// 必须逐条对齐 —— 否则「界面显示可打」和「实际打不出去」会打架。
+    /// </summary>
+    public bool CanPlayCard(int playerId, RuntimeEntity card, out string reason)
+    {
+        reason = "";
+        if (playerId != _state.ActivePlayer) { reason = "不是你的回合"; return false; }
+        if (card == null || card.Def == null) { reason = "卡面缺失"; return false; }
+        var pp0 = _state.Players[playerId];
+        if (!pp0.Hand.Contains(card)) { reason = "不在手牌"; return false; }
+        if (card.Keywords.Contains(_schema.Keyword("cannot_be_played")))
+        { reason = "这张卡不能打出"; return false; }
+
+        bool folOrAmu = card.Def.Kind == Ast.CardKind.Follower || card.Def.Kind == Ast.CardKind.Amulet;
+        bool full = pp0.Board.Count >= PlayerState.MaxBoard;
+
+        var k = _schema.Counter("pp");
+        int pp = _state.ReadCounter(playerId, k);
+        int pay = card.Cost;
+        int best = 0;
+        foreach (var tier in EnhanceTiers(card)) if (pp >= tier && tier > best) best = tier;
+        if (best > pay) pay = best;
+
+        if (pp < pay)
+        {
+            if (card.Def.AccelerateDef != null && pp >= card.Def.AccelerateDef.BaseCost) return true;
+            if (card.Def.CrystallizeDef != null && pp >= card.Def.CrystallizeDef.BaseCost && !full) return true;
+            reason = "费用不足"; return false;
+        }
+
+        if (folOrAmu && full) { reason = "战场已满"; return false; }
+        if (card.Def.Kind == Ast.CardKind.Spell && !HasLegalTargetForSpell(card))
+        { reason = "没有合法目标"; return false; }
+        return true;
+    }
+
     public bool PlayCard(int playerId, RuntimeEntity card, CardVm vm)
     {
         if (playerId != _state.ActivePlayer) return false;
@@ -776,6 +815,17 @@ public sealed class TurnRunner
     /// 后手玩家使用额外能量点：本回合临时 pp + 1（不增加 max_pp）。
     /// 一局两次，第 1~5 回合一次、第 6 回合起一次，每回合最多一次。
     /// </summary>
+    /// <summary>现在能不能按额外能量点。纯查询，与 UseExtraPp 的前置判定对齐。</summary>
+    public bool CanUseExtraPp(int playerId)
+    {
+        if (playerId != 1) return false;                       // 只有后手有
+        if (playerId != _state.ActivePlayer) return false;      // 只能在自己回合
+        var pl = _state.Players[playerId];
+        if (pl.UsedExtraPpThisTurn) return false;
+        bool earlyTurn = _state.TurnNumber <= 5;
+        return earlyTurn ? !pl.UsedEarlyExtraPp : !pl.UsedLateExtraPp;
+    }
+
     public bool UseExtraPp(int playerId)
     {
         if (playerId != 1) return false;                       // 只有后手有
