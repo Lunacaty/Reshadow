@@ -71,8 +71,12 @@ public sealed class ModifyStatsNode : EffectNode
 {
     public TargetSpec Target { get; init; }
     public StatModOp Op { get; init; } = StatModOp.Add;
-    public NumExpr Attack { get; init; } = NumExpr.Const(0);
-    public NumExpr Life { get; init; } = NumExpr.Const(0);
+
+    // null 表示「不修改这一项」，与「修改为 0」是两件完全不同的事。
+    // 默认 Const(0) 会让「Set the attack ... to 4」把生命也赋值成 0，
+    // 敌方全场随从当场因 Life<=0 被状态结算炸死。
+    public NumExpr Attack { get; init; }
+    public NumExpr Life { get; init; }
     public DurationKind Duration { get; init; } = DurationKind.Permanent;
 }
 

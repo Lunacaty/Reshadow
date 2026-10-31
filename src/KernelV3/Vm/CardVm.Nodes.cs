@@ -250,15 +250,42 @@ public sealed partial class CardVm
     {
         var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected);
         if (targets == null) return true;   // 已挂起
-        int atk = _eval.EvalNum(n.Attack, scope);
-        int life = _eval.EvalNum(n.Life, scope);
+
         foreach (var t in targets)
         {
+            // 必须在**每个目标上**求值：翻倍这类表达式的属性读取锚点是 $item，
+            // 在循环外求值会让所有目标都取第一个候选的身材。
+            var itemScope = scope.Derive();
+            itemScope.Bind(TargetSpec.SlotItem, new[] { t });
+
+            // null = 不修改该项。绝不能当成 0 ——
+            // 「Set 攻击为 4」把生命也赋 0 会让敌方全场随从当场被打死。
+            int atk = n.Attack != null ? _eval.EvalNum(n.Attack, itemScope) : 0;
+            int life = n.Life != null ? _eval.EvalNum(n.Life, itemScope) : 0;
+
             switch (n.Op)
             {
-                case StatModOp.Add: t.Attack += atk; t.Life += life; break;
-                case StatModOp.Set: t.Attack = atk; t.Life = life; break;
-                case StatModOp.Swap: (t.Attack, t.Life) = (t.Life, t.Attack); break;
+                case StatModOp.Add:
+                    if (n.Attack != null) t.Attack += atk;
+                    if (n.Life != null)
+                    {
+                        t.Life += life;
+                        // 生命上限必须同步：只加 Life 不加 MaxLife，
+                        // 之后任何 RestoreLife 都会被 MaxLife 截断回去。
+                        if (life > 0) t.MaxLife += life;
+                        else if (life < 0 && t.Life < t.MaxLife) t.MaxLife = t.Life;
+                    }
+                    break;
+
+                case StatModOp.Set:
+                    if (n.Attack != null) t.Attack = atk;
+                    if (n.Life != null) { t.Life = life; t.MaxLife = life; }
+                    break;
+
+                case StatModOp.Swap:
+                    (t.Attack, t.Life) = (t.Life, t.Attack);
+                    t.MaxLife = t.Life;
+                    break;
             }
 
             // 限时修正必须登记，否则回合结束时无从撤销（会永久生效）

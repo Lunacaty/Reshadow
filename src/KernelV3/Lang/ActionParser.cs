@@ -1796,12 +1796,16 @@ public sealed class ActionParser
             {
                 Target = target,
                 Op = StatModOp.Set,
+                // 属性读取的锚点必须是**当前遍历项** $item，不是 target ——
+                // target 在 Choose 模式下是整个候选池，求值时永远取第一个，
+                // 于是「翻倍 A」实际读的是 A 的身材却赋给玩家选中的 B。
+                // 未修改的那一项给 null（不是 Const(0)），否则会被清零。
                 Attack = (atk || both)
-                    ? NumExpr.Mul(NumExpr.Prop(StatKey.Attack, target), NumExpr.Const(2))
-                    : NumExpr.Prop(StatKey.Attack, target),
+                    ? NumExpr.Mul(NumExpr.Prop(StatKey.Attack, TargetSpec.Item), NumExpr.Const(2))
+                    : null,
                 Life = (def || both)
-                    ? NumExpr.Mul(NumExpr.Prop(StatKey.Life, target), NumExpr.Const(2))
-                    : NumExpr.Prop(StatKey.Life, target),
+                    ? NumExpr.Mul(NumExpr.Prop(StatKey.Life, TargetSpec.Item), NumExpr.Const(2))
+                    : null,
             },
         };
     }
@@ -2626,23 +2630,22 @@ public sealed class ActionParser
 
         if (isLife)
         {
-            // 求值必须对**真实目标**取，不能对 $item 取：
-            // DoModifyStats 执行时 $item 没有绑定，求值结果是 0，
-            // 于是「生命上限减半」静默变成「把敌方主战者打成 0 血」或者干脆无效果。
             // 基准取 MaxLife 而不是当前 Life：卡面写的是 max defense 的上限值，
             // 按当前生命算会随伤害累积而漂移。
             // (MaxLife + 1) / 2 —— 奇数向上取整（同 CostModOp.Halve 的规则）。
-            // Attack = null 时 DoModifyStats 会把攻击力一起置 0，
-            // 所以必须显式传一个「保持原值」的表达式。
+            //
+            // Attack = null 表示「不动攻击力」。之前这里传的是「读攻击原值」，
+            // 因为求值锚点用了整个 target（Choose 池），实际读到的是池里第一个的身材。
+            // 现在 DoModifyStats 会按 null 跳过该项，并绑定 $item 逐目标求值。
             return new List<EffectNode>
             {
                 new ModifyStatsNode
                 {
                     Target = target,
                     Op = StatModOp.Set,
-                    Attack = NumExpr.Prop(StatKey.Attack, target),
+                    Attack = null,
                     Life = NumExpr.Div(
-                        NumExpr.Add(NumExpr.Prop(StatKey.MaxLife, target), NumExpr.Const(1)),
+                        NumExpr.Add(NumExpr.Prop(StatKey.MaxLife, TargetSpec.Item), NumExpr.Const(1)),
                         NumExpr.Const(2)),
                 },
             };
