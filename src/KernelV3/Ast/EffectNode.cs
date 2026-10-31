@@ -165,6 +165,16 @@ public sealed class SpawnCardNode : EffectNode
     /// </summary>
     public bool IsExactCopy { get; init; }
 
+    /// <summary>
+    /// 生成后是否额外附加 Departed（死者）兵种标签。
+    ///
+    /// 只有 Reanimate (N) 用它：76-c 第 6.2-3 条第 5 步要求
+    /// 「按初始白板状态召唤到我方战场上，并为其额外附加 Departed 兵种标签」。
+    /// 不用"按 AST 形状识别"来推断，是因为形状判据（墓场 + 本局被破坏 + 无卡名）
+    /// 同时被 RoundTripVerifier 的反查口径使用，两处一旦漂移就会静默失配。
+    /// </summary>
+    public bool AddDepartedTrait { get; init; }
+
     /// <summary>SourceKind == CopyOfTarget 时，从哪个目标复制。</summary>
     public TargetSpec CopyFrom { get; init; }
     public Core.ZoneScope ToOwner { get; init; } = Core.ZoneScope.Self;

@@ -2030,8 +2030,14 @@ public sealed class ActionParser
                 cur.TryMatch(TokKind.CloseParen);
             }
             // Reanimate (N)：从本局被破坏的随从里，**自动**取一个
-            // 费用 ≤ N 且费用最高的随从出场；同费用按数量加权随机。
+            // 基础费用 ≤ N 且基础费用最高的随从出场；同费用按数量加权随机。
             // 绝对不能弹框让玩家手选（之前写成 Choose，运行时会挂起等玩家）。
+            //
+            // 口径必须是 BaseCost 而不是 Cost（76-c 第 6.2-3 条）：
+            // 被减费 / 加费过的随从，当前费用与基础费用不再相同。
+            // 实测：本体 4 费被减到 9 费的随从破坏后，按当前费用筛会被 4 挡在门外，
+            // Reanimate (4) 召不回来。排序同理 —— 筛选与排序必须是同一把尺子，
+            // 否则第 3 步「找 BaseCost 最大的 M」会按当前费用挑出被减费的那张。
             result.Add(new SpawnCardNode
             {
                 SourceKind = CardSourceKind.CopyOfTarget,
@@ -2043,12 +2049,12 @@ public sealed class ActionParser
                     Mode = SelectMode.Random,
                     Count = NumExpr.Const(1),
                     History = HistoryScope.DestroyedThisMatch,
-                    Sort = SortKey.Cost,
+                    Sort = SortKey.BaseCost,
                     SortDescending = true,
                     Where = BoolExpr.And(
                         new CompareExpr
                         {
-                            Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
+                            Left = NumExpr.Prop(StatKey.BaseCost, TargetSpec.Item),
                             Op = CompareOp.Le,
                             Right = NumExpr.Const(n),
                         },
@@ -2057,6 +2063,7 @@ public sealed class ActionParser
                 ToZone = ZoneRef.Board,
                 ToOwner = ZoneScope.Self,
                 Count = NumExpr.Const(1),
+                AddDepartedTrait = true,
             });
             if (!cur.TryMatchAnyWord("and")) break;
         }
