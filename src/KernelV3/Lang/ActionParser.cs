@@ -2161,17 +2161,6 @@ public sealed class ActionParser
                 cur.Advance(); cur.Advance();
                 continue;
             }
-            // "to its hand" / "to their hand" / "to its owner's hand"
-            if (nx.IsAnyWord("its", "their"))
-            {
-                cur.Advance(); cur.Advance();
-                while (cur.Current.IsAnyWord("owner's", "owner", "own")) cur.Advance();
-                if (cur.Current.IsAnyWord("hand", "deck", "field", "cemetery", "banished")) cur.Advance();
-                continue;
-            }
-            // 兜底：吃掉 "to" 保证循环一定推进。
-            // 否则 "to <未识别词>" 会让 while 恒真而两个分支都不匹配，造成死循环。
-            cur.Advance();
         }
         // "to your hand without revealing it"
         if (cur.MatchPhrase("without", "revealing")) { cur.TryMatchAnyWord("it", "them"); }

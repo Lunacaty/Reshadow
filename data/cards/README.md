@@ -1,70 +1,117 @@
-# 测试卡集（手工设计）
+# 卡牌文本数据
 
-本目录**不再存放官方卡池**。原来的 `cards_eng_flat.json`（1.1 MB）和
-`sva_cards_text.json`（1.0 MB）已删除，改用一份手工拼装的测试卡集。
+数据来源：**sva.hypd.asia/en**
 
-## 为什么换
+本目录**只包含英文与中文两种语言的文本**，不含任何卡面立绘、图片路径或图片哈希。
 
-官方卡池占 2 MB，但它是**参考数据**，不是本项目要交付的东西。
-测试真正需要的是「每个要素至少被覆盖一次」，而不是「982 张真卡都跑一遍」。
-用真卡池还有个副作用：失败时很难判断是引擎错了还是这张卡的写法太特殊。
-
-## 设计原则
-
-1. **不引用任何原生卡面**，全部按官方语法自行拼装。
-2. 每张卡聚焦 1~3 个要素，失败时能直接定位。
-3. 每个维度（触发器 / 动词 / 条件 / 子形态 / 战斗关键词）至少覆盖一次。
+---
 
 ## 文件
 
-| 文件 | 条目 | 体积 | 内容 |
+| 文件 | 卡片数 | 体积 | 内容 |
 |---|---:|---:|---|
-| `testset_cards.json` | 83 张 | 32 KB | 测试卡集本体（含卡名 / 卡种 / 数值 / 效果文本） |
-| `testset_lexicon.json` | 83 条 | 12 KB | 卡名词表（编译器识别卡名用） |
-| `testset_sentences.json` | 94 句 | 8.7 KB | 句级语料（从卡面切出的独立句子） |
+| `sva_cards_text.json` | 904 | 1.0 MB | 原始记录（英/中双语） |
+| `cards_eng_flat.json` | 982 | 1.0 MB | 扁平化英文，编译器直接消费 |
 
-合计约 53 KB，是原来 2.1 MB 的 **2.5%**。
+---
 
-## 覆盖的维度
+## 剥离的字段
 
-### 触发器（16 种）
-`Fanfare` `Evolve` `Super-Evolve` `Last Words` `On Spellboost`
-`Clash` `Strike` `Engage` `Fuse`
-`At the start of your turn` `At the end of your turn`
-`Whenever <主语> enters the field` `When this follower takes damage`
-`Activates in hand` `Activates in deck`
+导出时丢弃以下字段，可用 `grep -c "textures/" data/cards/*.json` 验证为 0：
 
-### 动词（32 种）
-`Select` `Deal` `Restore` `Draw` `Summon` `Add` `Give` `Remove`
-`Set` `Halve` `Swap` `Reduce` `Destroy` `Banish` `Discard` `Return`
-`Transform` `Evolve` `Gain` `Consume` `Recover` `Spellboost` `Reanimate`
-`Advance` `Delay` `Invoke` `Replace` `Replicate` `Do this N times`
-`Activate N random abilities` `Gain Crest` `exact copy`
+| 类别 | 字段 |
+|---|---|
+| 图片 / 纹理 | `textures` `skin_names` `card_image_hash` `card_banner_image_hash` |
+| 日文 | `name_jpn` `tribe_name_jpn` `text_jpn` `type_jpn` `name_romaji` `text_romaji` |
+| 韩文 | `name_kor` `tribe_name_kor` `text_kor` `type_kor` |
+| 繁体中文 | `name_cht` `tribe_name_cht` `text_cht` `type_cht` |
+| 拼音 | `name_pinyin` `text_pinyin` |
 
-### 条件与机制（16 种）
-`Combo` `Enhance` `Necromancy` `Earth Rite` `Skybound Art` `Super Skybound Art`
-`Overflow` `Mode` `activate all of them instead` `X is the number of...`
-`X starts at N` `instead` `if its cost is N` `with a base cost of N or more`
-`until the end of your opponent's turn`
+校验：文件内假名（平假名 / 片假名）字符数为 **0**，`.png` 出现次数为 **0**。
 
-### 分段与格式（6 种）
-`Countdown` `同卡多能力` `<ev>/<sev> 三域` `共享能力头的多动作`
-`引号内嵌能力` `缩进嵌套模式`
+---
 
-### 战斗关键词（10 种）
-`Ward` `Storm` `Rush` `Bane` `Drain` `Ambush` `Aura` `Intimidate` `Barrier` `多关键词叠加`
+## sva_cards_text.json
 
-## 重新生成
+原始 API 记录，逐条保留英/中双语文本。
 
-```bash
-python tools/gen_testset.py
+### 字段
+
+| 字段 | 说明 |
+|---|---|
+| `card_id` | 卡片 ID |
+| `base_card_id` | 基础卡 ID（进化前后同源） |
+| `card_set_id` | 卡包 ID |
+| `name_eng` `name_chs` | 英文 / 中文卡名 |
+| `type` | 卡种（随从 / 法术 / 护符） |
+| `class` | 职业 |
+| `cost` `atk` `life` `rarity` | 数值 |
+| `tribe` `tribe_name_eng` | 兵种 |
+| `is_evolution` | 是否进化形态 |
+| `evolves_to` | 进化后的 card_id |
+| `skills` | 技能 ID 列表 |
+| `skill_texts` | **技能文本**，`key` + `text_eng` + `text_chs` |
+| `alt_modes` | 抉择分支 |
+| `voice_variants` | 语音变体 ID（无音频） |
+
+### skill_texts 示例
+
+```json
+{
+  "key": "SD_10001110_01",
+  "text_eng": "<b><color=Keyword>Enhance</color> (4)</b>: Give this follower +3/+3.",
+  "text_chs": "【<color=Keyword>爆能强化</color>_4】本随从+3/+3。"
+}
 ```
 
-脚本在 `tools/gen_testset.py`，改完卡面后重跑即可重新产出上面三个文件。
+---
 
-## 验证
+## cards_eng_flat.json
 
-```
-CARD 83 pass=83 err=0      # 整卡级编译
-SENT 94 ok=84 zero=10 err=0 # 句级编译（10 句是纯声明，本就不产生动作）
+把 `skill_texts` 按卡合并后的扁平结构，顶层为 `{ "_schema", "cards" }`。
+
+**编译器只读这个文件。**
+
+### HTML 标记处理
+
+| 类别 | 标记 | 处理 |
+|---|---|---|
+| 结构标记 | `<hr>` `<ev>` `<sev>` `<ridx=N>` `<color=Keyword>` | **保留** |
+| 排版标记 | `<b>` `<i>` `<u>` | 剥离，内部文字保留 |
+
+结构标记承载语义，不能剥：
+
+| 标记 | 含义 |
+|---|---|
+| `<hr>` | 能力分隔符 |
+| `<ev>…</ev>` | 进化后才生效 |
+| `<sev>…</sev>` | 超进化后才生效 |
+| `<ridx=N>…</ridx>` | 抉择卡第 N 个选项（从 0 起） |
+| `<color=Keyword>X</color>` | 机制关键词（Fanfare / Last Words / Ward …） |
+
+---
+
+## 重新导出
+
+```python
+import json, io
+
+DROP = {
+    'textures','skin_names','card_image_hash','card_banner_image_hash',
+    'name_jpn','tribe_name_jpn','text_jpn','type_jpn','name_romaji','text_romaji',
+    'name_kor','tribe_name_kor','text_kor','type_kor',
+    'name_cht','tribe_name_cht','text_cht','type_cht',
+    'name_pinyin','text_pinyin',
+}
+
+def strip(o):
+    if isinstance(o, dict):
+        return {k: strip(v) for k, v in o.items() if k not in DROP}
+    if isinstance(o, list):
+        return [strip(x) for x in o]
+    return o
+
+d = json.load(io.open('assets/api/sva_cards_raw.json', encoding='utf-8'))
+io.open('data/cards/sva_cards_text.json','w',encoding='utf-8').write(
+    json.dumps(strip(d), ensure_ascii=False, indent=1))
 ```
