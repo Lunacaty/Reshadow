@@ -170,7 +170,65 @@ public sealed class BattleState : IVmWorld
 
     // ---------- 卡池 ----------    // ---------- 卡池 ----------
 
-    public void RegisterCard(CardDef def) => _cardPool[def.CardId] = def;
+    public void RegisterCard(CardDef def)
+    {
+        if (def != null) _cardPool[def.CardId] = def;
+    }
+
+    /// <summary>
+    /// 注册引擎内置的衍生卡与官方具名牌组卡。
+    ///
+    /// 这些都是「效果会生成、但玩家牌组里没有」的卡：
+    /// 召唤出来的 Fairy / Bat / 神器分档卡、土之印与线索护符、
+    /// 以及 Apocalypse Deck 的四张。不注册的话：
+    ///   · SpawnCard 拿不到 CardDef，造出 Def == null 的空壳实体
+    ///   · 换牌库后抽上来的卡打不出去
+    ///   · 召唤出的 Fairy 没有 Pixie 兵种，纹章监听不到
+    ///
+    /// 幂等：重复调用只会覆盖成同一份定义。
+    /// </summary>
+    public void RegisterBuiltinTokens()
+    {
+        void Token(int id, string name, CardKind kind, int cost, int atk, int life,
+                   string[] traits, params string[] keywords)
+        {
+            if (_cardPool.ContainsKey(id)) return;
+            var trs = new List<SymbolId<TraitTag>>();
+            foreach (var t in traits ?? Array.Empty<string>()) trs.Add(Schema.Trait(t));
+            var kws = new List<SymbolId<KeywordTag>>();
+            foreach (var k in keywords ?? Array.Empty<string>()) kws.Add(Schema.Keyword(k));
+            RegisterCard(new CardDef
+            {
+                CardId = id, Name = name, Kind = kind,
+                BaseCost = cost, BaseAttack = atk, BaseLife = life,
+                Traits = trs, InnateKeywords = kws,
+            });
+        }
+
+        // 土之印 / 线索：可堆叠护符，靠计数器承载层数。
+        Token(MagicSedimentCardId, "Magic Sediment", CardKind.Amulet, 1, 0, 0, null);
+        Token(ClueDefaultCardId, "Divine Evidence", CardKind.Amulet, 1, 0, 0, new[] { "Clue" });
+
+        // 测试集与常见召唤物。兵种是效果判定的一部分（Aria 的纹章只认 Pixie）。
+        Token(90001110, "Fairy", CardKind.Follower, 1, 1, 1, new[] { "Pixie" });
+        Token(90001120, "Bat", CardKind.Follower, 1, 1, 1, null);
+        Token(90001130, "Knight", CardKind.Follower, 1, 1, 1, new[] { "Officer" });
+        Token(90031120, "Guardian Golem", CardKind.Follower, 2, 2, 2, new[] { "Golem" }, "ward");
+
+        // 融合分档的目标卡（Striker Artifact 的三档变身）。
+        Token(90005110, "Ominous Artifact α", CardKind.Follower, 1, 2, 1, new[] { "Artifact" });
+        Token(90005120, "Ominous Artifact β", CardKind.Follower, 2, 3, 2, new[] { "Artifact" });
+        Token(90005130, "Ominous Artifact γ", CardKind.Follower, 3, 5, 3, new[] { "Artifact" });
+        Token(90005140, "Remnant of Hollowness", CardKind.Spell, 1, 0, 0, new[] { "Loot" });
+        Token(90005150, "Kindled Blade", CardKind.Spell, 2, 0, 0, null);
+        Token(90005160, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null);
+
+        // Apocalypse Deck 的四张（Mjerrabaine 换牌库后必须能打出）。
+        Token(90004110, "Silent Rider", CardKind.Follower, 6, 8, 8, null, "storm");
+        Token(90004120, "Servant of Cocytus", CardKind.Follower, 1, 13, 13, null);
+        Token(90004130, "Demon of Purgatory", CardKind.Follower, 4, 9, 6, null);
+        Token(90004310, "Astaroth's Reckoning", CardKind.Spell, 10, 0, 0, null);
+    }
 
     public CardDef CardDefOf(int cardId)
         => _cardPool.TryGetValue(cardId, out var d) ? d : null;

@@ -151,8 +151,16 @@ out = {'_schema': 'handcrafted test pool (official phrasing)', 'cards': cards}
 # 写死后在 git worktree 里跑会去读主工作区的数据，而不是当前 worktree。
 _HERE = os.path.dirname(os.path.abspath(__file__))
 d = os.path.join(_HERE, '..', 'data', 'cards')
-io.open(d + '/testset_cards.json', 'w', encoding='utf-8').write(json.dumps(out, ensure_ascii=False, indent=1))
-print('cards: %d -> %d bytes' % (len(cards), os.path.getsize(d + '/testset_cards.json')))
+
+# 输出到**独立文件**，绝不覆盖 testset_cards.json。
+#
+# testset_cards.json 是手工维护的要素覆盖测试集（30 张 V2 卡，带 alt_modes），
+# 而本脚本产出的是单要素覆盖用的词表卡（约 97 张，无 alt_modes）。
+# 早先两者写同一个文件 —— 跑一次脚本就把 30 张 V2 卡整个冲掉，
+# 谁也不知道当前仓库里躺的到底是哪一套。
+OUT = d + '/testset_lexicon_cards.json'
+io.open(OUT, 'w', encoding='utf-8').write(json.dumps(out, ensure_ascii=False, indent=1))
+print('lexicon cards: %d -> %d bytes' % (len(cards), os.path.getsize(OUT)))
 
 # 词表文件（testset_lexicon.json）已废弃，不再生成：
 #   它曾是上一代 97 张卡的 name+text 清单，与 testset_cards.json 的 30 张
@@ -176,5 +184,5 @@ for s in sents:
 io.open(d + '/testset_sentences.json', 'w', encoding='utf-8').write(
     json.dumps([{'group': 'testset', 'sentences': uniq}], ensure_ascii=False, indent=1))
 print('cards: %d, sentences: %d' % (len(cards), len(uniq)))
-for f in ['testset_cards.json','testset_sentences.json']:
+for f in ['testset_lexicon_cards.json','testset_sentences.json']:
     print('  %-24s %d bytes' % (f, os.path.getsize(d + '/' + f)))

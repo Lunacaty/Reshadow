@@ -70,6 +70,10 @@ public sealed class MatchRunner
         if (firstPlayer is not (0 or 1))
             throw new ArgumentOutOfRangeException(nameof(firstPlayer));
 
+        // 内置衍生卡必须先就位：效果召唤 Fairy / 神器、换 Apocalypse 牌库、
+        // 生成土之印与线索护符都要读 CardDef，缺一个就会造出 Def == null 的空壳。
+        _state.RegisterBuiltinTokens();
+
         CreateLeader(0, leaderLife);
         CreateLeader(1, leaderLife);
 
