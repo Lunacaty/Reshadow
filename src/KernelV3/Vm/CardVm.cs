@@ -29,6 +29,19 @@ public sealed partial class CardVm
     // 已入列的条目即锁定，之后剥夺能力不影响它。
     private readonly List<VmEvent> _triggerQueue = new();
 
+    /// <summary>
+    /// 宿主续体队列：TurnRunner / CombatResolver 的「收尾动作」。
+    ///
+    /// 外层流程（回合推进、战斗结算）与 VM 是两套时序：外层的 C# 代码是同步的，
+    /// 而 VM 遇到 Select / 选模式会挂起等玩家输入。把收尾动作直接写在
+    /// StepUntilBlocked() 后面，等于「玩家还没选，法术已进墓地、rally 已 +1、
+    /// 战斗伤害已交换」—— 时序撕裂。
+    ///
+    /// 正确做法：收尾动作压进这个队列，由主循环在**帧栈与触发队列都空之后**
+    /// 才依次取出执行；一旦终局立即清空。
+    /// </summary>
+    private readonly Queue<Action> _hostContinuations = new();
+
     private int _nextChoiceId = 1;
     private int _faultBudget = 5000;
 
@@ -80,6 +93,15 @@ public sealed partial class CardVm
 
     public IReadOnlyList<VmFrame> Frames => _frames;
     public int PendingTriggerCount => _triggerQueue.Count;
+
+    /// <summary>
+    /// 注册一个宿主收尾动作：只有当当前所有帧与待触发事件全部结算完毕
+    /// （含玩家完成中途所有选择）且对局未结束时，才按入队顺序执行。
+    /// </summary>
+    public void EnqueueContinuation(Action action)
+    {
+        if (action != null) _hostContinuations.Enqueue(action);
+    }
 
     // ---------- 压入能力 ----------
 
@@ -161,6 +183,9 @@ public sealed partial class CardVm
                 {
                     _frames.Clear();
                     _triggerQueue.Clear();
+                    // 终局后一切收尾动作都必须丢弃：法术不该再进墓地，
+                    // rally 不该再 +1，对手回合也不该被开起来。
+                    _hostContinuations.Clear();
                     Pending = null;
                     Status = VmStatus.GameOver;
                     return Status;
@@ -175,7 +200,17 @@ public sealed partial class CardVm
                         FlushNextTrigger();
                         continue;
                     }
-                    // 帧栈与触发队列都空了：本次结算正常收尾。
+                    // 帧与事件都清空了，才轮到宿主收尾动作。
+                    // 收尾动作本身可能再次入队事件或压帧（例如法术进墓地会触发
+                    // 「每当一张卡进入墓地」），所以执行完必须 continue 重新判空。
+                    if (_hostContinuations.Count > 0)
+                    {
+                        if (++StepsExecuted > _faultBudget) return Fault("宿主续体超过步数上限");
+                        var next = _hostContinuations.Dequeue();
+                        next();
+                        continue;
+                    }
+                    // 帧栈、触发队列、宿主续体全空：本次结算正常收尾。
                     // 用 Completed 而不是 Idle 区分「还没开始」与「刚跑完」。
                     // 第一次调用且什么都没执行时仍然算 Completed —— 语义是
                     // 「此刻没有待办」，调用方读结果即可。
@@ -244,6 +279,7 @@ public sealed partial class CardVm
         StateCorrupted = true;
         _frames.Clear();
         _triggerQueue.Clear();
+        _hostContinuations.Clear();
         Pending = null;
         return Status;
     }
@@ -256,6 +292,9 @@ public sealed partial class CardVm
     /// 测试正式开始前就把监听者的能力跑掉。布置完成后调用一次即可。
     /// </summary>
     public void DropPendingTriggers() => _triggerQueue.Clear();
+
+    /// <summary>丢弃全部未执行的宿主收尾动作（布置阶段 / 回滚时使用）。</summary>
+    public void DropPendingContinuations() => _hostContinuations.Clear();
 
     // ---------- 挂起与恢复 ----------
 
@@ -307,15 +346,12 @@ public sealed partial class CardVm
             Pending = null;
             Status = VmStatus.Running;
 
-            // 「Whenever you select Modes, ...」的触发点：玩家确认选择之后、
-            // 选项执行之前。信仰靠它每次 +1。
-            _world.EmitEvent(new VmEvent
-            {
-                Kind = CoreEvent.OnSelectMode,
-                PlayerId = frame.Scope.ResolvePlayer(frame.Scope.Owner),
-            });
-            StepUntilBlocked();
-
+            // 顺序铁律：**先压栈，再发事件，最后交还调用方统一推进**。
+            //
+            // 早先的写法是先 EmitEvent + StepUntilBlocked()，再 PushBody ——
+            // 那次 StepUntilBlocked 会在选项还没压栈时就跑完整个触发链，
+            // 于是「Do this 2 times: Select a Mode...」的第二轮循环、
+            // 以及模式之后的后续动作，全都抢在玩家选中的模式之前执行。
             if (branchNode != null)
             {
                 // 多选模式按**选项编号升序**执行，与玩家点选顺序无关（76-c 6.2-7）。
@@ -323,8 +359,21 @@ public sealed partial class CardVm
                 var ordered = chosenModes.Where(x => x >= 0 && x < branchNode.Options.Count)
                                          .OrderBy(x => x).ToList();
                 for (int i = ordered.Count - 1; i >= 0; i--)
-                    PushBody(branchNode.Options[ordered[i]], frame.Scope.Derive());
+                    // 用 DeriveForBranch 而不是裸 Derive：「Give <目标> N 个模式」
+                    // 的受予者要从 branchNode.GrantTarget 继承进子作用域，
+                    // 否则选项里的 $selected 指不到正确对象。
+                    PushBody(branchNode.Options[ordered[i]], DeriveForBranch(branchNode, frame.Scope));
             }
+
+            // 「Whenever you select Modes, ...」的触发点：玩家确认选择之后、
+            // 选项执行之前。信仰靠它每次 +1。
+            // 只入列事件，不在这里推进 —— 由调用方统一 StepUntilBlocked()，
+            // 与 SelectTarget 分支保持同一契约（谁 SubmitChoice 谁推进）。
+            _world.EmitEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnSelectMode,
+                PlayerId = frame.Scope.ResolvePlayer(frame.Scope.Owner),
+            });
             return;
         }
 
@@ -464,7 +513,14 @@ public sealed partial class CardVm
         // 再倒序压进 LIFO 帧栈（倒序压栈才能正序执行）。
         // 不能把外层循环直接倒过来 —— 那样排在后面的能力会先扣掉 necromancy 的墓场
         // 与 earth rite 的土之印，前面的能力反而没资源可用。
-        var toPush = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope)>();
+        // 分两个梯队收集，最后再拼接：
+        //   梯队 1（自身能力，优先级 10）—— 事件主体自己的 Fanfare: / Evolve: /
+        //           Engage: / Fuse: / 谢幕曲。规则要求它先于任何旁观监听结算。
+        //   梯队 2（旁观监听，优先级 20+）—— 场上的「每当有随从进化时」之类。
+        // 之前只有一个队列、按进场先后扫 Board，于是被动进化时后进场的随从
+        // 自己的 Evolve: 会排在老随从的监听之后，与优先级定义相反。
+        var selfTier = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope)>();
+        var watchTier = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope)>();
 
         // 同一时机里同名卡只发动 1 张（76-c 6.2-8 瞬念召唤铁律）。
         // 牌组里的两张同名 Invoke 卡都会收到 TurnStart，
@@ -528,14 +584,22 @@ public sealed partial class CardVm
                     if (cid != 0 && !firedOnce.Add((cid, ev.Kind))) continue;
                 }
 
-                toPush.Add((ab.Body, scope));
+                // 判据只看「这一条能力属不属于事件主体自己」，与卡名、事件种类无关。
+                bool isSelfAbility = ev.Subject != null
+                                     && ev.Subject.Value.EntityId == e.EntityId;
+                (isSelfAbility ? selfTier : watchTier).Add((ab.Body, scope));
             }
         }
 
+        // 先自身、后旁观。
+        var orderedToPush = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope)>();
+        orderedToPush.AddRange(selfTier);
+        orderedToPush.AddRange(watchTier);
+
         // 倒序压栈 = 正序执行（_frames 是后进先出）。
         // 正序压栈会让整批能力的执行顺序反转，违反 76-c 4.1 铁律 2。
-        for (int i = toPush.Count - 1; i >= 0; i--)
-            PushBody(toPush[i].body, toPush[i].scope);
+        for (int i = orderedToPush.Count - 1; i >= 0; i--)
+            PushBody(orderedToPush[i].body, orderedToPush[i].scope);
     }
 
     private static void AddCandidate(

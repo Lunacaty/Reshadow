@@ -166,6 +166,31 @@ public sealed class CombatResolver
 
         _state.ProcessStateBasedActions();
 
+        // ── 第 4～12 步：战斗结算主体 ──
+        //
+        // 必须排进宿主续体：第 2/3 步的【攻撃時】/【交戦時】能力可能弹出手选目标，
+        // VM 会挂起等玩家输入。若这之后仍写成同步代码，玩家还没选，
+        // 双方伤害就已经交换、Bane 就已经判死 —— 战斗时序被整个跳过。
+        if (vm != null)
+        {
+            vm.EnqueueContinuation(() => ResolveCombatBody(attacker, defender, vm, isFollowerTarget));
+            vm.StepUntilBlocked();
+        }
+        else
+        {
+            ResolveCombatBody(attacker, defender, vm, isFollowerTarget);
+        }
+    }
+
+    /// <summary>战斗第 4～12 步：能力溢出伤害 → 伤害交换 → Bane 判死 → 谢幕曲。</summary>
+    private void ResolveCombatBody(RuntimeEntity attacker, RuntimeEntity defender, CardVm vm,
+                                   bool isFollowerTarget)
+    {
+        if (attacker == null) return;
+
+        // 第 2～3 步的能力可能已经把某一方带走，主体结算前必须重新确认。
+        if (attacker.Zone != ZoneRef.Board) { _state.ProcessStateBasedActions(); return; }
+
         // 溢出伤害只结算一次：第 4 步（能力击杀）与第 10 步（交战击杀）
         // 用同一个判据「defender.Zone != Board」，若不设闸门，
         // 能力击杀会在第 4 步打 1 点、第 10 步再打 1 点（实测 20→18）。

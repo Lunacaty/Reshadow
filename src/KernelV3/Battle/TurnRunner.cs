@@ -104,11 +104,23 @@ public sealed class TurnRunner
 
         // ── 第 7 步：清空待机队列 ──
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnStart });
-        vm?.StepUntilBlocked();
 
         // ── 第 8 步：常规抽牌（先手第一回合也抽） ──
-        _state.DrawCards(playerId, 1);
-        vm?.StepUntilBlocked();
+        // 必须等第 2～7 步的回合初能力**彻底结算完**（含玩家完成所有选择）再抽。
+        // 直接写在 StepUntilBlocked() 后面会让抽牌抢在挂起的回合初能力之前。
+        if (vm != null)
+        {
+            vm.EnqueueContinuation(() =>
+            {
+                _state.DrawCards(playerId, 1);
+                vm.StepUntilBlocked();
+            });
+            vm.StepUntilBlocked();
+        }
+        else
+        {
+            _state.DrawCards(playerId, 1);
+        }
     }
 
     /// <summary>纹章区：回合初能力排入队列 + 吟唱推进。</summary>
@@ -166,14 +178,20 @@ public sealed class TurnRunner
         // 实现上统一由 TurnEnd 事件驱动，VM 会按触发器的 DuringTurn 限定逐个对号入座。
         // 不再手写四次循环 —— 那样反而会把同一条能力反复排队。
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnEnd });
-        vm?.StepUntilBlocked();
 
-        // ── 第 7 步：清空待机队列 ──
-        vm?.StepUntilBlocked();
-
-        // ── 收尾：撤销到期的限时修正 ──
+        // ── 第 7 步：清空待机队列 → 收尾撤销限时修正 ──
+        // 撤销必须排在本回合增益真正用完之后：若回合末能力挂起等选择，
+        // 这时候把 Buff 清掉，玩家选完才发现「加成已经没了」。
         // ThisTurn 一律到期；UntilEndOfOpponentTurn 要等到对手回合结束才撤。
-        _state.ExpireTemporaryModifiers(playerId);
+        if (vm != null)
+        {
+            vm.EnqueueContinuation(() => _state.ExpireTemporaryModifiers(playerId));
+            vm.StepUntilBlocked();
+        }
+        else
+        {
+            _state.ExpireTemporaryModifiers(playerId);
+        }
     }
 
     // ---------- 出牌 ----------
@@ -263,24 +281,48 @@ public sealed class TurnRunner
 
             // 自身【入场曲】（优先级 10）
             vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
-            vm?.StepUntilBlocked();
 
-            // 协作（Rally）：入场曲结算完之后才 +1。
+            // 协作（Rally）：入场曲**彻底结算完**之后才 +1。
+            // 入场曲里含 Select 时会挂起等玩家选 —— 直接写在 StepUntilBlocked() 后面
+            // 会让 rally 在玩家点选之前就 +1，而官方的时点是入场曲结算完毕。
             if (isFollower)
-                _state.WriteCounter(playerId, rallyKey, _state.ReadCounter(playerId, rallyKey) + 1);
+            {
+                if (vm != null)
+                    vm.EnqueueContinuation(() => _state.WriteCounter(playerId, rallyKey,
+                        _state.ReadCounter(playerId, rallyKey) + 1));
+                else
+                    _state.WriteCounter(playerId, rallyKey, _state.ReadCounter(playerId, rallyKey) + 1);
+            }
+            vm?.StepUntilBlocked();
         }
         else
         {
-            // 法术：结算效果 → 进墓场 → shadow +1
+            // 法术：结算效果 → 进墓场 → shadow +1 → 魔力增幅。
+            //
+            // 这四步全部必须排在「效果彻底结算完」之后：法术若含 Select 或选模式，
+            // VM 会挂起等玩家输入。直接写在 StepUntilBlocked() 后面意味着
+            // **玩家还没选，法术已经进墓地、shadow 已 +1、魔力增幅已触发**，
+            // 甚至手牌里其它卡的魔力增幅会插到这次选择之前结算。
             vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
-            vm?.StepUntilBlocked();
 
-            _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
-            var shadowKey = _schema.Counter("shadow");
-            _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
-
-            // 手牌里带魔力增幅的卡计数 +1 并触发 OnSpellboost
-            BumpSpellboost(playerId, vm);
+            if (vm != null)
+            {
+                vm.EnqueueContinuation(() =>
+                {
+                    _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
+                    var shadowKey = _schema.Counter("shadow");
+                    _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
+                    BumpSpellboost(playerId, vm);
+                });
+                vm.StepUntilBlocked();
+            }
+            else
+            {
+                _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
+                var shadowKey = _schema.Counter("shadow");
+                _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
+                BumpSpellboost(playerId, vm);
+            }
         }
 
         return true;
@@ -326,16 +368,35 @@ public sealed class TurnRunner
 
         if (isAccelerate)
         {
-            // 激奏：按法术结算 —— 效果 → 进墓地 → shadow +1 → 魔力增幅。
+            // 激奏：按法术结算 —— 效果 → 进墓地 → shadow +1 → 魔力增幅 → 还原。
+            // 与普通法术同理，全部排进续体：效果挂了起等选择时，
+            // 卡不该提前进墓地，也不该提前把 Def 还原成本体随从 ——
+            // 那会让后续的「这张卡是什么」读错。
             vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
-            vm?.StepUntilBlocked();
-            _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
-            var shadowKey = _schema.Counter("shadow");
-            _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
-            BumpSpellboost(playerId, vm);
-            // 进墓地后还原：手牌 / 墓地里的这张卡必须显示本体卡面。
-            card.Def = original;
-            card.OriginalDef = null;
+
+            if (vm != null)
+            {
+                vm.EnqueueContinuation(() =>
+                {
+                    _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
+                    var shadowKey = _schema.Counter("shadow");
+                    _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
+                    BumpSpellboost(playerId, vm);
+                    // 进墓地后还原：手牌 / 墓地里的这张卡必须显示本体卡面。
+                    card.Def = original;
+                    card.OriginalDef = null;
+                });
+                vm.StepUntilBlocked();
+            }
+            else
+            {
+                _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
+                var shadowKey = _schema.Counter("shadow");
+                _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
+                BumpSpellboost(playerId, vm);
+                card.Def = original;
+                card.OriginalDef = null;
+            }
         }
         else
         {
