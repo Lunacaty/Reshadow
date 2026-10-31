@@ -510,6 +510,26 @@ public sealed class TargetParser
                 matched = true; continue;
             }
 
+            // 前置的 destroyed："... destroyed followers this match"。
+            // 官方两种写法都有（destroyed 在前 / 在后），只认后置会漏掉这一半。
+            // 这里只登记「被破坏过」这一事实，兵种与卡种由后续 token 继续收，
+            // 归属（allied / enemy）由前面的 owner 分支决定 —— 一个都不吞。
+            if (cur.Current.IsAnyWord("destroyed"))
+            {
+                cur.Advance();
+                zone = ZoneRef.Cemetery;
+                history = Core.HistoryScope.DestroyedThisMatch;
+                matched = true; continue;
+            }
+
+            // 前置的 entered the field："... entered the field this match" 里的前半
+            if (cur.MatchPhrase("entered", "the", "field"))
+            {
+                zone = ZoneRef.Board;
+                history = Core.HistoryScope.EnteredThisMatch;
+                matched = true; continue;
+            }
+
             // 兵种（可能连续多个）
             if (cur.Current.Kind == TokKind.Trait || _lex.IsTrait(cur.Current.Text))
             {
@@ -731,7 +751,13 @@ public sealed class TargetParser
         else if (cur.MatchPhrase("in", "your", "deck")) { zone = ZoneRef.Deck; }
         else if (cur.MatchPhrase("in", "your", "hand")) { zone = ZoneRef.Hand; }
         else if (cur.MatchPhrase("in", "your", "cemetery")) { zone = ZoneRef.Cemetery; }
-        else if (cur.MatchPhrase("destroyed", "this", "match")) { zone = ZoneRef.Cemetery; }
+        else if (cur.MatchPhrase("destroyed", "this", "match"))
+        {
+            // 只设 zone 不设 history 会让「本局被破坏」退化成「墓地里的全部」——
+            // 历史上死掉又被召回的卡、以及开局就在墓地的卡都会被算进去。
+            zone = ZoneRef.Cemetery;
+            if (history == Core.HistoryScope.None) history = Core.HistoryScope.DestroyedThisMatch;
+        }
 
         // ---- 9. 后置定语 ----
         int postLoopStart = cur.Position;
@@ -767,6 +793,32 @@ public sealed class TargetParser
             {
                 history = Core.HistoryScope.EnteredThisMatch; matched = true; continue;
             }
+            // 前置 destroyed 已经登记了 DestroyedThisMatch，这里只需吃掉后半句限定语。
+            if (cur.MatchPhrase("this", "match"))
+            {
+                if (history == Core.HistoryScope.None) history = Core.HistoryScope.DestroyedThisMatch;
+                matched = true; continue;
+            }
+            if (cur.MatchPhrase("this", "turn"))
+            {
+                if (history == Core.HistoryScope.DestroyedThisMatch
+                    || history == Core.HistoryScope.None)
+                    history = Core.HistoryScope.DestroyedThisTurn;
+                matched = true; continue;
+            }
+
+            // 后置的单独 destroyed（"... followers destroyed this match"）。
+            // 前置循环已经认得它，这里再兜一次：官方两种语序都出现过，
+            // 只认前置会让 "allied Shikigami followers destroyed this match" 的
+            // destroyed 落到卡种分支之后没人吃，history 整个丢失。
+            if (cur.Current.IsAnyWord("destroyed"))
+            {
+                cur.Advance();
+                zone = ZoneRef.Cemetery;
+                if (history == Core.HistoryScope.None) history = Core.HistoryScope.DestroyedThisMatch;
+                matched = true; continue;
+            }
+
             if (cur.MatchPhrase("destroyed", "this", "match"))
             {
                 history = Core.HistoryScope.DestroyedThisMatch; matched = true; continue;
@@ -987,13 +1039,20 @@ public sealed class TargetParser
 
         return new TargetSpec
         {
+            // 历史池是**决定性**的：既然说的是「本局/本回合被破坏过的」，
+            // 候选就一定来自历史记录，不该指向任何具体区域。
+            // zone 在解析过程中会被卡种 / 归属短语反复改写（followers 会把它设成
+            // Board），若不在最后归一，"allied Shikigami followers destroyed
+            // this match" 就会去 Board 上数 —— 那里一个被破坏的都没有。
             // slot 优先："drawn" 之类会写入 $created
             SourceKind = slot != null ? TargetSourceKind.Slot
                        : cardId > 0 ? TargetSourceKind.CardId
                        : TargetSourceKind.Zone,
             Slot = slot ?? "",
             Owner = ownerSet ? owner : ZoneScope.Self,
-            Zone = zone,
+            Zone = history == Core.HistoryScope.None ? zone
+                 : history == Core.HistoryScope.EnteredThisMatch ? ZoneRef.Board
+                 : ZoneRef.Cemetery,
             CardId = cardId,
             CardName = cardName,
             Where = where,

@@ -1871,28 +1871,12 @@ public sealed class EnglishCompiler
                 c.Seek(fp);
             }
 
-            // "X is the number of destroyed followers this match" 这类历史池计数。
-            // TargetParser 认得历史限定语，但这里必须自己构造 TargetSpec ——
-            // 吃 "the number of" 之后剩下的短语形状太自由，交给目标语法容易跑偏。
-            {
-                int hp = c.Position;
-                var hs = new System.Text.StringBuilder();
-                while (!c.IsAtEnd) { hs.Append(c.Current.Text).Append(' '); c.Advance(); }
-                var h = hs.ToString().ToLowerInvariant();
-                if (h.Contains("destroyed") && h.Contains("this match"))
-                    return NumExpr.CountOf(new TargetSpec { SourceKind = TargetSourceKind.Zone,
-                        Owner = ZoneScope.Self, Zone = ZoneRef.Cemetery,
-                        Mode = SelectMode.All, History = HistoryScope.DestroyedThisMatch });
-                if (h.Contains("destroyed") && h.Contains("this turn"))
-                    return NumExpr.CountOf(new TargetSpec { SourceKind = TargetSourceKind.Zone,
-                        Owner = ZoneScope.Self, Zone = ZoneRef.Cemetery,
-                        Mode = SelectMode.All, History = HistoryScope.DestroyedThisTurn });
-                if (h.Contains("entered the field") && h.Contains("this match"))
-                    return NumExpr.CountOf(new TargetSpec { SourceKind = TargetSourceKind.Zone,
-                        Owner = ZoneScope.Self, Zone = ZoneRef.Board,
-                        Mode = SelectMode.All, History = HistoryScope.EnteredThisMatch });
-                c.Seek(hp);
-            }
+            // 历史池计数（"... destroyed this match" / "... entered the field this match"）
+            // **不在这里特判**：那些限定词由 TargetParser 正规解析，
+            // 兵种 / 卡种 / 敌我归属 / differently named 一个都不能丢。
+            // 曾用 StringBuilder 把剩余整句拼成字符串再 Contains 硬吞，
+            // 结果是 "allied Shikigami followers destroyed this match" 里的
+            // Shikigami 与 "enemy ... this turn" 里的 enemy 全被吃掉。
 
             // "X is the number of cards you returned [to your hand this turn]"
             // TargetParser 吃完 "cards" 就停下，剩下的 "you returned ..." 无人消费，
