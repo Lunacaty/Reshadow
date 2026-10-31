@@ -386,10 +386,16 @@ public sealed class TurnRunner
     /// 规则：奥义槽 = 当前回合数 + 本卡在手时我方随从进化/超进化的次数。
     /// 每张卡各自维护自己的槽位，所以槽位存在实体计数器上。
     /// </summary>
-    private void BumpSkyboundGauge(int playerId)
+    private void BumpSkyboundGauge(int playerId) => BumpSkyboundGauge(_state, _schema, playerId);
+
+    /// <summary>
+    /// 奥义槽 +1 的唯一实现。手动进化（本类）与能力自动进化（CardVm.DoEvolve）
+    /// 都走这里 —— 两份实现必然漂移。
+    /// </summary>
+    internal static void BumpSkyboundGauge(IVmWorld world, GameSchema schema, int playerId)
     {
-        var gaugeKey = _schema.Counter("skybound_gauge");
-        foreach (var e in _state.EnumerateZone(ZoneRef.Hand, playerId))
+        var gaugeKey = schema.Counter("skybound_gauge");
+        foreach (var e in world.EnumerateZone(ZoneRef.Hand, playerId))
         {
             if (e.Def == null) continue;
             bool hasSkybound = false;
@@ -460,8 +466,16 @@ public sealed class TurnRunner
         _state.WriteCounter(playerId, fuseCount, _state.ReadCounter(playerId, fuseCount) + 1);
         _state.WriteCounter(playerId, fuseCost, _state.ReadCounter(playerId, fuseCost) + totalCost);
 
+        // 被融合吞掉的材料卡「离场但不在任何区域」（76-c 2.3-C）：
+        // 不进墓场、不加 shadow、不触发 OnDiscard / OnLeaveField / 谢幕曲。
+        // 之前走 Cemetery，于是融合反而给亡者召还喂了肥料，
+        // 还顺带把墓场计数与 shadow 数都算高了。
         foreach (var m in materials)
-            _state.MoveEntity(m, ZoneRef.Cemetery, playerId);
+        {
+            _state.MoveEntity(m, ZoneRef.None, playerId);   // 摘出手牌，EntrySerial++
+            m.Zone = ZoneRef.None;                          // PlaceInZone 对 None 不落任何容器
+            _state.RemoveEntity(m);                         // 连 _all 一起摘掉：GetLive 永远取不到
+        }
 
         baseCard.FusedThisTurn = true;
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnFuse, Subject = EntityRef.From(baseCard) });

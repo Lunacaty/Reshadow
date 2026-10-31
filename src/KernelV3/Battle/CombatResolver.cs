@@ -75,8 +75,11 @@ public sealed class CombatResolver
         bool ignoresWard = Has(attacker, "ignores ward");
         if (!ignoresWard)
         {
+            // 守护与威慑同时拥有时「守护失效」（76-c 3.1 / 76-d Phase 5 第 5 条）：
+            // 威慑随从本来就不能被随从攻击，若它还参与守护过滤，
+            // 就会出现「只能打守护」与「守护不能被打」同时成立 —— 玩家一手都打不出。
             var guards = _state.EnumerateZone(ZoneRef.Board, defender.PlayerId)
-                .Where(e => Has(e, "ward") && !Has(e, "ambush"))
+                .Where(e => Has(e, "ward") && !Has(e, "ambush") && !Has(e, "intimidate"))
                 .ToList();
             if (guards.Count > 0)
             {
@@ -148,6 +151,11 @@ public sealed class CombatResolver
         }
         else if (defender.Zone == ZoneRef.Board)
         {
+            // 屏障必须在伤害管线之前取快照：ApplyDamage 命中屏障时会当场把
+            // barrier 关键词删掉，之后再 Has() 永远为 false，
+            // 于是「被屏障抵消」与「真的造成 0 点伤害」无从区分，Bane 直接破坏对方。
+            bool defenderHadBarrier = Has(defender, "barrier");
+
             // 8. 被攻击方反击
             int dealtToDefender = ApplyDamage(defender, atk, attacker.PlayerId, vm);
             ApplyDrain(attacker, dealtToDefender, vm);
@@ -159,7 +167,7 @@ public sealed class CombatResolver
 
             // 9. 双方体力 <= 0 的破坏；必杀（Bane）即使 0 伤害也破坏。
             // 例外：伤害被屏障 Barrier 抵消时， Bane 不生效（R-6.1）。
-            bool blockedByBarrier = dealtToDefender == 0 && Has(defender, "barrier");
+            bool blockedByBarrier = dealtToDefender == 0 && defenderHadBarrier;
             if (attackerHasBane && !blockedByBarrier && defender.Zone == ZoneRef.Board)
                 _state.DestroyEntity(defender);
             if (defenderHasBane && attacker.Zone == ZoneRef.Board) _state.DestroyEntity(attacker);

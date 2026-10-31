@@ -184,8 +184,21 @@ public sealed partial class CardVm
 
         if (n.IsSplit && targets.Count > 0)
         {
-            int each = total / targets.Count;
-            foreach (var t in targets) ApplyDamage(t, each, n.IsAbility, scope);
+            // 分伤按进场顺序依次分配 min(剩余伤害, 目标当前生命)，直到伤害分完
+            // （76-c 第 5 章第 12 条）。
+            // 之前用整除平均分：7 点分给 2 个 5 血随从只掉 6 点，
+            // 分给 8 个随从则每份 0 点 —— 伤害凭空蒸发。
+            // 主战者不是「有生命的随从」，直接吃下全部剩余伤害；
+            // 屏障随从照样按分配额度扣减 —— 抵消的是伤害，不是分配。
+            int remaining = total;
+            foreach (var t in targets)
+            {
+                if (remaining <= 0) break;
+                int share = t.Zone == ZoneRef.Board ? Math.Min(remaining, Math.Max(0, t.Life)) : remaining;
+                if (share <= 0) continue;
+                remaining -= share;
+                ApplyDamage(t, share, n.IsAbility, scope);
+            }
         }
         else
         {
@@ -270,7 +283,8 @@ public sealed partial class CardVm
             {
                 CostModOp.Add => Math.Max(0, t.Cost + v),
                 CostModOp.Set => Math.Max(0, v),
-                CostModOp.Halve => Math.Max(0, t.Cost / 2),
+                // 费用减半向上取整（76-c 第 5 章第 11 条）：3 费 → 2 费，1 费 → 1 费。
+                CostModOp.Halve => Math.Max(0, (t.Cost + 1) / 2),
                 _ => t.Cost,
             };
         }
@@ -438,9 +452,15 @@ public sealed partial class CardVm
             else
             {
                 bool fromHand = t.Zone == ZoneRef.Hand;
-                if (t.Zone == ZoneRef.Board && n.ToZone != ZoneRef.Board)
+                bool fromBoard = t.Zone == ZoneRef.Board;
+                if (fromBoard && n.ToZone != ZoneRef.Board)
                     _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(t) });
                 _world.MoveEntity(t, n.ToZone, t.PlayerId);
+
+                // 回手 → 卡面重置为印刷值：手牌里的卡不是「场上的那个随从」。
+                // 之前回手只换区，5/1 已进化 MaxLife=4 的随从会带着全部临时状态
+                // 回到手里再打出来，进化加成被白拿两次。
+                if (fromBoard && n.ToZone == ZoneRef.Hand) ResetToPrintedValues(t);
 
                 // 弃牌（Hand → Cemetery，且不是 Destroy）要发 OnDiscard 并加墓场。
                 // 官方：弃牌不触发谢幕曲、不进 DestroyedThisMatch，但 shadow +1。
@@ -463,6 +483,24 @@ public sealed partial class CardVm
         if (n.ToZone == ZoneRef.Board || n.ToZone == ZoneRef.Hand || n.ToZone == ZoneRef.ExArea)
             scope.Bind(n.OutSlot, moved);
         return false;
+    }
+
+    /// <summary>
+    /// 从战场回到手牌 / 牌组等非战场区域时，把实体还原成卡面印刷值。
+    /// 官方铁律：手牌里的卡永远是「这张卡」，不是「场上那个随从」——
+    /// 攻击力、生命、费用、进化状态、限时修正一律回到印刷状态。
+    /// </summary>
+    private static void ResetToPrintedValues(RuntimeEntity t)
+    {
+        var def = t.Def;
+        t.Attack = def?.BaseAttack ?? t.Attack;
+        t.Life = def?.BaseLife ?? t.Life;
+        t.MaxLife = t.Life;
+        t.Cost = def?.BaseCost ?? t.Cost;
+        t.IsEvolved = false;
+        t.IsSuperEvolved = false;
+        t.IsSilenced = false;
+        t.TempModifiers.Clear();
     }
 
     private bool DoSpawn(SpawnCardNode n, VmScope scope)
@@ -532,7 +570,24 @@ public sealed partial class CardVm
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets)
         {
+            // 已经进化过的随从不再进化：重复执行 "Evolve this follower"
+            // 会无限叠属性（+2/+2 每跑一遍加一次）。
+            if (t.IsEvolved) continue;
+
+            // 进化加成与手动进化完全一致（TurnRunner.Evolve）：
+            // 普通 +2/+2、超进化 +3/+3，Attack / Life / MaxLife 三者同步。
+            // 之前这里只翻标志不加属性 —— 卡面写着 Evolve 却还是 2/2。
+            int delta = n.IsSuperEvolve ? 3 : 2;
+            t.Attack += delta;
+            t.Life += delta;
+            t.MaxLife += delta;
+
             if (n.IsSuperEvolve) { t.IsSuperEvolved = true; t.IsEvolved = true; } else t.IsEvolved = true;
+
+            // 奥义槽：与手动进化同一套逻辑（TurnRunner.BumpSkyboundGauge），
+            // 不另写一份 —— 两份实现必然漂移。
+            // 规则原文「本卡在手时我方随从进化的次数」，自动进化同样计入。
+            Battle.TurnRunner.BumpSkyboundGauge(_world, Schema, t.PlayerId);
 
             // 超进化同时触发 Evolve 与 Super-Evolve。
             // 且超进化必须把 IsEvolved 也置位——否则「if this follower is evolved」
