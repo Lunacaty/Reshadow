@@ -661,64 +661,72 @@ public sealed class BattleState : IVmWorld
         };
         e.MaxLife = e.Life;
 
-        // 装配卡面自带的常驻属性。
-        // 裸关键词（Ward / Storm / Rush）与 Countdown (N) 在编译器里被编成
-        // PassiveAura 能力，但之前从来没有人在实体创建时把它们装进去，
-        // 所以一张印着 Ward 的随从被召唤上场后 Keywords 是空的。
-        if (def != null)
-        {
-            foreach (var ab in def.Abilities)
-            {
-                if (ab?.Trigger == null) continue;
-                if (ab.Trigger.Event != Core.CoreEvent.PassiveAura) continue;
-
-                foreach (var n in ab.Body ?? Array.Empty<Ast.EffectNode>())
-                {
-                    switch (n)
-                    {
-                        // 裸关键词（Ward / Storm / Rush / Can't be destroyed …）
-                        case Ast.ModifyKeywordNode mk when mk.Op == Ast.KeywordOp.Grant:
-                            if (!e.Keywords.Contains(mk.Keyword)) e.Keywords.Add(mk.Keyword);
-                            if (mk.Value?.Op == Ast.NumOp.Const) e.KeywordValues[mk.Keyword] = mk.Value.Value;
-                            break;
-
-                        // 「X starts at N」的初始计数器。
-                        // 之前这条分支不存在，PassiveAura 只被当成关键词装配器，
-                        // 于是 X 计数器从未创建，`Deal X damage` 恒打 0 点。
-                        // 只认 Op == Set：Increase X by 1 走触发路径，不能被入场重刷。
-                        case Ast.ModifyCounterNode mc
-                            when mc.Op == Ast.CounterOp.Set && mc.Delta?.Op == Ast.NumOp.Const:
-                            e.Counters[mc.Counter] = mc.Delta.Value;
-                            break;
-
-                        // 真光环（PassiveAura + ModifyStats，如「所有友方随从 +2/+2」）。
-                        // 只吃常量增量，非常量留给运行时求值。
-                        case Ast.ModifyStatsNode ms when ms.Op == Ast.StatModOp.Add:
-                            if (ms.Attack?.Op == Ast.NumOp.Const) e.Attack += ms.Attack.Value;
-                            if (ms.Life?.Op == Ast.NumOp.Const)
-                            {
-                                e.Life += ms.Life.Value;
-                                e.MaxLife += ms.Life.Value;
-                            }
-                            break;
-                    }
-                }
-
-                foreach (var c in ab.Costs ?? Array.Empty<Ast.CostSpec>())
-                {
-                    if (c.Kind != Ast.CostKind.Countdown) continue;
-                    if (c.Amount?.Op != Ast.NumOp.Const) continue;
-                    e.Counters[Schema.Counter("countdown")] = c.Amount.Value;
-                }
-            }
-
-            foreach (var k in def.InnateKeywords) if (!e.Keywords.Contains(k)) e.Keywords.Add(k);
-            foreach (var kv in def.InnateCounters) e.Counters[kv.Key] = kv.Value;
-        }
+        MountInnateProperties(e);
 
         _all.Add(e);
         PlaceInZone(e, zone, playerId);
         return e;
+    }
+
+    /// <summary>
+    /// 把卡面自带的常驻属性装配到实体上：兵种、裸关键词、初始计数器、
+    /// PassiveAura 里的关键词 / 计数器 / 常驻攻防、Countdown (N)。
+    ///
+    /// 必须是**唯一**装配点：CreateEntity 与 TransformEntity 都要调。
+    /// 早先只有 CreateEntity 里内联了一份，于是 Transform 变身之后新卡的
+    /// Rush / Storm / Ward / Countdown 全丢 —— 变成一张纯白板。
+    /// </summary>
+    public void MountInnateProperties(RuntimeEntity e)
+    {
+        var def = e?.Def;
+        if (def == null) return;
+
+        // 兵种：CardDef.Traits 之前从未被拷贝，印在卡面上的兵种全部失效。
+        if (def.Traits != null)
+            foreach (var tr in def.Traits) e.Traits.Add(tr);
+
+        foreach (var ab in def.Abilities ?? Array.Empty<Ast.AbilityDef>())
+        {
+            if (ab?.Trigger == null) continue;
+            if (ab.Trigger.Event != Core.CoreEvent.PassiveAura) continue;
+
+            foreach (var n in ab.Body ?? Array.Empty<Ast.EffectNode>())
+            {
+                switch (n)
+                {
+                    case Ast.ModifyKeywordNode mk when mk.Op == Ast.KeywordOp.Grant:
+                        if (!e.Keywords.Contains(mk.Keyword)) e.Keywords.Add(mk.Keyword);
+                        if (mk.Value?.Op == Ast.NumOp.Const) e.KeywordValues[mk.Keyword] = mk.Value.Value;
+                        break;
+
+                    case Ast.ModifyCounterNode mc
+                        when mc.Op == Ast.CounterOp.Set && mc.Delta?.Op == Ast.NumOp.Const:
+                        e.Counters[mc.Counter] = mc.Delta.Value;
+                        break;
+
+                    case Ast.ModifyStatsNode ms when ms.Op == Ast.StatModOp.Add:
+                        if (ms.Attack?.Op == Ast.NumOp.Const) e.Attack += ms.Attack.Value;
+                        if (ms.Life?.Op == Ast.NumOp.Const)
+                        {
+                            e.Life += ms.Life.Value;
+                            e.MaxLife += ms.Life.Value;
+                        }
+                        break;
+                }
+            }
+
+            foreach (var c in ab.Costs ?? Array.Empty<Ast.CostSpec>())
+            {
+                if (c.Kind != Ast.CostKind.Countdown) continue;
+                if (c.Amount?.Op != Ast.NumOp.Const) continue;
+                e.Counters[Schema.Counter("countdown")] = c.Amount.Value;
+            }
+        }
+
+        if (def.InnateKeywords != null)
+            foreach (var k in def.InnateKeywords) if (!e.Keywords.Contains(k)) e.Keywords.Add(k);
+        if (def.InnateCounters != null)
+            foreach (var kv in def.InnateCounters) e.Counters[kv.Key] = kv.Value;
     }
 
     /// <summary>把实体放进区域，并执行容量铁律。</summary>
@@ -1275,6 +1283,11 @@ public sealed class BattleState : IVmWorld
         e.AttacksThisTurn = 0;
         e.AttackedThisTurn = false;
         e.AttackedLeaderLastTurn = false;
+
+        // 清空旧状态之后必须**重新装配新卡的常驻属性**。
+        // 不调这一步，任何卡变身成带 Rush / Storm / Ward / Countdown 的卡之后
+        // 都是一张纯白板（实测 Gear of Ambition → Striker Artifact 丢了 Rush）。
+        MountInnateProperties(e);
 
         // 变身事件。「Whenever a follower transforms」类监听靠它。
         // 变身**不**触发进出场：官方规定它是「同一个实体换了张脸」，

@@ -422,8 +422,23 @@ public sealed class VmEval
         // 用 RefLive 会把「刚移过区、EntrySerial 已 ++」的实体判成已死，
         // 于是只剩快照 —— 而快照是创建那一刻拍的，不含后来追加的兵种。
         var carrier = RefCarrier(r);
-        if (carrier != null && carrier.Traits.Contains(trait)) return true;
-        return r.Snapshot != null && r.Snapshot.Traits.Contains(trait);
+        if (carrier != null)
+        {
+            if (carrier.Traits.Contains(trait)) return true;
+            // 卡面印刷的兵种也认：有些路径造出来的实体未必装了 Def.Traits
+            // （旧存档 / 手写 CardDef），直接看定义更稳。
+            if (carrier.Def?.Traits != null && carrier.Def.Traits.Contains(trait)) return true;
+        }
+        if (r.Snapshot != null)
+        {
+            if (r.Snapshot.Traits.Contains(trait)) return true;
+            // 快照没带兵种时，回查卡池里的 CardDef（它是印刷兵种的权威来源）。
+            var sd = _world.FindByCardId(Core.ZoneRef.Board, r.Snapshot.PlayerId, r.Snapshot.CardId).FirstOrDefault()
+                  ?? _world.FindByCardId(Core.ZoneRef.Cemetery, r.Snapshot.PlayerId, r.Snapshot.CardId).FirstOrDefault()
+                  ?? _world.FindByCardId(Core.ZoneRef.Hand, r.Snapshot.PlayerId, r.Snapshot.CardId).FirstOrDefault();
+            if (sd?.Traits != null && sd.Traits.Contains(trait)) return true;
+        }
+        return false;
     }
 
     private bool RefMatchState(EntityRef r, UnitState s)

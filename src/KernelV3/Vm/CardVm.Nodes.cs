@@ -524,7 +524,7 @@ public sealed partial class CardVm
     /// 官方铁律：手牌里的卡永远是「这张卡」，不是「场上那个随从」——
     /// 攻击力、生命、费用、进化状态、限时修正一律回到印刷状态。
     /// </summary>
-    private static void ResetToPrintedValues(RuntimeEntity t)
+    private void ResetToPrintedValues(RuntimeEntity t)
     {
         var def = t.Def;
         t.Attack = def?.BaseAttack ?? t.Attack;
@@ -544,28 +544,10 @@ public sealed partial class CardVm
         t.Counters.Clear();
         if (def == null) return;
 
-        foreach (var k in def.InnateKeywords) t.Keywords.Add(k);
-        foreach (var kv in def.InnateCounters) t.Counters[kv.Key] = kv.Value;
-
-        // 与 CreateEntity 的 PassiveAura 装配保持一致。
-        foreach (var ab in def.Abilities)
-        {
-            if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.PassiveAura) continue;
-            foreach (var n in ab.Body ?? Array.Empty<EffectNode>())
-            {
-                switch (n)
-                {
-                    case ModifyKeywordNode mk when mk.Op == KeywordOp.Grant:
-                        t.Keywords.Add(mk.Keyword);
-                        if (mk.Value?.Op == NumOp.Const) t.KeywordValues[mk.Keyword] = mk.Value.Value;
-                        break;
-                    case ModifyCounterNode mc
-                        when mc.Op == CounterOp.Set && mc.Delta?.Op == NumOp.Const:
-                        t.Counters[mc.Counter] = mc.Delta.Value;
-                        break;
-                }
-            }
-        }
+        // 兵种、裸关键词、初始计数器、PassiveAura 装配、Countdown ——
+        // 与 CreateEntity / TransformEntity 共用同一个装配点，
+        // 三处各写一份必然漂移（回手后关键词没了、吟唱没恢复都是这么来的）。
+        if (_world is Battle.BattleState bs) bs.MountInnateProperties(t);
     }
 
     /// <summary>
