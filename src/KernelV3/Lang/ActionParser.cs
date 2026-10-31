@@ -2394,21 +2394,48 @@ public sealed class ActionParser
         }
         cur.Seek(probe);
 
-        while (!cur.IsAtEnd && !cur.Current.IsAnyWord("of")) cur.Advance();
-        cur.TryMatchAnyWord("of");
-        cur.TryMatchAnyWord("max");
-        var target = _target.TryParse(cur) ?? TargetSpec.Self;
+        // 目标必须从 "halve" 之后就地读。
+        // 旧实现一路 Seek 到 "of" 再解析 —— 而 "Halve the enemy leader's defense"
+        // 里根本没有 "of"，游标被推到句尾，TryParse 拿到空流，回退成 TargetSpec.Self。
+        // 结果整句变成「把自己的生命减半」，敌方主战者一动不动。
+        TargetSpec target;
+        if (isLife)
+        {
+            // "Halve the enemy leader's max defense" —— "max" 落在属主之后，
+            // TargetParser 在 "leader's" 处只吃 defense/life/attack，
+            // 因此剩余的 max/defense 必须在这里补消费，否则句尾残留撞 AssertEnd。
+            cur.TryMatchAnyWord("max");
+            target = _target.TryParse(cur) ?? TargetSpec.Self;
+            while (cur.Current.IsAnyWord("max", "defense", "life", "attack")) cur.Advance();
+        }
+        else
+        {
+            while (!cur.IsAtEnd && !cur.Current.IsAnyWord("of")) cur.Advance();
+            cur.TryMatchAnyWord("of");
+            cur.TryMatchAnyWord("max");
+            target = _target.TryParse(cur) ?? TargetSpec.Self;
+        }
 
         if (isLife)
         {
+            // 求值必须对**真实目标**取，不能对 $item 取：
+            // DoModifyStats 执行时 $item 没有绑定，求值结果是 0，
+            // 于是「生命上限减半」静默变成「把敌方主战者打成 0 血」或者干脆无效果。
+            // 基准取 MaxLife 而不是当前 Life：卡面写的是 max defense 的上限值，
+            // 按当前生命算会随伤害累积而漂移。
+            // (MaxLife + 1) / 2 —— 奇数向上取整（同 CostModOp.Halve 的规则）。
+            // Attack = null 时 DoModifyStats 会把攻击力一起置 0，
+            // 所以必须显式传一个「保持原值」的表达式。
             return new List<EffectNode>
             {
                 new ModifyStatsNode
                 {
                     Target = target,
                     Op = StatModOp.Set,
-                    Attack = null,
-                    Life = NumExpr.Div(NumExpr.Prop(StatKey.Life, TargetSpec.Item), NumExpr.Const(2)),
+                    Attack = NumExpr.Prop(StatKey.Attack, target),
+                    Life = NumExpr.Div(
+                        NumExpr.Add(NumExpr.Prop(StatKey.MaxLife, target), NumExpr.Const(1)),
+                        NumExpr.Const(2)),
                 },
             };
         }

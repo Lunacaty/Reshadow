@@ -557,6 +557,36 @@ public static class ConditionCompiler
             bool atLeast = c.MatchPhrase("at", "least");
             int n = ReadNumber(c);
 
+            // "you have at least 4 cards with the same cost in your hand"
+            // TargetParser 不认识 "with the same cost"，会在 "cards" 处提前收尾，
+            // 反手把后面的 "in your hand" 一起丢掉，于是条件被编成「场上 4 张卡」。
+            // 「同费最大张数」在 AST 里是 NumOp.MaxGroupSize，必须整段接住。
+            {
+                int sc = c.Position;
+                c.TryMatchAnyWord("cards", "card", "followers", "follower");
+                if (c.MatchPhrase("with", "the", "same", "cost"))
+                {
+                    var zone0 = ZoneRef.Board;
+                    var owner0 = ZoneScope.Self;
+                    while (!c.IsAtEnd && c.Current.Kind != TokKind.Comma)
+                    {
+                        if (c.MatchPhrase("in", "your", "hand")) { zone0 = ZoneRef.Hand; continue; }
+                        if (c.MatchPhrase("in", "your", "deck")) { zone0 = ZoneRef.Deck; continue; }
+                        if (c.MatchPhrase("on", "the", "field")) { zone0 = ZoneRef.Board; continue; }
+                        if (c.MatchPhrase("in", "your", "opponent's", "hand"))
+                        { zone0 = ZoneRef.Hand; owner0 = ZoneScope.Opponent; continue; }
+                        c.Advance();
+                    }
+                    return new CompareExpr
+                    {
+                        Left = new NumExpr { Op = NumOp.MaxGroupSize, Of = TargetSpec.InZone(zone0, owner0) },
+                        Op = CompareOp.Ge,
+                        Right = NumExpr.Const(n > 0 ? n : 1),
+                    };
+                }
+                c.Seek(sc);
+            }
+
             // 资源计数器："you have at least 4 play points" / "at least 3 combo"
             var resCounter = MatchResourceCounter(c, lex);
             if (resCounter != null)
@@ -693,10 +723,25 @@ public static class ConditionCompiler
         }
 
         // "attacking a follower"
+        //
+        // 旧实现返回 HasStateExpr(UnitState.None)，VmEval.MatchState 对 None 一律
+        // 返回 false —— 条件恒假，等于「这张卡的 Strike 效果永远不生效」。
+        // 这里改用 CombatResolver 在发 OnAttack 之前就已写定的
+        // AttackedLeaderLastTurn：它为真表示本次攻击打的是主战者，
+        // 所以「目标是随从」= 对它取反。
         if (c.MatchWord("attacking"))
         {
+            bool isFollower = !(c.MatchPhrase("a", "leader") || c.MatchPhrase("the", "enemy", "leader")
+                                || c.MatchPhrase("an", "enemy", "leader"));
+            c.TryMatchAnyWord("a", "an", "the");
+            c.TryMatchAnyWord("follower", "followers", "leader");
             while (!c.IsAtEnd) c.Advance();
-            return new HasStateExpr { State = UnitState.None, Of = TargetSpec.Trigger };
+            var onLeader = new HasStateExpr
+            {
+                State = UnitState.AttackedLeaderLastTurn,
+                Of = TargetSpec.Trigger,
+            };
+            return isFollower ? BoolExpr.Not(onLeader) : onLeader;
         }
 
         // "the opposing follower is damaged"

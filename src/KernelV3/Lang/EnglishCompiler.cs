@@ -59,6 +59,8 @@ public sealed class EnglishCompiler
         // 实测：982 张里有 866 张会凭空多出一条 PassiveAura 计数器能力（真实值 7 张）。
         _variableBindings.Clear();
         _initialCounters.Clear();
+        _fuseTiers.Clear();
+        _lastBuiltAbility = null;
         // 卡级槽位登记：整张卡编译开始时清空一次。
         _target.ResetSlots();
         var r = new Result();
@@ -492,9 +494,12 @@ public sealed class EnglishCompiler
             }
 
             // 融合分支表 "1: <Card> 2: <Card> 3 or more: <Card>"
+            // 三档在卡面上是三句，必须先累积、段末合成一条能力。
+            // 表必须紧跟在它所属的句子后面：「When you Fuse to this card,
+            // transform it ...」才是它的触发前提，独立落成 OnPlay 就丢了。
             if (IsFuseSwitchTableHead(c))
             {
-                ParseFuseSwitchTable(c, result);
+                ParseFuseSwitchTable(c);
                 if (c.IsAtEnd) continue;
             }
 
@@ -552,6 +557,19 @@ public sealed class EnglishCompiler
             // 循环剥离所有句首前缀（回合 / 频率 / 边界 / 头 / 事件 / 条件）
             var hb = new AbilityHeaderBuilder();
             _prefixes.ParseAll(c, hb);
+
+            // 剥离掉能力头之后才露出来的变身表，例如
+            //   "Fanfare: 1: A. 2: B. 3 or more: C."
+            // 前缀循环之外的检查看不到它（当前 token 还是 Fanfare），
+            // 于是编号被当作动作交给动作解析器，整句报「无法推进」。
+            // 在这里接住，并把能力头留存给落盘时使用。
+            if (IsFuseSwitchTableHead(c))
+            {
+                ParseFuseSwitchTable(c);
+                _fuseHeader = hb;
+                _fuseZone = zone;
+                if (c.IsAtEnd) continue;
+            }
 
             // 段级 zone 传递：本句没有显式指定区域时，沿用段内已有的 zone。
             if (hb.ActiveZone != ActiveZoneScope.Board) segmentZone = hb.ActiveZone;
@@ -670,6 +688,7 @@ public sealed class EnglishCompiler
             };
             result.Add(built);
             currentAbility = built;
+            _lastBuiltAbility = built;
         }
 
         // 收尾：把剩余的模式选项落成 BranchModeNode
@@ -677,6 +696,12 @@ public sealed class EnglishCompiler
                        ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeIsRandom,
                        modeDepth);
         modeDepth.Clear();
+
+        // 收尾：融合变身表并进它所修饰的那条能力
+        // 档位表常被换行切成独立段落（"…transform it…\n1: A\n2: B\n3 or more: C"），
+        // 本段没有能力时回落到上一段落成的能力。
+        FlushFuseTable(result, currentAbility ?? _lastBuiltAbility);
+        _fuseHeader = null;
 
         // 元模式（Meta-Mode）先行：把 "... 1. ... 2. ... Enhance (3): Activate all of them instead."
         // 合成「条件成立时把前一个模式块的选取数放宽为全部」。
@@ -691,6 +716,10 @@ public sealed class EnglishCompiler
         // 合成为 ConditionalNode(cond, Then: 后一句, Else: 前一句)。
         // 之前 instead 被当空气吃掉，导致两句都执行（合打 6 点）。
         result = InsteadWeaver.Weave(result, _lex);
+
+        // 段内累积状态不得跨段：漏清会让下一段的档位并进上一张卡的变身表。
+        _fuseTiers.Clear();
+        _lastBuiltAbility = null;
 
         return result;
     }
@@ -1179,21 +1208,46 @@ public sealed class EnglishCompiler
         return nx.Kind == TokKind.Colon || nx.IsAnyWord("or");
     }
 
-    /// <summary>解析 "1: A 2: B 3 or more: C" 分支表，产出 BranchModeNode。</summary>
-    private void ParseFuseSwitchTable(TokenCursor c, List<AbilityDef> result)
+    /// <summary>当前段里累积的融合变身表档位（跨句累积，段末一次性落盘）。</summary>
+    private readonly List<(int lo, int hi, string cardName, int cardId)> _fuseTiers = new();
+
+    /// <summary>上一次落盘的能力。跨段落延续，用于把被换行切开的后续表接回原句。</summary>
+    private AbilityDef _lastBuiltAbility;
+
+    /// <summary>变身表紧跟在能力头之后时，落盘用的头（"Fanfare: 1: A …"）。</summary>
+    private AbilityHeaderBuilder _fuseHeader;
+    private SectionZone _fuseZone = SectionZone.Normal;
+
+    /// <summary>
+    /// 解析 "1: A 2: B 3 or more: C" 变身表。
+    ///
+    /// 这是**按融合次数分档的单次选择**，不是模式抉择：
+    /// 旧实现落成 BranchModeNode(Sequence, pick=档数)，VM 会依次把每一档的
+    /// 随从都召唤出来 —— 一次融合召出三个随从。
+    ///
+    /// 分档判据是 fuse_count（TurnRunner.FuseCards 每次融合 +1）：
+    ///   "1:" 覆盖 lo..hi，"N or more:" 是开区间 lo..∞。
+    /// 表达成按档位降序的 ConditionalNode 链，第一个命中的档位执行，其余落 Else。
+    ///
+    /// 各档在卡面上是**三个独立句子**（"1: A. 2: B. 3 or more: C."），
+    /// 逐句落盘会得到三条各自独立触发的能力，所以这里只登记档位，
+    /// 由段末的 FlushFuseTable 合成一条。
+    /// </summary>
+    private void ParseFuseSwitchTable(TokenCursor c)
     {
-        var options = new List<IReadOnlyList<EffectNode>>();
         while (!c.IsAtEnd && c.Current.Kind == TokKind.Number)
         {
+            int lo = c.Current.Value;
             c.Advance();                       // 序号
-            c.TryMatchAnyWord("or");
-            c.TryMatchAnyWord("more");
+            bool orMore = c.MatchPhrase("or", "more");
             c.TryMatch(TokKind.Colon);
 
             string cardName = "";
+            int cardId = 0;
             if (c.Current.Kind == TokKind.CardName)
             {
                 cardName = c.Current.Text;
+                cardId = c.Current.CardId;
                 c.Advance();
             }
             else
@@ -1208,36 +1262,81 @@ public sealed class EnglishCompiler
                 cardName = sb.ToString();
             }
 
-            if (!string.IsNullOrWhiteSpace(cardName))
-                options.Add(new List<EffectNode>
+            if (string.IsNullOrWhiteSpace(cardName)) continue;
+            // 卡号解析不了也要留住名字：SpawnCardNode 只有 CardId 能真正生成实体，
+            // 但名字是审查与报错唯一的线索。
+            if (cardId == 0) _lex.TryGetCardId(cardName, out cardId);
+            _fuseTiers.Add((lo, orMore ? int.MaxValue : lo, cardName, cardId));
+        }
+    }
+
+    /// <summary>
+    /// 把本段累积的融合档位合成**一条**按 fuse_count 分档的能力。
+    /// 从最高档往前折成 ConditionalNode 链，Else 指向下一档 ——
+    /// 命中的那一档执行完就落到链尾的空 Else，其余档位不会执行。
+    /// </summary>
+    private void FlushFuseTable(List<AbilityDef> result, AbilityDef owner)
+    {
+        if (_fuseTiers.Count == 0) return;
+
+        var fuseCount = NumExpr.Ctr(_lex.Counter("fuse_count"));
+
+        IReadOnlyList<EffectNode> chain = Array.Empty<EffectNode>();
+        for (int i = _fuseTiers.Count - 1; i >= 0; i--)
+        {
+            var (lo, hi, card, cardId) = _fuseTiers[i];
+            var cond = hi == int.MaxValue
+                ? (BoolExpr)new CompareExpr { Left = fuseCount, Op = CompareOp.Ge, Right = NumExpr.Const(lo) }
+                : BoolExpr.And(
+                    new CompareExpr { Left = fuseCount, Op = CompareOp.Ge, Right = NumExpr.Const(lo) },
+                    new CompareExpr { Left = fuseCount, Op = CompareOp.Le, Right = NumExpr.Const(hi) });
+            chain = new List<EffectNode>
+            {
+                new ConditionalNode
                 {
-                    new SpawnCardNode
+                    Condition = cond,
+                    Then = new List<EffectNode>
                     {
-                        SourceKind = CardSourceKind.CardId,
-                        CardName = cardName,
-                        ToZone = ZoneRef.Board,
-                        ToOwner = ZoneScope.Self,
-                        Count = NumExpr.Const(1),
+                        new SpawnCardNode
+                        {
+                            SourceKind = CardSourceKind.CardId,
+                            // CardId 必须一起带上：DoSpawn 只按 CardId 生成实体，
+                            // 只写 CardName 的节点永远产出空实体（旧实现即如此，
+                            // 于是整个变身表在运行期是死的）。
+                            CardId = cardId,
+                            CardName = card,
+                            ToZone = ZoneRef.Board,
+                            ToOwner = ZoneScope.Self,
+                            Count = NumExpr.Const(1),
+                        },
                     },
-                });
+                    Else = chain,
+                },
+            };
         }
 
-        if (options.Count > 0)
-            result.Add(new AbilityDef
-            {
-                Trigger = new TriggerSpec { Event = CoreEvent.OnPlay },
-                Condition = BoolExpr.True,
-                Costs = Array.Empty<CostSpec>(),
-                Body = new List<EffectNode>
-                {
-                    new BranchModeNode
-                    {
-                        Kind = ModeDispatchKind.Sequence,
-                        PickCount = NumExpr.Const(options.Count),
-                        Options = options,
-                    },
-                },
-            });
+        _fuseTiers.Clear();
+
+        // 档位表是**前一句**的后续（"When you Fuse to this card, transform it …
+        // 1: A 2: B 3 or more: C"），触发时机必须沿用那一句：
+        // 独立落成 OnPlay 会让变身表在打出时凭空触发，而不是融合时。
+        if (owner != null && owner.Body is List<EffectNode> body)
+        {
+            body.AddRange(chain);
+            return;
+        }
+
+        // 没有前句可依附时，"Fanfare: 1: A …" 这类由能力头直接引导的表
+        // 要沿用那个头；完全裸的表才退回 OnPlay。
+        var trigger = _fuseHeader?.BuildTrigger() ?? new TriggerSpec { Event = CoreEvent.OnPlay };
+        result.Add(new AbilityDef
+        {
+            Trigger = trigger,
+            Condition = _fuseHeader != null ? AndZone(_fuseZone, _fuseHeader.Condition) : BoolExpr.True,
+            Costs = _fuseHeader != null ? _fuseHeader.Costs : Array.Empty<CostSpec>(),
+            Body = chain,
+        });
+        _lastBuiltAbility = result[^1];
     }
 
     /// <summary>本次编译期间登记的变量绑定：变量名 -> 取值表达式。</summary>
@@ -1374,6 +1473,26 @@ public sealed class EnglishCompiler
         // "the number of <TargetNP>"
         if (c.MatchPhrase("the", "number", "of"))
         {
+            // "X is the number of cards you returned [to your hand this turn]"
+            // TargetParser 吃完 "cards" 就停下，剩下的 "you returned ..." 无人消费，
+            // 结果 X 被当成「我方场上卡牌数量」—— 语义完全错位。
+            // 这类「本回合回到某区域的卡数」引擎没有独立计数器，但两条区域转移
+            // （回手 / 弃牌 / 放逐）都已经打通，用 CountOverHistory：
+            //   · 弃牌 = 进墓地，DestroyedThisTurn 里查不到弃牌，所以仍走 OnDiscard 计数器
+            //   · 回手 / 放逐同理由 MoveZone 完成，落在历史池之外
+            // 本任务只处理点名的那一句：回手。
+            {
+                int rv = c.Position;
+                bool sawCards = c.MatchAnyWord("cards", "card");
+                bool sawReturned = sawCards && (c.MatchPhrase("you", "returned")
+                                                || c.MatchPhrase("returned"));
+                if (sawReturned)
+                {
+                    while (!c.IsAtEnd) c.Advance();
+                    return NumExpr.Ctr(_lex.Counter("cards_returned_to_hand"));
+                }
+                c.Seek(rv);
+            }
             // "the number of clues you have" / "cards in your hand" 之类：
             // 先试有名资源，再交给目标语法。
             // 目标语法不认识 "clues you have"，会返回 null，
