@@ -1084,7 +1084,15 @@ public sealed class BattleState : IVmWorld
     public void ExpireCrest(RuntimeEntity e)
     {
         if (e == null || e.Zone != ZoneRef.CrestArea) return;
-        MoveEntity(e, ZoneRef.Banished, e.PlayerId);
+
+        // 到期 ≠ 被放逐。放进 Banished 会触发全场「每当有卡被放逐」
+        // 并把 BanishedCount 永久抬高（76-c 1.2 的计数是可被卡面读取的事实）。
+        // 正确做法是让它**离场但不落在任何区域**：Detach 摘出容器，
+        // Zone 置 None（仍可被 GetLive 按 EntityId 找回，谢幕曲读得到）。
+        Detach(e);
+        e.EntrySerial++;
+        e.Zone = ZoneRef.None;
+
         EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
         EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
     }

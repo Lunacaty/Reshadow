@@ -212,7 +212,17 @@ public sealed class TurnRunner
         foreach (var tier in EnhanceTiers(card)) if (pp >= tier && tier > bestTier) bestTier = tier;
         if (bestTier > pay) pay = bestTier;
 
-        if (pp < pay) return false;
+        // 本体费用不够时，激奏 / 结晶是**合法的另一条出牌路径**。
+        // 规则的顺序是：能按本体打出就必须按本体，只有不够时才允许这两者。
+        if (pp < pay)
+        {
+            if (card.Def?.AccelerateDef != null && pp >= card.Def.AccelerateDef.BaseCost)
+                return PlayAsAltMode(playerId, card, card.Def.AccelerateDef, isAccelerate: true, vm);
+            if (card.Def?.CrystallizeDef != null && pp >= card.Def.CrystallizeDef.BaseCost
+                && p.Board.Count < PlayerState.MaxBoard)
+                return PlayAsAltMode(playerId, card, card.Def.CrystallizeDef, isAccelerate: false, vm);
+            return false;
+        }
 
         // ── 2. 法术的手选目标预检（随从/护符不受限）──
         if (card.Def.Kind == Ast.CardKind.Spell && !HasLegalTargetForSpell(card)) return false;
@@ -266,6 +276,56 @@ public sealed class TurnRunner
             BumpSpellboost(playerId, vm);
         }
 
+        return true;
+    }
+
+    /// <summary>
+    /// 以激奏（法术）或结晶（护符）模式打出一张本体费用不够的卡。
+    ///
+    /// 两者都是「同一张卡的另一张脸」：临时把实体 Def 换成模式定义，
+    /// 走各自的结算路径，结算完把 Def 还原 —— 这张卡若之后被回手，
+    /// 手牌里仍然应当是本体卡面。
+    /// </summary>
+    private bool PlayAsAltMode(int playerId, RuntimeEntity card, Ast.CardDef altDef,
+                               bool isAccelerate, CardVm vm)
+    {
+        var p = _state.Players[playerId];
+        var ppKey = _schema.Counter("pp");
+        int pp = _state.ReadCounter(playerId, ppKey);
+        int cost = altDef.BaseCost;
+        if (pp < cost) return false;
+
+        var original = card.Def;
+        _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), pp);
+        _state.WriteCounter(playerId, ppKey, pp - cost);
+        _state.WriteCounter(playerId, _schema.Counter("combo"),
+            _state.ReadCounter(playerId, _schema.Counter("combo")) + 1);
+
+        card.Def = altDef;
+        card.Cost = cost;
+
+        if (isAccelerate)
+        {
+            // 激奏：按法术结算 —— 效果 → 进墓地 → shadow +1 → 魔力增幅。
+            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            vm?.StepUntilBlocked();
+            _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
+            var shadowKey = _schema.Counter("shadow");
+            _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
+            BumpSpellboost(playerId, vm);
+        }
+        else
+        {
+            // 结晶：按护符进场，装配它自己的吟唱与关键词。
+            _state.MoveEntity(card, ZoneRef.Board, playerId);
+            _state.MountInnateProperties(card);
+            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEnterField, Subject = EntityRef.From(card) });
+            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            vm?.StepUntilBlocked();
+        }
+
+        // 还原本体卡面：这张卡之后若被回手 / 回收，手牌里必须是本体。
+        card.Def = original;
         return true;
     }
 

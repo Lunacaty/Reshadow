@@ -403,6 +403,17 @@ public sealed partial class CardVm
         AddZone(ZoneRef.Banished, curP);
         AddZone(ZoneRef.Banished, othP);
 
+        // 到期的纹章停在 ZoneRef.None（离场但不进任何区域）。
+        // 它们也在这条事件上监听自己的谢幕曲，必须进候选池；
+        // MatchesTrigger 的 graveSelf 会按 EntityId + EntrySerial 精确限定范围。
+        if (ev.Subject != null)
+        {
+            var subj = _world.GetLive(ev.Subject.Value.EntityId, ev.Subject.Value.EntrySerial);
+            if (subj != null && subj.Zone == ZoneRef.None && subj.Def?.Kind == CardKind.Crest
+                && !candidates.Contains(subj))
+                candidates.Add(subj);
+        }
+
         foreach (var e in candidates)
         {
             if (e.Def == null) { }
@@ -579,8 +590,12 @@ public sealed partial class CardVm
         //   · OnLeaveField → 事件在移出后发出（Banish 的落点是放逐区）
         // 只认墓地的豁免会让被放逐的卡完全收不到自己的离场时能力 ——
         // 实测「When this card leaves the field, deal 3 damage」在 Banish 路径下打 0 点。
+        // 到期的纹章停在 ZoneRef.None（既不在场也不进任何区域），
+        // 但它同样要能收到自己的「离场时 / 谢幕曲」。
         bool graveSelf = need == ZoneRef.Board
-                         && (owner.Zone == ZoneRef.Cemetery || owner.Zone == ZoneRef.Banished)
+                         && (owner.Zone == ZoneRef.Cemetery
+                             || owner.Zone == ZoneRef.Banished
+                             || (owner.Zone == ZoneRef.None && owner.Def?.Kind == CardKind.Crest))
                          && (ev.Kind == CoreEvent.OnDestroy || ev.Kind == CoreEvent.OnLeaveField)
                          && ev.Subject != null
                          && ev.Subject.Value.EntityId == owner.EntityId

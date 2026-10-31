@@ -131,4 +131,15 @@ public sealed class CardDef
 
     /// <summary>这张卡自己生成的那个**信仰**的完整定义（含 Abilities）。</summary>
     public CardDef FaithDef { get; init; }
+
+    /// <summary>
+    /// 激奏（Accelerate）：本体费用不够时可以按这个**法术**打出。
+    /// 与 Crest/Faith 不同，它不是独立实体，而是同一张卡的另一张脸。
+    /// </summary>
+    public CardDef AccelerateDef { get; init; }
+
+    /// <summary>
+    /// 结晶（Crystallize）：本体费用不够时可以按这个**护符**打出。
+    /// </summary>
+    public CardDef CrystallizeDef { get; init; }
 }

@@ -60,6 +60,12 @@ public sealed class EnglishCompiler
 
         /// <summary>本卡生成的那个**信仰**的完整定义。</summary>
         public Ast.CardDef FaithDef { get; set; }
+
+        /// <summary>激奏模式（本体费用不够时按法术打出）。</summary>
+        public Ast.CardDef AccelerateDef { get; set; }
+
+        /// <summary>结晶模式（本体费用不够时按护符打出）。</summary>
+        public Ast.CardDef CrystallizeDef { get; set; }
     }
 
     /// <summary>编译整张卡的效果文本。</summary>
@@ -179,24 +185,39 @@ public sealed class EnglishCompiler
             if (string.IsNullOrWhiteSpace(textEng)) continue;
             bool isCrest = string.Equals(typeEng, "Crest", StringComparison.OrdinalIgnoreCase);
             bool isFaith = string.Equals(typeEng, "Faith", StringComparison.OrdinalIgnoreCase);
-            if (!isCrest && !isFaith) continue;
+            bool isAccel = string.Equals(typeEng, "Accelerate", StringComparison.OrdinalIgnoreCase);
+            bool isCryst = string.Equals(typeEng, "Crystallize", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(typeEng, "Crystallise", StringComparison.OrdinalIgnoreCase);
+            if (!isCrest && !isFaith && !isAccel && !isCryst) continue;
             if (isCrest && r.CrestDef != null) continue;
             if (isFaith && r.FaithDef != null) continue;
+            if (isAccel && r.AccelerateDef != null) continue;
+            if (isCryst && r.CrystallizeDef != null) continue;
 
             // 官方 alt 段不会自引用，这里不再传 altModes，避免无限递归。
             var sub = new EnglishCompiler(_lex).Compile(textEng);
             var def = new Ast.CardDef
             {
-                // CardId 留 0：纹章在运行期按名字合成号段
-                // （BattleState.ResolveCrestCardId），信仰走 FaithEntityIdBase 偏移。
+                // 纹章 / 信仰的 CardId 留 0，运行期按名字合成号段
+                // （BattleState.ResolveCrestCardId / FaithEntityIdBase）。
+                // 激奏与结晶是**同一张卡的另一张脸**，沿用本体卡号即可，
+                // 由 TurnRunner 在打出时按需要临时换 Def。
                 CardId = 0,
                 Name = _currentCardName ?? "",
-                Kind = isCrest ? Ast.CardKind.Crest : Ast.CardKind.Faith,
+                // 激奏按法术结算（结算完进墓地、shadow +1）；
+                // 结晶按护符进场（带自己的 Countdown 与谢幕曲）。
+                Kind = isCrest ? Ast.CardKind.Crest
+                     : isFaith ? Ast.CardKind.Faith
+                     : isAccel ? Ast.CardKind.Spell
+                     : Ast.CardKind.Amulet,
                 BaseCost = cost,
                 Abilities = sub.Abilities,
                 SourceText = textEng,
             };
-            if (isCrest) r.CrestDef = def; else r.FaithDef = def;
+            if (isCrest) r.CrestDef = def;
+            else if (isFaith) r.FaithDef = def;
+            else if (isAccel) r.AccelerateDef = def;
+            else r.CrystallizeDef = def;
         }
     }
 
