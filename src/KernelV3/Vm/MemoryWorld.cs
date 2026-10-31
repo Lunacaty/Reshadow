@@ -276,6 +276,8 @@ public sealed class MemoryWorld : IVmWorld
             {
                 e.Attack -= m.Attack;
                 e.Life -= m.Life;
+                // 与 BattleState.ExpireOn 对称：生命上限也要扣回。
+                if (m.Life > 0) e.MaxLife = Math.Max(e.Life, e.MaxLife - m.Life);
             }
             e.TempModifiers.RemoveAt(i);
             n++;

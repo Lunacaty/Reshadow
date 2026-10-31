@@ -1454,6 +1454,9 @@ public sealed class BattleState : IVmWorld
             {
                 e.Attack -= m.Attack;
                 e.Life -= m.Life;
+                // 上限必须同步扣回：DoModifyStats 加临时 +2/+2 时把 MaxLife 也加了 2，
+                // 到期只减 Life 会留下「2/2 但 MaxLife=4」—— 被永久误判成已受伤。
+                if (m.Life > 0) e.MaxLife = Math.Max(e.Life, e.MaxLife - m.Life);
             }
 
             e.TempModifiers.RemoveAt(i);

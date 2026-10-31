@@ -123,7 +123,14 @@ public sealed class CombatResolver
         if (attacker.Keywords.Contains(ambushKw)) attacker.Keywords.Remove(ambushKw);
 
         // 2. 攻击方【攻撃時】/【交戦時】
-        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnAttack, Subject = EntityRef.From(attacker) });
+        // Object 必须带上被攻击方：「每当 X 攻击随从/主战者时」
+        // 的 SecondaryFilter 就是靠它判断目标类型的，缺了它谓词恒假。
+        vm?.EnqueueEvent(new VmEvent
+        {
+            Kind = CoreEvent.OnAttack,
+            Subject = EntityRef.From(attacker),
+            Object = EntityRef.From(defender),
+        });
 
         bool isFollowerTarget = defender.Zone == ZoneRef.Board;
 
@@ -192,11 +199,13 @@ public sealed class CombatResolver
             // barrier 关键词删掉，之后再 Has() 永远为 false，
             // 于是「被屏障抵消」与「真的造成 0 点伤害」无从区分，Bane 直接破坏对方。
             bool defenderHadBarrier = Has(defender, "barrier");
+            // 攻击方的屏障同样要取快照：反击伤害打进来时它会被当场删掉。
+            bool attackerHadBarrier = Has(attacker, "barrier");
 
             // 8. 被攻击方反击
             int dealtToDefender = ApplyDamage(defender, atk, attacker.PlayerId, vm);
             ApplyDrain(attacker, dealtToDefender, vm);
-            ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm);
+            int dealtToAttacker = ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm);
             // 【虹吸 Drain】只在「主动发动攻击造成伤害」时回血。
             // 被攻击方的反击不触发它自己的 Drain（官方定义）。
             // 之前这里也调了 ApplyDrain(defender, ...)，
@@ -207,7 +216,10 @@ public sealed class CombatResolver
             bool blockedByBarrier = dealtToDefender == 0 && defenderHadBarrier;
             if (attackerHasBane && !blockedByBarrier && defender.Zone == ZoneRef.Board)
                 _state.DestroyEntity(defender);
-            if (defenderHasBane && attacker.Zone == ZoneRef.Board) _state.DestroyEntity(attacker);
+            // 反击的 Bane 同样被屏障抵消（R-6.1 对称适用）。
+            bool blockedAttackerByBarrier = dealtToAttacker == 0 && attackerHadBarrier;
+            if (defenderHasBane && !blockedAttackerByBarrier && attacker.Zone == ZoneRef.Board)
+                _state.DestroyEntity(attacker);
         }
 
         _state.ProcessStateBasedActions();

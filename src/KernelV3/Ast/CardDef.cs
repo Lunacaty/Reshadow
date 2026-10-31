@@ -77,6 +77,15 @@ public sealed class AbilityDef
     public BoolExpr Condition { get; init; } = BoolExpr.True;
     public IReadOnlyList<CostSpec> Costs { get; init; } = Array.Empty<CostSpec>();
     public IReadOnlyList<EffectNode> Body { get; init; } = Array.Empty<EffectNode>();
+
+    /// <summary>
+    /// 这条能力所属的卡出现过 `Fuse: ...` 材料声明。
+    ///
+    /// 材料声明段本身不产出能力，所以「with Fuse」这类谓词
+    /// 拿不到任何 Trigger.Event == OnFuse 的能力可查 —— 必须由编译期
+    /// 把事实贴到这张卡的某条能力上，运行期才查得到。
+    /// </summary>
+    public bool HasFuse { get; init; }
 }
 
 /// <summary>卡种。</summary>

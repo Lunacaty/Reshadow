@@ -98,6 +98,16 @@ public sealed class EnglishCompiler
         r.CrestDef = pre.CrestDef ?? r.CrestDef;
         r.FaithDef = pre.FaithDef ?? r.FaithDef;
         r.HasFuse = _sawFuseDecl;
+        // 材料声明段不产出能力，事实位必须贴到已有能力上，运行期才查得到。
+        if (_sawFuseDecl && r.Abilities.Count > 0 && !r.Abilities[0].HasFuse)
+        {
+            var a0 = r.Abilities[0];
+            r.Abilities[0] = new Ast.AbilityDef
+            {
+                Trigger = a0.Trigger, Condition = a0.Condition,
+                Costs = a0.Costs, Body = a0.Body, HasFuse = true,
+            };
+        }
         _actions.CrestDefResolver = null;
         return r;
     }

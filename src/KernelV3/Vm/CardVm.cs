@@ -438,7 +438,12 @@ public sealed partial class CardVm
             // 运行时授予的能力（GrantAbility）不写在 CardDef 里，必须单独扫
             foreach (var (ge, gab) in _world.GrantedAbilities)
             {
-                if (ge != null && ge.EntityId == e.EntityId) AddCandidate(byEntity, ge, gab);
+                if (ge == null || ge.EntityId != e.EntityId) continue;
+                // 后天授予的谢幕曲同样受「Remove Last Words」约束，
+                // 只跳过 CardDef 里的会漏掉这一类。
+                if (lastWordsRemoved && gab?.Trigger != null
+                    && gab.Trigger.Event == CoreEvent.OnDestroy) continue;
+                AddCandidate(byEntity, ge, gab);
             }
 
             // 挂在资源计数器上的能力（信仰等）。

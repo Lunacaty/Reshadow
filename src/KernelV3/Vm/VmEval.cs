@@ -327,7 +327,11 @@ public sealed class VmEval
         UnitState.CostModified => e.Def != null && e.Cost != e.Def.BaseCost,
         // 「with Fuse」问的是「这张卡能不能融合」（有没有 Fuse: 材料声明），
         // 不是「有没有 OnFuse 触发器」—— 材料声明段本身不产出能力。
-        UnitState.HasFuse => e.Def?.HasFuse == true || HasAbilityOf(e, Core.CoreEvent.OnFuse),
+        // 「with Fuse」问的是「这张卡能不能融合」（有没有 Fuse: 材料声明），
+        // 不是「有没有 OnFuse 触发器」—— 材料声明段本身不产出能力。
+        UnitState.HasFuse => e.Def?.HasFuse == true
+                         || (e.Def?.Abilities != null && e.Def.Abilities.Any(a => a != null && a.HasFuse))
+                         || HasAbilityOf(e, Core.CoreEvent.OnFuse),
         UnitState.HasLastWords => HasAbilityOf(e, Core.CoreEvent.OnDestroy),
         UnitState.HasOnSpellboost => HasAbilityOf(e, Core.CoreEvent.OnSpellboost),
         _ => false,
