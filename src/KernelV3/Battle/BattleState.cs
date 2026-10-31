@@ -196,7 +196,52 @@ public sealed class BattleState : IVmWorld
     ///
     /// 幂等：重复调用只会覆盖成同一份定义。
     /// </summary>
-    public void RegisterBuiltinTokens()
+    /// <summary>
+    /// 内置衍生卡的「名字 → 卡号」表。
+    ///
+    /// 测试集正文会引用这些名字（Add a Fairy / Summon 3 copies of Fairy /
+    /// Ominous Artifact α…），加载器必须把它们登记进词法层，
+    /// 否则那些句子在编译期就认不出宾语。
+    /// 与 RegisterBuiltinTokens 必须保持同一份真相 —— 两边各写一份必然漂移。
+    /// </summary>
+    public static readonly (int id, string name, CardKind kind, int cost, int atk, int life,
+                             string[] traits, string[] keywords)[] BuiltinTokenDefs =
+    {
+        (MagicSedimentCardId, "Magic Sediment", CardKind.Amulet, 1, 0, 0, null, null),
+        (ClueDefaultCardId, "Divine Evidence", CardKind.Amulet, 1, 0, 0, new[] { "Clue" }, null),
+        (90001110, "Fairy", CardKind.Follower, 1, 1, 1, new[] { "Pixie" }, null),
+        (90001120, "Bat", CardKind.Follower, 1, 1, 1, null, null),
+        (90001130, "Knight", CardKind.Follower, 1, 1, 1, new[] { "Officer" }, null),
+        (90031120, "Guardian Golem", CardKind.Follower, 2, 2, 2, new[] { "Golem" }, new[] { "ward" }),
+        (90005110, "Ominous Artifact \u03b1", CardKind.Follower, 1, 2, 1, new[] { "Artifact" }, null),
+        (90005120, "Ominous Artifact \u03b2", CardKind.Follower, 2, 3, 2, new[] { "Artifact" }, null),
+        (90005130, "Ominous Artifact \u03b3", CardKind.Follower, 3, 5, 3, new[] { "Artifact" }, null),
+        (90005140, "Remnant of Hollowness", CardKind.Spell, 1, 0, 0, new[] { "Loot" }, null),
+        (90005150, "Kindled Blade", CardKind.Spell, 2, 0, 0, null, null),
+        (90005160, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null, null),
+        (90004110, "Silent Rider", CardKind.Follower, 6, 8, 8, null, new[] { "storm" }),
+        (90004120, "Servant of Cocytus", CardKind.Follower, 1, 13, 13, null, null),
+        (90004130, "Demon of Purgatory", CardKind.Follower, 4, 9, 6, null, null),
+        (90004310, "Astaroth's Reckoning", CardKind.Spell, 10, 0, 0, null, null),
+    };
+
+    /// <summary>
+    /// 衍生卡的真实卡面文本。为空表示它本来就没有效果。
+    ///
+    /// 不挂这些文本，衍生法术就是白板：打出去什么都不发生，
+    /// 而「什么都没发生」与「效果生效了但没观测到」在测试里长得一模一样，
+    /// 是最容易蒙混过关的一类空白。
+    /// </summary>
+    public static readonly Dictionary<int, string> BuiltinTokenTexts = new()
+    {
+        [90004130] = "<b><color=Keyword>Fanfare</color></b>: Select 2 enemy followers on the field and deal 6 damage to them and the enemy leader.",
+        [90004310] = "Set the enemy leader's max defense to 1.",
+        [90005140] = "Deal 2 damage to the enemy leader.",
+        [90005150] = "Deal 2 damage to the enemy leader.",
+        [90005160] = "Select an enemy follower on the field and banish it.",
+    };
+
+    public void RegisterBuiltinTokens(Lang.Lexicon lex = null)
     {
         void Token(int id, string name, CardKind kind, int cost, int atk, int life,
                    string[] traits, params string[] keywords)
@@ -206,11 +251,24 @@ public sealed class BattleState : IVmWorld
             foreach (var t in traits ?? Array.Empty<string>()) trs.Add(Schema.Trait(t));
             var kws = new List<SymbolId<KeywordTag>>();
             foreach (var k in keywords ?? Array.Empty<string>()) kws.Add(Schema.Keyword(k));
+
+            // 有卡面文本的衍生卡必须真的编译出能力 —— 否则它是个白板，
+            // 而「白板」与「效果已生效但没观测到」在测试里无法区分。
+            IReadOnlyList<Ast.AbilityDef> abilities = Array.Empty<Ast.AbilityDef>();
+            string text = null;
+            if (lex != null && BuiltinTokenTexts.TryGetValue(id, out var src))
+            {
+                text = src;
+                var r = new Lang.EnglishCompiler(lex).Compile(src, null, name, id);
+                if (r.Errors.Count == 0) abilities = r.Abilities;
+            }
+
             RegisterCard(new CardDef
             {
                 CardId = id, Name = name, Kind = kind,
                 BaseCost = cost, BaseAttack = atk, BaseLife = life,
                 Traits = trs, InnateKeywords = kws,
+                Abilities = abilities, SourceText = text,
             });
         }
 
@@ -232,14 +290,16 @@ public sealed class BattleState : IVmWorld
         Token(90005150, "Kindled Blade", CardKind.Spell, 2, 0, 0, null);
         Token(90005160, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null);
 
-        // 融合链的两端：Gear of Ambition（可融合的护符）与 Striker Artifact（变身目标）。
-        // 它们互为对方的变身/融合对象，少注册一个，整条融合链在运行时断在半路 ——
-        // 而且断法是「变身后 Def 仍是旧卡」，看起来什么都没发生。
-        Token(90005170, "Striker Artifact", CardKind.Follower, 3, 2, 2, new[] { "Artifact" }, "rush");
-        Token(90005180, "Gear of Ambition", CardKind.Amulet, 1, 0, 0, new[] { "Artifact" });
+        // 融合链的第三端只有 Fortifier Artifact 需要内置：
+        // 它不在测试集里，只是 Striker Artifact 分档表的另一档目标。
+        //
+        // 注意：**绝不能**为测试集里已有的真卡另起 9000xxxx 号段 ——
+        // Striker Artifact(81000022) / Gear of Ambition(81000038) /
+        // Shoddy Plaything(81000005) / Prostrating Coward(81000004) /
+        // Ghost(81000020) 都已由 TestsetLoader 注册为带完整能力与兵种的真定义。
+        // 再注册一份同名的空壳，运行时会拿到空壳：融合不了、变不了身、
+        // 谢幕曲不触发，而且看起来「什么都没发生」。
         Token(90005190, "Fortifier Artifact", CardKind.Follower, 4, 3, 3, new[] { "Artifact" }, "ward");
-        Token(90001234, "Shoddy Plaything", CardKind.Follower, 6, 1, 3, null, "ward");
-        Token(90001235, "Prostrating Coward", CardKind.Follower, 5, 4, 5, null, "bane", "ward");
 
         // Apocalypse Deck 的四张（Mjerrabaine 换牌库后必须能打出）。
         Token(90004110, "Silent Rider", CardKind.Follower, 6, 8, 8, null, "storm");
@@ -1006,18 +1066,7 @@ public sealed class BattleState : IVmWorld
         if (leftBoard)
             EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
 
-        // 激奏 / 结晶打出的卡在**离开战场之后**必须还原成本体卡面：
-        // 结晶护符进墓地或回牌库后若仍挂着 CrystallizeDef，
-        // 亡者召还会把它当护符复活、抽回手牌时会显示成护符 ——
-        // 而它在规则上始终是原来那张随从。
-        //
-        // 注意时机：必须排在上面的 OnLeaveField/OnDestroy 之后 ——
-        // 谢幕曲挂在 CrystallizeDef 上，还原早了就读不到它。
-        if (leftBoard && e.OriginalDef != null)
-        {
-            e.Def = e.OriginalDef;
-            e.OriginalDef = null;
-        }
+        if (leftBoard) RestoreOriginalDef(e);
 
         // 迁入战场的路径不止 SpawnCard：能力把牌库/手牌/墓地的卡搬上场也走这里。
         // 不在这里通知，「进入战场时」与连携对这条路径一律失明。
@@ -1159,6 +1208,10 @@ public sealed class BattleState : IVmWorld
         var shadow = Schema.Counter("shadow");
         WriteCounter(owner, shadow, ReadCounter(owner, shadow) + 1);
 
+        // 快照已拍（记的是死亡那一刻的护符卡种），现在才还原本体卡面。
+        // 旧定义留在 LastFieldDef，稍后 FlushNextTrigger 扫描时靠它找到谢幕曲。
+        RestoreOriginalDef(e);
+
         EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
         EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
     }
@@ -1170,6 +1223,25 @@ public sealed class BattleState : IVmWorld
     /// Ghost 只是其中一张（它同时还有回合末自我放逐）。
     /// 被沉默的实体没有能力，所以不享受这条替换。
     /// </summary>
+    /// <summary>
+    /// 激奏 / 结晶打出的卡离开战场时还原本体卡面。
+    ///
+    /// 三条离场路径（能力破坏 / SBA 死亡 / 回手回牌库）都必须调它 ——
+    /// 只在 MoveEntity 里还原的话，被破坏的结晶护符会带着护符卡面进墓地：
+    /// 抽回手牌显示成护符、亡者召还把它当护符数、按卡号检索也认不出。
+    ///
+    /// 还原前把旧定义记进 LastFieldDef：谢幕曲挂在结晶护符上，
+    /// 而事件是**先入队、稍后才扫**的 —— 现在就把 Def 换掉，
+    /// 等 FlushNextTrigger 去读时已经读不到了。
+    /// </summary>
+    private static void RestoreOriginalDef(RuntimeEntity e)
+    {
+        if (e?.OriginalDef == null) return;
+        e.LastFieldDef = e.Def;
+        e.Def = e.OriginalDef;
+        e.OriginalDef = null;
+    }
+
     private static bool ShouldBanishOnLeave(RuntimeEntity e)
     {
         if (e?.Def?.Abilities == null || e.IsSilenced) return false;
@@ -1310,6 +1382,9 @@ public sealed class BattleState : IVmWorld
 
         var shadow = Schema.Counter("shadow");
         WriteCounter(owner, shadow, ReadCounter(owner, shadow) + 1);
+
+        // 与 DestroyEntity 同一条规矩：快照已拍（记的是护符卡种），才开始还原。
+        RestoreOriginalDef(e);
 
         EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
         EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });

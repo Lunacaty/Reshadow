@@ -495,6 +495,22 @@ public sealed partial class CardVm
                 AddCandidate(byEntity, ge, gab);
             }
 
+            // 激奏 / 结晶打出的卡：离场时 Def 已还原成本体，
+            // 而它的谢幕曲挂在离场前那份定义（LastFieldDef）上。
+            // 不补这一支，结晶护符的「谢幕曲召唤本体」100% 哑火 ——
+            // 因为事件是**先入队、稍后才扫**的，扫的时候 Def 早就换回去了。
+            //
+            // 只在事件主体就是它自己（graveSelf 场景）时读；
+            // 否则一张已还原的卡会拿旧定义去响应别人的事件。
+            if (e.LastFieldDef != null && ev.Subject != null
+                && ev.Subject.Value.EntityId == e.EntityId
+                && (ev.Kind == CoreEvent.OnDestroy || ev.Kind == CoreEvent.OnLeaveField
+                    || ev.Kind == CoreEvent.OnBanish || ev.Kind == CoreEvent.OnDiscard))
+            {
+                foreach (var ab in e.LastFieldDef.Abilities ?? Array.Empty<Ast.AbilityDef>())
+                    AddCandidate(byEntity, e, ab);
+            }
+
             // 挂在资源计数器上的能力（信仰等）。
             // 例："give your faith 'Whenever an allied follower evolves, deal 1 damage'"。
             // 它们不属于任何卡，之前没有扫描，所以信仰掉上的被动永远不触发。

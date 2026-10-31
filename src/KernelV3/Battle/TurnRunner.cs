@@ -236,7 +236,21 @@ public sealed class TurnRunner
             reason = "费用不足"; return false;
         }
 
-        if (folOrAmu && full) { reason = "战场已满"; return false; }
+        // 满场时本体进不来，但激奏是法术、不占格子 ——
+        // 只要激奏费够、法术目标也合法，就该允许按激奏打出。
+        // 否则「8 费手里拿着 2 费激奏的 6 费随从、场上已满」会被直接封死。
+        if (folOrAmu && full)
+        {
+            if (card.Def.AccelerateDef != null && pp >= card.Def.AccelerateDef.BaseCost)
+            {
+                var probe = card.Def;
+                card.Def = card.Def.AccelerateDef;
+                bool legal = HasLegalTargetForSpell(card);
+                card.Def = probe;
+                if (legal) return true;
+            }
+            reason = "战场已满"; return false;
+        }
         if (card.Def.Kind == Ast.CardKind.Spell && !HasLegalTargetForSpell(card))
         { reason = "没有合法目标"; return false; }
         return true;
@@ -286,7 +300,13 @@ public sealed class TurnRunner
         }
 
         // 能按本体打出时的满场拦截。
-        if (isFollowerOrAmulet && boardFull) return false;
+        // 但满场不等于不能出牌：激奏是法术、不占格子，只要费够就允许。
+        if (isFollowerOrAmulet && boardFull)
+        {
+            if (card.Def?.AccelerateDef != null && pp >= card.Def.AccelerateDef.BaseCost)
+                return PlayAsAltMode(playerId, card, card.Def.AccelerateDef, isAccelerate: true, vm);
+            return false;
+        }
 
         // ── 2. 法术的手选目标预检（随从/护符不受限）──
         if (card.Def.Kind == Ast.CardKind.Spell && !HasLegalTargetForSpell(card)) return false;
@@ -477,6 +497,14 @@ public sealed class TurnRunner
         // 关键：「没有 Choose 目标」与「Choose 目标全部无效」必须区分开。
         // 之前循环结束后无条件 return true，
         // 于是敌方空场时「Select an enemy follower」的法术照样能打出。
+        // 语义：**每一个**顶层必选 Choose 目标都必须有候选，法术才能打出。
+        //
+        // 两处曾经写错：
+        //   · 只匹配 5 种节点，漏了 RestoreLife / Transform / Evolve /
+        //     ModifyCost / GrantAbility —— 「Restore 2 defense to an allied
+        //     follower」在己方空场时也能空放。
+        //   · 写成「任意一个 > 0 就 true」，于是一张要连选两个目标
+        //     （先友方再敌方）的法术，只要友方有候选就能打出，敌方空场也放。
         bool sawChoose = false;
         foreach (var ab in card.Def.Abilities)
         {
@@ -486,24 +514,37 @@ public sealed class TurnRunner
                 var spec = GetChooseTarget(node);
                 if (spec == null || spec.Mode != SelectMode.Choose) continue;
                 sawChoose = true;
-                if (CountLegalTargets(spec, card.PlayerId) > 0) return true;
+                if (CountLegalTargets(spec, card) <= 0) return false;
             }
         }
         return !sawChoose;
     }
 
+    /// <summary>
+    /// 该节点作用的目标。
+    ///
+    /// 必须覆盖**全部**带目标的节点：漏一种，那类法术就永远被判成
+    /// 「没有必选目标」，空场也能放出去。早先只列了 5 种，
+    /// Restore / Transform / Evolve / ModifyCost / GrantAbility 全在漏网之列。
+    /// </summary>
     private static Ast.TargetSpec GetChooseTarget(Ast.EffectNode n) => n switch
     {
         Ast.SelectTargetNode st => st.Target,
         Ast.DealDamageNode d => d.Target,
+        Ast.RestoreLifeNode r => r.Target,
         Ast.MoveZoneNode m => m.Target,
         Ast.ModifyStatsNode ms => ms.Target,
         Ast.ModifyKeywordNode mk => mk.Target,
+        Ast.ModifyCostNode mc => mc.Target,
+        Ast.GrantAbilityNode ga => ga.Target,
+        Ast.TransformNode tn => tn.Target,
+        Ast.EvolveNode ev => ev.Target,
         _ => null,
     };
 
-    private int CountLegalTargets(Ast.TargetSpec spec, int playerId)
+    private int CountLegalTargets(Ast.TargetSpec spec, RuntimeEntity source)
     {
+        int playerId = source?.PlayerId ?? _state.ActivePlayer;
         if (spec == null || spec.Mode != SelectMode.Choose) return 1;
         int owner = spec.Owner switch
         {
@@ -516,7 +557,15 @@ public sealed class TurnRunner
         // 只按区域枚举会把所有不符合条件的卡也算成合法目标，
         // 于是「没有合法目标就不能打出」这道预检形同虚设。
         var eval = new Vm.VmEval(_state);
-        var sc = new Vm.VmScope { Owner = spec.Owner, Controller = playerId };
+        // Source 必须绑定：像「Select another card in your hand and discard it」
+        // 这类带 other-than-itself 的目标，靠 Source 才能排除法术卡自身；
+        // 不绑的话，手里只剩这一张法术也会被判成「有合法目标」。
+        var sc = new Vm.VmScope
+        {
+            Owner = spec.Owner,
+            Controller = playerId,
+            Source = source != null ? Vm.EntityRef.From(source) : null,
+        };
         var pool = new List<RuntimeEntity>();
         foreach (var r in eval.ResolveRef(spec, sc))
         {

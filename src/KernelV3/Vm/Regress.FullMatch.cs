@@ -300,44 +300,17 @@ public static partial class Regress
 
     // ---------------------------------------------------------------- 卡池
 
+    /// <summary>
+    /// 卡池 = testset_cards.json 里那 30 张真卡。
+    ///
+    /// 严禁手写玩具卡：用「Match Follower A / Ward」这种白板跑通 10 局，
+    /// 只能证明简单卡没事，而测试集要覆盖的恰恰是融合、纹章、信仰、
+    /// 结晶、激奏、模式抉择这些复杂机制。
+    /// </summary>
     private static List<int> BuildMatchCardPool(CompileContext ctx, EnglishCompiler comp, BattleState st)
     {
-        // 一组能互相作用、覆盖主要机制的小卡池。
-        // 全部走真实编译，不用手写 AST —— 否则测的是手写节点而不是编译器。
-        var defs = new (int id, string name, string text)[]
-        {
-            (30001, "Match Follower A", "<b><color=Keyword>Fanfare</color></b>: Draw a card."),
-            (30002, "Match Follower B", "<b><color=Keyword>Ward</color></b>"),
-            (30003, "Match Follower C", "<b><color=Keyword>Fanfare</color></b>: Deal 2 damage to an enemy follower."),
-            (30004, "Match Follower D", "<b><color=Keyword>Last Words</color></b>: Draw a card."),
-            (30005, "Match Spell E", "Draw 2 cards."),
-            (30006, "Match Amulet F", "<b><color=Keyword>Countdown</color> (2)</b>"),
-            (30007, "Match Follower G", "<b><color=Keyword>Storm</color></b>"),
-            (30008, "Match Follower H", "<b><color=Keyword>Rush</color></b>"),
-        };
-
-        var ids = new List<int>();
-        foreach (var (id, name, text) in defs)
-        {
-            ctx.Lexicon.AddCard(name, id);
-            ctx.Lexicon.Build();
-
-            var kind = name.Contains("Spell") ? CardKind.Spell
-                     : name.Contains("Amulet") ? CardKind.Amulet
-                     : CardKind.Follower;
-
-            var r = comp.Compile(text, null, name, id);
-            st.RegisterCard(new CardDef
-            {
-                CardId = id, Name = name, Kind = kind,
-                BaseCost = 2,
-                BaseAttack = kind == CardKind.Follower ? 2 : 0,
-                BaseLife = kind == CardKind.Follower ? 2 : 0,
-                Abilities = r.Abilities,
-            });
-            ids.Add(id);
-        }
-        return ids;
+        var loaded = TestsetLoader.LoadInto(ctx);
+        return loaded.Select(c => c.CardId).ToList();
     }
 
     /// <summary>用给定种子把卡池铺成 40 张牌组（每张 5 份）。</summary>

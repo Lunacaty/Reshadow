@@ -151,7 +151,25 @@ public sealed class CombatResolver
 
             // 被攻击方的交戦時。只有双方都还在场才触发：
             // 若攻击方在第 2 步就用能力破坏了对方，对方已经不在场，跳过。
-            if (attacker.Zone == ZoneRef.Board && defender.Zone == ZoneRef.Board)
+            //
+            // 这一步**也必须进续体**：攻击方的 Strike:/Clash: 可能弹出手选目标，
+            // 上面那次 StepUntilBlocked 会挂起。此时玩家还没选、防守方还活着，
+            // 直接往下走就会把防守方的 Clash 提前塞进队列 —— 等玩家选完把防守方
+            // 打死后，它的 Clash 依然会诈尸执行。
+            if (vm != null)
+            {
+                vm.EnqueueContinuation(() =>
+                {
+                    if (attacker.Zone != ZoneRef.Board || defender.Zone != ZoneRef.Board) return;
+                    vm.EnqueueEvent(new VmEvent
+                    {
+                        Kind = CoreEvent.OnClash,
+                        Subject = EntityRef.From(defender),
+                        Object = EntityRef.From(attacker),
+                    });
+                });
+            }
+            else if (attacker.Zone == ZoneRef.Board && defender.Zone == ZoneRef.Board)
             {
                 vm?.EnqueueEvent(new VmEvent
                 {
@@ -159,8 +177,6 @@ public sealed class CombatResolver
                     Subject = EntityRef.From(defender),
                     Object = EntityRef.From(attacker),
                 });
-                vm?.StepUntilBlocked();
-                _state.ProcessStateBasedActions();
             }
         }
 
@@ -301,6 +317,8 @@ public sealed class CombatResolver
         if (target.Keywords.Contains(barrierKey))
         {
             target.Keywords.Remove(barrierKey);
+            // 这里只入队、不写 EventLog：能力伤害经 BattleState.ApplyDamage 时
+            // 由那个包装器统一 EmitEvent（含日志）。两条路各发一次就成了双份。
             vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnDamaged, Subject = EntityRef.From(target), Amount = 0 });
             return 0;
         }
@@ -316,6 +334,8 @@ public sealed class CombatResolver
                 _state.ReadCounter(target.PlayerId, wrathKey) + 1);
         }
 
+        // 同上：入队由 vm 通道走，日志由 BattleState.ApplyDamage 补。
+        // 两边都发会让「当受到伤害时」触发两次（实测 hand+2 而不是 +1）。
         vm?.EnqueueEvent(new VmEvent
         {
             Kind = CoreEvent.OnDamaged,

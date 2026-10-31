@@ -21,7 +21,9 @@
     "all enemy followers",
     "X is the number"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "tribe_name_eng": "Officer",
+   "class": "Swordcraft"
   },
   {
    "card_id": 81000001,
@@ -41,7 +43,8 @@
     "Add to hand",
     "多动作并列"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Havencraft"
   },
   {
    "card_id": 81000002,
@@ -57,7 +60,8 @@
     "or less",
     "两动作并列"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Runecraft"
   },
   {
    "card_id": 81000003,
@@ -78,7 +82,9 @@
     "Give stats",
     "3段hr"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "tribe_name_eng": "Pixie",
+   "class": "Forestcraft"
   },
   {
    "card_id": 81000004,
@@ -104,7 +110,8 @@
      "cost": 2,
      "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Prostrating Coward</color></i></b>."
     }
-   ]
+   ],
+   "class": "Abysscraft"
   },
   {
    "card_id": 81000005,
@@ -127,7 +134,8 @@
      "cost": 2,
      "text_eng": "Summon a <b><i><color=Keyword>Shoddy Plaything</color></i></b>."
     }
-   ]
+   ],
+   "class": "Abysscraft"
   },
   {
    "card_id": 81000006,
@@ -151,7 +159,9 @@
      "cost": 0,
      "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>."
     }
-   ]
+   ],
+   "tribe_name_eng": "Pixie",
+   "class": "Forestcraft"
   },
   {
    "card_id": 81000007,
@@ -175,7 +185,8 @@
      "cost": 0,
      "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <color=Keyword>Mode</color><color=Keyword>s</color>, increase this faith's value by 1."
     }
-   ]
+   ],
+   "class": "Forestcraft"
   },
   {
    "card_id": 81000010,
@@ -190,7 +201,8 @@
     "Overflow 条件",
     "Otherwise 分支"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Runecraft"
   },
   {
    "card_id": 81000011,
@@ -206,7 +218,8 @@
     "Select+and",
     "X is your Combo"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Runecraft"
   },
   {
    "card_id": 81000012,
@@ -221,7 +234,8 @@
     "On Spellboost",
     "Reduce cost"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Dragoncraft"
   },
   {
    "card_id": 81000013,
@@ -238,7 +252,8 @@
     "another 排除自身",
     "Give keyword"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Forestcraft"
   },
   {
    "card_id": 81000014,
@@ -255,7 +270,8 @@
     "When evolves(裸)",
     "random enemy follower"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Havencraft"
   },
   {
    "card_id": 81000015,
@@ -272,7 +288,8 @@
     "引号关键词",
     "Can attack N times"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Havencraft"
   },
   {
    "card_id": 81000020,
@@ -289,7 +306,9 @@
     "At the end of your turn",
     "banish this"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "tribe_name_eng": "Departed",
+   "class": "Abysscraft"
   },
   {
    "card_id": 81000021,
@@ -306,7 +325,9 @@
     "Super-Evolve",
     "Replicate the effects"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "tribe_name_eng": "Loot",
+   "class": "Swordcraft"
   },
   {
    "card_id": 81000022,
@@ -324,7 +345,9 @@
     "or more",
     "Rush"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "tribe_name_eng": "Artifact",
+   "class": "Portalcraft"
   },
   {
    "card_id": 81000023,
@@ -340,7 +363,8 @@
     "If this is evolved",
     "give opponent Crest"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Portalcraft"
   },
   {
    "card_id": 81000024,
@@ -356,7 +380,8 @@
     "at least N times",
     "Invoke"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Havencraft"
   },
   {
    "card_id": 81000025,
@@ -372,7 +397,8 @@
     "this match",
     "all enemy followers"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Portalcraft"
   },
   {
    "card_id": 81000030,
@@ -387,7 +413,8 @@
     "Double",
     "an allied follower"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Runecraft"
   },
   {
    "card_id": 81000031,
@@ -401,7 +428,8 @@
     "replace deck",
     "40 cards"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Neutral"
   },
   {
    "card_id": 81000032,
@@ -417,7 +445,8 @@
     "advance count",
     "Last Words"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Swordcraft"
   },
   {
    "card_id": 81000033,
@@ -432,7 +461,8 @@
     "ridx 选项块",
     "三选一"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Neutral"
   },
   {
    "card_id": 81000034,
@@ -447,7 +477,8 @@
     "in sequence",
     "三选项顺序执行"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Neutral"
   },
   {
    "card_id": 81000035,
@@ -466,7 +497,8 @@
     "all enemies",
     "Replicate"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Forestcraft"
   },
   {
    "card_id": 81000036,
@@ -482,7 +514,8 @@
     "Engage",
     "三动作并列"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Neutral"
   },
   {
    "card_id": 81000037,
@@ -497,7 +530,8 @@
     "Whenever you Fuse",
     "random enemy follower"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Portalcraft"
   },
   {
    "card_id": 81000038,
@@ -512,7 +546,9 @@
     "transform into named",
     "Can't be played"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "tribe_name_eng": "Artifact",
+   "class": "Portalcraft"
   },
   {
    "card_id": 81000039,
@@ -527,7 +563,8 @@
     "Last Words",
     "Add 两卡并列"
    ],
-   "expect": "pass"
+   "expect": "pass",
+   "class": "Shadowcraft"
   }
  ]
 }

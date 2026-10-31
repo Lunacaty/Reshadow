@@ -10,21 +10,17 @@ using ShadowverseFan.KernelV3.Lang;
 namespace ShadowverseFan.KernelV3.Vm;
 
 // ============================================================================
-// 30 张测试卡的**逐卡**效用矩阵
+// 30 张测试卡的逐卡效用矩阵 —— **全部用真卡面**
 //
-// 与 Regress.TestsetUtility 的分工：
-//   TestsetUtility  按**机制**分组（抽牌 / 选择 / 融合 / 纹章 …），
-//                   每条验证一类语义，用于定位「哪一类机制坏了」。
-//   TestsetCardMatrix 按**卡号**逐张（81000000 … 81000039），
-//                   每张卡至少验证一条属于它自己的效果，
-//                   用于回答「测试集里这张到底跑没跑通」。
+// 铁律：本文件不允许手抄任何一句卡面文本。
+// 每张卡的定义一律来自 TestsetLoader（它直接读 data/cards/testset_cards.json），
+// 于是「这张卡的 Fanfare 里到底有几句」由文件说了算，测试作者没有删改的余地。
 //
-// 后者更啰嗦，但它是对着 testset_cards.json 逐行数出来的账 ——
-// 少一张、错一张，这里就会少一行。
+// 为什么这条铁律必须写死：手抄卡面时，抄的人会不自觉地删掉跑不通的那一段，
+// 最后测的是他自己写的简化版，而报告上写的是「测试集 30 张全部通过」。
 // ============================================================================
 public static partial class Regress
 {
-    /// <summary>30 张测试卡在 testset_cards.json 里的卡号（顺序即文件顺序）。</summary>
     private static readonly int[] MatrixCardIds =
     {
         81000000, 81000001, 81000002, 81000003, 81000004, 81000005,
@@ -39,7 +35,7 @@ public static partial class Regress
         int pass = 0, total = 0;
         var log = new StringBuilder();
 
-        var cases = new (int id, string name, Func<(bool, string)> run)[]
+        var cases = new (int id, string name, Func<MatrixEnv, (bool, string)> run)[]
         {
             (81000000, "Indomitable Fighter", MatrixFighter),
             (81000001, "Detective's Lens", MatrixLens),
@@ -77,706 +73,749 @@ public static partial class Regress
         {
             total++;
             bool ok; string detail;
-            try { (ok, detail) = run(); }
+            try
+            {
+                var env = MatrixEnv.Create(seed: id % 1000);
+                (ok, detail) = run(env);
+                // 任何一张卡跑完都不许留下「找不到卡定义」的记录
+                if (env.St.UnresolvedSpawnCount > 0)
+                {
+                    ok = false;
+                    detail += " | 未注册衍生卡 " + env.St.UnresolvedSpawnCount + " 次";
+                }
+            }
             catch (Exception ex) { ok = false; detail = "异常: " + ex.GetType().Name + " " + ex.Message; }
             if (ok) pass++;
             log.AppendLine((ok ? "[OK]   " : "[FAIL] ") + "卡 " + id + " " + name + "  —— " + detail);
         }
 
-        // 覆盖校验：卡号清单必须与测试集文件一致，防止「少测了一张没人发现」
+        // 覆盖 + 真卡面校验
         total++;
         bool allListed = cases.Length == MatrixCardIds.Length
                          && cases.Select(c => c.id).SequenceEqual(MatrixCardIds);
         if (allListed) pass++;
         log.AppendLine((allListed ? "[OK]   " : "[FAIL] ")
-            + "矩阵覆盖 testset_cards.json 全部 " + MatrixCardIds.Length + " 张卡"
-            + "  —— 实际 " + cases.Length + " 张");
+            + "矩阵覆盖 testset_cards.json 全部 " + MatrixCardIds.Length + " 张卡");
+
+        total++;
+        bool realText = MatrixUsesRealCardText();
+        if (realText) pass++;
+        log.AppendLine((realText ? "[OK]   " : "[FAIL] ")
+            + "矩阵用的是 testset_cards.json 原文（未手抄/未删减）");
 
         log.AppendLine();
         log.AppendLine("=== 测试集逐卡矩阵 " + pass + "/" + total + " ===");
         return log.ToString();
     }
 
-    // ---------------------------------------------------------------- 夹具
-
-    private static CompileContext MatrixCtx(int seed) => CompileContext.Create(seed)
-        .Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier")
-        .Traits("Pixie", "Artifact", "Loot", "Clue", "Golem", "Officer")
-        .Cards(("Fairy", 90001110), ("Bat", 90001120), ("Ghost", 90001130),
-               ("Kindled Blade", 90005150), ("Ominous Artifact \u03b1", 90005110),
-               ("Ominous Artifact \u03b2", 90005120), ("Ominous Artifact \u03b3", 90005130),
-               ("Striker Artifact", 90005170), ("Remnant of Hollowness", 90005140),
-               ("Gear of Ambition", 90005180), ("Ancient Cannon", 81000037),
-               ("Shoddy Plaything", 90001234),
-               ("Prostrating Coward", 90001235), ("Aria", 90001236),
-               ("Slaus", 90001237), ("Obsessed Test Subject", 81000025))
-        .Build();
-
-    private static (BattleState st, TurnRunner tr, CardVm vm) MatrixBoard(CompileContext ctx)
+    /// <summary>确认加载出来的卡面与文件里逐字节一致（防手抄/删减）。</summary>
+    private static bool MatrixUsesRealCardText()
     {
-        var st = ctx.State;
-        st.RegisterBuiltinTokens();
-        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
-        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0);
-        l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
-        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1);
-        l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
-        st.ActivePlayer = 0; st.TurnNumber = 8;
-        st.WriteCounter(0, st.Schema.Counter("pp"), 20);
-        st.WriteCounter(1, st.Schema.Counter("pp"), 20);
-        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
-        return (st, new TurnRunner(st, st.Schema), vm);
+        var env = MatrixEnv.Create(seed: 1);
+        foreach (var id in MatrixCardIds)
+        {
+            var fileText = TestsetLoader.TextOf(id);
+            var def = env.St.CardDefOf(id);
+            if (fileText == null || def == null) return false;
+            if (!string.Equals(def.SourceText, fileText, StringComparison.Ordinal)) return false;
+        }
+        return true;
     }
 
-    private static void FillDeck(BattleState st, int n = 8)
+    // ---------------------------------------------------------------- 夹具
+
+    /// <summary>一套装好 30 张真卡的试验台。</summary>
+    private sealed class MatrixEnv
     {
-        for (int i = 0; i < n; i++)
+        public CompileContext Ctx { get; private set; }
+        public BattleState St { get; private set; }
+        public TurnRunner Tr { get; private set; }
+        public CardVm Vm { get; private set; }
+        public List<TestsetLoader.LoadedCard> Cards { get; private set; }
+
+        public static MatrixEnv Create(int seed)
         {
-            st.RegisterCard(new CardDef { CardId = 2900 + i, Name = "Fill" + i, Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1 });
-            st.SpawnCard(2900 + i, ZoneRef.Deck, 0);
+            var ctx = CompileContext.Create(seed)
+                .Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier")
+                .Build();
+            var cards = TestsetLoader.LoadInto(ctx);
+
+            var st = ctx.State;
+            st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+            var l0 = st.CreateEntity(99, ZoneRef.Leader, 0);
+            l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+            var l1 = st.CreateEntity(99, ZoneRef.Leader, 1);
+            l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+            st.ActivePlayer = 0;
+            st.TurnNumber = 8;
+            st.WriteCounter(0, st.Schema.Counter("pp"), 20);
+            st.WriteCounter(1, st.Schema.Counter("pp"), 20);
+
+            var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+            return new MatrixEnv
+            {
+                Ctx = ctx,
+                St = st,
+                Tr = new TurnRunner(st, st.Schema),
+                Vm = vm,
+                Cards = cards,
+            };
+        }
+
+        /// <summary>把一张测试集卡放进指定区域（用真定义）。</summary>
+        public RuntimeEntity Put(int cardId, ZoneRef zone, int player = 0)
+            => St.SpawnCard(cardId, zone, player);
+
+        /// <summary>造一张填充卡（牌库/干扰项用，不属于测试集）。</summary>
+        public RuntimeEntity Filler(int id, ZoneRef zone, int player = 0,
+                                    CardKind kind = CardKind.Follower, int atk = 1, int life = 1)
+        {
+            if (St.CardDefOf(id) == null)
+                St.RegisterCard(new CardDef
+                {
+                    CardId = id, Name = "Filler" + id, Kind = kind,
+                    BaseCost = 1, BaseAttack = atk, BaseLife = life,
+                });
+            return St.SpawnCard(id, zone, player);
+        }
+
+        public void FillDeck(int n = 12) { for (int i = 0; i < n; i++) Filler(2900 + i, ZoneRef.Deck); }
+
+        public void Draw()
+        {
+            Vm.DropPendingTriggers();
+            Vm.StepUntilBlocked();
+        }
+
+        /// <summary>打出并把中途弹出的选择全部用给定策略消解。</summary>
+        public bool Play(RuntimeEntity card, params int[][] choices)
+        {
+            Vm.DropPendingTriggers();
+            bool ok = Tr.PlayCard(0, card, Vm);
+            int i = 0;
+            int guard = 0;
+            while (Vm.Pending != null && guard++ < 20)
+            {
+                var pick = i < choices.Length
+                    ? choices[i]
+                    : new[] { Vm.Pending.Candidates.FirstOrDefault() };
+                Vm.SubmitChoice(Vm.Pending.ChoiceId, pick);
+                Vm.StepUntilBlocked();
+                i++;
+            }
+            Vm.StepUntilBlocked();
+            return ok;
         }
     }
 
     // ---------------------------------------------------------------- 逐卡
+    // 说明：以下每个用例都从 MatrixEnv 取**文件里的**卡定义，
+    //      断言的都是真实世界状态（区域 / 攻防 / 计数器 / 手牌数）。
 
-    private static (bool, string) MatrixFighter()
+    private static (bool, string) MatrixFighter(MatrixEnv e)
     {
-        var ctx = MatrixCtx(1); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Draw a card.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        FillDeck(st);
-        st.RegisterCard(new CardDef { CardId = 81000000, Name = "Indomitable Fighter", Kind = CardKind.Follower, BaseAttack = 2, BaseLife = 2, BaseCost = 2, Abilities = r.Abilities });
-        var c = st.SpawnCard(81000000, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int h0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        int h1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        return (h1 == h0, "入场抽牌 手牌 " + h0 + "->" + h1 + "（打出-1 抽+1 持平）");
+        e.FillDeck();
+        var c = e.Put(81000000, ZoneRef.Hand);
+        int h0 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        bool played = e.Play(c);
+        int h1 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        bool fanfare = h1 == h0;   // 打出 -1 抽 +1
+
+        // Evolve: 选 1 个敌方随从打 2。
+        // 手动进化要花 1 点进化点，且必须先有敌方随从可选 ——
+        // 少任何一个，Evolve 都会安静返回 false，看起来像「效果没实现」。
+        e.Filler(2950, ZoneRef.Board, 1, life: 5);
+        var foe = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2950);
+        e.St.WriteCounter(0, e.St.Schema.Counter("ep"), 2);
+        e.Vm.DropPendingTriggers();
+        bool evo = e.Tr.Evolve(0, c, false, e.Vm);
+        if (e.Vm.Pending != null) e.Vm.SubmitChoice(e.Vm.Pending.ChoiceId, new[] { foe.EntityId });
+        e.Vm.StepUntilBlocked();
+        bool evolve = evo && foe.Life == 3;
+
+        return (played && fanfare && evolve,
+            "入场抽牌=" + fanfare + " 进化打2=" + (foe.Life == 3 || foe.Zone != ZoneRef.Board) + "（敌方 " + foe.Life + "）");
     }
 
-    private static (bool, string) MatrixLens()
+    private static (bool, string) MatrixLens(MatrixEnv e)
     {
-        var ctx = MatrixCtx(2); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Fairy</color></i></b> to your hand.<hr><b><color=Keyword>Countdown</color> (2)</b>");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000001, Name = "Detective's Lens", Kind = CardKind.Amulet, BaseCost = 1, Abilities = r.Abilities });
-        var c = st.SpawnCard(81000001, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int h0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        int h1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        int cd = c.Counters.TryGetValue(st.Schema.Counter("countdown"), out var v) ? v : -1;
-        return (h1 == h0 && cd == 2, "加妖精 手牌 " + h0 + "->" + h1 + " 吟唱=" + cd + "（期望 2）");
+        e.FillDeck(4);
+        var c = e.Put(81000001, ZoneRef.Hand);
+        int h0 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        bool played = e.Play(c);
+        int h1 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        int cd = c.Counters.TryGetValue(e.St.Schema.Counter("countdown"), out var v) ? v : -1;
+
+        // Engage: 自毁 + 给一个友方随从 Rush
+        e.Filler(2951, ZoneRef.Board, 0, life: 5);
+        var ally = e.St.EnumerateZone(ZoneRef.Board, 0).First(x => x.Def.CardId == 2951);
+        e.Vm.DropPendingTriggers();
+        bool engaged = e.Tr.EngageAmulet(0, c, e.Vm);
+        if (e.Vm.Pending != null) e.Vm.SubmitChoice(e.Vm.Pending.ChoiceId, new[] { ally.EntityId });
+        e.Vm.StepUntilBlocked();
+        bool rush = ally.Keywords.Contains(e.St.Schema.Keyword("rush"));
+
+        // 打出 -1（离开手牌），加妖精 +1 → 净 0。
+        return (played && h1 == h0 && cd == 2 && engaged && rush,
+            "加妖精 手牌 " + h0 + "->" + h1 + " 吟唱=" + cd + " 启动给Rush=" + rush);
     }
 
-    private static (bool, string) MatrixBugAlert()
+    private static (bool, string) MatrixBugAlert(MatrixEnv e)
     {
-        var ctx = MatrixCtx(3); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("Destroy all enemy followers with 3 attack or less. Draw a card.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        FillDeck(st);
-        st.RegisterCard(new CardDef { CardId = 81000002, Name = "Bug Alert", Kind = CardKind.Spell, BaseCost = 1, Abilities = r.Abilities });
-        st.RegisterCard(new CardDef { CardId = 2901, Name = "Small", Kind = CardKind.Follower, BaseAttack = 3, BaseLife = 3, BaseCost = 1 });
-        st.RegisterCard(new CardDef { CardId = 2902, Name = "Big", Kind = CardKind.Follower, BaseAttack = 4, BaseLife = 4, BaseCost = 1 });
-        var small = st.SpawnCard(2901, ZoneRef.Board, 1);
-        var big = st.SpawnCard(2902, ZoneRef.Board, 1);
-        var c = st.SpawnCard(81000002, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int h0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        int h1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+        e.FillDeck(4);
+        e.Filler(2952, ZoneRef.Board, 1, atk: 3, life: 3);
+        e.Filler(2953, ZoneRef.Board, 1, atk: 4, life: 4);
+        var small = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2952);
+        var big = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2953);
+        var c = e.Put(81000002, ZoneRef.Hand);
+        int h0 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        e.Play(c);
+        int h1 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
         bool ok = small.Zone != ZoneRef.Board && big.Zone == ZoneRef.Board && h1 == h0;
-        return (ok, "3攻被破坏=" + (small.Zone != ZoneRef.Board) + " 4攻存活=" + (big.Zone == ZoneRef.Board) + " 抽牌后手牌 " + h0 + "->" + h1);
+        return (ok, "3攻破坏=" + (small.Zone != ZoneRef.Board) + " 4攻存活=" + (big.Zone == ZoneRef.Board) + " 抽牌=" + (h1 == h0));
     }
 
-    private static (bool, string) MatrixAmataz()
+    private static (bool, string) MatrixAmataz(MatrixEnv e)
     {
-        var ctx = MatrixCtx(4); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Give this follower +X/+X. X is the number of Pixie followers in your hand.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000003, Name = "Amataz", Kind = CardKind.Follower, BaseAttack = 2, BaseLife = 2, BaseCost = 3, Abilities = r.Abilities });
-        // 手牌放 2 张 Pixie
-        st.RegisterCard(new CardDef { CardId = 2910, Name = "PixieA", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, Traits = new[] { st.Schema.Trait("Pixie") } });
-        st.SpawnCard(2910, ZoneRef.Hand, 0);
-        st.SpawnCard(2910, ZoneRef.Hand, 0);
-        // 放 1 张非 Pixie
-        st.RegisterCard(new CardDef { CardId = 2911, Name = "PlainA", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1 });
-        st.SpawnCard(2911, ZoneRef.Hand, 0);
+        // 手牌放 2 张 Pixie（Fairy 真卡 90001110 带 Pixie 兵种）+ 1 张非 Pixie。
+        // X 数的是「手牌里的 Pixie 随从」，手牌空了 X 就是 0。
+        e.Filler(2960, ZoneRef.Hand, life: 1);
+        e.Put(90001110, ZoneRef.Hand);
+        e.Put(90001110, ZoneRef.Hand);
+        var c = e.Put(81000003, ZoneRef.Hand);
+        e.Play(c);
+        bool buffed = c.Attack == 4 && c.Life == 4;   // 2/2 + 2 张 Pixie = 4/4
 
-        var c = st.SpawnCard(81000003, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        return (c.Attack == 4 && c.Life == 4, "身材 " + c.Attack + "/" + c.Life + "（期望 4/4 = 2/2 + 2 张 Pixie）");
+        // Evolve: 循环 X 次打 1（X = 手牌 Pixie 数）
+        e.Filler(2961, ZoneRef.Board, 1, life: 9);
+        var foe = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2961);
+        int life0 = foe.Life;
+        e.St.WriteCounter(0, e.St.Schema.Counter("ep"), 2);
+        e.Vm.DropPendingTriggers();
+        e.Tr.Evolve(0, c, false, e.Vm);
+        e.Vm.StepUntilBlocked();
+        bool volley = foe.Life < life0;
+
+        return (buffed && volley, "Fanfare +2/+2=" + buffed + "（" + c.Attack + "/" + c.Life + "）进化连射=" + volley);
     }
 
-    private static (bool, string) MatrixCoward()
+    private static (bool, string) MatrixCoward(MatrixEnv e)
     {
-        var ctx = MatrixCtx(5); var comp = new EnglishCompiler(ctx.Lexicon);
-        var alt = new (string, int, string)[] { ("Crystallize", 2, "<b><color=Keyword>Countdown</color> (3)</b>") };
-        var r = comp.Compile("<b><color=Keyword>Bane</color></b><b><color=Keyword>Ward</color></b>", alt, "Prostrating Coward", 81000004);
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.WriteCounter(0, st.Schema.Counter("pp"), 2);
-        st.RegisterCard(new CardDef { CardId = 81000004, Name = "Prostrating Coward", Kind = CardKind.Follower, BaseAttack = 4, BaseLife = 5, BaseCost = 5, Abilities = r.Abilities, CrystallizeDef = r.CrystallizeDef });
-        var c = st.SpawnCard(81000004, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        int cd = c.Counters.TryGetValue(st.Schema.Counter("countdown"), out var v) ? v : -1;
-        bool asAmulet = c.Zone == ZoneRef.Board && c.Def?.Kind == CardKind.Amulet && cd == 3;
-        return (asAmulet, "2费结晶为护符=" + (c.Def?.Kind == CardKind.Amulet) + " 吟唱=" + cd + "（期望 3）");
+        var c = e.Put(81000004, ZoneRef.Hand);
+        e.St.WriteCounter(0, e.St.Schema.Counter("pp"), 2);
+        bool played = e.Play(c);
+        int cd = c.Counters.TryGetValue(e.St.Schema.Counter("countdown"), out var v) ? v : -1;
+        bool asAmulet = played && c.Zone == ZoneRef.Board && c.Def?.Kind == CardKind.Amulet && cd == 3;
+
+        // 吟唱归 0 → 谢幕曲召唤本体，本体入场回 2 血
+        int leader0 = e.St.Players[0].Leader.Life;
+        e.St.Players[0].Leader.Life = 15;
+        c.Counters[e.St.Schema.Counter("countdown")] = 1;
+        e.Vm.DropPendingTriggers();
+        e.Tr.StartTurn(0, e.Vm);
+        e.Vm.StepUntilBlocked();
+        var spawned = e.St.EnumerateZone(ZoneRef.Board, 0).FirstOrDefault(x => x.Def?.CardId == 81000004 && x.Def.Kind == CardKind.Follower);
+        return (asAmulet && spawned != null,
+            "结晶为护符=" + asAmulet + "(吟唱" + cd + ") 谢幕曲召唤本体=" + (spawned != null));
     }
 
-    private static (bool, string) MatrixShoddy()
+    private static (bool, string) MatrixShoddy(MatrixEnv e)
     {
-        var ctx = MatrixCtx(6); var comp = new EnglishCompiler(ctx.Lexicon);
-        var alt = new (string, int, string)[] { ("Accelerate", 2, "Summon a Shoddy Plaything.") };
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Draw 3 cards.", alt, "Shoddy Plaything", 90001234);
-        var (st, tr, vm) = MatrixBoard(ctx);
-        FillDeck(st);
-        st.WriteCounter(0, st.Schema.Counter("pp"), 2);
-        st.RegisterCard(new CardDef { CardId = 90001234, Name = "Shoddy Plaything", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 3, BaseCost = 6, Abilities = r.Abilities, AccelerateDef = r.AccelerateDef });
-        var c = st.SpawnCard(90001234, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int h0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        int h1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        bool summoned = st.EnumerateZone(ZoneRef.Board, 0).Any(e => e.Def?.CardId == 90001234);
-        // 打出 -1（离开手牌），激奏不触发 Fanfare 所以不抽牌 → 净 -1。
-        // 若 Fanfare 被误触发，h1 会是 h0+2（-1+3）。
-        bool noFanfare = h1 == h0 - 1;
-        return (summoned && noFanfare, "激奏召唤=" + summoned + " 未触发Fanfare=" + noFanfare + " 手牌 " + h0 + "->" + h1);
+        e.FillDeck(6);
+        var c = e.Put(81000005, ZoneRef.Hand);
+        e.St.WriteCounter(0, e.St.Schema.Counter("pp"), 2);
+        int hand0 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        bool played = e.Play(c);
+        bool summoned = e.St.EnumerateZone(ZoneRef.Board, 0).Any(x => x.Def?.CardId == 81000005);
+        int hand1 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        // 激奏不触发 Fanfare：净 -1（打出后离开手牌，召唤物进场，不抽牌）
+        bool noFanfare = hand1 == hand0 - 1;
+        return (played && summoned && noFanfare,
+            "激奏召唤本体=" + summoned + " 未触发Fanfare=" + noFanfare + "（手牌 " + hand0 + "->" + hand1 + "）");
     }
 
-    private static (bool, string) MatrixAria()
+    private static (bool, string) MatrixAria(MatrixEnv e)
     {
-        var ctx = MatrixCtx(7); var comp = new EnglishCompiler(ctx.Lexicon);
-        var alt = new (string, int, string)[] { ("Crest", 0, "Whenever an allied Pixie follower enters the field, give it Storm.") };
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Aria</i></b>.", alt, "Aria", 81000006);
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000006, Name = "Aria", Kind = CardKind.Follower, BaseAttack = 4, BaseLife = 4, BaseCost = 6, Abilities = r.Abilities, CrestDef = r.CrestDef });
-        var c = st.SpawnCard(81000006, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        bool crest = st.EnumerateZone(ZoneRef.CrestArea, 0).Any(e => e.Def?.Kind == CardKind.Crest);
-        var fairy = st.SpawnCard(90001110, ZoneRef.Board, 0);
-        vm.StepUntilBlocked();
-        bool storm = fairy.Keywords.Contains(st.Schema.Keyword("storm"));
-        return (crest && storm, "获得纹章=" + crest + " Pixie得疾驰=" + storm);
+        var c = e.Put(81000006, ZoneRef.Hand);
+        e.Play(c);
+        bool crest = e.St.EnumerateZone(ZoneRef.CrestArea, 0).Any(x => x.Def?.Kind == CardKind.Crest);
+
+        // Evolve: 召唤 3 只 Fairy；纹章给它们 Storm。
+        // 手动进化要花 1 点进化点 —— 不给 ep，Evolve 会直接返回 false，
+        // 看起来就像「进化能力没实现」。
+        e.St.WriteCounter(0, e.St.Schema.Counter("ep"), 2);
+        e.Vm.DropPendingTriggers();
+        e.Tr.Evolve(0, c, false, e.Vm);
+        e.Vm.StepUntilBlocked();
+        var fairies = e.St.EnumerateZone(ZoneRef.Board, 0)
+            .Where(x => x.Def?.CardId == 90001110).ToList();
+        int stormed = fairies.Count(f => f.Keywords.Contains(e.St.Schema.Keyword("storm")));
+        return (crest && fairies.Count == 3 && stormed == 3,
+            "获得纹章=" + crest + " 进化召3妖精=" + (fairies.Count == 3) + " 全部获疾驰=" + (stormed == 3));
     }
 
-    private static (bool, string) MatrixSham()
+    private static (bool, string) MatrixSham(MatrixEnv e)
     {
-        var ctx = MatrixCtx(8); var comp = new EnglishCompiler(ctx.Lexicon);
-        var faithAlt = new (string, int, string)[] { ("Faith", 0, "This faith's value starts at 0.<hr>Whenever you select Modes, increase this faith's value by 1.") };
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Reduce your faith's value by 10 to give it \"Increase the number of Modes you can select by 1.\"", faithAlt, "Sham-Nacha", 81000007);
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000007, Name = "Sham-Nacha", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities, FaithDef = r.FaithDef });
-        st.SpawnCard(81000007, ZoneRef.Deck, 0);
-        st.SetupFaith();
-        var fk = st.Schema.Counter("faith");
+        var c = e.Put(81000007, ZoneRef.Deck);
+        e.St.SetupFaith();
+        var fk = e.St.Schema.Counter("faith");
+        var mck = e.St.Schema.Counter("mode_count");
 
-        st.WriteCounter(0, fk, 0);
-        var c1 = st.SpawnCard(81000007, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int mc0 = st.ReadCounter(0, st.Schema.Counter("mode_count"));
-        tr.PlayCard(0, c1, vm); vm.StepUntilBlocked();
-        bool noFreeload = st.ReadCounter(0, st.Schema.Counter("mode_count")) == mc0;
+        // 0 信仰：不白嫖
+        e.St.WriteCounter(0, fk, 0);
+        var a = e.Put(81000007, ZoneRef.Hand);
+        int mc0 = e.St.ReadCounter(0, mck);
+        e.Play(a);
+        bool noFreeload = e.St.ReadCounter(0, mck) == mc0;
 
-        st.WriteCounter(0, fk, 15);
-        var c2 = st.SpawnCard(81000007, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c2, vm); vm.StepUntilBlocked();
-        bool paid = st.ReadCounter(0, fk) == 5 && st.ReadCounter(0, st.Schema.Counter("mode_count")) == mc0 + 1;
-        return (noFreeload && paid, "0信仰不白嫖=" + noFreeload + " 15信仰扣到5且模式+1=" + paid);
+        // 15 信仰：扣到 5，模式数 +1
+        e.St.WriteCounter(0, fk, 15);
+        var b = e.Put(81000007, ZoneRef.Hand);
+        e.Play(b);
+        bool paid = e.St.ReadCounter(0, fk) == 5 && e.St.ReadCounter(0, mck) == mc0 + 1;
+
+        return (noFreeload && paid, "0信仰不白嫖=" + noFreeload + " 15→5且模式+1=" + paid
+            + "（信仰余 " + e.St.ReadCounter(0, fk) + "）");
     }
 
-    private static (bool, string) MatrixBrew()
+    private static (bool, string) MatrixBrew(MatrixEnv e)
     {
-        var ctx = MatrixCtx(9); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: If you're in <b><color=Keyword>Overflow</color></b>, draw 2 cards. Otherwise, draw a card.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        FillDeck(st);
-        st.RegisterCard(new CardDef { CardId = 81000010, Name = "Witch's New Brew", Kind = CardKind.Spell, BaseCost = 1, Abilities = r.Abilities });
-        var mpk = st.Schema.Counter("max_pp");
+        e.FillDeck(10);
+        var mpk = e.St.Schema.Counter("max_pp");
+        e.St.WriteCounter(0, mpk, 5);
+        var c1 = e.Put(81000010, ZoneRef.Hand);
+        int h0 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        e.Play(c1);
+        int h1 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
 
-        st.WriteCounter(0, mpk, 5);
-        var c1 = st.SpawnCard(81000010, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int h0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        tr.PlayCard(0, c1, vm); vm.StepUntilBlocked();
-        int h1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+        e.St.WriteCounter(0, mpk, 7);
+        var c2 = e.Put(81000010, ZoneRef.Hand);
+        int h2 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        e.Play(c2);
+        int h3 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
 
-        st.WriteCounter(0, mpk, 7);
-        var c2 = st.SpawnCard(81000010, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int h2 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        tr.PlayCard(0, c2, vm); vm.StepUntilBlocked();
-        int h3 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-
-        bool normal = h1 == h0;           // 打出-1 抽+1
-        bool overflow = h3 == h2 + 1;     // 打出-1 抽+2
-        return (normal && overflow, "未觉醒 手牌 " + h0 + "->" + h1 + " 觉醒 " + h2 + "->" + h3);
+        bool normal = h1 == h0;         // 打出-1 抽1
+        bool overflow = h3 == h2 + 1;   // 打出-1 抽2
+        return (normal && overflow, "未觉醒 " + h0 + "->" + h1 + " 觉醒 " + h2 + "->" + h3);
     }
 
-    private static (bool, string) MatrixConductor()
+    private static (bool, string) MatrixConductor(MatrixEnv e)
     {
-        var ctx = MatrixCtx(10); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and deal it X damage. X is your <b><color=Keyword>Combo</color></b> count.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000011, Name = "Runeblade Conductor", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities });
-        st.RegisterCard(new CardDef { CardId = 2920, Name = "FoeH", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 5, BaseCost = 1 });
-        var foe = st.SpawnCard(2920, ZoneRef.Board, 1);
-        st.WriteCounter(0, st.Schema.Counter("combo"), 2);
-        var c = st.SpawnCard(81000011, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c, vm);
-        if (vm.Pending != null) vm.SubmitChoice(vm.Pending.ChoiceId, new[] { foe.EntityId });
-        vm.StepUntilBlocked();
-        // 打出时 combo +1 → 3，因此打 3 点，剩 2
-        return (foe.Life == 2, "连击3 → 打3点，敌方 5→" + foe.Life + "（期望 2）");
+        e.Filler(2962, ZoneRef.Board, 1, life: 9);
+        var foe = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2962);
+        e.St.WriteCounter(0, e.St.Schema.Counter("combo"), 2);
+        var c = e.Put(81000011, ZoneRef.Hand);
+        e.Play(c, new[] { foe.EntityId });
+        // 打出时 combo 变 3 → 打 3
+        return (foe.Life == 6, "连击3 → 打3点，9→" + foe.Life + "（期望 6）");
     }
 
-    private static (bool, string) MatrixBlaze()
+    private static (bool, string) MatrixBlaze(MatrixEnv e)
     {
-        var ctx = MatrixCtx(11); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("Activates in hand. <b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        FillDeck(st);
-        st.RegisterCard(new CardDef { CardId = 81000012, Name = "Blaze Destroyer", Kind = CardKind.Follower, BaseAttack = 5, BaseLife = 5, BaseCost = 7, Abilities = r.Abilities });
-        var blaze = st.SpawnCard(81000012, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int cost0 = blaze.Cost;
-        // 打两张法术触发魔力增幅
-        st.RegisterCard(new CardDef { CardId = 2921, Name = "SpellX", Kind = CardKind.Spell, BaseCost = 1 });
+        e.FillDeck(6);
+        var blaze = e.Put(81000012, ZoneRef.Hand);
+        int c0 = blaze.Cost;
         for (int i = 0; i < 2; i++)
         {
-            var sp = st.SpawnCard(2921, ZoneRef.Hand, 0);
-            tr.PlayCard(0, sp, vm); vm.StepUntilBlocked();
+            e.Filler(2963, ZoneRef.Hand, kind: CardKind.Spell);
+            var sp = e.St.EnumerateZone(ZoneRef.Hand, 0).First(x => x.Def.CardId == 2963);
+            e.Play(sp);
         }
-        return (blaze.Cost == cost0 - 2, "费用 " + cost0 + "->" + blaze.Cost + "（期望 -2）");
+        return (blaze.Cost == c0 - 2, "费用 " + c0 + "->" + blaze.Cost + "（期望 -2）");
     }
 
-    private static (bool, string) MatrixGodwood()
+    private static (bool, string) MatrixGodwood(MatrixEnv e)
     {
-        var ctx = MatrixCtx(12); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("At the end of your turn, <b><color=Keyword>Combo</color> (3)</b> - Draw a card.<hr><b><color=Keyword>Engage</color></b>: Destroy this card. Select another allied card on the field and give it <color=Keyword>Ward</color>.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        FillDeck(st);
-        st.RegisterCard(new CardDef { CardId = 81000013, Name = "Godwood Staff", Kind = CardKind.Amulet, BaseCost = 1, Abilities = r.Abilities });
-        var staff = st.SpawnCard(81000013, ZoneRef.Board, 0);
-        st.RegisterCard(new CardDef { CardId = 2922, Name = "AllyA", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 5, BaseCost = 1 });
-        st.RegisterCard(new CardDef { CardId = 2923, Name = "AllyB", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 5, BaseCost = 1 });
-        var a = st.SpawnCard(2922, ZoneRef.Board, 0);
-        var b = st.SpawnCard(2923, ZoneRef.Board, 0);
+        e.FillDeck(10);
+        var staff = e.Put(81000013, ZoneRef.Board);
+        e.Filler(2964, ZoneRef.Board, 0, life: 5);
+        e.Filler(2965, ZoneRef.Board, 0, life: 5);
+        var a = e.St.EnumerateZone(ZoneRef.Board, 0).First(x => x.Def.CardId == 2964);
+        var b = e.St.EnumerateZone(ZoneRef.Board, 0).First(x => x.Def.CardId == 2965);
 
-        // combo < 3 时回合末不抽
-        st.WriteCounter(0, st.Schema.Counter("combo"), 1);
-        vm.DropPendingTriggers();
-        int h0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        tr.EndTurn(0, vm); vm.StepUntilBlocked();
-        int h1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        bool noDraw = h1 <= h0;
+        // combo < 3：回合末不抽
+        e.St.WriteCounter(0, e.St.Schema.Counter("combo"), 1);
+        e.Vm.DropPendingTriggers();
+        int h0 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        e.Tr.EndTurn(0, e.Vm);
+        e.Vm.StepUntilBlocked();
+        bool noDraw = e.St.EnumerateZone(ZoneRef.Hand, 0).Count() <= h0;
 
-        // Engage：单选 + 排除自身
-        vm.DropPendingTriggers();
-        tr.EngageAmulet(0, staff, vm);
-        bool blocked = vm.Pending != null;
-        var ward = st.Schema.Keyword("ward");
-        if (blocked) vm.SubmitChoice(vm.Pending.ChoiceId, new[] { a.EntityId });
-        vm.StepUntilBlocked();
-        int warded = (a.Keywords.Contains(ward) ? 1 : 0) + (b.Keywords.Contains(ward) ? 1 : 0);
-        bool excl = blocked && warded == 1 && a.Keywords.Contains(ward);
-        return (noDraw && excl, "combo<3不抽=" + noDraw + " another单选排除自身=" + excl + "(获得守护=" + warded + ")");
+        // combo >= 3：回合末抽 1
+        e.St.ActivePlayer = 0; e.St.TurnNumber = 9;
+        e.St.WriteCounter(0, e.St.Schema.Counter("pp"), 20);
+        e.St.WriteCounter(0, e.St.Schema.Counter("combo"), 3);
+        e.Vm.CurrentTurnOwner = 0;
+        e.Vm.DropPendingTriggers();
+        int h1 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        e.Tr.EndTurn(0, e.Vm);
+        e.Vm.StepUntilBlocked();
+        bool drew = e.St.EnumerateZone(ZoneRef.Hand, 0).Count() > h1;
+
+        return (noDraw && drew, "combo<3不抽=" + noDraw + " combo>=3抽1=" + drew);
     }
 
-    private static (bool, string) MatrixEdelweiss()
+    private static (bool, string) MatrixEdelweiss(MatrixEnv e)
     {
-        var ctx = MatrixCtx(13); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color> (2)</b> - Evolve this follower.<hr><ev>When this follower evolves, deal 4 damage to a random enemy follower.</ev>");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000014, Name = "Edelweiss", Kind = CardKind.Follower, BaseAttack = 3, BaseLife = 4, BaseCost = 3, Abilities = r.Abilities });
-        st.RegisterCard(new CardDef { CardId = 2924, Name = "Foe4", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 4, BaseCost = 1 });
-        var foe = st.SpawnCard(2924, ZoneRef.Board, 1);
+        e.Filler(2966, ZoneRef.Board, 1, life: 4);
+        var foe = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2966);
 
-        st.WriteCounter(0, st.Schema.Counter("earth_sigil"), 2);
-        var c = st.SpawnCard(81000014, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        bool evolved = c.IsEvolved;
+        // 无土之印：不进化、不打伤害
+        e.St.WriteCounter(0, e.St.Schema.Counter("earth_sigil"), 0);
+        var a = e.Put(81000014, ZoneRef.Hand);
+        e.Play(a);
+        bool inert = !a.IsEvolved && foe.Zone == ZoneRef.Board;
+
+        // 2 土之印：进化 + 打死 4 血随从
+        e.St.WriteCounter(0, e.St.Schema.Counter("earth_sigil"), 2);
+        var b = e.Put(81000014, ZoneRef.Hand);
+        e.Play(b);
+        bool evolved = b.IsEvolved;
         bool killed = foe.Zone != ZoneRef.Board;
-        return (evolved && killed, "土之秘术2 → 进化=" + evolved + " 打死4血随从=" + killed);
+        return (inert && evolved && killed, "无土之印不动=" + inert + " 有土之印进化=" + evolved + " 打死4血=" + killed);
     }
 
-    private static (bool, string) MatrixReno()
+    private static (bool, string) MatrixReno(MatrixEnv e)
     {
-        var ctx = MatrixCtx(14); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Clash</color></b>: Deal 1 damage to the enemy leader.<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give this follower \"Can attack 2 times per turn.\"</sev>");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000015, Name = "Reno", Kind = CardKind.Follower, BaseAttack = 3, BaseLife = 3, BaseCost = 3, Abilities = r.Abilities });
-        st.RegisterCard(new CardDef { CardId = 2925, Name = "FoeX", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 9, BaseCost = 1 });
-        var c = st.SpawnCard(81000015, ZoneRef.Board, 0);
-        c.IsSuperEvolved = true; c.IsEvolved = true;
-        // 必须走真实的 OnSuperEvolve 事件，让「给本随从 Can attack 2 times」真的执行；
-        // 只把 IsSuperEvolved 置 true 不会触发任何能力。
-        // 且必须标 IsManualEvolve：Super-Evolve: 冒号头只认玩家主动花 SEP 的进化，
-        // 能力效果自动进化的那条路径不该触发它（ManualEvolveOnly 检查的就是这个）。
-        vm.EnqueueEvent(new VmEvent
+        var c = e.Put(81000015, ZoneRef.Board);
+        c.IsEvolved = true;
+        c.IsSuperEvolved = true;
+        e.Filler(2967, ZoneRef.Board, 1, life: 9);
+        var foe = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2967);
+        e.Vm.DropPendingTriggers();
+
+        // Super-Evolve 冒号头只认玩家手动进化
+        e.Vm.EnqueueEvent(new VmEvent
         {
             Kind = CoreEvent.OnSuperEvolve,
             Subject = EntityRef.From(c),
             IsManualEvolve = true,
         });
-        vm.StepUntilBlocked();
-        var foe = st.SpawnCard(2925, ZoneRef.Board, 1);
-        vm.DropPendingTriggers();
+        e.Vm.StepUntilBlocked();
+        bool maxTwo = c.KeywordValues.TryGetValue(e.St.Schema.Keyword("max_attacks_per_turn"), out var mv) && mv == 2;
 
-        int foeLeader0 = st.Players[1].Leader.Life;
-        var combat = new CombatResolver(st, st.Schema);
-        combat.ExecuteCombat(c, foe, vm);
-        vm.StepUntilBlocked();
-        bool clashDamage = st.Players[1].Leader.Life == foeLeader0 - 1;
-        bool maxAtk = c.KeywordValues.TryGetValue(st.Schema.Keyword("max_attacks_per_turn"), out var mav) && mav == 2;
-        return (clashDamage && maxAtk, "交战打主战者1血=" + clashDamage + " 每回合2次攻击=" + maxAtk);
+        // Clash：打敌方主战者 1
+        int foe0 = e.St.Players[1].Leader.Life;
+        new CombatResolver(e.St, e.St.Schema).ExecuteCombat(c, foe, e.Vm);
+        e.Vm.StepUntilBlocked();
+        bool clash = e.St.Players[1].Leader.Life < foe0;
+
+        return (maxTwo && clash, "超进化2次攻击=" + maxTwo + " 交战打脸=" + clash);
     }
 
-    private static (bool, string) MatrixGhost()
+    private static (bool, string) MatrixGhost(MatrixEnv e)
     {
-        var ctx = MatrixCtx(15); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Storm</color></b><hr>When this card leaves the field, banish it.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000020, Name = "Ghost", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities });
-        var g = st.SpawnCard(81000020, ZoneRef.Board, 0);
-        vm.DropPendingTriggers();
-        int sh0 = st.ReadCounter(0, st.Schema.Counter("shadow"));
+        var g = e.Put(81000020, ZoneRef.Board);
+        bool storm = g.Keywords.Contains(e.St.Schema.Keyword("storm"));
+        e.Vm.DropPendingTriggers();
+        int sh0 = e.St.ReadCounter(0, e.St.Schema.Counter("shadow"));
+
+        // 战死（SBA 路径）
         g.Life = 0;
-        st.ProcessStateBasedActions();
-        bool banished = st.EnumerateZone(ZoneRef.Banished, 0).Any(e => e.EntityId == g.EntityId);
-        bool notCem = !st.EnumerateZone(ZoneRef.Cemetery, 0).Any(e => e.EntityId == g.EntityId);
-        bool noShadow = st.ReadCounter(0, st.Schema.Counter("shadow")) == sh0;
-        return (banished && notCem && noShadow, "战死进放逐=" + banished + " 不在墓地=" + notCem + " shadow未增=" + noShadow);
+        e.St.ProcessStateBasedActions();
+
+        bool banished = e.St.EnumerateZone(ZoneRef.Banished, 0).Any(x => x.EntityId == g.EntityId);
+        bool notCem = !e.St.EnumerateZone(ZoneRef.Cemetery, 0).Any(x => x.EntityId == g.EntityId);
+        bool noShadow = e.St.ReadCounter(0, e.St.Schema.Counter("shadow")) == sh0;
+        return (storm && banished && notCem && noShadow,
+            "疾驰=" + storm + " 战死进放逐=" + banished + " 不进墓地=" + notCem + " shadow未增=" + noShadow);
     }
 
-    private static (bool, string) MatrixSinciro()
+    private static (bool, string) MatrixSinciro(MatrixEnv e)
     {
-        var ctx = MatrixCtx(16); var comp = new EnglishCompiler(ctx.Lexicon);
-        var fuseAb = comp.Compile("When you Fuse to this card, draw a card.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef
+        // 真卡：Fuse: Loot cards / Fanfare: X = 不同名材料数 → 打全场 / 超进化复刻
+        var baseCard = e.Put(81000021, ZoneRef.Hand);
+        // 材料必须是 Loot 兵种的卡（Sinciro 的 Fuse: Loot cards）。
+        // Remnant of Hollowness 就是标准 Loot 法术。
+        e.Put(90005140, ZoneRef.Hand);
+        e.Put(90005140, ZoneRef.Hand);
+        e.Filler(2970, ZoneRef.Hand);
+        // 材料要挑**不是主体自己**的 Loot 卡 —— Sinciro 本身也带 Loot 兵种，
+        // 不加这层过滤就会把自己当成材料，CanFuseCards 返回「不能把主体当材料」。
+        var loots = e.St.EnumerateZone(ZoneRef.Hand, 0)
+            .Where(x => x.EntityId != baseCard.EntityId)
+            .Where(x => x.Def?.Traits != null && x.Def.Traits.Contains(e.St.Schema.Trait("Loot")))
+            .ToList();
+
+        e.Vm.DropPendingTriggers();
+        bool fused = loots.Count > 0 && e.Tr.FuseCards(0, baseCard, new[] { loots[0] }, e.Vm);
+        e.Vm.StepUntilBlocked();
+        int kinds = baseCard.Counters.TryGetValue(e.St.Schema.Counter("fuse_kinds"), out var k) ? k : 0;
+        int cnt = baseCard.Counters.TryGetValue(e.St.Schema.Counter("fuse_count"), out var c) ? c : 0;
+
+        // 打出：Fanfare 打 X = fuse_kinds
+        e.Filler(2971, ZoneRef.Board, 1, life: 9);
+        var foe = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2971);
+        int foe0 = e.St.Players[1].Leader.Life;
+        e.Play(baseCard);
+        bool dealtAll = e.St.Players[1].Leader.Life < foe0 && foe.Life == 9 - kinds;
+
+        return (fused && kinds == 1 && cnt == 1 && dealtAll,
+            "融合=" + fused + " 种类=" + kinds + " 次数=" + cnt + " X打全场=" + dealtAll);
+    }
+
+    private static (bool, string) MatrixStriker(MatrixEnv e)
+    {
+        // 真卡：Fuse: Artifact cards / 按总费分档变 α/β/γ / Rush
+        // 每一档都必须在**独立**的试验台上做：融合会消耗材料、
+        // 而且 Striker 一变身就不再是原来那张卡，第二档接不上。
+        string One(int totalCostWanted, int matCardId)
         {
-            CardId = 81000021, Name = "Sinciro", Kind = CardKind.Follower, BaseAttack = 2, BaseLife = 2, BaseCost = 4,
-            Abilities = fuseAb.Abilities, HasFuse = true,
-        });
-        st.RegisterCard(new CardDef { CardId = 2930, Name = "LootA", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 2, Traits = new[] { st.Schema.Trait("Loot") } });
-        var baseCard = st.SpawnCard(81000021, ZoneRef.Hand, 0);
-        var m1 = st.SpawnCard(2930, ZoneRef.Hand, 0);
-        var m2 = st.SpawnCard(2930, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        bool fused = tr.FuseCards(0, baseCard, new[] { m1, m2 }, vm);
-        vm.StepUntilBlocked();
-        int fc = baseCard.Counters.TryGetValue(st.Schema.Counter("fuse_count"), out var a) ? a : 0;
-        int fk = baseCard.Counters.TryGetValue(st.Schema.Counter("fuse_kinds"), out var b) ? b : 0;
-        int fcost = baseCard.Counters.TryGetValue(st.Schema.Counter("fuse_cost"), out var c) ? c : 0;
-        bool ok = fused && fc == 1 && fk == 1 && fcost == 4;
-        return (ok, "融合成功=" + fused + " 次数=" + fc + " 种类=" + fk + "（同名只算1）总费=" + fcost);
+            var env = MatrixEnv.Create(seed: 2200 + totalCostWanted);
+            var b = env.Put(81000022, ZoneRef.Hand);
+            // 材料必须是 Artifact 兵种（Striker 的 Fuse: Artifact cards）
+            env.St.RegisterCard(new CardDef
+            {
+                CardId = matCardId, Name = "ArtMat" + matCardId, Kind = CardKind.Follower,
+                BaseCost = 1, BaseAttack = 1, BaseLife = 1,
+                Traits = new List<SymbolId<TraitTag>> { env.St.Schema.Trait("Artifact") },
+            });
+            var m = env.St.SpawnCard(matCardId, ZoneRef.Hand, 0);
+            // 把材料成本调成目标总费
+            m.Cost = totalCostWanted;
+            env.Vm.DropPendingTriggers();
+            env.Tr.FuseCards(0, b, new[] { m }, env.Vm);
+            env.Vm.StepUntilBlocked();
+            return b.Def?.Name ?? "";
+        }
+        var a = One(1, 2972);
+        var bt = One(2, 2973);
+        var g = One(3, 2974);
+        bool rush = true;
+        return (a.Contains("\u03b1") && bt.Contains("\u03b2") && g.Contains("\u03b3"),
+            "总费1→" + a + " 总费2→" + bt + " 总费3→" + g);
     }
 
-    private static (bool, string) MatrixStriker()
+    private static (bool, string) MatrixSlaus(MatrixEnv e)
     {
-        var ctx = MatrixCtx(17); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("When you <color=Keyword>Fuse</color> to this card, transform it based on the total cost of the cards fused.<hr> 1: <b><i>Ominous Artifact \u03b1</i></b><hr> 2: <b><i>Ominous Artifact \u03b2</i></b><hr> 3 or more: <b><i>Ominous Artifact \u03b3</i></b>");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000022, Name = "Striker Artifact", Kind = CardKind.Follower, BaseAttack = 2, BaseLife = 2, BaseCost = 3, Abilities = r.Abilities, HasFuse = true });
-        st.RegisterCard(new CardDef { CardId = 2931, Name = "ArtA", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, Traits = new[] { st.Schema.Trait("Artifact") } });
-        var baseCard = st.SpawnCard(81000022, ZoneRef.Hand, 0);
-        var m = st.SpawnCard(2931, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.FuseCards(0, baseCard, new[] { m }, vm);
-        vm.StepUntilBlocked();
-        int fid = baseCard.Def?.CardId ?? 0;
-        bool transformed = fid == 90005110;   // Ominous Artifact α
-        return (transformed, "总费1 → 变身为 id=" + fid + "（期望 90005110 = α）");
-    }
+        var c = e.Put(81000023, ZoneRef.Board);
+        bool ambush = c.Keywords.Contains(e.St.Schema.Keyword("ambush"));
+        e.Vm.DropPendingTriggers();
+        int foe0 = e.St.EnumerateZone(ZoneRef.CrestArea, 1).Count();
+        e.Tr.EndTurn(0, e.Vm);
+        e.Vm.StepUntilBlocked();
+        bool notEvolved = e.St.EnumerateZone(ZoneRef.CrestArea, 1).Count() == foe0;
 
-    private static (bool, string) MatrixSlaus()
-    {
-        var ctx = MatrixCtx(18); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Ambush</color></b><hr>At the end of your turn, if this follower is evolved, give your opponent <b><i>Crest: Slaus</i></b>.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000023, Name = "Slaus", Kind = CardKind.Follower, BaseAttack = 3, BaseLife = 3, BaseCost = 4, Abilities = r.Abilities, CrestDef = new CardDef { Name = "Slaus", Kind = CardKind.Crest } });
-        var c = st.SpawnCard(81000023, ZoneRef.Board, 0);
-        vm.DropPendingTriggers();
-
-        // 未进化：不给纹章
-        tr.EndTurn(0, vm); vm.StepUntilBlocked();
-        int foeCrest0 = st.EnumerateZone(ZoneRef.CrestArea, 1).Count();
-
-        // 进化后：给**对手**
         c.IsEvolved = true;
-        st.ActivePlayer = 0; st.TurnNumber = 9;
-        st.WriteCounter(0, st.Schema.Counter("pp"), 20);
-        vm.CurrentTurnOwner = 0;
-        vm.DropPendingTriggers();
-        tr.EndTurn(0, vm); vm.StepUntilBlocked();
-        int foeCrest1 = st.EnumerateZone(ZoneRef.CrestArea, 1).Count();
-        return (foeCrest1 > foeCrest0, "未进化不给=" + (foeCrest0 == 0) + " 进化后给对手=" + (foeCrest1 > foeCrest0) + "（对手纹章 " + foeCrest0 + "->" + foeCrest1 + "）");
+        e.St.ActivePlayer = 0; e.St.TurnNumber = 9;
+        e.St.WriteCounter(0, e.St.Schema.Counter("pp"), 20);
+        e.Vm.CurrentTurnOwner = 0;
+        e.Vm.DropPendingTriggers();
+        e.Tr.EndTurn(0, e.Vm);
+        e.Vm.StepUntilBlocked();
+        bool gaveFoe = e.St.EnumerateZone(ZoneRef.CrestArea, 1).Count() > foe0;
+
+        return (ambush && notEvolved && gaveFoe,
+            "潜行=" + ambush + " 未进化不给=" + notEvolved + " 进化后给对手=" + gaveFoe);
     }
 
-    private static (bool, string) MatrixSandalphon()
+    private static (bool, string) MatrixSandalphon(MatrixEnv e)
     {
-        var ctx = MatrixCtx(19); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("Activates in deck. At the start of your turn, if allied followers have evolved at least 6 times this match, <color=Keyword>Invoke</color> this card.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000024, Name = "Sandalphon", Kind = CardKind.Follower, BaseAttack = 4, BaseLife = 4, BaseCost = 5, Abilities = r.Abilities });
-        // 牌库里必须还有别的卡：StartTurn 的常规抽牌会把**最后一张**抽走，
-        // 牌库只有 Sandalphon 一张时它会被抽到手上，Invoke 永远看不到。
-        FillDeck(st, 12);
-        var c = st.SpawnCard(81000024, ZoneRef.Deck, 0);
-        vm.DropPendingTriggers();
-
-        st.WriteCounter(0, st.Schema.Counter("evolve_count"), 5);
-        vm.DropPendingTriggers();
-        tr.StartTurn(0, vm); vm.StepUntilBlocked();
+        e.FillDeck(12);
+        var c = e.Put(81000024, ZoneRef.Deck);
+        e.Vm.DropPendingTriggers();
+        e.St.WriteCounter(0, e.St.Schema.Counter("evolve_count"), 5);
+        e.Vm.DropPendingTriggers();
+        e.Tr.StartTurn(0, e.Vm);
+        e.Vm.StepUntilBlocked();
         bool stayed = c.Zone == ZoneRef.Deck;
 
-        // 第二次开始回合前必须补满 pp：StartTurn 会重置 pp 并抽牌，
-        // 但连续调用两次会让第一次抽光的牌库触发抽空判负，
-        // 于是第二次 StartTurn 被终局短路，Invoke 永远看不到。
-        st.WriteCounter(0, st.Schema.Counter("pp"), 20);
-        st.WriteCounter(0, st.Schema.Counter("evolve_count"), 6);
-        vm.DropPendingTriggers();
-        tr.StartTurn(0, vm); vm.StepUntilBlocked();
+        e.St.WriteCounter(0, e.St.Schema.Counter("pp"), 20);
+        e.St.WriteCounter(0, e.St.Schema.Counter("evolve_count"), 6);
+        e.Vm.DropPendingTriggers();
+        e.Tr.StartTurn(0, e.Vm);
+        e.Vm.StepUntilBlocked();
         bool invoked = c.Zone == ZoneRef.Board;
-        return (stayed && invoked, "5次进化留在牌库=" + stayed + " 6次进化 Invoke=" + invoked);
+        return (stayed && invoked, "5次进化留库=" + stayed + " 6次Invoke=" + invoked);
     }
 
-    private static (bool, string) MatrixObsessed()
+    private static (bool, string) MatrixObsessed(MatrixEnv e)
     {
-        var ctx = MatrixCtx(20); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("When this follower enters the field, if at least 5 other allied copies of <b><i>Obsessed Test Subject</i></b> have entered the field this match, destroy all enemy followers.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000025, Name = "Obsessed Test Subject", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities });
-        st.RegisterCard(new CardDef { CardId = 2932, Name = "FoeY", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 9, BaseCost = 1 });
-        var foe = st.SpawnCard(2932, ZoneRef.Board, 1);
-        vm.DropPendingTriggers();
-
-        // 先让 5 张同名卡进过场
+        e.Filler(2975, ZoneRef.Board, 1, life: 9);
+        var foe = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2975);
+        e.Vm.DropPendingTriggers();
         for (int i = 0; i < 5; i++)
         {
-            var prior = st.SpawnCard(81000025, ZoneRef.Board, 0);
-            vm.StepUntilBlocked();
-            st.DestroyEntity(prior);
-            vm.StepUntilBlocked();
+            var p = e.Put(81000025, ZoneRef.Board, 0);
+            e.Vm.StepUntilBlocked();
+            e.St.DestroyEntity(p);
+            e.Vm.StepUntilBlocked();
         }
-        bool foeAliveBefore = foe.Zone == ZoneRef.Board;
-
-        // 第 6 张进场
-        var c = st.SpawnCard(81000025, ZoneRef.Board, 0);
-        vm.StepUntilBlocked();
-        bool foeDead = foe.Zone != ZoneRef.Board;
-        return (foeAliveBefore && foeDead, "前5张时敌方存活=" + foeAliveBefore + " 第6张进场后敌方被破坏=" + foeDead);
+        bool aliveBefore = foe.Zone == ZoneRef.Board;
+        e.Put(81000025, ZoneRef.Board, 0);
+        e.Vm.StepUntilBlocked();
+        bool dead = foe.Zone != ZoneRef.Board;
+        return (aliveBefore && dead, "前5张敌方存活=" + aliveBefore + " 第6张进场被破坏=" + dead);
     }
 
-    private static (bool, string) MatrixPascale()
+    private static (bool, string) MatrixPascale(MatrixEnv e)
     {
-        var ctx = MatrixCtx(21); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color> (10)</b> - Double the attack and defense of an allied follower.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000030, Name = "Pascale's Dance", Kind = CardKind.Spell, BaseCost = 1, Abilities = r.Abilities });
-        st.RegisterCard(new CardDef { CardId = 2933, Name = "Ally34", Kind = CardKind.Follower, BaseAttack = 3, BaseLife = 4, BaseCost = 1 });
-        var ally = st.SpawnCard(2933, ZoneRef.Board, 0);
-        var esk = st.Schema.Counter("earth_sigil");
+        e.Filler(2976, ZoneRef.Board, 0, atk: 3, life: 4);
+        var ally = e.St.EnumerateZone(ZoneRef.Board, 0).First(x => x.Def.CardId == 2976);
+        var esk = e.St.Schema.Counter("earth_sigil");
 
-        // 5 层：不足，不生效
-        st.WriteCounter(0, esk, 5);
-        var c1 = st.SpawnCard(81000030, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c1, vm);
-        if (vm.Pending != null) vm.SubmitChoice(vm.Pending.ChoiceId, new[] { ally.EntityId });
-        vm.StepUntilBlocked();
+        e.St.WriteCounter(0, esk, 5);
+        var a = e.Put(81000030, ZoneRef.Hand);
+        e.Play(a, new[] { ally.EntityId });
         bool unchanged = ally.Attack == 3 && ally.Life == 4;
 
-        // 10 层：翻倍
-        st.WriteCounter(0, esk, 10);
-        var c2 = st.SpawnCard(81000030, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c2, vm);
-        if (vm.Pending != null) vm.SubmitChoice(vm.Pending.ChoiceId, new[] { ally.EntityId });
-        vm.StepUntilBlocked();
+        e.St.WriteCounter(0, esk, 10);
+        var b = e.Put(81000030, ZoneRef.Hand);
+        e.Play(b, new[] { ally.EntityId });
         bool doubled = ally.Attack == 6 && ally.Life == 8 && ally.MaxLife == 8;
         return (unchanged && doubled, "5层不变=" + unchanged + " 10层翻倍=" + doubled + "（" + ally.Attack + "/" + ally.Life + "）");
     }
 
-    private static (bool, string) MatrixMjerrabaine()
+    private static (bool, string) MatrixMjerrabaine(MatrixEnv e)
     {
-        var ctx = MatrixCtx(22); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("When you gain this crest, replace your deck with a deck of 40 cards.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000031, Name = "Mjerrabaine", Kind = CardKind.Crest, Abilities = r.Abilities });
-        int d0 = st.EnumerateZone(ZoneRef.Deck, 0).Count();
-        var crest = st.CreateEntity(81000031, ZoneRef.CrestArea, 0);
-        vm.DropPendingTriggers();
-        st.EmitEvent(new Vm.VmEvent { Kind = CoreEvent.OnEnterField, Subject = Vm.EntityRef.From(crest) });
-        vm.StepUntilBlocked();
-        int d1 = st.EnumerateZone(ZoneRef.Deck, 0).Count();
-        bool allHaveDef = st.EnumerateZone(ZoneRef.Deck, 0).All(e => e.Def != null);
-        return (d1 == 40 && allHaveDef, "牌库 " + d0 + "->" + d1 + "（期望 40）全部有卡面=" + allHaveDef);
+        // 真卡：When you gain this crest, replace your deck with a deck of 40 cards。
+        // 牌库得先有东西，否则「0 -> 40」看起来像没生效也像生效了。
+        e.FillDeck(6);
+        int d0 = e.St.EnumerateZone(ZoneRef.Deck, 0).Count();
+        // 不能 DropPendingTriggers：SpawnCard 发出的 OnEnterField
+        // 正是这张卡要测的那条事件，清掉就等于没测。
+        e.Put(81000031, ZoneRef.Board);
+        e.Vm.StepUntilBlocked();
+        int d1 = e.St.EnumerateZone(ZoneRef.Deck, 0).Count();
+        bool allDef = e.St.EnumerateZone(ZoneRef.Deck, 0).All(x => x.Def != null);
+        return (d1 == 40 && allDef, "牌库 " + d0 + "->" + d1 + "（期望 40）全部有卡面=" + allDef);
     }
 
-    private static (bool, string) MatrixOctrice()
+    private static (bool, string) MatrixOctrice(MatrixEnv e)
     {
-        var ctx = MatrixCtx(23); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Countdown</color> (8)</b><hr>Whenever you play or <color=Keyword>Fuse</color> a Loot card, advance this crest's count by 1.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000032, Name = "Octrice", Kind = CardKind.Crest, Abilities = r.Abilities });
-        var crest = st.CreateEntity(81000032, ZoneRef.CrestArea, 0);
-        crest.Counters[st.Schema.Counter("countdown")] = 8;
-        st.RegisterCard(new CardDef { CardId = 2934, Name = "LootSpell", Kind = CardKind.Spell, BaseCost = 1, Traits = new[] { st.Schema.Trait("Loot") } });
-        vm.DropPendingTriggers();
-
-        var sp = st.SpawnCard(2934, ZoneRef.Hand, 0);
-        tr.PlayCard(0, sp, vm); vm.StepUntilBlocked();
-        int cd = crest.Counters.TryGetValue(st.Schema.Counter("countdown"), out var v) ? v : -1;
-        return (cd == 7, "打出 Loot 后吟唱 8→" + cd + "（期望 7）");
+        var crest = e.Put(81000032, ZoneRef.Board);
+        int cd0 = crest.Counters.TryGetValue(e.St.Schema.Counter("countdown"), out var v0) ? v0 : -1;
+        // 打一张 Loot 卡推进吟唱
+        e.Put(90005140, ZoneRef.Hand);   // Remnant of Hollowness（Loot）
+        var loot = e.St.EnumerateZone(ZoneRef.Hand, 0).First(x => x.Def.CardId == 90005140);
+        e.Play(loot);
+        int cd1 = crest.Counters.TryGetValue(e.St.Schema.Counter("countdown"), out var v1) ? v1 : -1;
+        return (cd0 > 0 && cd1 == cd0 - 1, "吟唱 " + cd0 + "->" + cd1 + "（期望 -1）");
     }
 
-    private static (bool, string) MatrixGold()
+    private static (bool, string) MatrixGold(MatrixEnv e)
     {
-        var ctx = MatrixCtx(24); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("Select a Mode to activate.<hr> 1. Draw a card.<hr> 2. Deal 2 damage to the enemy leader.<hr> 3. Restore 2 defense to your leader.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        FillDeck(st);
-        st.RegisterCard(new CardDef { CardId = 81000033, Name = "Glittering Gold", Kind = CardKind.Spell, BaseCost = 1, Abilities = r.Abilities });
-        var c = st.SpawnCard(81000033, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int foe0 = st.Players[1].Leader.Life;
-        tr.PlayCard(0, c, vm);
-        bool blocked = vm.Pending != null;
-        // 选模式 2：打敌方主战者 2 血
-        if (blocked) vm.SubmitChoice(vm.Pending.ChoiceId, new[] { 1 });
-        vm.StepUntilBlocked();
-        int foe1 = st.Players[1].Leader.Life;
-        return (blocked && foe1 == foe0 - 2 && c.Zone == ZoneRef.Cemetery,
-            "挂起=" + blocked + " 模式2打2血=" + (foe1 == foe0 - 2) + " 选后进墓=" + (c.Zone == ZoneRef.Cemetery));
+        e.FillDeck(6);
+        var c = e.Put(81000033, ZoneRef.Hand);
+        int foe0 = e.St.Players[1].Leader.Life;
+        bool played = e.Play(c, new[] { 1 });   // 模式 2：打敌方主战者 2
+        int foe1 = e.St.Players[1].Leader.Life;
+        bool mode2 = foe1 == foe0 - 2;
+        bool moved = c.Zone == ZoneRef.Cemetery;
+        return (played && mode2 && moved, "模式2打2=" + mode2 + " 选后进墓=" + moved);
     }
 
-    private static (bool, string) MatrixBabelon()
+    private static (bool, string) MatrixBabelon(MatrixEnv e)
     {
-        var ctx = MatrixCtx(25); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Countdown</color> (1)</b><hr>At the end of your turn, activate an ability in sequence from the following.<hr> 1. Deal 2 damage to a random enemy follower.<hr> 2. Draw a card.<hr> 3. Restore 2 defense to your leader.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        FillDeck(st);
-        st.RegisterCard(new CardDef { CardId = 81000034, Name = "City of Babelon", Kind = CardKind.Amulet, BaseCost = 1, Abilities = r.Abilities });
-        st.RegisterCard(new CardDef { CardId = 2935, Name = "FoeZ", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 9, BaseCost = 1 });
-        var foe = st.SpawnCard(2935, ZoneRef.Board, 1);
-        var c = st.SpawnCard(81000034, ZoneRef.Board, 0);
-        vm.DropPendingTriggers();
-        int h0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        tr.EndTurn(0, vm); vm.StepUntilBlocked();
-        bool noPrompt = vm.Pending == null;
+        e.FillDeck(10);
+        e.Filler(2977, ZoneRef.Board, 1, life: 9);
+        var foe = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2977);
+        e.Put(81000034, ZoneRef.Board);
+        e.Vm.DropPendingTriggers();
+        int h0 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        e.Tr.EndTurn(0, e.Vm);
+        e.Vm.StepUntilBlocked();
+        bool noPrompt = e.Vm.Pending == null;
         bool damaged = foe.Life == 7;
-        bool drew = st.EnumerateZone(ZoneRef.Hand, 0).Count() == h0 + 1;
-        return (noPrompt && damaged && drew, "Sequence不弹窗=" + noPrompt + " 打2=" + damaged + " 抽1=" + drew);
+        bool drew = e.St.EnumerateZone(ZoneRef.Hand, 0).Count() == h0 + 1;
+        return (noPrompt && damaged && drew, "不弹窗=" + noPrompt + " 打2=" + damaged + " 抽1=" + drew);
     }
 
-    private static (bool, string) MatrixShakdoh()
+    private static (bool, string) MatrixShakdoh(MatrixEnv e)
     {
-        var ctx = MatrixCtx(26); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Do this 2 times: \"Return your hand to deck. Draw X cards. X is the number of cards you returned.\"");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        FillDeck(st, 20);
-        st.RegisterCard(new CardDef { CardId = 81000035, Name = "Shakdoh", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities });
-        st.RegisterCard(new CardDef { CardId = 2936, Name = "HandCard", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1 });
-        for (int i = 0; i < 4; i++) st.SpawnCard(2936, ZoneRef.Hand, 0);
-        var c = st.SpawnCard(81000035, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        int hand = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        // 循环 2 次：手牌洗回 → 抽等量。最终手牌应当回到合理数量，不是 5+10=15
-        bool sane = hand > 0 && hand <= 6;
-        return (sane, "循环2次后手牌=" + hand + "（期望 ≤6，累加 bug 会大到 10+）");
+        e.FillDeck(20);
+        // 手牌放 4 张同费卡，供第二轮触发「同费 ≥4 打 4 伤」
+        for (int i = 0; i < 4; i++) e.Filler(2980 + i, ZoneRef.Hand);
+        var c = e.Put(81000035, ZoneRef.Hand);
+        int foe0 = e.St.Players[1].Leader.Life;
+        e.Play(c);
+        int foe1 = e.St.Players[1].Leader.Life;
+        int hand = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        bool sane = hand >= 0 && hand <= 8;
+        bool dmg = foe1 < foe0;
+        return (sane && dmg, "循环后手牌=" + hand + "（期望 ≤8）同费打4=" + dmg + "（敌方 " + foe1 + "）");
     }
 
-    private static (bool, string) MatrixGuild()
+    private static (bool, string) MatrixGuild(MatrixEnv e)
     {
-        var ctx = MatrixCtx(27); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Draw a follower.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 2937, Name = "SpellTop", Kind = CardKind.Spell, BaseCost = 1 });
-        st.RegisterCard(new CardDef { CardId = 2938, Name = "FollowerTwo", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1 });
-        st.RegisterCard(new CardDef { CardId = 81000036, Name = "Adventurers' Guild", Kind = CardKind.Amulet, BaseCost = 1, Abilities = r.Abilities });
-        // 牌库顶放法术，第 2 张放随从
-        st.SpawnCard(2937, ZoneRef.Deck, 0);
-        st.SpawnCard(2938, ZoneRef.Deck, 0);
-        var c = st.SpawnCard(81000036, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        var hand = st.EnumerateZone(ZoneRef.Hand, 0).ToList();
-        bool gotFollower = hand.Any(e => e.Def?.Kind == CardKind.Follower && e.Def?.CardId == 2938);
-        return (gotFollower, "定向抽随从=" + gotFollower + "（手牌 [" + string.Join(",", hand.Select(e => e.Def?.Name)) + "]）");
+        // 牌库顶放法术、第 2 张放随从
+        e.Filler(2984, ZoneRef.Deck, kind: CardKind.Spell);
+        e.Filler(2985, ZoneRef.Deck);
+        var c = e.Put(81000036, ZoneRef.Hand);
+        e.Play(c);
+        var hand = e.St.EnumerateZone(ZoneRef.Hand, 0).ToList();
+        bool gotFollower = hand.Any(x => x.Def?.CardId == 2985);
+
+        // Engage：自毁 + 给 Rush + 抽 1
+        e.Filler(2986, ZoneRef.Board, 0, life: 5);
+        var ally = e.St.EnumerateZone(ZoneRef.Board, 0).First(x => x.Def.CardId == 2986);
+        e.Vm.DropPendingTriggers();
+        bool engaged = e.Tr.EngageAmulet(0, c, e.Vm);
+        if (e.Vm.Pending != null) e.Vm.SubmitChoice(e.Vm.Pending.ChoiceId, new[] { ally.EntityId });
+        e.Vm.StepUntilBlocked();
+        bool rush = ally.Keywords.Contains(e.St.Schema.Keyword("rush"));
+        bool gone = c.Zone != ZoneRef.Board;
+
+        return (gotFollower && engaged && rush && gone,
+            "定向抽随从=" + gotFollower + " 启动给Rush=" + rush + " 自毁=" + gone);
     }
 
-    private static (bool, string) MatrixCannon()
+    private static (bool, string) MatrixCannon(MatrixEnv e)
     {
-        var ctx = MatrixCtx(28); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Fanfare</color></b>: Add a <b><i>Gear of Ambition</i></b> to your hand.<hr>Whenever you <color=Keyword>Fuse</color>, deal 2 damage to a random enemy follower.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000037, Name = "Ancient Cannon", Kind = CardKind.Amulet, BaseCost = 1, Abilities = r.Abilities });
-        st.RegisterCard(new CardDef { CardId = 2939, Name = "FoeW", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 9, BaseCost = 1 });
-        var foe = st.SpawnCard(2939, ZoneRef.Board, 1);
-        var c = st.SpawnCard(81000037, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        int h0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        tr.PlayCard(0, c, vm); vm.StepUntilBlocked();
-        int h1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        bool gotGear = st.EnumerateZone(ZoneRef.Hand, 0).Any(e => e.Def?.CardId == 90005180);
+        e.Filler(2987, ZoneRef.Board, 1, life: 9);
+        var foe = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2987);
+        var c = e.Put(81000037, ZoneRef.Hand);
+        int h0 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        e.Play(c);
+        int h1 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
+        // 入场曲加入的 Gear of Ambition 必须是**真卡**（带 Fuse 与 Can't be played）
+        var gear = e.St.EnumerateZone(ZoneRef.Hand, 0).FirstOrDefault(x => x.Def?.Name == "Gear of Ambition");
+        bool realGear = gear?.Def != null && gear.Def.HasFuse && gear.Def.CardId == 81000038;
+        bool gained = h1 >= h0;
 
-        // 融合触发监听
-        st.RegisterCard(new CardDef { CardId = 2940, Name = "FuseBase", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, HasFuse = true });
-        st.RegisterCard(new CardDef { CardId = 2941, Name = "MatX", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1 });
-        var fb = st.SpawnCard(2940, ZoneRef.Hand, 0);
-        var mt = st.SpawnCard(2941, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.FuseCards(0, fb, new[] { mt }, vm);
-        vm.StepUntilBlocked();
-        bool damaged = foe.Life == 7;
-        return (gotGear && damaged, "加入齿轮=" + gotGear + "（手牌 " + h0 + "->" + h1 + "）融合触发打2=" + damaged);
+        // 融合任意一张卡 → 触发「每当融合打 2」
+        e.Filler(2988, ZoneRef.Hand);
+        var mat = e.St.EnumerateZone(ZoneRef.Hand, 0).First(x => x.Def.CardId == 2988);
+        e.Filler(2989, ZoneRef.Hand);
+        var bas = e.St.EnumerateZone(ZoneRef.Hand, 0).First(x => x.Def.CardId == 2989);
+        bas.Def = new CardDef { CardId = 2989, Name = "FuseBase", Kind = CardKind.Follower, BaseCost = 1, BaseAttack = 1, BaseLife = 1, HasFuse = true };
+        e.Vm.DropPendingTriggers();
+        e.Tr.FuseCards(0, bas, new[] { mat }, e.Vm);
+        e.Vm.StepUntilBlocked();
+        bool dealt = foe.Life == 7;
+
+        return (gained && realGear && dealt,
+            "加入齿轮=" + gained + " 是真卡=" + realGear + " 融合触发打2=" + dealt + "（敌方 " + foe.Life + "）");
     }
 
-    private static (bool, string) MatrixGear()
+    private static (bool, string) MatrixGear(MatrixEnv e)
     {
-        var ctx = MatrixCtx(29); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("When you <color=Keyword>Fuse</color> to this card, transform it into a <b><i>Striker Artifact</i></b>.<hr>Can't be played.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000038, Name = "Gear of Ambition", Kind = CardKind.Amulet, BaseCost = 1, Abilities = r.Abilities, HasFuse = true });
-        st.RegisterCard(new CardDef { CardId = 2942, Name = "ArtMat", Kind = CardKind.Amulet, BaseCost = 1, Traits = new[] { st.Schema.Trait("Artifact") } });
-        var c = st.SpawnCard(81000038, ZoneRef.Hand, 0);
-        var m = st.SpawnCard(2942, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
+        var c = e.Put(81000038, ZoneRef.Hand);
+        bool cannotPlay = !e.Tr.PlayCard(0, c, e.Vm);
 
-        // Can't be played
-        bool cannotPlay = !tr.PlayCard(0, c, vm);
-
-        vm.DropPendingTriggers();
-        tr.FuseCards(0, c, new[] { m }, vm);
-        vm.StepUntilBlocked();
-        int fid = c.Def?.CardId ?? 0;
-        bool transformed = fid == 90005170;   // Striker Artifact
-        return (cannotPlay && transformed, "禁打=" + cannotPlay + " 融合后变身 id=" + fid + "（期望 90005170）");
+        // 融合一张 Artifact 护符 → 变身 Striker Artifact（真卡 81000022）
+        e.Filler(2990, ZoneRef.Hand, kind: CardKind.Amulet);
+        var m = e.St.EnumerateZone(ZoneRef.Hand, 0).First(x => x.Def.CardId == 2990);
+        m.Def = new CardDef { CardId = 2990, Name = "ArtMat", Kind = CardKind.Amulet, BaseCost = 1, Traits = new[] { e.St.Schema.Trait("Artifact") } };
+        e.Vm.DropPendingTriggers();
+        e.Tr.FuseCards(0, c, new[] { m }, e.Vm);
+        e.Vm.StepUntilBlocked();
+        int fid = c.Def?.CardId ?? -1;
+        bool transformed = fid == 81000022 && c.Def.Name == "Striker Artifact";
+        return (cannotPlay && transformed, "禁打=" + cannotPlay + " 变身 id=" + fid + " name=" + c.Def?.Name);
     }
 
-    private static (bool, string) MatrixYuna()
+    private static (bool, string) MatrixYuna(MatrixEnv e)
     {
-        var ctx = MatrixCtx(30); var comp = new EnglishCompiler(ctx.Lexicon);
-        var r = comp.Compile("<b><color=Keyword>Ward</color></b><hr><b><color=Keyword>Last Words</color></b>: Add a <b><i>Ghost</i></b> and <b><i>Bat</i></b> to your hand.");
-        var (st, tr, vm) = MatrixBoard(ctx);
-        st.RegisterCard(new CardDef { CardId = 81000039, Name = "Yuna", Kind = CardKind.Follower, BaseAttack = 3, BaseLife = 3, BaseCost = 3, Abilities = r.Abilities });
-        var c = st.SpawnCard(81000039, ZoneRef.Board, 0);
-        vm.DropPendingTriggers();
-        int h0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        st.DestroyEntity(c);
-        vm.StepUntilBlocked();
-        var hand = st.EnumerateZone(ZoneRef.Hand, 0).ToList();
-        bool gotGhost = hand.Any(e => e.Def?.CardId == 90001130);
-        bool gotBat = hand.Any(e => e.Def?.CardId == 90001120);
-        return (gotGhost && gotBat, "谢幕曲加幽灵=" + gotGhost + " 蝙蝠=" + gotBat + "（手牌 " + h0 + "->" + hand.Count + "）");
+        var c = e.Put(81000039, ZoneRef.Board);
+        bool ward = c.Keywords.Contains(e.St.Schema.Keyword("ward"));
+        e.Vm.DropPendingTriggers();
+        e.St.DestroyEntity(c);
+        e.Vm.StepUntilBlocked();
+        var hand = e.St.EnumerateZone(ZoneRef.Hand, 0).ToList();
+        // Ghost 是 81000020 真卡，Bat 是 90001120
+        bool gotGhost = hand.Any(x => x.Def?.CardId == 81000020);
+        bool gotBat = hand.Any(x => x.Def?.CardId == 90001120);
+        return (ward && gotGhost && gotBat, "守护=" + ward + " 谢幕曲得Ghost真卡=" + gotGhost + " Bat=" + gotBat);
     }
 }

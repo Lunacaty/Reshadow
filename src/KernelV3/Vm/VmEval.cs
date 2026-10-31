@@ -219,7 +219,7 @@ public sealed class VmEval
             case HasKindExpr hk:
             {
                 var t = hk.Of ?? TargetSpec.Self;
-                return ResolveRef(t, scope).Any(r => RefDef(r)?.Kind == hk.Kind);
+                return ResolveRef(t, scope).Any(r => RefKind(r) == hk.Kind);
             }
 
             case NotSameEntityExpr ne:
@@ -482,6 +482,21 @@ public sealed class VmEval
         var live = RefLive(r);
         if (live != null) return live.Keywords.Contains(kw);
         return r.Snapshot != null && r.Snapshot.Keywords.Contains(kw);
+    }
+
+    /// <summary>
+    /// 引用的**卡种**：活体优先，离场后退回快照。
+    ///
+    /// 不能退回 RefCarrier 去读它现在的 Def —— 结晶护符死进墓地时
+    /// Def 已被还原成随从本体，「死掉的护符」于是变成「死掉的随从」，
+    /// 亡者召还就会把它当随从复活。快照记的是死亡那一刻的卡种。
+    /// </summary>
+    private Ast.CardKind RefKind(EntityRef r)
+    {
+        var live = RefLive(r);
+        if (live?.Def != null) return live.Def.Kind;
+        if (r.Snapshot != null) return r.Snapshot.Kind;
+        return RefCarrier(r)?.Def?.Kind ?? Ast.CardKind.Follower;
     }
 
     private bool RefHasTrait(EntityRef r, SymbolId<TraitTag> trait)

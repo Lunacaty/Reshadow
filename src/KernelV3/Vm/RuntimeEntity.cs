@@ -27,6 +27,18 @@ public sealed class EntitySnapshot
     public int EntrySerial { get; init; }
     public int CardId { get; init; }
     public string Name { get; init; } = "";
+
+    /// <summary>
+    /// 拍快照那一刻的**卡种**。
+    ///
+    /// 必须存下来，不能靠「回查墓地里那个实体的 Def」：
+    /// 结晶护符死进墓地后 Def 会还原成随从本体，
+    /// 于是「死掉的护符」在回查时变成了「死掉的随从」，
+    /// 亡者召还就会把一张护符当随从复活上场。
+    /// 快照是那一瞬间的事实，卡种同理。
+    /// </summary>
+    public Ast.CardKind Kind { get; init; }
+
     public ZoneRef Zone { get; init; }
     /// <summary>绝对玩家编号（0 = 先手，1 = 后手）。AST 的 ZoneScope 是相对视角，绝不能混用。</summary>
     public int PlayerId { get; init; }
@@ -107,6 +119,16 @@ public sealed class RuntimeEntity
     public Ast.CardDef OriginalDef { get; set; }
 
     /// <summary>
+    /// 离场那一刻的卡面定义（激奏/结晶卡专用）。
+    ///
+    /// 结晶护符的谢幕曲挂在 CrystallizeDef 上，而它一离场就要把 Def 还原成随从本体
+    /// （否则墓地/牌库里那张卡认不出自己是谁、亡者召还会把护符当随从复活）。
+    /// 还原之后，稍后才执行的 FlushNextTrigger 就再也读不到它的谢幕曲了。
+    /// 把离场时的定义留在这里，让触发扫描仍有据可查。
+    /// </summary>
+    public Ast.CardDef LastFieldDef { get; set; }
+
+    /// <summary>
     /// 「Remove Last Words」是否已生效。
     /// 谢幕曲是一条 AbilityDef（OnDestroy），不是关键词，
     /// 单纯 Keywords.Remove("last words") 拦不住它 —— 必须单独记一个事实位。
@@ -142,6 +164,7 @@ public sealed class RuntimeEntity
         EntrySerial = EntrySerial,
         CardId = Def?.CardId ?? 0,
         Name = Def?.Name ?? "",
+        Kind = Def?.Kind ?? Ast.CardKind.Follower,
         Zone = Zone,
         PlayerId = PlayerId,
         Attack = Attack,

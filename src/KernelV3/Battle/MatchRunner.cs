@@ -192,19 +192,33 @@ public sealed class MatchRunner
         if (Phase != MatchPhase.Mulligan) return;
         Phase = MatchPhase.Playing;
         _turns.StartTurn(_state.ActivePlayer, _vm);
+        DrainVm();
         CheckFinished();
     }
 
     // ---------------------------------------------------------------- 对局循环
 
-    /// <summary>结束当前回合，交给对手。</summary>
+    /// <summary>
+    /// 结束当前回合，交给对手。
+    ///
+    /// 关键：回合末能力可能弹出手选目标（TurnEnd 挂起）。此时**绝不能**
+    /// 同步往下开对手回合 —— 那会在玩家的选择还没消解时就把 ActivePlayer
+    /// 改掉、给对手涨费、把对手的回合初触发器塞进队列。
+    /// 开下一回合的动作必须排进续体，等这批事件彻底结算完再执行。
+    /// </summary>
     public void EndTurn()
     {
-        if (Phase != MatchPhase.Playing) return;
+        if (Phase != MatchPhase.Playing || IsWaitingForInput) return;
         int cur = _state.ActivePlayer;
         _turns.EndTurn(cur, _vm);
         if (CheckFinished()) return;
-        _turns.StartTurn(1 - cur, _vm);
+
+        _vm.EnqueueContinuation(() =>
+        {
+            if (CheckFinished()) return;
+            _turns.StartTurn(1 - cur, _vm);
+        });
+        DrainVm();
         CheckFinished();
     }
 
