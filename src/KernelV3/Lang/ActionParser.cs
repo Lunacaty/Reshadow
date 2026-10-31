@@ -88,6 +88,15 @@ public sealed class ActionParser
                 if (midIf != null) { result.Add(midIf); continue; }
             }
 
+            // "..., Otherwise, <else>" 的 else 分支已由 ParseMidSentenceIf 收进
+            // 上一个条件节点。走到这里说明它前面没有可挂的条件（畸形句），
+            // 直接跳过，别让整个能力因为一个连接词报废。
+            if (cur.Current.IsWord("otherwise"))
+            {
+                cur.Advance();
+                continue;
+            }
+
             int before = cur.Position;
             var node = ParseOne(cur);
             if (node != null)
@@ -143,7 +152,19 @@ public sealed class ActionParser
         catch (LangException) { cur.Seek(save); return null; }
 
         var thenBody = ParseSequence(cur);
-        return new ConditionalNode { Condition = cond, Then = thenBody };
+
+        // "..., Otherwise, <else>" —— 「Otherwise」是官方的 else 引导词。
+        // 句子切分器会把以 Otherwise 开头的下一句并回本句（用逗号接），
+        // ParseSequence 到这里正好停在它前面。
+        IReadOnlyList<EffectNode> elseBody = null;
+        if (cur.Current.IsWord("otherwise"))
+        {
+            cur.Advance();
+            if (cur.Current.Kind == TokKind.Comma || cur.Current.Kind == TokKind.Colon) cur.Advance();
+            elseBody = ParseSequence(cur);
+        }
+
+        return new ConditionalNode { Condition = cond, Then = thenBody, Else = elseBody };
     }
 
     /// <summary>解析一个动作。返回 null 表示当前位置不是动作起点。</summary>
@@ -175,6 +196,7 @@ public sealed class ActionParser
             case "select": return ParseSelect(cur);
             case "transform": return ParseTransform(cur);
             case "gain": return ParseGain(cur);
+            case "double": return ParseDouble(cur);
             case "increase":
             {
                 // "Increase the number of Modes you can select by 1"
@@ -1643,6 +1665,55 @@ public sealed class ActionParser
         return new List<EffectNode> { new TransformNode { Target = target, CopySource = copySrc } };
     }
 
+    // ---------- 攻防倍化 ----------
+
+    /// <summary>
+    /// "Double the attack and defense of an allied follower."
+    ///
+    /// 用 Set + prop*2 表达，而不是 Add：「翻倍」是基于当前值重算，
+    /// Add 会把已加过的加成再算一遍，同一张卡连吃两次翻倍就成了加四次。
+    /// </summary>
+    private List<EffectNode> ParseDouble(TokenCursor cur)
+    {
+        cur.Advance();   // double
+        cur.TryMatchAnyWord("the");
+
+        bool both = false;
+        bool atk = false, def = false;
+        int save = cur.Position;
+        while (!cur.IsAtEnd && !cur.Current.IsWord("of") && cur.Current.Kind != TokKind.Period)
+        {
+            if (cur.Current.IsAnyWord("attack", "attacks")) atk = true;
+            if (cur.Current.IsAnyWord("defense", "defence", "life", "health")) def = true;
+            if (cur.Current.IsWord("and") || cur.Current.Kind == TokKind.Comma) { }
+            cur.Advance();
+        }
+        if (atk && def) both = true;
+        cur.Seek(save);
+
+        // 跳过 "attack and defense" 之类的属性名，定位目标
+        while (!cur.IsAtEnd && !cur.Current.IsWord("of") && cur.Current.Kind != TokKind.Period)
+            cur.Advance();
+        cur.TryMatchAnyWord("of");
+
+        var target = _target.TryParse(cur) ?? TargetSpec.Self;
+
+        return new List<EffectNode>
+        {
+            new ModifyStatsNode
+            {
+                Target = target,
+                Op = StatModOp.Set,
+                Attack = (atk || both)
+                    ? NumExpr.Mul(NumExpr.Prop(StatKey.Attack, target), NumExpr.Const(2))
+                    : NumExpr.Prop(StatKey.Attack, target),
+                Life = (def || both)
+                    ? NumExpr.Mul(NumExpr.Prop(StatKey.Life, target), NumExpr.Const(2))
+                    : NumExpr.Prop(StatKey.Life, target),
+            },
+        };
+    }
+
     // ---------- 计数器 ----------
 
     private List<EffectNode> ParseGain(TokenCursor cur)
@@ -2494,7 +2565,13 @@ public sealed class ActionParser
         cur.Seek(probeCrest);
 
         var target = TargetSpec.Self;
-        if (cur.MatchPhrase("this", "amulet's", "count") || cur.MatchPhrase("the", "count", "of", "this", "amulet"))
+        // "advance this crest's count by 1" —— 纹章用的是 crest's 而不是 amulet's。
+        // 少了这一条，Octrice 这类卡的整条能力都会停在 [this] 报无法解析。
+        if (cur.MatchPhrase("this", "amulet's", "count")
+            || cur.MatchPhrase("this", "crest's", "count")
+            || cur.MatchPhrase("this", "crest's")
+            || cur.MatchPhrase("the", "count", "of", "this", "amulet")
+            || cur.MatchPhrase("the", "count", "of", "this", "crest"))
             target = TargetSpec.Self;
         else if (cur.MatchPhrase("the", "count", "of") || cur.MatchPhrase("the", "counts", "of"))
             target = _target.TryParse(cur) ?? TargetSpec.Self;

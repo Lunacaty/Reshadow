@@ -462,6 +462,15 @@ public sealed class EnglishCompiler
         // 短横的能力头，即视为选项块结束，其后所有句子回到 -1。
         CloseOptionBlockOnHeader(sentences, sentOptions);
 
+        // "..., Otherwise, <else>." 的 otherwise 常被句号切成独立一句。
+        // 它不是一个动作，而是**前一句条件分支的 else**。
+        //
+        // 不能把两句用逗号拼回去：那样 "If ..." 会从句首变成句中，
+        // 而句首的 If 是由 PrefixParser 折成能力 Condition 的，
+        // 拼回去之后条件整条丢失，两条分支都无条件执行。
+        //
+        // 正确做法：保留独立句，稍后在能力落盘时把它接到上一条能力的 Else 上。
+
         // 条件句：把 "If X, Y" 拆成条件 + 动作
         BoolExpr pendingCondition = null;
         var modeOptions = new List<IReadOnlyList<EffectNode>>();
@@ -767,6 +776,75 @@ public sealed class EnglishCompiler
                 modePick = pick;
                 modeKind = pickKind;
                 continue;
+            }
+
+            // "Otherwise, <else>" 是独立成句的，它修饰的是上一句的条件分支。
+            // 先把它认出来：解析内容后挂到上一条能力的条件节点 Else 上，
+            // 而不是当成一条新动作（那样两条分支都无条件执行）。
+            if (c.Current.IsWord("otherwise"))
+            {
+                c.Advance();
+                if (c.Current.Kind == TokKind.Comma || c.Current.Kind == TokKind.Colon) c.Advance();
+                var elseBody = c.IsAtEnd ? new List<EffectNode>() : _actions.ParseSequence(c);
+                bool attached = false;
+
+                // 情形 1：条件挂在**节点级**（句中 if）。
+                if (currentAbility?.Body is List<EffectNode> prevBody)
+                {
+                    for (int k = prevBody.Count - 1; k >= 0; k--)
+                    {
+                        if (prevBody[k] is ConditionalNode cn)
+                        {
+                            prevBody[k] = new ConditionalNode
+                            {
+                                Condition = cn.Condition,
+                                Then = cn.Then,
+                                Else = elseBody,
+                                If = cn.If,
+                            };
+                            attached = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 情形 2：条件挂在**能力级**（句首 if 被 PrefixParser 折成 Condition）。
+                // 这才是最常见的写法：「Fanfare: If you're in Overflow, draw 2 cards.
+                // Otherwise, draw a card.」—— 从句在句首，条件就成了能力属性。
+                // 必须把整条能力改写成 Conditional(cond, Then=原Body, Else=elseBody)，
+                // 并把能力级条件清空，否则 Then 与 Else 会同时在 cond 成立时执行。
+                if (!attached && currentAbility != null
+                    && currentAbility.Condition != null
+                    && !(currentAbility.Condition is ConstBoolExpr)
+                    && currentAbility.Body is List<EffectNode> srcBody)
+                {
+                    var wrapped = new List<EffectNode>
+                    {
+                        new ConditionalNode
+                        {
+                            Condition = currentAbility.Condition,
+                            Then = new List<EffectNode>(srcBody),
+                            Else = elseBody,
+                        },
+                    };
+                    var rebuilt = new AbilityDef
+                    {
+                        Trigger = currentAbility.Trigger,
+                        Condition = BoolExpr.True,
+                        Costs = currentAbility.Costs,
+                        Body = wrapped,
+                    };
+                    int at = result.IndexOf(currentAbility);
+                    if (at >= 0) result[at] = rebuilt; else result.Add(rebuilt);
+                    currentAbility = rebuilt;
+                    _lastBuiltAbility = rebuilt;
+                    attached = true;
+                }
+
+                // 实在没有可挂的条件：把 else 并进同一能力的 Body，至少不让它丢。
+                if (!attached && currentAbility?.Body is List<EffectNode> pb2)
+                    pb2.AddRange(elseBody);
+                if (c.IsAtEnd) continue;
             }
 
             var body = _actions.ParseSequence(c);

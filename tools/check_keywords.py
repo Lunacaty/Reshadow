@@ -2,7 +2,10 @@ import io, os, re, sys
 
 sys.stdout.reconfigure(encoding='utf-8')
 
-ROOT = r'E:/text/reshadow/game/src/KernelV3'
+# 基于本文件位置推导，不写死绝对路径。
+# 写死后在 git worktree 里跑会去审查主工作区的代码，而不是当前 worktree。
+_HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(_HERE, '..', 'src', 'KernelV3')
 SCHEMA = os.path.join(ROOT, 'Core/GameSchema.cs')
 KNOWN_UNUSED = {'attack_limit'}
 

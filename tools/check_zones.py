@@ -2,7 +2,10 @@ import io, os, re, sys
 
 sys.stdout.reconfigure(encoding='utf-8')
 
-ROOT = r'E:/text/reshadow/game/src/KernelV3'
+# 基于本文件位置推导，不写死绝对路径。
+# 写死后在 git worktree 里跑会去审查主工作区的代码，而不是当前 worktree。
+_HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(_HERE, '..', 'src', 'KernelV3')
 
 def fail(msg):
     print('  FAIL: ' + msg)
@@ -53,10 +56,16 @@ ph = io.open(os.path.join(ROOT, 'Core/Physics.cs'), encoding='utf-8').read()
 em = re.search(r'public enum ZoneRef\s*\{(.*?)\}', ph, re.S)
 allz = []
 for x in (em.group(1).split(',') if em else []):
+    # 先剥掉注释：枚举值上方的 /// 说明会被 split 拼进下一个值里，
+    # 不剥的话正则拿到的是一堆注释文字，区域名根本不对。
+    x = re.sub(r'/\*.*?\*/', '', x, flags=re.S)
+    x = re.sub(r'///[^\n]*', '', x)
     x = x.strip()
     if not x:
         continue
-    allz.append(re.sub(r'=.*', '', x).strip())
+    name = re.sub(r'=.*', '', x).strip()
+    if re.fullmatch(r'[A-Za-z_]\w*', name):
+        allz.append(name)
 print('  ZoneRef \u5168\u90e8\u533a\u57df: %s' % ', '.join(allz))
 
 exempt = {'None', 'Leader'}

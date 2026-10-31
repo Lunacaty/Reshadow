@@ -167,7 +167,7 @@
     "引号能力",
     "give to faith"
    ],
-   "expect": "fail",
+   "expect": "pass",
    "alt_modes": [
     {
      "type_key": "faith",
@@ -324,7 +324,7 @@
     "or more",
     "Rush"
    ],
-   "expect": "fail"
+   "expect": "pass"
   },
   {
    "card_id": 81000023,
@@ -340,7 +340,7 @@
     "If this is evolved",
     "give opponent Crest"
    ],
-   "expect": "fail"
+   "expect": "pass"
   },
   {
    "card_id": 81000024,
@@ -356,7 +356,7 @@
     "at least N times",
     "Invoke"
    ],
-   "expect": "fail"
+   "expect": "pass"
   },
   {
    "card_id": 81000025,
@@ -372,7 +372,7 @@
     "this match",
     "all enemy followers"
    ],
-   "expect": "fail"
+   "expect": "pass"
   },
   {
    "card_id": 81000030,
@@ -387,7 +387,7 @@
     "Double",
     "an allied follower"
    ],
-   "expect": "fail"
+   "expect": "pass"
   },
   {
    "card_id": 81000031,
@@ -401,7 +401,7 @@
     "replace deck",
     "40 cards"
    ],
-   "expect": "fail"
+   "expect": "pass"
   },
   {
    "card_id": 81000032,
@@ -417,7 +417,7 @@
     "advance count",
     "Last Words"
    ],
-   "expect": "fail"
+   "expect": "pass"
   },
   {
    "card_id": 81000033,
@@ -466,7 +466,7 @@
     "all enemies",
     "Replicate"
    ],
-   "expect": "fail"
+   "expect": "pass"
   },
   {
    "card_id": 81000036,
@@ -512,7 +512,7 @@
     "transform into named",
     "Can't be played"
    ],
-   "expect": "fail"
+   "expect": "pass"
   },
   {
    "card_id": 81000039,
