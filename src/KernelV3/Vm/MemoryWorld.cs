@@ -122,6 +122,36 @@ public sealed class MemoryWorld : IVmWorld
         e.EntrySerial++;      // ★ 每次换区流水号 +1
     }
 
+    /// <summary>
+    /// 抽牌（牌库顶 → 手牌）。与 BattleState.DrawCards 语义对齐：
+    ///   · 每张成功抽到的牌发一条 OnDraw
+    ///   · 牌库空仍要抽时发一条 OnDeckOut 并立即停止
+    ///   · 手牌已满时那张按爆牌规则进墓地 + shadow+1，且不发 OnDiscard
+    /// 自测世界没有胜负状态，抽空判负只有 BattleState 会记录。
+    /// </summary>
+    public void DrawCards(int playerId, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            var card = EnumerateZone(ZoneRef.Deck, playerId).FirstOrDefault();
+            if (card == null)
+            {
+                EmitEvent(new VmEvent { Kind = CoreEvent.OnDeckOut });
+                return;
+            }
+
+            bool handFull = EnumerateZone(ZoneRef.Hand, playerId).Count() >= Battle.PlayerState.MaxHand;
+            MoveEntity(card, ZoneRef.Hand, playerId);
+            if (handFull)
+            {
+                MoveEntity(card, ZoneRef.Cemetery, playerId);
+                var shadowKey = Schema.Counter("shadow");
+                WriteCounter(playerId, shadowKey, ReadCounter(playerId, shadowKey) + 1);
+            }
+            EmitEvent(new VmEvent { Kind = CoreEvent.OnDraw, Subject = EntityRef.From(card) });
+        }
+    }
+
     public void RemoveEntity(RuntimeEntity e) => _entities.Remove(e);
 
     /// <summary>统一伤害管线：屏障先吸收，再扣血。</summary>
