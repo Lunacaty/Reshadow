@@ -43,7 +43,7 @@ public static class InsteadWeaver
                 {
                     var prev = result[idx];
                     result.RemoveAt(idx);
-                    result.Insert(idx, Merge(prev, cur, lex));
+                    result.InsertRange(idx, Merge(prev, cur, lex));
                     continue;
                 }
                 // 找不到配对：把占位标记删掉，保留动作本体，至少不会漏效果
@@ -56,20 +56,6 @@ public static class InsteadWeaver
         return result;
     }
 
-    /// <summary>替代句是进化变体时，替代条件是「已进化 / 已超进化」。</summary>
-    private static BoolExpr BuildEvoCondition(AbilityDef prev, AbilityDef cur)
-    {
-        var pev = prev.Trigger?.Event ?? Core.CoreEvent.OnPlay;
-        var cev = cur.Trigger?.Event ?? Core.CoreEvent.OnPlay;
-        if (pev == cev) return null;
-        return cev switch
-        {
-            Core.CoreEvent.OnSuperEvolve => new HasStateExpr { State = Core.UnitState.SuperEvolved, Of = TargetSpec.Self },
-            Core.CoreEvent.OnEvolve => new HasStateExpr { State = Core.UnitState.Evolved, Of = TargetSpec.Self },
-            _ => null,
-        };
-    }
-
     /// <summary>
     /// 透镜覆写：把前一句的“卡身信息”补到替代句上。
     /// 只补替代句自己没写的部分，不覆盖它已有的值。
@@ -79,10 +65,11 @@ public static class InsteadWeaver
     {
         if (prevBody == null || prevBody.Count == 0 || thenBody == null) return thenBody;
 
-        // 从前一句里找“可被继承”的动作（召唤 / 加手牌 / 伤害）
+        // 从前一句里找“可被继承”的动作（召唤 / 加手牌 / 伤害 / 回复）
         var prevSpawn = prevBody.OfType<SpawnCardNode>().FirstOrDefault();
         var prevMove = prevBody.OfType<MoveZoneNode>().FirstOrDefault();
         var prevDmg = prevBody.OfType<DealDamageNode>().FirstOrDefault();
+        var prevRestore = prevBody.OfType<RestoreLifeNode>().FirstOrDefault();
 
         var result = new List<EffectNode>();
         foreach (var n in thenBody)
@@ -118,13 +105,26 @@ public static class InsteadWeaver
                     });
                     break;
 
-                case DealDamageNode d when prevDmg != null && d.Target == null:
+                case DealDamageNode d when prevDmg != null:
                     result.Add(new DealDamageNode
                     {
-                        Target = prevDmg.Target,
+                        // 只有替代句根本没写目标时才继承。
+                        // "Fanfare: Deal 2 damage to the enemy leader. If you're in Overflow, deal 4 damage instead."
+                        // 第二句读不出目标，解析器给了兜底的「敌方场上随从」，
+                        // 若原样保留，Overflow 分支会去打随从而不是主战者。
+                        Target = IsDefaultDealTarget(d.Target) ? prevDmg.Target : d.Target,
                         Amount = d.Amount,
                         IsAbility = d.IsAbility,
                         IsSplit = d.IsSplit,
+                    });
+                    break;
+
+                case RestoreLifeNode r when prevRestore != null:
+                    result.Add(new RestoreLifeNode
+                    {
+                        Target = IsDefaultRestoreTarget(r.Target) ? prevRestore.Target : r.Target,
+                        Amount = r.Amount,
+                        FullRestore = r.FullRestore,
                     });
                     break;
 
@@ -135,6 +135,36 @@ public static class InsteadWeaver
         }
         return result;
     }
+
+    /// <summary>
+    /// 这个伤害目标是不是解析器的兜底值（替代句压根没写目标）。
+    ///
+    /// ParseDeal 在 "deal N damage" 后面读不到 "to &lt;target&gt;" 时，
+    /// 会用 TargetSpec.InZone(Board, Opponent) 兜底 —— 也就是「敌方场上随从」。
+    /// 原型是：Zone 来源 / 主战者以外 / 无 Where / All / 非随机 /
+    /// 非历史 / 非指定卡 / 数量 1。命中就该让透镜用前一句的目标覆盖它。
+    /// </summary>
+    private static bool IsDefaultDealTarget(TargetSpec t)
+        => IsDefaultZoneTarget(t);
+
+    /// <summary>恢复同理：读不到目标时 ParseRestore 兜底成 TargetSpec.Self（$self 槽位）。</summary>
+    private static bool IsDefaultRestoreTarget(TargetSpec t)
+        => t != null && t.SourceKind == TargetSourceKind.Slot
+           && t.Slot == TargetSpec.SlotSelf
+           && (t.Where == null || ReferenceEquals(t.Where, BoolExpr.True));
+
+    private static bool IsDefaultZoneTarget(TargetSpec t)
+        => t != null
+           && t.SourceKind == TargetSourceKind.Zone
+           && t.Zone == Core.ZoneRef.Board
+           && (t.Where == null || ReferenceEquals(t.Where, BoolExpr.True))
+           && t.Mode == Core.SelectMode.All
+           && !t.IncludeLeader
+           && t.History == Core.HistoryScope.None
+           && t.Sort == Core.SortKey.None
+           && t.TopN == 0
+           && !t.DistinctByName
+           && t.Count is { Op: NumOp.Const, Value: 1 };
 
     /// <summary>把条件型代价转成布尔条件。UsePp / DestroyAlly 属于真代价，不转。</summary>
     private static BoolExpr BuildCostCondition(IReadOnlyList<CostSpec> costs, Lexicon lex)
@@ -207,23 +237,44 @@ public static class InsteadWeaver
         => a.Body != null && a.Body.Any(n => n is MacroNode m && m.Macro.Name == "instead_marker");
 
     /// <summary>
-    /// prev 是「否则」分支，cur 是「条件成立」分支。
-    /// 两者的动作不能同时执行。
+    /// prev 是「否则」分支，cur 是「条件成立」分支。两者的动作不能同时执行。
+    ///
+    /// 返回 1 条或 2 条能力，取决于两句是不是同一个触发时机：
+    ///
+    ///   · 同时机（prev.Event == cur.Event）—— 可以合成一条：
+    ///       Trigger / Condition 一律沿用 prev 的外层值，cond 只挂在内层 ConditionalNode 上。
+    ///       之前的写法把 cur 的 Trigger / 外层 Condition 搬到能力顶层，
+    ///       于是「Fanfare: Deal 2. If you're in Overflow, deal 4 instead.」的外层条件
+    ///       变成 max_pp >= 7，未觉醒时整条能力在 FlushNextTrigger 就被跳过，
+    ///       Else 分支（打 2）成了死代码。
+    ///
+    ///   · 跨时机（OnPlay / OnEvolve / OnSuperEvolve 之间）—— 不能合成一条：
+    ///       两个事件本来就各自独立发生，塞进同一条能力只会让其中一个永远不触发。
+    ///       此时拆成两条独立能力：prev 原样保留，cur 经 ApplyLens 补全卡身后独立成条。
+    ///       若 prev 是 OnEvolve、cur 是 OnSuperEvolve，手动超进化会同时发两个事件，
+    ///       两条都留着就是 1+2=3 次 —— 于是给 prev 那条加「未超进化」的门。
     /// </summary>
-    private static AbilityDef Merge(AbilityDef prev, AbilityDef cur, Lexicon lex)
+    private static List<AbilityDef> Merge(AbilityDef prev, AbilityDef cur, Lexicon lex)
     {
         // 去掉占位宏
         var thenBody = cur.Body
             .Where(n => !(n is MacroNode m && m.Macro.Name == "instead_marker"))
             .ToList();
 
+        // 替代句往往写得很短，缺卡名 / 缺目标。
+        //   "Summon a Megalorca. If you're in Overflow, summon 2 instead."
+        // 第二句只说了数量，卡名要从前一句透镜继承，
+        // 否则结果就是“召唤 2 张空卡”。
+        thenBody = ApplyLens(prev.Body, thenBody);
+
+        var pev = prev.Trigger?.Event ?? Core.CoreEvent.OnPlay;
+        var cev = cur.Trigger?.Event ?? Core.CoreEvent.OnPlay;
+        if (pev != cev) return MergeAcrossTimings(prev, cur, thenBody, pev, cev);
+
         // 条件型代价（Combo / Rally / Necromancy）本身就是替代的判定条件。
         // 卡面："Deal 2 damage. Combo (3) - Deal 4 damage instead."
         // 这里把 CostSpec 转成 Condition，否则退化成两句都执行。
-        // 进化变体替代："Super-Evolve: Restore 4 instead" 的条件是「已超进化」
-        var evoCond = BuildEvoCondition(prev, cur);
         var costCond = BuildCostCondition(cur.Costs, lex);
-        if (evoCond != null) costCond = costCond == null ? evoCond : BoolExpr.And(evoCond, costCond);
         var cond = costCond != null
             ? (cur.Condition != null && !ReferenceEquals(cur.Condition, BoolExpr.True)
                 ? BoolExpr.And(cur.Condition, costCond)
@@ -233,20 +284,17 @@ public static class InsteadWeaver
         if (cond == null || ReferenceEquals(cond, BoolExpr.True))
         {
             // 没有触发条件就无法构成替代 —— 退化为顺序执行
-            return new AbilityDef
+            return new List<AbilityDef>
             {
-                Trigger = prev.Trigger,
-                Condition = prev.Condition,
-                Costs = prev.Costs,
-                Body = prev.Body.Concat(thenBody).ToList(),
+                new()
+                {
+                    Trigger = prev.Trigger,
+                    Condition = prev.Condition,
+                    Costs = prev.Costs,
+                    Body = prev.Body.Concat(thenBody).ToList(),
+                },
             };
         }
-
-        // 透镜覆写：替代句往往写得很短，缺卡名 / 缺目标。
-        //   "Summon a Megalorca. If you're in Overflow, summon 2 instead."
-        // 第二句只说了数量，卡名要从前一句透镜继承，
-        // 否则结果就是“召唤 2 张空卡”。
-        thenBody = ApplyLens(prev.Body, thenBody);
 
         var branch = new ConditionalNode
         {
@@ -255,12 +303,83 @@ public static class InsteadWeaver
             Else = prev.Body,
         };
 
-        return new AbilityDef
+        // 外层 Trigger / Condition 必须是 prev 的：条件只在内层分支上生效。
+        return new List<AbilityDef>
+        {
+            new()
+            {
+                Trigger = prev.Trigger,
+                Condition = prev.Condition,
+                Costs = prev.Costs,
+                Body = new List<EffectNode> { branch },
+            },
+        };
+    }
+
+    /// <summary>
+    /// 跨时机替代（OnPlay / OnEvolve / OnSuperEvolve 之间）：拆成两条独立能力。
+    ///
+    ///   "Fanfare: Restore 2 defense to your leader. Super-Evolve: Restore 4 defense instead."
+    ///      -> [OnPlay: Restore 2] + [OnSuperEvolve: Restore 4]
+    ///   "Evolve: Summon 1 X. Super-Evolve: Summon 2 X instead."
+    ///      -> [OnEvolve: Summon 1  if not SuperEvolved] + [OnSuperEvolve: Summon 2]
+    ///
+    /// 后一种情况必须给 prev 加门：手动超进化会同时发 OnEvolve 与 OnSuperEvolve，
+    /// 两条都无条件留着就是 1+2=3 次。普通进化不发 OnSuperEvolve，
+    /// 所以这一门只会挡住「超进化顺手再触发一次基础句」，不会误伤普通进化。
+    /// </summary>
+    private static List<AbilityDef> MergeAcrossTimings(
+        AbilityDef prev, AbilityDef cur, List<EffectNode> thenBody,
+        Core.CoreEvent pev, Core.CoreEvent cev)
+    {
+        var result = new List<AbilityDef>();
+
+        // 超进化会连带触发 Evolve 头，基础句必须让位给替代句。
+        var notSuperEvolved = BoolExpr.Not(
+            new HasStateExpr { State = Core.UnitState.SuperEvolved, Of = TargetSpec.Self });
+        bool needsGate = pev == Core.CoreEvent.OnEvolve && cev == Core.CoreEvent.OnSuperEvolve;
+
+        result.Add(new AbilityDef
+        {
+            Trigger = prev.Trigger,
+            Condition = needsGate ? Combine(prev.Condition, notSuperEvolved) : prev.Condition,
+            Costs = prev.Costs,
+            // 门放两处，缺一不可：
+            //   能力级 Condition —— CardVm.FlushNextTrigger 求值它时作用域里没有 Source，
+            //                       $self 解析为空集，否定式恒为真，挡不住任何东西；
+            //   能力内 ConditionalNode —— DoConditional 拿到的是带 Source 的作用域，
+            //                       这一层才真正拦得住「超进化顺手再跑一遍基础句」。
+            Body = needsGate ? GateBody(prev.Body, notSuperEvolved) : prev.Body,
+        });
+
+        result.Add(new AbilityDef
         {
             Trigger = cur.Trigger,
-            Condition = cond,
-            Costs = prev.Costs,
-            Body = new List<EffectNode> { branch },
+            Condition = cur.Condition,
+            Costs = cur.Costs,
+            Body = thenBody,
+        });
+        return result;
+    }
+
+    /// <summary>把额外条件并进一个可能是 true / null 的条件里。</summary>
+    private static BoolExpr Combine(BoolExpr existing, BoolExpr extra)
+        => existing == null || ReferenceEquals(existing, BoolExpr.True)
+            ? extra
+            : BoolExpr.And(existing, extra);
+
+    /// <summary>用一道条件门包住整段动作（条件不成立就整段不执行）。</summary>
+    private static IReadOnlyList<EffectNode> GateBody(IReadOnlyList<EffectNode> body, BoolExpr gate)
+    {
+        if (body == null || body.Count == 0) return body;
+        return new List<EffectNode>
+        {
+            new ConditionalNode
+            {
+                Condition = gate,
+                Then = body,
+                Else = Array.Empty<EffectNode>(),
+            },
         };
     }
 }
