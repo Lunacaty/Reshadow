@@ -167,39 +167,38 @@ public sealed class VmEval
                 return Compare(n, ex.Op, EvalNum(ex.Count, scope));
             }
 
+            // 属性谓词一律走引用池而不是活体池：
+            // 历史池（墓地 / 本局被破坏）里的候选没有活体，只查活体会让
+            // 「被破坏的随从里攻击力最高的那个」这类条件全部恒假。
+            // 取值规则：活体优先，离场退回快照。
             case HasKeywordExpr hk:
             {
                 var t = hk.Of ?? TargetSpec.Self;
-                var ents = Resolve(t, scope);
-                return ents.Any(x => x.Keywords.Contains(hk.Keyword));
+                return ResolveRef(t, scope).Any(r => RefHasKeyword(r, hk.Keyword));
             }
 
             case HasStateExpr hs:
             {
                 var t = hs.Of ?? TargetSpec.Self;
-                var ents = Resolve(t, scope);
-                return ents.Any(x => MatchState(x, hs.State));
+                return ResolveRef(t, scope).Any(r => RefMatchState(r, hs.State));
             }
 
             case HasTraitExpr ht:
             {
                 var t = ht.Of ?? TargetSpec.Self;
-                var ents = Resolve(t, scope);
-                return ents.Any(x => x.Traits.Contains(ht.Trait));
+                return ResolveRef(t, scope).Any(r => RefHasTrait(r, ht.Trait));
             }
 
             case HasClanExpr hc:
             {
                 var t = hc.Of ?? TargetSpec.Self;
-                var ents = Resolve(t, scope);
-                return ents.Any(x => x.Def != null && x.Def.Clan.Id == hc.Clan.Id);
+                return ResolveRef(t, scope).Any(r => RefDef(r)?.Clan.Id == hc.Clan.Id);
             }
 
             case HasKindExpr hk:
             {
                 var t = hk.Of ?? TargetSpec.Self;
-                var ents = Resolve(t, scope);
-                return ents.Any(x => x.Def != null && x.Def.Kind == hk.Kind);
+                return ResolveRef(t, scope).Any(r => RefDef(r)?.Kind == hk.Kind);
             }
 
             case NotSameEntityExpr ne:
@@ -276,6 +275,20 @@ public sealed class VmEval
         _ => false,
     };
 
+    /// <summary>
+    /// 从快照判状态。历史池（墓地/本局被破坏）里的条目只能落到这里 ——
+    /// 它们的活体早已不存在，只凭活体判定会让所有「离场后的属性判定」恒假。
+    /// AttackedThisTurn 不在快照里，快照一律判否。
+    /// </summary>
+    private static bool MatchState(EntitySnapshot sn, UnitState s) => s switch
+    {
+        UnitState.Damaged => sn.Life < sn.MaxLife,
+        UnitState.Evolved => sn.IsEvolved,
+        UnitState.SuperEvolved => sn.IsSuperEvolved,
+        UnitState.Silenced => sn.IsSilenced,
+        _ => false,
+    };
+
     /// <summary>从快照读属性（实体已死后仍有效）。</summary>
     private static int ReadStatFromSnapshot(EntitySnapshot sn, StatKey k)
     {
@@ -304,6 +317,67 @@ public sealed class VmEval
         StatKey.BaseCost => e.Def?.BaseCost ?? 0,
         _ => 0,
     };
+
+    // ---------- 引用级读取：活体优先，离场退回快照 ----------
+    //
+    // 历史池里的引用没有活体，但快照里带着离场那一刻的全部数值。
+    // 所有「读属性 / 判状态」的点都必须经过这里，
+    // 否则墓地里的候选在条件与排序里全部读成 0 / false。
+
+    private RuntimeEntity RefLive(EntityRef r) => _world.GetLive(r.EntityId, r.EntrySerial);
+
+    /// <summary>
+    /// 找引用的「当前载体」：活体优先；流水号已变（离场 / 回手）时按 EntityId 在任意区域找回。
+    /// EntityId 永不复用，所以这一步不会串到别的卡上。
+    /// 载体只用于读 CardDef（卡号 / 兵种 / 职业），数值与状态仍以快照为准。
+    /// </summary>
+    private RuntimeEntity RefCarrier(EntityRef r)
+    {
+        var live = RefLive(r);
+        if (live != null) return live;
+        foreach (var zone in CarrierZones)
+        {
+            foreach (var e in _world.EnumerateZone(zone, -1))
+                if (e != null && e.EntityId == r.EntityId) return e;
+        }
+        return null;
+    }
+
+    private static readonly ZoneRef[] CarrierZones =
+    {
+        ZoneRef.Cemetery, ZoneRef.Banished, ZoneRef.Hand, ZoneRef.Deck,
+        ZoneRef.Board, ZoneRef.ExArea, ZoneRef.CrestArea, ZoneRef.Leader,
+    };
+
+    private CardDef RefDef(EntityRef r) => RefCarrier(r)?.Def;
+
+    private int RefStat(EntityRef r, StatKey k)
+    {
+        var live = RefLive(r);
+        if (live != null) return ReadStat(live, k);
+        return ReadStatFromSnapshot(r.Snapshot, k);
+    }
+
+    private bool RefHasKeyword(EntityRef r, SymbolId<KeywordTag> kw)
+    {
+        var live = RefLive(r);
+        if (live != null) return live.Keywords.Contains(kw);
+        return r.Snapshot != null && r.Snapshot.Keywords.Contains(kw);
+    }
+
+    private bool RefHasTrait(EntityRef r, SymbolId<TraitTag> trait)
+    {
+        var live = RefLive(r);
+        if (live != null) return live.Traits.Contains(trait);
+        return r.Snapshot != null && r.Snapshot.Traits.Contains(trait);
+    }
+
+    private bool RefMatchState(EntityRef r, UnitState s)
+    {
+        var live = RefLive(r);
+        if (live != null) return MatchState(live, s);
+        return r.Snapshot != null && MatchState(r.Snapshot, s);
+    }
 
     // ---------- 目标解析 ----------
 
@@ -362,8 +436,11 @@ public sealed class VmEval
             var filtered = new List<EntityRef>();
             foreach (var r in pool)
             {
-                var live = _world.GetLive(r.EntityId, r.EntrySerial);
-                if (live == null) continue;
+                // 只有「既没有活体、又没有快照」的引用才是废引用。
+                // 历史池（墓地 / 本局被破坏）的 EntrySerial 在 DestroyEntity 时已 +1，
+                // GetLive 必然返回 null —— 之前在这里直接 continue，
+                // 于是 Reanimate 的候选池永远是空的，召回来的是施放者自己。
+                if (_world.GetLive(r.EntityId, r.EntrySerial) == null && r.Snapshot == null) continue;
                 var sub = scope.Derive();
                 sub.BindRefs(TargetSpec.SlotItem, new[] { r });
                 if (EvalBool(t.Where, sub)) filtered.Add(r);
@@ -378,24 +455,20 @@ public sealed class VmEval
             pool = pool.Where(r => seen.Add(r.Snapshot?.CardId ?? 0)).ToList();
         }
 
-        // 排序
+        // 排序 —— 同样活体优先、离场退回快照（Reanimate 挑最高费时池子里全是快照）
+        Func<EntityRef, int> sortKey = r => t.Sort switch
+        {
+            SortKey.Attack => RefStat(r, StatKey.Attack),
+            SortKey.Life => RefStat(r, StatKey.Life),
+            SortKey.Cost => RefStat(r, StatKey.Cost),
+            SortKey.BaseCost => RefStat(r, StatKey.BaseCost),
+            SortKey.AttackDiff => RefStat(r, StatKey.Attack) - RefStat(r, StatKey.BaseAttack),
+            _ => 0,
+        };
+
         if (t.Sort != SortKey.None)
         {
-            Func<EntityRef, int> key = r =>
-            {
-                var live = _world.GetLive(r.EntityId, r.EntrySerial);
-                if (live == null) return 0;
-                return t.Sort switch
-                {
-                    SortKey.Attack => live.Attack,
-                    SortKey.Life => live.Life,
-                    SortKey.Cost => live.Cost,
-                    SortKey.BaseCost => live.Def?.BaseCost ?? 0,
-                    SortKey.AttackDiff => live.Attack - (live.Def?.BaseAttack ?? 0),
-                    _ => 0,
-                };
-            };
-            pool = t.SortDescending ? pool.OrderByDescending(key).ToList() : pool.OrderBy(key).ToList();
+            pool = t.SortDescending ? pool.OrderByDescending(sortKey).ToList() : pool.OrderBy(sortKey).ToList();
         }
 
         // 数量与模式
@@ -405,7 +478,16 @@ public sealed class VmEval
             case SelectMode.All: return pool;
             case SelectMode.First: return pool.Take(Math.Max(1, n)).ToList();
             case SelectMode.Last: return pool.Skip(Math.Max(0, pool.Count - Math.Max(1, n))).ToList();
-            case SelectMode.Random: return pool.OrderBy(_ => _world.Rng.Next()).Take(Math.Max(0, n)).ToList();
+            case SelectMode.Random:
+                // 「随机取 1 个攻击力最高的」= 先收缩到极值并列子集再随机。
+                // 之前直接 OrderBy(Rng) 把上面的排序整个洗掉，
+                // 于是 Random 模式下的 Sort 完全是装饰品。
+                if (t.Sort != SortKey.None && t.TopN == 0 && pool.Count > 1)
+                {
+                    int best = t.SortDescending ? pool.Max(sortKey) : pool.Min(sortKey);
+                    pool = pool.Where(r => sortKey(r) == best).ToList();
+                }
+                return pool.OrderBy(_ => _world.Rng.Next()).Take(Math.Max(0, n)).ToList();
             case SelectMode.Distinct: return pool.Take(Math.Max(1, n)).ToList();
             case SelectMode.Choose: return pool;   // ← 由调用方挂起等玩家
             default: return pool;
