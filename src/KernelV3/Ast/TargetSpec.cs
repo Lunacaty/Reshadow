@@ -17,6 +17,37 @@ namespace ShadowverseFan.KernelV3.Ast;
 //   · 槽位里存的是 EntityRef（含 EntrySerial + 快照），不是活体引用
 // ============================================================================
 
+/// <summary>
+/// TargetSpec 的字段位集，用于记录「哪些字段是解析器兜底填的」。
+///
+/// 替代句透镜（InsteadWeaver.ApplyLens）只继承置位的字段，
+/// 未置位的字段一律保留替代句自己的值 —— 显式写出的目标因此不会被前句污染。
+/// </summary>
+[Flags]
+public enum TargetField
+{
+    None = 0,
+    SourceKind = 1 << 0,
+    Owner = 1 << 1,
+    Zone = 1 << 2,
+    Slot = 1 << 3,
+    /// <summary>CardId + CardName。</summary>
+    Card = 1 << 4,
+    Where = 1 << 5,
+    /// <summary>Sort + SortDescending。</summary>
+    Sort = 1 << 6,
+    TopN = 1 << 7,
+    DistinctByName = 1 << 8,
+    Mode = 1 << 9,
+    Count = 1 << 10,
+    History = 1 << 11,
+    IncludeLeader = 1 << 12,
+
+    /// <summary>整段目标都是兜底出来的（原文没写目标）。</summary>
+    All = SourceKind | Owner | Zone | Slot | Card | Where | Sort | TopN
+        | DistinctByName | Mode | Count | History | IncludeLeader,
+}
+
 /// <summary>目标候选池从哪来。</summary>
 public enum TargetSourceKind
 {
@@ -68,6 +99,22 @@ public sealed class TargetSpec
     /// </summary>
     public bool IncludeLeader { get; init; }
 
+    /// <summary>
+    /// 这个 TargetSpec 里哪些字段是「解析器兜底填的、原文没写」。
+    ///
+    /// 只有 ParseDeal / ParseRestore 的兜底分支会置位；其余所有构造点
+    /// （TargetParser 解析出的、手写的、本类的静态构造）一律保持 None ——
+    /// None 的意思是「这些字段由这句话或调用方给出，替代句透镜不得覆写」。
+    ///
+    /// 为什么不判值：兜底出来的 "deal 4 damage" 与显式写出的
+    /// "deal 4 damage to all enemy followers" 在 Mode / Owner / Zone / Count 上
+    /// 完全一样，值判等一定会把显式目标改坏。所以判据只能是这个显式标记。
+    /// </summary>
+    public TargetField OmittedFields { get; init; } = TargetField.None;
+
+    /// <summary>这个目标是不是整段都由解析器兜底出来的（原文压根没写目标）。</summary>
+    public bool IsOmitted => OmittedFields != TargetField.None;
+
     /// <summary>我方主战者。</summary>
     public TargetSpec WithWhere(BoolExpr extra) => new()
     {
@@ -76,6 +123,7 @@ public sealed class TargetSpec
         SortDescending = SortDescending, DistinctByName = DistinctByName,
         Mode = Mode, Count = Count,
         IncludeLeader = IncludeLeader,
+        OmittedFields = OmittedFields & ~TargetField.Where,
         Where = BoolExpr.And(Where, extra),
     };
 
