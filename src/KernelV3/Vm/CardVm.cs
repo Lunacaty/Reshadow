@@ -224,10 +224,24 @@ public sealed partial class CardVm
         }
     }
 
+    /// <summary>
+    /// 状态已因熔断而不可信。
+    ///
+    /// 熔断发生在任意一个原子节点中途（超步数 / 未知循环 / 宏缺失）：
+    /// 此前已经扣的血、抽的牌、加的计数**都已经落到 BattleState 上**，
+    /// 无法撤销 —— 完整回滚需要对整个对局做深拷贝，代价远超收益。
+    ///
+    /// 所以这里不做假回滚，而是把这个事实显式暴露出去：
+    /// 调用方看到 true 就必须重建 BattleState，不能继续用当前这局。
+    /// 沉默地继续才是真正危险的（分数、胜负都建立在半截状态上）。
+    /// </summary>
+    public bool StateCorrupted { get; private set; }
+
     private VmStatus Fault(string msg)
     {
         FaultMessage = msg;
         Status = VmStatus.Faulted;
+        StateCorrupted = true;
         _frames.Clear();
         _triggerQueue.Clear();
         Pending = null;

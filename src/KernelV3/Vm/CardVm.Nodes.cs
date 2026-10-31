@@ -786,10 +786,39 @@ public sealed partial class CardVm
                 }
                 return false;
             }
+            case LoopKind.RepeatUntil:
+            {
+                // "Repeat until <条件>"：先跑一次，条件不成立就再跑。
+                //
+                // 用「条件节点 + 自引用」表达，而不是在这里写 C# 循环：
+                // 循环体里的每个原子节点都可能挂起等玩家输入（Choose 目标），
+                // 一旦挂起就必须能从中途恢复 —— 那是帧栈的职责，
+                // 在 C# 里 for/while 一圈圈跑会把挂起状态丢掉。
+                //
+                // 终止性由 max（MaxIterations 的夹取值）保证：
+                // 每进入一次就少一次机会，到 0 就不再递归。
+                int budget = _repeatBudgets.TryGetValue(n, out var b) ? b : max;
+                if (budget <= 0) { _repeatBudgets.Remove(n); return false; }
+                _repeatBudgets[n] = budget - 1;
+
+                PushBody(new List<EffectNode>
+                {
+                    new ConditionalNode
+                    {
+                        Condition = n.Until,
+                        Then = new List<EffectNode>(),          // 条件成立：停
+                        Else = new List<EffectNode>(n.Body),    // 不成立：再跑一轮
+                    },
+                }, scope.Derive());
+                return false;
+            }
             default:
-                throw new VmFaultException("RepeatUntil 暂未实现");
+                throw new VmFaultException("未知循环类型：" + n.Kind);
         }
     }
+
+    /// <summary>RepeatUntil 的剩余次数（按节点实例记账，跨挂起可恢复）。</summary>
+    private readonly Dictionary<LoopNode, int> _repeatBudgets = new();
 
     private bool DoBranch(BranchModeNode n, VmFrame frame)
     {

@@ -1295,6 +1295,15 @@ public sealed class BattleState : IVmWorld
     /// 机制宏展开。返回空表示未实现 —— VM 会因此报错，
     /// 而不是让效果凭空消失。
     /// </summary>
+    /// <summary>
+    /// 展开机制宏。
+    ///
+    /// 当前全仓唯一的宏是 <c>instead_marker</c>，它是**编译期的结构性标记**：
+    /// 由 InsteadWeaver 在编译末尾识别并合并进替代句，**不进运行时**。
+    /// 所以「展开为空」在这里是正确结果，不是缺陷 —— 真有标记漏到运行时，
+    /// 让 CardVm 抛 VmFault 比静默返回空更安全（已由 DoMacro 保证）。
+    /// 将来要加「宏」这类可复用效果块时，在这里按 macro.Name 分发即可。
+    /// </summary>
     public IReadOnlyList<EffectNode> ExpandMacro(SymbolId<MacroTag> macro, IReadOnlyList<int> args, VmScope scope)
         => Array.Empty<EffectNode>();
 
