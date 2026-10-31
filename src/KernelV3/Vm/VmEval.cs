@@ -448,6 +448,12 @@ public sealed class VmEval
                 // 都在空池上求值，恒为 false，触发器下的 "give it ..." 也一律空转。
                 if (pool.Count == 0 && t.Slot == TargetSpec.SlotTrigger && scope.Trigger != null)
                     pool.Add(scope.Trigger.Value);
+                // $opposing 未绑定 → 回退到事件的另一方（ev.Object）。
+                // CardVm 已在构造 scope 时显式绑定；这条兜底用于
+                // 没有走那条路径的求值场景（条件求值、测试直调等）。
+                if (pool.Count == 0 && t.Slot == TargetSpec.SlotOpposing
+                    && scope.Event?.Object != null)
+                    pool.Add(scope.Event.Object.Value);
                 break;
 
             case TargetSourceKind.CardId:

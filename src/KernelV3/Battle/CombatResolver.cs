@@ -120,18 +120,34 @@ public sealed class CombatResolver
 
         bool isFollowerTarget = defender.Zone == ZoneRef.Board;
 
-        // 3. 被攻击方【交戦時】（只在攻击随从时）
+        // 3. 交战（Clash）——**双方各触发一次**。
+        // 事件主体永远是「这张卡自己」，Object 永远是对面的那一方，
+        // 于是 $self 指自己、$opposing 指对面，两侧的 Clash: 都写得通。
         if (isFollowerTarget)
         {
+            // 攻击方的交戦時
             vm?.EnqueueEvent(new VmEvent
             {
                 Kind = CoreEvent.OnClash,
                 Subject = EntityRef.From(attacker),
                 Object = EntityRef.From(defender),
             });
-
-            // 若攻击方在第 2 步就用能力破坏了对方，对方的【交戦時】不触发
             vm?.StepUntilBlocked();
+            _state.ProcessStateBasedActions();
+
+            // 被攻击方的交戦時。只有双方都还在场才触发：
+            // 若攻击方在第 2 步就用能力破坏了对方，对方已经不在场，跳过。
+            if (attacker.Zone == ZoneRef.Board && defender.Zone == ZoneRef.Board)
+            {
+                vm?.EnqueueEvent(new VmEvent
+                {
+                    Kind = CoreEvent.OnClash,
+                    Subject = EntityRef.From(defender),
+                    Object = EntityRef.From(attacker),
+                });
+                vm?.StepUntilBlocked();
+                _state.ProcessStateBasedActions();
+            }
         }
 
         _state.ProcessStateBasedActions();

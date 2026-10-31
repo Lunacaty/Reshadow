@@ -240,14 +240,13 @@ public sealed class TargetParser
             {
                 pronSlot = TargetSpec.SlotCreated;
             }
-            else if (DefaultPronounSlot != null)
-            {
-                pronSlot = DefaultPronounSlot;
-            }
-            else if (BoundSlots.Contains(TargetSpec.SlotCreated))
-            {
-                pronSlot = TargetSpec.SlotCreated;
-            }
+            // $counter 与 $self 也必须排在 DefaultPronounSlot **之前**：
+            //   "Whenever you Engage a Clue amulet, swap this follower's attack
+            //    and defense and give it +1/+0."
+            // 前半句登记了 $self，但如果触发器槽位（$trigger，指向 Clue 护符）
+            // 排在前面，后半句的 it 就会去给没有攻防的护符加 +1/+0。
+            // 同理 "Reduce your faith's value by 10 to give it ..." 里的 it
+            // 指被操作的计数器（$counter），不能被触发器截胡。
             else if (BoundSlots.Contains(TargetSpec.SlotCounter))
             {
                 pronSlot = TargetSpec.SlotCounter;
@@ -256,8 +255,13 @@ public sealed class TargetParser
             {
                 // "Evolve this follower and give it +1/+0"
                 // "Remove Ward from this follower. Give it Intimidate."
+                // "swap this follower's attack and defense and give it +1/+0"
                 // 这里的 it 指本卡自身。
                 pronSlot = TargetSpec.SlotSelf;
+            }
+            else if (DefaultPronounSlot != null)
+            {
+                pronSlot = DefaultPronounSlot;
             }
             else if (StrictPronounCheck)
             {

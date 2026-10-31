@@ -57,6 +57,12 @@ public sealed class ActionParser
     public List<EffectNode> ParseSequence(TokenCursor cur)
     {
         var result = new List<EffectNode>();
+
+        // 前置时限："..., until the end of your opponent's turn, give it 'Can' t attack.'"
+        // 之前 ConsumeDuration 的返回值被直接丢掉，整条时限蒸发，
+        // 于是「本回合内 / 下个对手回合结束前」的限制全都变成了永久。
+        // 这里把时限暂存起来，落到**紧随其后**的那组节点上。
+        var pendingDuration = DurationKind.Permanent;
         while (!cur.IsAtEnd)
         {
             // OptionMark 是**新的选项**起点，必须终止当前动作序列，
@@ -76,7 +82,7 @@ public sealed class ActionParser
             // "and, until the end of your opponent's turn, give it ..."
             if (cur.Current.IsWord("until"))
             {
-                ConsumeDuration(cur);
+                pendingDuration = ConsumeDuration(cur);
                 if (cur.Current.Kind == TokKind.Comma) cur.Advance();
                 continue;
             }
@@ -101,6 +107,13 @@ public sealed class ActionParser
             var node = ParseOne(cur);
             if (node != null)
             {
+                // 前置时限落到本组节点上，然后立刻复位 ——
+                // 时限只约束紧随其后的那一组动作，不影响后面的句子。
+                if (pendingDuration != DurationKind.Permanent)
+                {
+                    for (int k = 0; k < node.Count; k++) node[k] = WithDuration(node[k], pendingDuration);
+                    pendingDuration = DurationKind.Permanent;
+                }
                 result.AddRange(node);
                 // 登记本句已产生绑定的槽位（设计3 5.3 ScopeRegister）。
                 // 后续句子的 it / them 靠这张登记表判断是否可绑，
@@ -2679,14 +2692,36 @@ public sealed class ActionParser
     private List<EffectNode> ParseSwap(TokenCursor cur)
     {
         cur.ExpectWord("swap");
-        cur.TryMatchAnyWord("this");
-        cur.TryMatchAnyWord("follower's", "follower", "card's", "card");
-        cur.TryMatchAnyWord("attack");
-        cur.TryMatchAnyWord("and");
-        cur.TryMatchAnyWord("defense");
+
+        // 两种写法都要支持：
+        //   "swap this follower's attack and defense"                → 本卡
+        //   "Swap the attack and defense of an enemy follower."       → 任意目标
+        // 旧实现只认第一种，第二种把整句丢给动作解析器后直接报「无法推进」。
+        TargetSpec target = TargetSpec.Self;
+        if (cur.MatchPhrase("the", "attack", "and", "defense", "of"))
+        {
+            target = _target.TryParse(cur) ?? TargetSpec.Self;
+        }
+        else if (cur.MatchPhrase("the", "attack", "and", "defense", "of", "this", "card"))
+        {
+            target = TargetSpec.Self;
+        }
+        else
+        {
+            // "this follower's ..." / "this card's ..."
+            cur.TryMatchAnyWord("this");
+            cur.TryMatchAnyWord("follower's", "follower", "card's", "card");
+            cur.TryMatchAnyWord("attack");
+            cur.TryMatchAnyWord("and");
+            cur.TryMatchAnyWord("defense");
+            // 既不是 "the ... of X" 也不是 "this ..." 时，仍尝试解析一个目标
+            if (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
+                target = _target.TryParse(cur) ?? TargetSpec.Self;
+        }
+
         return new List<EffectNode>
         {
-            new ModifyStatsNode { Target = TargetSpec.Self, Op = StatModOp.Swap },
+            new ModifyStatsNode { Target = target, Op = StatModOp.Swap },
         };
     }
 

@@ -447,6 +447,13 @@ public sealed partial class CardVm
                     Trigger = ev.Subject,
                     Event = ev,
                 };
+
+                // $opposing：交战/交互事件里的「对面那一方」。
+                // 之前这个槽位只有常量定义与解析器，运行时从未绑定过，
+                // 于是「Deal 1 damage to the opposing follower」恒解析成空池 ——
+                // 全卡池的 Clash: 伤害都是 0。
+                if (ev.Object != null)
+                    scope.BindRefs(TargetSpec.SlotOpposing, new[] { ev.Object.Value });
                 if (_eval.EvalBool(ab.Condition, scope) == false) continue;
 
                 // 代价检查：不能支付就不能发动。
