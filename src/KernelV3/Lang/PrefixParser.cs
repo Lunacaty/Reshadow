@@ -469,7 +469,12 @@ public sealed class PrefixParser
                 ConsumeFusedToCardClause(cur, b);
             }
             else if (cur.MatchWord("activate") || cur.MatchWord("engage")) { b.Event = CoreEvent.OnEngage; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
-            else if (cur.MatchPhrase("perform", "earth", "rite")) { b.Event = CoreEvent.OnCountdownExpire; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
+            // 「发动土之秘术」是玩家主动消耗土之印，不是护符吟唱到期。
+            // 落成 OnCountdownExpire 会让「Whenever you perform Earth Rite」
+            // 只在自己有护符倒计时归零时才触发 —— 与卡面语义毫无关系。
+            // 玩家级事件，SubjectFilter 留空（不要求事件主体是某张卡）。
+            else if (cur.MatchPhrase("perform", "earth", "rite"))
+            { b.Event = CoreEvent.OnEarthRite; b.EventExplicit = true; b.SubjectFilter = null; }
             else if (cur.MatchWord("fuse"))
             {
                 b.Event = CoreEvent.OnFuse; b.EventExplicit = true;

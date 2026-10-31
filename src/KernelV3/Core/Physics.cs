@@ -103,6 +103,13 @@ public enum CoreEvent
     /// <summary>选择了 Mode（"Whenever you select Modes, increase this faith's value by 1"）。</summary>
     OnSelectMode,
 
+    /// <summary>
+    /// 发动土之秘术（Earth Rite）。
+    /// 它与「吟唱到期」是两件完全不同的事：前者是玩家主动消耗土之印，
+    /// 后者是护符的倒计时自然归零。之前被错编成 OnCountdownExpire。
+    /// </summary>
+    OnEarthRite,
+
     // 判负条件
     OnDeckOut,
 

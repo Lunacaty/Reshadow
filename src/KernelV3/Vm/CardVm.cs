@@ -601,7 +601,23 @@ public sealed partial class CardVm
         // 否则「At the start of your turn, ...」这类能力永远收不到。
         if (trig.SubjectFilter == null)
         {
-            if (ev.Subject != null && ev.Subject.Value.EntityId != owner.EntityId) return false;
+            // 「你（玩家）做了某件事」类事件：OnSelectMode / OnEarthRite /
+            // OnSpellboost 等，事件主体是玩家而不是某张卡。
+            //
+            // 必须先按 PlayerId 过一遍归属，否则**对手**选模式也会给我方
+            // Sham-Nacha 的信仰 +1；对手发动土之秘术也会触发我方监听。
+            if (ev.PlayerId >= 0 && ev.PlayerId != owner.PlayerId) return false;
+
+            // TurnStart / TurnEnd / BattleStart 的 Subject 恒为 null，
+            // 早已通过上面的 `ev.Subject != null` 短路放行，**不能**列进这里 ——
+            // 列进来等于给它们开一条「不校验主体」的后门，
+            // 而 TurnStart 必须只让「事件主体就是自己」的能力触发，
+            // 否则所有同名卡的未激活进度会被共享（实测 seq-7 的 mask 串成一串）。
+            bool playerLevelEvent = ev.Kind == CoreEvent.OnSelectMode
+                                 || ev.Kind == CoreEvent.OnEarthRite
+                                 || ev.Kind == CoreEvent.OnSpellboost;
+            if (!playerLevelEvent
+                && ev.Subject != null && ev.Subject.Value.EntityId != owner.EntityId) return false;
         }
         else
         {

@@ -91,6 +91,15 @@ public static class CostExecutor
                     // 之前这里什么都不做，所以土之秘术是白嫖。
                     world.WriteCounter(playerId, earthSigilKey,
                         world.ReadCounter(playerId, earthSigilKey) - need);
+                    // 扣完之后必须发「发动土之秘术」事件，
+                    // 否则「Whenever you perform Earth Rite」永远不触发 ——
+                    // 76-c 6.2-1 明确要求「执行后续效果，并触发全场监听」。
+                    world.EmitEvent(new VmEvent
+                    {
+                        Kind = CoreEvent.OnEarthRite,
+                        PlayerId = playerId,
+                        Subject = source != null ? EntityRef.From(source) : null,
+                    });
                     break;
                 // DestroyAlly 的精确目标选择需要 UI，在此不自动执行
                 default:
