@@ -379,8 +379,9 @@ public sealed class EnglishCompiler
         SectionZone modeZone = zone;
         // 模式块引导句携带的选取数量（"Select 2 Modes to activate"）。
         NumExpr modePick = NumExpr.Const(1);
-        // "Give this follower 3 **random** abilities from the following" —— 随机取，不是玩家挑选。
-        bool modeIsRandom = false;
+        // 模式引导句的选取语义（Choose / Random / Sequence / *Unused）。
+        // 它由引导句本身决定，落盘时写进 BranchModeNode.Kind。
+        ModeDispatchKind modeKind = ModeDispatchKind.Choose;
 
         // 变量声明句先整体摘出：它可能出现在选项块内部
         // （"2. Deal X damage ... X is this follower's attack."），
@@ -464,7 +465,7 @@ public sealed class EnglishCompiler
             // （"1. ... 2. ... Evolve: Select a Mode to activate." 里那个 Evolve 头），
             // 先落盘才能保证两段选项不会被并进同一个 BranchModeNode。
             FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
-                           ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeIsRandom,
+                           ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeKind,
                            modeDepth);
             modeDepth.Clear();
 
@@ -651,7 +652,7 @@ public sealed class EnglishCompiler
             // 模式引导句（"Select a Mode to activate." / "Select 2 Modes..."）
             // 本身不产出动作（ParseSelect 把它消费成空 body），但它确定了
             // 后续 "1. 2. 3." 选项块的选取数量，必须先于空 body 判定接住。
-            var pick = ExtractModePick(sent, out var pickIsRandom);
+            var pick = ExtractModePick(sent, out var pickKind);
             if (pick != null)
             {
                 modeTrigger = hb.BuildTrigger();
@@ -659,7 +660,7 @@ public sealed class EnglishCompiler
                 modeCosts = hb.Costs;
                 modeZone = zone;
                 modePick = pick;
-                modeIsRandom = pickIsRandom;
+                modeKind = pickKind;
                 continue;
             }
 
@@ -693,7 +694,7 @@ public sealed class EnglishCompiler
 
         // 收尾：把剩余的模式选项落成 BranchModeNode
         FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
-                       ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeIsRandom,
+                       ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeKind,
                        modeDepth);
         modeDepth.Clear();
 
@@ -808,9 +809,9 @@ public sealed class EnglishCompiler
     ///
     /// 返回 null 表示这不是模式引导句。
     /// </summary>
-    private static NumExpr ExtractModePick(IReadOnlyList<Token> sent, out bool isRandom)
+    private static NumExpr ExtractModePick(IReadOnlyList<Token> sent, out ModeDispatchKind kind)
     {
-        isRandom = false;
+        kind = ModeDispatchKind.Choose;
         if (sent.Count == 0) return null;
 
         // 引导句可能带能力头前缀：
@@ -859,9 +860,28 @@ public sealed class EnglishCompiler
         }
         if (!leadsBlock) return null;
 
-        // "3 **random** abilities from the following" —— 随机取，不是玩家挑选
+        // 引导句决定**选取方式**，四种互不相同，必须逐一分清：
+        //   "hasn't been activated yet" 是**正交**维度（跨回合的「未激活」状态），
+        //   所以它与 random / sequence 再组合出两种：
+        //     random + 未激活  -> RandomUnused    （Slaus：每回合随机一个没激活过的）
+        //     sequence + 未激活 -> SequenceUnused  （Noeinhowell：按序取没激活过的下一个）
+        // 把 "in sequence" 当成 Choose 是本次要修的主缺陷：
+        // 卡面明确「按顺序自动全部发动」，编译成 Choose 会变成弹窗让玩家手选。
+        bool sawRandom = false, sawSequence = false, sawUnused = false;
         for (int k = 0; k < sent.Count; k++)
-            if (sent[k].IsWord("random")) { isRandom = true; break; }
+        {
+            if (sent[k].IsWord("random")) sawRandom = true;
+            if (sent[k].IsWord("sequence")) sawSequence = true;
+            // "hasn't been activated yet" —— 两个词分开出现，任一缺失都不算
+            if (sent[k].IsWord("hasn't") || sent[k].IsWord("hasnt")) sawUnused = true;
+        }
+        if (sawUnused && !sent.Any(t => t.IsWord("activated"))) sawUnused = false;
+
+        kind = sawUnused
+            ? (sawSequence ? ModeDispatchKind.SequenceUnused : ModeDispatchKind.RandomUnused)
+            : sawSequence ? ModeDispatchKind.Sequence
+            : sawRandom ? ModeDispatchKind.Random
+            : ModeDispatchKind.Choose;
 
         return NumExpr.Const(sawDigit ? n : 1);
     }
@@ -884,7 +904,7 @@ public sealed class EnglishCompiler
         ref List<CostSpec> costs,
         ref SectionZone zone,
         ref NumExpr pick,
-        ref bool isRandom,
+        ref ModeDispatchKind kind,
         List<int> depths = null)
     {
         if (options.Count == 0) return;
@@ -938,14 +958,14 @@ public sealed class EnglishCompiler
             {
                 new BranchModeNode
                 {
-                    Kind = isRandom ? ModeDispatchKind.Random : ModeDispatchKind.Choose,
+                    Kind = kind,
                     PickCount = pick,
                     Options = options,
                 },
             },
         });
 
-        isRandom = false;
+        kind = ModeDispatchKind.Choose;
         options = new List<IReadOnlyList<EffectNode>>();
         optionIds = new List<int>();
         // 深度表是值传参，清空不到调用方的 modeDepth，

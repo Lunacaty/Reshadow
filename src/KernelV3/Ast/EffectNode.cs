@@ -285,7 +285,30 @@ public sealed class LoopNode : EffectNode
 
 // ---------- 16. 模式分支 ----------
 
-public enum ModeDispatchKind { Choose = 0, Random, Sequence }
+// 几种引导句是**互不相同**的语义，不能压成一种：
+//
+//   "Select a Mode to activate."                                 → Choose      玩家手选
+//   "Activate 2 random abilities from the following."            → Random      随机取 N
+//   "Activate an ability in sequence from the following."        → Sequence    按 1→2→3 全部自动执行
+//
+// 后两个带 "that hasn't been activated yet"（"未激活过"）时，必须再分出两种：
+// 它们与前面两种**正交**——「未激活」是跨回合的持久状态，不是选取方式。
+// 把它硬塞进 Random 会让同一项被重复激活（Slaus 的 3 个选项会重复），
+// 塞进 Sequence 会让它一次把 3 项全跑完。所以单独给两个值。
+//
+// "未激活"状态的载体是**源实体**上的位掩码计数器 mode_activated_mask，
+// 而不是玩家级计数器：同一张卡的两个实例各有各的进度，互不干扰。
+// 见 CardVm.ActivationMaskKey / ResolveActivationOwner。
+public enum ModeDispatchKind
+{
+    Choose = 0,
+    Random,
+    Sequence,
+    /// <summary>随机取一个尚未激活过的选项（"activate a random ability that hasn't been activated yet"）。</summary>
+    RandomUnused,
+    /// <summary>按卡面顺序取尚未激活过的下一个选项，取 PickCount 个。</summary>
+    SequenceUnused,
+}
 
 /// <summary>模式抉择 / 随机分支 / 顺序分支（Select a Mode）。</summary>
 public sealed class BranchModeNode : EffectNode

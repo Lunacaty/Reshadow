@@ -659,6 +659,35 @@ public sealed partial class CardVm
     /// "give this follower 3 random abilities from the following" 会把目标写进 GrantTarget，
     /// 每个分支都应看到这个目标，因此先把它绑定到子作用域。
     /// </summary>
+    /// <summary>
+    /// "未激活" 状态位掩码的计数器键。
+    /// 位 i 置位 = 选项 i 已被**这个源实体**激活过。
+    /// 放在实体计数器上（不是玩家级计数器）是刻意的：
+    /// 场上同时有两张 Slaus 时，各自的激活进度互不干扰。
+    /// </summary>
+    /// 注意：**不能**存成 static readonly 缓存 —— SymbolId 的 Id 由 GameSchema 分配，
+    /// 而世界侧的 GameSchema 与编译期 Lexicon 的 Schema 是两个实例，
+    /// 缓存下来的 Id 到了世界里会指到别的计数器上（实测写进去的位掩码读不回来）。
+    /// 必须以 CardVm.Schema（运行时由对战层注入的那一份）为准，每次现查。
+    private static SymbolId<CounterTag> ActivationMaskKey => Schema.Counter("mode_activated_mask");
+
+    /// <summary>
+    /// 解析「未激活」状态的持有者 —— 即发动这条能力的那个实体。
+    ///
+    /// 取 Source 优先、Trigger 兜底：能力由卡自己印制，Source 就是它；
+    /// 而 "Whenever an allied amulet is destroyed" 这类事件里 Trigger 是那个护符，
+    /// 不能拿它当持有者，否则进度会记到别人的头上。
+    /// 两者都没有实体（纯玩家级效果）时返回 null，调用方退化为「每次都算未激活」。
+    /// </summary>
+    private RuntimeEntity ResolveActivationOwner(VmScope scope)
+    {
+        var s = scope?.Source;
+        var live = s.HasValue ? _world.GetLive(s.Value.EntityId, s.Value.EntrySerial) : null;
+        if (live != null) return live;
+        var t = scope?.Trigger;
+        return t.HasValue ? _world.GetLive(t.Value.EntityId, t.Value.EntrySerial) : null;
+    }
+
     private VmScope DeriveForBranch(BranchModeNode n, VmScope parent)
     {
         var sub = parent.Derive();
@@ -731,6 +760,41 @@ public sealed partial class CardVm
                 for (int i = opts.Count - 1; i >= 0; i--)
                     PushBody(opts[i], DeriveForBranch(n, frame.Scope));
                 return false;
+
+            case ModeDispatchKind.RandomUnused:
+            case ModeDispatchKind.SequenceUnused:
+            {
+                // 「随机 / 按序取一个**尚未激活过**的」。
+                // 候选池 = 还没被这个源实体激活过的选项下标。
+                // 全部激活过时**什么也不做**（不崩、不重来），这是卡面语义：
+                // Slaus 只有 3 项，第 4 个回合没有可激活的了。
+                var live = ResolveActivationOwner(frame.Scope);
+                var unused = new List<int>();
+                for (int i = 0; i < opts.Count; i++)
+                {
+                    int bit = 1 << i;
+                    if (live != null && (_world.ReadEntityCounter(live, ActivationMaskKey) & bit) != 0) continue;
+                    unused.Add(i);
+                }
+                if (unused.Count == 0) return false;
+
+                var chosen = n.Kind == ModeDispatchKind.RandomUnused
+                    ? unused.OrderBy(_ => _world.Rng.Next()).Take(pick).ToList()
+                    : unused.Take(pick).ToList();
+
+                // 先记账再执行：选项本身可能再触发同一能力（"Destroy this crest"），
+                // 后置记账会让它从头再来一遍。
+                if (live != null)
+                {
+                    int mask = _world.ReadEntityCounter(live, ActivationMaskKey);
+                    foreach (var i in chosen) mask |= 1 << i;
+                    _world.WriteEntityCounter(live, ActivationMaskKey, mask);
+                }
+
+                for (int k = chosen.Count - 1; k >= 0; k--)
+                    PushBody(opts[chosen[k]], DeriveForBranch(n, frame.Scope));
+                return false;
+            }
 
             default:
                 // Choose：挂起等玩家
