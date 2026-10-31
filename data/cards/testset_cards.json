@@ -3,7 +3,7 @@
  "cards": [
   {
    "card_id": 81000000,
-   "name_eng": "A1 Fanfare",
+   "name_eng": "Wayfarer Apprentice",
    "type": 1,
    "cost": 1,
    "atk": 1,
@@ -17,7 +17,7 @@
   },
   {
    "card_id": 81000001,
-   "name_eng": "A2 Evolve",
+   "name_eng": "Bladeborn Adept",
    "type": 1,
    "cost": 2,
    "atk": 2,
@@ -31,7 +31,7 @@
   },
   {
    "card_id": 81000002,
-   "name_eng": "A3 SuperEvolve",
+   "name_eng": "Marrowstone Colossus",
    "type": 1,
    "cost": 3,
    "atk": 3,
@@ -45,7 +45,7 @@
   },
   {
    "card_id": 81000003,
-   "name_eng": "A4 LastWords",
+   "name_eng": "Dying Ember Sprite",
    "type": 1,
    "cost": 4,
    "atk": 2,
@@ -59,7 +59,7 @@
   },
   {
    "card_id": 81000004,
-   "name_eng": "A5 Spellboost",
+   "name_eng": "Runeweaver Novice",
    "type": 3,
    "cost": 5,
    "atk": null,
@@ -73,7 +73,7 @@
   },
   {
    "card_id": 81000005,
-   "name_eng": "A6 Clash",
+   "name_eng": "Duelist of the Reach",
    "type": 1,
    "cost": 6,
    "atk": 3,
@@ -87,7 +87,7 @@
   },
   {
    "card_id": 81000006,
-   "name_eng": "A7 Strike",
+   "name_eng": "Swiftwing Skirmisher",
    "type": 1,
    "cost": 7,
    "atk": 3,
@@ -101,7 +101,7 @@
   },
   {
    "card_id": 81000007,
-   "name_eng": "A8 Engage",
+   "name_eng": "Leyline Conduit",
    "type": 2,
    "cost": 1,
    "atk": null,
@@ -115,7 +115,7 @@
   },
   {
    "card_id": 81000008,
-   "name_eng": "A9 Enhance",
+   "name_eng": "Stalwart Recruit",
    "type": 1,
    "cost": 2,
    "atk": 2,
@@ -129,7 +129,7 @@
   },
   {
    "card_id": 81000009,
-   "name_eng": "A10 Combo",
+   "name_eng": "Tempo Virtuoso",
    "type": 1,
    "cost": 3,
    "atk": 2,
@@ -143,7 +143,7 @@
   },
   {
    "card_id": 81000010,
-   "name_eng": "A11 Necromancy",
+   "name_eng": "Gravecaller Initiate",
    "type": 1,
    "cost": 3,
    "atk": 2,
@@ -157,7 +157,7 @@
   },
   {
    "card_id": 81000011,
-   "name_eng": "A12 EarthRite",
+   "name_eng": "Sigilwright Adept",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -171,7 +171,7 @@
   },
   {
    "card_id": 81000012,
-   "name_eng": "A13 Skybound",
+   "name_eng": "Skybound Vanguard",
    "type": 1,
    "cost": 5,
    "atk": 3,
@@ -185,7 +185,7 @@
   },
   {
    "card_id": 81000013,
-   "name_eng": "A14 SuperSkybound",
+   "name_eng": "Skybound Ascendant",
    "type": 1,
    "cost": 7,
    "atk": 4,
@@ -199,7 +199,7 @@
   },
   {
    "card_id": 81000014,
-   "name_eng": "A15 TurnEnd",
+   "name_eng": "Warden of Twilight",
    "type": 2,
    "cost": 1,
    "atk": null,
@@ -213,7 +213,7 @@
   },
   {
    "card_id": 81000015,
-   "name_eng": "A16 TurnStart",
+   "name_eng": "Harbinger of Dawn",
    "type": 2,
    "cost": 1,
    "atk": null,
@@ -227,7 +227,7 @@
   },
   {
    "card_id": 81000016,
-   "name_eng": "A17 WheneverEnter",
+   "name_eng": "Shepherd of Kin",
    "type": 1,
    "cost": 9,
    "atk": 2,
@@ -241,7 +241,7 @@
   },
   {
    "card_id": 81000017,
-   "name_eng": "A18 WheneverEnterOfficer",
+   "name_eng": "Standard-Bearer of the Host",
    "type": 1,
    "cost": 9,
    "atk": 2,
@@ -255,7 +255,7 @@
   },
   {
    "card_id": 81000018,
-   "name_eng": "A19 InHand",
+   "name_eng": "Cunning Broker",
    "type": 1,
    "cost": 11,
    "atk": 2,
@@ -269,7 +269,7 @@
   },
   {
    "card_id": 81000019,
-   "name_eng": "A20 InDeck",
+   "name_eng": "Lurking Sentry",
    "type": 1,
    "cost": 12,
    "atk": 3,
@@ -283,7 +283,7 @@
   },
   {
    "card_id": 81000020,
-   "name_eng": "B1 Select",
+   "name_eng": "Bounty Hunter",
    "type": 1,
    "cost": 1,
    "atk": 2,
@@ -297,7 +297,7 @@
   },
   {
    "card_id": 81000021,
-   "name_eng": "B2 SelectGive",
+   "name_eng": "Field Commander",
    "type": 1,
    "cost": 2,
    "atk": 2,
@@ -311,7 +311,7 @@
   },
   {
    "card_id": 81000022,
-   "name_eng": "B3 DealLeader",
+   "name_eng": "Cinder Bolt",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -325,7 +325,7 @@
   },
   {
    "card_id": 81000023,
-   "name_eng": "B4 DealRandom",
+   "name_eng": "Scattershot Volley",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -339,7 +339,7 @@
   },
   {
    "card_id": 81000024,
-   "name_eng": "B5 DealSplit",
+   "name_eng": "Sunder Wave",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -353,7 +353,7 @@
   },
   {
    "card_id": 81000025,
-   "name_eng": "B6 Restore",
+   "name_eng": "Soothing Litany",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -367,7 +367,7 @@
   },
   {
    "card_id": 81000026,
-   "name_eng": "B7 Draw",
+   "name_eng": "Wandering Scholar",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -381,7 +381,7 @@
   },
   {
    "card_id": 81000027,
-   "name_eng": "B8 Summon",
+   "name_eng": "Beastcaller",
    "type": 1,
    "cost": 4,
    "atk": 2,
@@ -395,7 +395,7 @@
   },
   {
    "card_id": 81000028,
-   "name_eng": "B9 Add",
+   "name_eng": "Relic Seeker",
    "type": 1,
    "cost": 3,
    "atk": 2,
@@ -409,7 +409,7 @@
   },
   {
    "card_id": 81000029,
-   "name_eng": "B10 AddCopies",
+   "name_eng": "Twin Relic Seeker",
    "type": 1,
    "cost": 3,
    "atk": 2,
@@ -423,7 +423,7 @@
   },
   {
    "card_id": 81000030,
-   "name_eng": "B11 GiveStats",
+   "name_eng": "Battle Standard",
    "type": 1,
    "cost": 2,
    "atk": 2,
@@ -437,7 +437,7 @@
   },
   {
    "card_id": 81000031,
-   "name_eng": "B12 GiveKeyword",
+   "name_eng": "Aegis Warden",
    "type": 1,
    "cost": 2,
    "atk": 1,
@@ -451,7 +451,7 @@
   },
   {
    "card_id": 81000032,
-   "name_eng": "B13 GiveMulti",
+   "name_eng": "Shadow Cloak",
    "type": 1,
    "cost": 3,
    "atk": 2,
@@ -465,7 +465,7 @@
   },
   {
    "card_id": 81000033,
-   "name_eng": "B14 Remove",
+   "name_eng": "Disarming Strike",
    "type": 1,
    "cost": 3,
    "atk": 2,
@@ -479,7 +479,7 @@
   },
   {
    "card_id": 81000034,
-   "name_eng": "B15 RemoveAll",
+   "name_eng": "Nullifying Beam",
    "type": 3,
    "cost": 4,
    "atk": null,
@@ -493,7 +493,7 @@
   },
   {
    "card_id": 81000035,
-   "name_eng": "B16 SetAttack",
+   "name_eng": "League Enforcer",
    "type": 1,
    "cost": 5,
    "atk": 2,
@@ -507,7 +507,7 @@
   },
   {
    "card_id": 81000036,
-   "name_eng": "B17 SetMaxDefense",
+   "name_eng": "Culling Verdict",
    "type": 3,
    "cost": 5,
    "atk": null,
@@ -521,7 +521,7 @@
   },
   {
    "card_id": 81000037,
-   "name_eng": "B18 Halve",
+   "name_eng": "Sovereign's Judgment",
    "type": 3,
    "cost": 5,
    "atk": null,
@@ -535,7 +535,7 @@
   },
   {
    "card_id": 81000038,
-   "name_eng": "B19 HalveCost",
+   "name_eng": "Thrifty Merchant",
    "type": 3,
    "cost": 5,
    "atk": null,
@@ -549,7 +549,7 @@
   },
   {
    "card_id": 81000039,
-   "name_eng": "B20 Swap",
+   "name_eng": "Twin-Faced Trickster",
    "type": 1,
    "cost": 2,
    "atk": 1,
@@ -563,7 +563,7 @@
   },
   {
    "card_id": 81000040,
-   "name_eng": "B21 ReduceCost",
+   "name_eng": "Studious Apprentice",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -577,7 +577,7 @@
   },
   {
    "card_id": 81000041,
-   "name_eng": "B22 Destroy",
+   "name_eng": "Fading Sigil",
    "type": 2,
    "cost": 2,
    "atk": null,
@@ -591,7 +591,7 @@
   },
   {
    "card_id": 81000042,
-   "name_eng": "B23 Banish",
+   "name_eng": "Purifying Light",
    "type": 3,
    "cost": 4,
    "atk": null,
@@ -605,7 +605,7 @@
   },
   {
    "card_id": 81000043,
-   "name_eng": "B24 BanishFilter",
+   "name_eng": "Meticulous Inquisitor",
    "type": 3,
    "cost": 4,
    "atk": null,
@@ -619,7 +619,7 @@
   },
   {
    "card_id": 81000044,
-   "name_eng": "B25 Discard",
+   "name_eng": "Reckless Gambler",
    "type": 3,
    "cost": 1,
    "atk": null,
@@ -633,7 +633,7 @@
   },
   {
    "card_id": 81000045,
-   "name_eng": "B26 Return",
+   "name_eng": "Recall Sigil",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -647,7 +647,7 @@
   },
   {
    "card_id": 81000046,
-   "name_eng": "B27 ReturnCard",
+   "name_eng": "Retreating Scout",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -661,7 +661,7 @@
   },
   {
    "card_id": 81000047,
-   "name_eng": "B28 Transform",
+   "name_eng": "Transmuter of Spells",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -675,7 +675,7 @@
   },
   {
    "card_id": 81000048,
-   "name_eng": "B29 EvolveVerb",
+   "name_eng": "Ascendant Mentor",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -689,7 +689,7 @@
   },
   {
    "card_id": 81000049,
-   "name_eng": "B30 GainSigil",
+   "name_eng": "Deep Leyline",
    "type": 2,
    "cost": 1,
    "atk": null,
@@ -703,7 +703,7 @@
   },
   {
    "card_id": 81000050,
-   "name_eng": "B31 GainMaxPp",
+   "name_eng": "Vessel of Surge",
    "type": 3,
    "cost": 6,
    "atk": null,
@@ -717,7 +717,7 @@
   },
   {
    "card_id": 81000051,
-   "name_eng": "B32 Consume",
+   "name_eng": "Investigator's Verdict",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -731,7 +731,7 @@
   },
   {
    "card_id": 81000052,
-   "name_eng": "B33 Recover",
+   "name_eng": "Font of Vigor",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -745,7 +745,7 @@
   },
   {
    "card_id": 81000053,
-   "name_eng": "B34 SpellboostVerb",
+   "name_eng": "Arcane Attunement",
    "type": 3,
    "cost": 1,
    "atk": null,
@@ -759,7 +759,7 @@
   },
   {
    "card_id": 81000054,
-   "name_eng": "B35 Reanimate",
+   "name_eng": "Grave Awakening",
    "type": 3,
    "cost": 4,
    "atk": null,
@@ -773,7 +773,7 @@
   },
   {
    "card_id": 81000055,
-   "name_eng": "B36 Advance",
+   "name_eng": "Sands of Time",
    "type": 2,
    "cost": 2,
    "atk": null,
@@ -787,7 +787,7 @@
   },
   {
    "card_id": 81000056,
-   "name_eng": "B37 Delay",
+   "name_eng": "Lagging Ward",
    "type": 2,
    "cost": 2,
    "atk": null,
@@ -801,7 +801,7 @@
   },
   {
    "card_id": 81000057,
-   "name_eng": "B38 Invoke",
+   "name_eng": "Portent of Return",
    "type": 1,
    "cost": 5,
    "atk": 3,
@@ -815,7 +815,7 @@
   },
   {
    "card_id": 81000058,
-   "name_eng": "B39 Replace",
+   "name_eng": "Apocalyptic Ledger",
    "type": 3,
    "cost": 6,
    "atk": null,
@@ -829,7 +829,7 @@
   },
   {
    "card_id": 81000059,
-   "name_eng": "B40 Replicate",
+   "name_eng": "Echoing Herald",
    "type": 1,
    "cost": 4,
    "atk": 2,
@@ -843,7 +843,7 @@
   },
   {
    "card_id": 81000060,
-   "name_eng": "B41 DoTimes",
+   "name_eng": "Relentless Barrage",
    "type": 1,
    "cost": 5,
    "atk": 3,
@@ -857,7 +857,7 @@
   },
   {
    "card_id": 81000061,
-   "name_eng": "B42 Activate",
+   "name_eng": "Kaleidoscope Sigil",
    "type": 3,
    "cost": 6,
    "atk": null,
@@ -871,7 +871,7 @@
   },
   {
    "card_id": 81000062,
-   "name_eng": "B43 GainCrest",
+   "name_eng": "Herald of the Mark",
    "type": 1,
    "cost": 5,
    "atk": 3,
@@ -885,7 +885,7 @@
   },
   {
    "card_id": 81000063,
-   "name_eng": "B44 ExactCopy",
+   "name_eng": "Mirror Artisan",
    "type": 3,
    "cost": 5,
    "atk": null,
@@ -899,7 +899,7 @@
   },
   {
    "card_id": 81000064,
-   "name_eng": "C1 Mode",
+   "name_eng": "Prism Sigil",
    "type": 3,
    "cost": 4,
    "atk": null,
@@ -913,7 +913,7 @@
   },
   {
    "card_id": 81000065,
-   "name_eng": "C2 ModeAll",
+   "name_eng": "Convergent Prism",
    "type": 3,
    "cost": 5,
    "atk": null,
@@ -927,7 +927,7 @@
   },
   {
    "card_id": 81000066,
-   "name_eng": "C3 Sequence",
+   "name_eng": "Sequential Ward",
    "type": 3,
    "cost": 5,
    "atk": null,
@@ -941,7 +941,7 @@
   },
   {
    "card_id": 81000067,
-   "name_eng": "C4 VariableX",
+   "name_eng": "Tallying Scholar",
    "type": 3,
    "cost": 4,
    "atk": null,
@@ -955,7 +955,7 @@
   },
   {
    "card_id": 81000068,
-   "name_eng": "C5 XStarts",
+   "name_eng": "Kindled Study",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -969,7 +969,7 @@
   },
   {
    "card_id": 81000069,
-   "name_eng": "C6 Instead",
+   "name_eng": "Duel of Wits",
    "type": 3,
    "cost": 4,
    "atk": null,
@@ -983,7 +983,7 @@
   },
   {
    "card_id": 81000070,
-   "name_eng": "C7 Overflow",
+   "name_eng": "Tidecaller Relic",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -997,7 +997,7 @@
   },
   {
    "card_id": 81000071,
-   "name_eng": "C8 CondCost",
+   "name_eng": "Eld Lance Fragment",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -1005,13 +1005,13 @@
    "class": "neutral",
    "tribe_name_eng": "",
    "eng_texts": [
-    "When this card is discarded, if its cost is 4, add an <b><i><color=Keyword>Test Blade</color></i></b> to your hand."
+    "When this card is discarded, if its cost is 4, add a <b><i><color=Keyword>Kindled Blade</color></i></b> to your hand."
    ],
-   "eng_text": "When this card is discarded, if its cost is 4, add an <b><i><color=Keyword>Test Blade</color></i></b> to your hand."
+   "eng_text": "When this card is discarded, if its cost is 4, add a <b><i><color=Keyword>Kindled Blade</color></i></b> to your hand."
   },
   {
    "card_id": 81000072,
-   "name_eng": "C9 CondBaseCost",
+   "name_eng": "Vanguard Surveyor",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -1025,7 +1025,7 @@
   },
   {
    "card_id": 81000073,
-   "name_eng": "C10 UntilEnd",
+   "name_eng": "Binding Verse",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -1039,7 +1039,7 @@
   },
   {
    "card_id": 81000074,
-   "name_eng": "C11 PuncturedDef",
+   "name_eng": "Piercing Verdict",
    "type": 3,
    "cost": 4,
    "atk": null,
@@ -1053,7 +1053,7 @@
   },
   {
    "card_id": 81000075,
-   "name_eng": "D1 Countdown",
+   "name_eng": "Ticking Ward",
    "type": 2,
    "cost": 2,
    "atk": null,
@@ -1067,7 +1067,7 @@
   },
   {
    "card_id": 81000076,
-   "name_eng": "D2 MultiAbility",
+   "name_eng": "Twofold Sigil",
    "type": 3,
    "cost": 3,
    "atk": null,
@@ -1081,7 +1081,7 @@
   },
   {
    "card_id": 81000077,
-   "name_eng": "D3 ThreeDomains",
+   "name_eng": "Metamorphic Adept",
    "type": 1,
    "cost": 2,
    "atk": 2,
@@ -1095,7 +1095,7 @@
   },
   {
    "card_id": 81000078,
-   "name_eng": "D4 SharedHeader",
+   "name_eng": "Relic of Passage",
    "type": 2,
    "cost": 2,
    "atk": null,
@@ -1109,7 +1109,7 @@
   },
   {
    "card_id": 81000079,
-   "name_eng": "D5 QuotedInner",
+   "name_eng": "Whispering Mask",
    "type": 3,
    "cost": 4,
    "atk": null,
@@ -1123,7 +1123,7 @@
   },
   {
    "card_id": 81000080,
-   "name_eng": "D6 Fuse",
+   "name_eng": "Fusion Codifier",
    "type": 1,
    "cost": 2,
    "atk": 2,
@@ -1137,7 +1137,7 @@
   },
   {
    "card_id": 81000081,
-   "name_eng": "D7 NestedMode",
+   "name_eng": "Nested Prism Sigil",
    "type": 3,
    "cost": 6,
    "atk": null,
@@ -1151,7 +1151,7 @@
   },
   {
    "card_id": 81000082,
-   "name_eng": "E1 Ward",
+   "name_eng": "Bulwark Sentinel",
    "type": 1,
    "cost": 2,
    "atk": 1,
@@ -1165,7 +1165,7 @@
   },
   {
    "card_id": 81000083,
-   "name_eng": "E2 Storm",
+   "name_eng": "Gale Runner",
    "type": 1,
    "cost": 3,
    "atk": 2,
@@ -1179,7 +1179,7 @@
   },
   {
    "card_id": 81000084,
-   "name_eng": "E3 Rush",
+   "name_eng": "Charging Raider",
    "type": 1,
    "cost": 2,
    "atk": 2,
@@ -1193,7 +1193,7 @@
   },
   {
    "card_id": 81000085,
-   "name_eng": "E4 Bane",
+   "name_eng": "Venomtooth Stalker",
    "type": 1,
    "cost": 4,
    "atk": 1,
@@ -1207,7 +1207,7 @@
   },
   {
    "card_id": 81000086,
-   "name_eng": "E5 Drain",
+   "name_eng": "Leeching Fiend",
    "type": 1,
    "cost": 4,
    "atk": 2,
@@ -1221,7 +1221,7 @@
   },
   {
    "card_id": 81000087,
-   "name_eng": "E6 Ambush",
+   "name_eng": "Veiled Prowler",
    "type": 1,
    "cost": 3,
    "atk": 3,
@@ -1235,7 +1235,7 @@
   },
   {
    "card_id": 81000088,
-   "name_eng": "E7 Aura",
+   "name_eng": "Warded Escort",
    "type": 1,
    "cost": 3,
    "atk": 2,
@@ -1249,7 +1249,7 @@
   },
   {
    "card_id": 81000089,
-   "name_eng": "E8 Intimidate",
+   "name_eng": "Grim Overseer",
    "type": 1,
    "cost": 3,
    "atk": 2,
@@ -1263,7 +1263,7 @@
   },
   {
    "card_id": 81000090,
-   "name_eng": "E9 Barrier",
+   "name_eng": "Barrier Sentinel",
    "type": 1,
    "cost": 4,
    "atk": 2,
@@ -1277,7 +1277,7 @@
   },
   {
    "card_id": 81000091,
-   "name_eng": "E10 Multi",
+   "name_eng": "Trial of Many Trials",
    "type": 1,
    "cost": 5,
    "atk": 3,
@@ -1333,7 +1333,7 @@
   },
   {
    "card_id": 81000095,
-   "name_eng": "Test Blade",
+   "name_eng": "Kindled Blade",
    "type": 3,
    "cost": 2,
    "atk": null,
@@ -1347,7 +1347,7 @@
   },
   {
    "card_id": 81000096,
-   "name_eng": "Test Crest",
+   "name_eng": "Sigil of Resolve",
    "type": 4,
    "cost": 0,
    "atk": null,
