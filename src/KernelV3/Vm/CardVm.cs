@@ -344,7 +344,21 @@ public sealed partial class CardVm
                 if (ab.Trigger.ManualEvolveOnly && !ev.IsManualEvolve) continue;
 
                 if (!MatchesTrigger(ab.Trigger, ev, e)) continue;
-                if (_eval.EvalBool(ab.Condition, new VmScope { Controller = e.PlayerId }) == false) continue;
+
+                // 条件与效果体必须共用同一个完整作用域。
+                // 条件里出现的「本卡」「被破坏的那个随从」全部落到 Source / Trigger 上：
+                //   <ev>: HasState(Evolved, Self)      → Source 未绑定时 Resolve 恒空，条件恒假
+                //   Skybound Art: ctr:skybound_gauge   → 计数器挂在手牌实体上，没有 Source 就读成 0
+                // 之前条件用的是只有 Controller 的空 scope，这些条件在判定阶段全部失明。
+                var scope = new VmScope
+                {
+                    Owner = ZoneScope.Self,
+                    Controller = e.PlayerId,
+                    Source = EntityRef.From(e),
+                    Trigger = ev.Subject,
+                    Event = ev,
+                };
+                if (_eval.EvalBool(ab.Condition, scope) == false) continue;
 
                 // 代价检查：不能支付就不能发动。
                 // 之前这里完全没有判定，所以 Enhance / Necromancy 等代价形同虚设。
@@ -354,14 +368,6 @@ public sealed partial class CardVm
                 if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey)) continue;
                 CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey);
 
-                var scope = new VmScope
-                {
-                    Owner = ZoneScope.Self,
-                    Controller = e.PlayerId,
-                    Source = EntityRef.From(e),
-                    Trigger = ev.Subject,
-                    Event = ev,
-                };
                 PushBody(ab.Body, scope);
             }
         }
