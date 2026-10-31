@@ -349,8 +349,23 @@ public sealed class VmEval
             StatKey.BaseAttack => sn.BaseAttack,
             StatKey.BaseLife => sn.BaseLife,
             StatKey.BaseCost => sn.BaseCost,
+            StatKey.Countdown => ReadCountdown(sn.Counters),
+            StatKey.ChantCount => ReadCountdown(sn.Counters),
             _ => 0,
         };
+    }
+
+    /// <summary>
+    /// 从计数器字典里取「剩余吟唱」。
+    /// 吟唱不是实体字段，它住在 Counters 里，名字固定为 countdown。
+    /// </summary>
+    private static int ReadCountdown(IReadOnlyDictionary<SymbolId<CounterTag>, int> ctrs)
+    {
+        if (ctrs == null) return 0;
+        foreach (var kv in ctrs)
+            if (string.Equals(kv.Key.Name, "countdown", StringComparison.OrdinalIgnoreCase))
+                return kv.Value;
+        return 0;
     }
 
     private static int ReadStat(RuntimeEntity e, StatKey k) => k switch
@@ -362,6 +377,10 @@ public sealed class VmEval
         StatKey.BaseAttack => e.Def?.BaseAttack ?? 0,
         StatKey.BaseLife => e.Def?.BaseLife ?? 0,
         StatKey.BaseCost => e.Def?.BaseCost ?? 0,
+        // 吟唱住在 Counters 里，不是实体字段。漏掉这条分支的话
+        // 「if countdown is at least 2」永远读到 0，条件恒假。
+        StatKey.Countdown => ReadCountdown(e.Counters),
+        StatKey.ChantCount => ReadCountdown(e.Counters),
         _ => 0,
     };
 

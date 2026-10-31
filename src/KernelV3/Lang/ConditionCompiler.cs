@@ -200,7 +200,9 @@ public static class ConditionCompiler
             int cs = c.Position;
             c.Advance();
             c.TryMatchAnyWord("is");
-            c.TryMatchAnyWord("at", "least");
+            // "at least" 是两个词，TryMatchAnyWord 只吃一个 —— 必须写成短语匹配。
+            // 少这一条，「countdown is at least 2」整句报「条件无法建模」。
+            if (!c.MatchPhrase("at", "least")) c.TryMatchAnyWord("at", "least");
             if (c.Current.Kind == TokKind.Number)
             {
                 int v = c.Current.Value;
