@@ -737,6 +737,10 @@ public sealed class NaturalPrinter
             ModeDispatchKind.Choose => Word("Select a Mode to activate"),
             ModeDispatchKind.Random => Word("Activate") + Space() + PrintNum(b.PickCount) + Space() + Word("random abilities from the following"),
             ModeDispatchKind.Sequence => Word("Activate an ability in sequence from the following"),
+            // 带「未激活」的两种：措辞必须把 hasn't been activated yet 写回去，
+            // 否则渲染结果重解析会退回成 Random / Sequence，丢掉未激活语义。
+            ModeDispatchKind.RandomUnused => Word("Activate a random ability that hasn't been activated yet from the following"),
+            ModeDispatchKind.SequenceUnused => Word("Activate an ability that hasn't been activated yet in sequence from the following"),
             _ => Word("Select a Mode to activate"),
         };
         var opts = new List<string>();
