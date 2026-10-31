@@ -170,6 +170,15 @@ public sealed class BattleState : IVmWorld
 
     // ---------- 卡池 ----------    // ---------- 卡池 ----------
 
+    /// <summary>
+    /// 效果召唤时「卡池里找不到定义」的次数。
+    ///
+    /// 正常对局必须恒为 0。它非零说明有衍生卡没注册 ——
+    /// 这类失败本身不会抛异常，只会静默生成空壳实体，
+    /// 所以必须有一个可断言的计数把它暴露出来。
+    /// </summary>
+    public int UnresolvedSpawnCount { get; private set; }
+
     public void RegisterCard(CardDef def)
     {
         if (def != null) _cardPool[def.CardId] = def;
@@ -354,6 +363,12 @@ public sealed class BattleState : IVmWorld
                     Abilities = crestDef.Abilities,
                     InnateKeywords = crestDef.InnateKeywords,
                     InnateCounters = crestDef.InnateCounters,
+                    // 兵种必须一并搬过来：重建 CardDef 时漏掉它，
+                    // 纹章自己的兵种判定（以及任何按兵种筛选的效果）全部失明。
+                    Traits = crestDef.Traits,
+                    Clan = crestDef.Clan,
+                    HasFuse = crestDef.HasFuse,
+                    FuseMaterialFilter = crestDef.FuseMaterialFilter,
                     SourceText = crestDef.SourceText,
                 };
             cardId = synth;
@@ -739,6 +754,8 @@ public sealed class BattleState : IVmWorld
         if (playerId is < 0 or > 1) throw new ArgumentException("playerId 必须是 0 或 1");
 
         _cardPool.TryGetValue(cardId, out var def);
+
+
         var e = new RuntimeEntity
         {
             EntityId = AllocateEntityId(),
@@ -1293,6 +1310,14 @@ public sealed class BattleState : IVmWorld
 
     public RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId)
     {
+        // 效果召唤应当命中真实卡定义。命中不了就会造出 Def == null 的空壳，
+        // 后续一切按 Kind / Name / Abilities 的判定全部静默失效 ——
+        // 场上凭空多出一张「看不见、动不了、也不报错」的卡。
+        //
+        // 这里不抛异常（底层构造与测试布置会合法地造裸实体），
+        // 而是把失败记录成可观测的计数：回归门禁断言它必须为 0。
+        if (!_cardPool.ContainsKey(cardId)) UnresolvedSpawnCount++;
+
         var e = CreateEntity(cardId, toZone, toPlayerId);
         // 召唤进场的随从同样要发「进入战场时」并加连携。
         // 早期只在 TurnRunner.PlayCard 里手写发事件，于是 Summon / Reanimate /
