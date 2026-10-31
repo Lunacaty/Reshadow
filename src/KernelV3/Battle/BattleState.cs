@@ -853,7 +853,11 @@ public sealed class BattleState : IVmWorld
         // PlaceInZone 只能把它置 None —— 卡就从牌库消失了。
         if (toZone == ZoneRef.Board && RejectBoardMoveIfFull(e, toPlayerId)) return;
 
-        bool leftBoard = e.Zone == ZoneRef.Board && toZone != ZoneRef.Board;
+        var fromZone = e.Zone;                                  // 移出前记下来源区域
+        bool leftBoard = fromZone == ZoneRef.Board && toZone != ZoneRef.Board;
+        bool fromDeck = fromZone == ZoneRef.Deck;
+        bool fromCemetery = fromZone == ZoneRef.Cemetery;
+        bool fromExArea = fromZone == ZoneRef.ExArea;
         Detach(e);
         e.EntrySerial++;
         PlaceInZone(e, toZone, toPlayerId);
@@ -868,6 +872,16 @@ public sealed class BattleState : IVmWorld
         // 迁入战场的路径不止 SpawnCard：能力把牌库/手牌/墓地的卡搬上场也走这里。
         // 不在这里通知，「进入战场时」与连携对这条路径一律失明。
         if (!leftBoard && toZone == ZoneRef.Board) NotifySummoned(e);
+
+        // 回手 / 加到手牌各有自己的事件。
+        // 少了它们，「Whenever a card is returned to your hand」
+        // 与「Whenever you add a card to your hand」这两类监听全部失明。
+        if (toZone == ZoneRef.Hand)
+        {
+            if (leftBoard) EmitEvent(new VmEvent { Kind = CoreEvent.OnReturnToHand, Subject = EntityRef.From(e) });
+            if (fromDeck || fromCemetery || fromExArea)
+                EmitEvent(new VmEvent { Kind = CoreEvent.OnAddToHand, Subject = EntityRef.From(e) });
+        }
 
         // 融合素材区在卡离开手牌（打出 / 被变化 / 被烧毁 / 被弃牌）时清空。
         // 清的是**实体**，fuse_count / fuse_cost / fuse_kinds 三个计数器留在卡上 ——
@@ -1260,6 +1274,11 @@ public sealed class BattleState : IVmWorld
         e.AttacksThisTurn = 0;
         e.AttackedThisTurn = false;
         e.AttackedLeaderLastTurn = false;
+
+        // 变身事件。「Whenever a follower transforms」类监听靠它。
+        // 变身**不**触发进出场：官方规定它是「同一个实体换了张脸」，
+        // 所以这里既不发 OnLeaveField 也不发 OnEnterField。
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnTransform, Subject = EntityRef.From(e) });
     }
 
     public void GrantAbility(RuntimeEntity e, AbilityDef ability)

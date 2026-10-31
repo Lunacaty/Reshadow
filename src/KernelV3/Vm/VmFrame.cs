@@ -74,6 +74,13 @@ public enum VmStatus
     WaitingForInput,
     GameOver,
     Faulted,
+
+    /// <summary>
+    /// 本次结算**正常跑完**（帧栈与触发队列都空了，且没有终局）。
+    /// 与 Idle 的区别：Idle 是「还没开始」，Completed 是「刚跑完、可以读结果」。
+    /// UI 与回归脚本靠它区分「等待下一次推进」和「这一批动作已全部结束」。
+    /// </summary>
+    Completed,
 }
 
 /// <summary>执行链过长（防玩家 DIY 出无限循环）。</summary>

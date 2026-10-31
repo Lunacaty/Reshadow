@@ -263,6 +263,15 @@ public sealed class CombatResolver
 
         target.Life -= amount;
 
+        // 血怒（Wrath）：我方**主战者**每受到一次伤害就 +1。
+        // 随从受伤不计 —— 卡面写的是「your leader」受到伤害的次数。
+        if (target.Zone == ZoneRef.Leader)
+        {
+            var wrathKey = _schema.Counter("wrath");
+            _state.WriteCounter(target.PlayerId, wrathKey,
+                _state.ReadCounter(target.PlayerId, wrathKey) + 1);
+        }
+
         vm?.EnqueueEvent(new VmEvent
         {
             Kind = CoreEvent.OnDamaged,

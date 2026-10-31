@@ -175,7 +175,11 @@ public sealed partial class CardVm
                         FlushNextTrigger();
                         continue;
                     }
-                    Status = VmStatus.Idle;
+                    // 帧栈与触发队列都空了：本次结算正常收尾。
+                    // 用 Completed 而不是 Idle 区分「还没开始」与「刚跑完」。
+                    // 第一次调用且什么都没执行时仍然算 Completed —— 语义是
+                    // 「此刻没有待办」，调用方读结果即可。
+                    Status = VmStatus.Completed;
                     return Status;
                 }
 

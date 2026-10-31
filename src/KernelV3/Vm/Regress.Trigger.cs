@@ -193,7 +193,8 @@ public static partial class Regress
             // 点燃自激链：1 点伤害 → OnDamaged → 每张监听卡再打自己 1 点 → …
             st.ApplyDamage(a, 1, 1);
             var status = vm.StepUntilBlocked();
-            bool settled = status == VmStatus.Idle || status == VmStatus.Faulted;
+            // 正常收尾现在是 Completed（Idle 保留给「从未开始」）。
+            bool settled = status == VmStatus.Completed || status == VmStatus.Idle || status == VmStatus.Faulted;
             bool stopped = a.Life == 0 || vm.FaultMessage == "触发链超过步数上限";
             Check("trigger-7 自激伤害链在有限步内收束（不栈溢出）",
                   settled && stopped && vm.Status != VmStatus.Running,

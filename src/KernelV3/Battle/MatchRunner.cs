@@ -90,6 +90,12 @@ public sealed class MatchRunner
         _state.ActivePlayer = firstPlayer;
         _state.TurnNumber = 0;
         Phase = MatchPhase.Mulligan;
+
+        // 对局开始事件。「At the start of the match」类能力靠它。
+        // 放在最后发：此时双方主战者、计数器、牌库、信仰都已就位，
+        // 监听方读到的是一副完整的开局状态。
+        _state.EmitEvent(new VmEvent { Kind = CoreEvent.BattleStart });
+        _vm?.StepUntilBlocked();
     }
 
     private void CreateLeader(int playerId, int life)

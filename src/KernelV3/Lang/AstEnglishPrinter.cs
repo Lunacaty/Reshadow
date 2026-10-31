@@ -210,7 +210,12 @@ public static class AstEnglishPrinter
                 sb.Append("slot:" + t.Slot);
                 break;
             case TargetSourceKind.CardId:
-                sb.Append("card:" + (string.IsNullOrEmpty(t.CardName) ? t.CardId.ToString() : t.CardName));
+                // 必须打 Owner 与 Zone：不然 "hand" / "deck" / "hand and deck"
+                // 三种写法的 AST 打印完全一样，审计时分不出编译器到底取了哪个区域。
+                sb.Append("card:" + (string.IsNullOrEmpty(t.CardName) ? t.CardId.ToString() : t.CardName)
+                          + "@" + t.Owner.ToString().ToLowerInvariant()
+                          + ":" + t.Zone.ToString().ToLowerInvariant());
+                if (t.History != Core.HistoryScope.None) sb.Append(" history=" + t.History);
                 break;
             default:
                 sb.Append(t.Owner.ToString().ToLowerInvariant() + ":" + t.Zone.ToString().ToLowerInvariant());
