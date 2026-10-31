@@ -30,6 +30,8 @@ public sealed class EnglishCompiler
         _target = new TargetParser(lex);
         _actions = new ActionParser(lex, CompileQuotedAbility, _target);
         _actions.VariableResolver = ResolveVariable;
+        // 引号内的变量声明也要真正登记（Shakdoh 的 Draw X）。
+        _actions.VariableBinder = TryBindVariableDeclaration;
         _prefixes = new PrefixParser(lex, _target);
     }
 

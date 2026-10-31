@@ -455,14 +455,11 @@ public sealed partial class CardVm
                 bool fromBoard = t.Zone == ZoneRef.Board;
 
                 // 「X is the number of cards you returned」的计数写入点。
-                // 之前只有读取点（EnglishCompiler:1533），全仓库没有任何地方写它，
-                // 于是 Shakdoh 的 Draw X 恒为 0 —— AST 看着对、运行期一张都抽不回。
-                if ((fromHand || fromBoard) && n.ToZone == ZoneRef.Deck)
-                {
-                    var retKey = Schema.Counter("cards_returned_to_hand");
-                    _world.WriteCounter(t.PlayerId, retKey,
-                        _world.ReadCounter(t.PlayerId, retKey) + 1);
-                }
+                // cards_returned_to_hand 的写入点在循环**之后**统一做（见下），
+                // 这里不再逐个累加：
+                //   "Do this 2 times: 'Return your hand to deck. Draw X cards.
+                //    X is the number of cards you returned.'"
+                // 累加会让第二轮读到第一轮的余数（5 → 10），一次抽 10 张。
                 if (fromBoard && n.ToZone != ZoneRef.Board)
                     _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(t) });
                 _world.MoveEntity(t, n.ToZone, t.PlayerId);
@@ -485,6 +482,18 @@ public sealed partial class CardVm
                 }
             }
             moved.Add(t);
+        }
+
+        // 「X is the number of cards you returned」的计数：**按本次实际移动数覆写**。
+        //
+        // 必须覆写而非累加：Do this N times 里每一轮都要重新统计本轮退回的张数，
+        // 累加会让第二轮读到第一轮的余数（5 → 10），一次抽 10 张。
+        // 覆盖两条去向：回牌库（Shakdoh）与回手牌（"…return them to your hand"）。
+        if (n.ToZone == ZoneRef.Deck
+            || (n.ToZone == ZoneRef.Hand && !IsPlainDraw(n)))
+        {
+            var retKey = Schema.Counter("cards_returned_to_hand");
+            _world.WriteCounter(scope.ResolvePlayer(ZoneScope.Self), retKey, moved.Count);
         }
 
         // $created 只应记录「进入场上/手牌」的新对象。

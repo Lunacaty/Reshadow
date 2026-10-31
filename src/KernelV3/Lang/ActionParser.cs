@@ -41,6 +41,13 @@ public sealed class ActionParser
     /// </summary>
     public Func<Ast.CardDef> CrestDefResolver { get; set; }
 
+    /// <summary>
+    /// 变量声明登记器。引号内出现的 "X is the number of ..." 必须真正登记到
+    /// 编译器的变量表里，否则 Draw X 会读一个从未被赋值的槽。
+    /// 由 EnglishCompiler 注入（动作解析器看不到变量表）。
+    /// </summary>
+    public Action<IReadOnlyList<Token>> VariableBinder { get; set; }
+
 
     public ActionParser(Lexicon lex, Func<IReadOnlyList<Token>, AbilityDef> compileQuotedAbility,
                         TargetParser target = null)
@@ -2205,7 +2212,16 @@ public sealed class ActionParser
             var sentBuf = new List<Token>();
             void Flush()
             {
-                if (sentBuf.Count > 0 && !IsVariableDecl(sentBuf)) kept.AddRange(sentBuf);
+                if (sentBuf.Count > 0)
+                {
+                    // 引号内的变量声明必须**登记**，而不只是剔除：
+                    //   "Return your hand to deck. Draw X cards.
+                    //    X is the number of cards you returned. ..."
+                    // 旧实现只把它从 kept 里滤掉，X 从未绑定，
+                    // Draw X 于是编译成读空槽 ctr:X，一张都抽不回。
+                    if (IsVariableDecl(sentBuf)) VariableBinder?.Invoke(sentBuf);
+                    else kept.AddRange(sentBuf);
+                }
                 sentBuf.Clear();
             }
             foreach (var tk2 in q.Inner)
@@ -2235,6 +2251,9 @@ public sealed class ActionParser
             // 之前直接丢给 ParseSequence 逐句解析，选项头无人识别，
             // 整段引号内容被吃掉，循环体变成空的。
             var inner = new ActionParser(_lex, _compileQuotedAbility, _target);
+            // 内层解析器必须继承变量登记器与时针，否则引号内的
+            // "X is ..." 仍然只是被剔除，不会真正登记。
+            inner.VariableBinder = VariableBinder;
             inner.VariableResolver = VariableResolver;
             var innerCur = new TokenCursor(kept);
 
