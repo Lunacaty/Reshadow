@@ -621,13 +621,64 @@ public sealed class BattleState : IVmWorld
         if (e == null) return;
         if (e.Zone == toZone && e.PlayerId == toPlayerId) return;
 
+        // 满场拦截必须是「移动之前」的判定：
+        // 卡片效果召唤（"summon a X" / "move this card to the board"）都走这里，
+        // 一旦交给 PlaceInZone 去处理，牌库/手牌里的那张已经被 Detach 出来了，
+        // PlaceInZone 只能把它置 None —— 卡就从牌库消失了。
+        if (toZone == ZoneRef.Board && RejectBoardMoveIfFull(e, toPlayerId)) return;
+
         bool leftBoard = e.Zone == ZoneRef.Board && toZone != ZoneRef.Board;
         Detach(e);
         e.EntrySerial++;
         PlaceInZone(e, toZone, toPlayerId);
 
+        // 回到牌库的卡要洗回随机位置，且**保留全部状态**（减费 / Buff / 魔力增幅 / 奥义）。
+        // 与回手相反：ResetToPrintedValues 只在 Board → Hand 那一条路径生效。
+        if (toZone == ZoneRef.Deck) ShuffleZone(ZoneRef.Deck, toPlayerId);
+
         if (leftBoard)
             EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
+    }
+
+    /// <summary>
+    /// 满场（Board ≥ 5）时的召唤铁律：**新卡凭空消失** ——
+    /// 不进墓地、shadow 不变、不进 DestroyedThisMatch、不触发入场与消失时能力。
+    ///
+    /// 唯一的例外是「牌库 → 战场」：卡面写「回合开始时从牌组上场」的 Invoke（瞬念召唤）
+    /// 在 R-6.2-8 是「满场时不发动」，也就是**留在牌库**，而不是消失。
+    /// 把这条留在这里而不是调用方，是因为召唤路径太多（能力 / 直接召唤 / 复制），
+    /// 每漏一条就是一张卡永久失踪。
+    /// </summary>
+    /// <returns>true 表示这次移动已被拦下，调用方不得再执行移动。</returns>
+    private bool RejectBoardMoveIfFull(RuntimeEntity e, int toPlayerId)
+    {
+        var board = Players[toPlayerId].Board;
+        if (board.Count < PlayerState.MaxBoard) return false;
+
+        // 从牌库来的：不移动，原地不动（保留自己的区域与流水号）。
+        if (e.Zone == ZoneRef.Deck) return true;
+
+        // 从其它区域（无来源的 token / 手牌 / 墓地复活）：凭空消失。
+        Detach(e);
+        e.EntrySerial++;
+        e.Zone = ZoneRef.None;
+        _all.Remove(e);
+        return true;
+    }
+
+    /// <summary>
+    /// 洗某玩家的一个区域（Fisher-Yates，用世界随机源）。
+    /// 与 MatchRunner.ShuffleDeck 同一算法；洗牌点不止开局与换牌，所以放在这里。
+    /// </summary>
+    public void ShuffleZone(ZoneRef zone, int playerId)
+    {
+        var list = Players[playerId].Zone(zone);
+        if (list == null || list.Count < 2) return;
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = Rng.Next(i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
     }
 
     /// <summary>
@@ -922,8 +973,18 @@ public sealed class BattleState : IVmWorld
                 return;
             }
 
+            // 爆牌判定必须在移动之前取：手牌已满 9 张时，
+            // MoveEntity 会把这张牌按容量铁律直接送进墓地 + shadow+1。
+            bool handFull = p.Hand.Count >= PlayerState.MaxHand;
             var card = p.Deck[0];
             MoveEntity(card, ZoneRef.Hand, playerId);
+
+            // 官方规则：爆掉的那张**不是抽到的牌** —— 它没进手牌，
+            // 所以不发 OnDraw（也不发 OnDiscard / 谢幕曲，那两条由 PlaceInZone 的
+            // 手牌溢出分支天然保证：它只 MoveEntity，不产生任何事件）。
+            // 之前这里无条件发 OnDraw，「每当抽牌时」会被一张爆掉的牌骗到。
+            if (handFull) continue;
+
             EmitEvent(new VmEvent { Kind = CoreEvent.OnDraw, Subject = EntityRef.From(card) });
         }
     }

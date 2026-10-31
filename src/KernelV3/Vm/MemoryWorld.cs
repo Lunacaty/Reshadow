@@ -117,9 +117,31 @@ public sealed class MemoryWorld : IVmWorld
     public void MoveEntity(RuntimeEntity e, ZoneRef toZone, int toPlayerId)
     {
         if (e.Zone == toZone && e.PlayerId == toPlayerId) return;
+        bool intoDeck = toZone == ZoneRef.Deck;
         e.Zone = toZone;
         e.PlayerId = toPlayerId;
         e.EntrySerial++;      // ★ 每次换区流水号 +1
+
+        // 回到牌库要洗牌（与 BattleState.MoveEntity 对齐）。
+        // 本世界的牌库顺序就是 _entities 里的相对次序，所以洗的是「占位槽」，
+        // 不重建实体、不碰 EntrySerial —— 卡片状态全部保留。
+        if (intoDeck) ShuffleDeckSlots(toPlayerId);
+    }
+
+    private void ShuffleDeckSlots(int playerId)
+    {
+        var slots = new List<int>();
+        for (int i = 0; i < _entities.Count; i++)
+            if (_entities[i].PlayerId == playerId && _entities[i].Zone == ZoneRef.Deck) slots.Add(i);
+        if (slots.Count < 2) return;
+
+        var picked = slots.Select(i => _entities[i]).ToList();
+        for (int i = picked.Count - 1; i > 0; i--)
+        {
+            int j = Rng.Next(i + 1);
+            (picked[i], picked[j]) = (picked[j], picked[i]);
+        }
+        for (int k = 0; k < slots.Count; k++) _entities[slots[k]] = picked[k];
     }
 
     /// <summary>
@@ -147,6 +169,8 @@ public sealed class MemoryWorld : IVmWorld
                 MoveEntity(card, ZoneRef.Cemetery, playerId);
                 var shadowKey = Schema.Counter("shadow");
                 WriteCounter(playerId, shadowKey, ReadCounter(playerId, shadowKey) + 1);
+                // 爆掉的那张没进手牌 —— 它不是「抽到的牌」，不发 OnDraw。
+                continue;
             }
             EmitEvent(new VmEvent { Kind = CoreEvent.OnDraw, Subject = EntityRef.From(card) });
         }
