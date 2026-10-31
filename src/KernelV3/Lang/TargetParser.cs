@@ -109,6 +109,10 @@ public sealed class TargetParser
         bool matched = false;
         bool hasCardType = false;
         bool includeLeader = false;
+        // 历史池："... have entered the field this match" / "destroyed this match"。
+        // 不识别的话，这类条件会退回「当前活在场上的」——与卡面的
+        // 「本局入场过的 / 本局被破坏的」完全不是一回事。
+        var history = Core.HistoryScope.None;
 
         // ---- -1. 特殊整体指代（最高优先级拦截）----
 
@@ -757,6 +761,21 @@ public sealed class TargetParser
                 includeLeader = true; matched = true; continue;
             }
 
+            // 历史池限定语（"... entered the field this match" / "... destroyed this match"）
+            if (cur.MatchPhrase("have", "entered", "the", "field", "this", "match")
+                || cur.MatchPhrase("entered", "the", "field", "this", "match"))
+            {
+                history = Core.HistoryScope.EnteredThisMatch; matched = true; continue;
+            }
+            if (cur.MatchPhrase("destroyed", "this", "match"))
+            {
+                history = Core.HistoryScope.DestroyedThisMatch; matched = true; continue;
+            }
+            if (cur.MatchPhrase("destroyed", "this", "turn"))
+            {
+                history = Core.HistoryScope.DestroyedThisTurn; matched = true; continue;
+            }
+
             // "and both leaders"
             if (cur.MatchPhrase("and", "both", "leaders") || cur.MatchPhrase("both", "leaders"))
             {
@@ -984,6 +1003,7 @@ public sealed class TargetParser
             SortDescending = desc,
             DistinctByName = distinct,
             IncludeLeader = includeLeader,
+            History = history,
         };
     }
 }

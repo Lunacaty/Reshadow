@@ -456,6 +456,17 @@ public sealed class VmEval
                     pool.Add(scope.Event.Object.Value);
                 break;
 
+            case TargetSourceKind.CardId when t.History != HistoryScope.None:
+                // 「本局入场过的 N 张同名卡」这类：池子来自历史记录，不是当前区域。
+                // 不接这一条的话，"if at least 5 other allied copies of X have
+                // entered the field this match" 会退化成「当前场上有 5 张 X」，
+                // 已死亡/已离场的副本全部不计 —— 条件永久为假。
+                pool = _world.EnumerateHistory(t.History, scope.ResolvePlayer(t.Owner))
+                             .Where(sn => t.CardId == 0 || sn.CardId == t.CardId)
+                             .Select(sn => new EntityRef(sn.EntityId, sn.EntrySerial, sn))
+                             .ToList();
+                break;
+
             case TargetSourceKind.CardId:
                 pool = _world.FindByCardId(t.Zone, scope.ResolvePlayer(t.Owner), t.CardId)
                              .Select(EntityRef.From).ToList();

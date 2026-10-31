@@ -86,6 +86,16 @@ public sealed class Lexicon
             if (string.Compare(text, from, name, 0, name.Length, StringComparison.OrdinalIgnoreCase) != 0) continue;
             // 词边界：后面不能紧跟字母
             int end = from + name.Length;
+
+            // 复数后缀："Summon 2 Ghosts instead" 里的 Ghosts 必须命中卡名 Ghost。
+            // 不认复数的话，它掉进普通 Word，召唤句退化成「移动自己」。
+            // 只在复数化后仍处在词边界时才接受，避免 "Golds" 误配 "Gold"+s。
+            if (end < text.Length && (text[end] == 's' || text[end] == 'S'))
+            {
+                int endPlural = end + 1;
+                if (endPlural >= text.Length || !char.IsLetter(text[endPlural]))
+                    return (name, _cardNames[name], endPlural - from);
+            }
             if (end < text.Length && char.IsLetter(text[end])) continue;
             return (name, _cardNames[name], name.Length);
         }
