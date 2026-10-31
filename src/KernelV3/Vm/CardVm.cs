@@ -341,6 +341,10 @@ public sealed partial class CardVm
         frame.Scope.BindRefs(Pending.Slot, refs);
         frame.Scope.Chosen = refs.Count > 0 ? refs[0] : null;
 
+        // 记下「本条指令刚被选完」，重入时节点据此放行。
+    // 不能只看槽位非空 —— 同一条能力里的下一条 Select 会误判成「已选过」。
+        frame.ResolvedChoiceIp = frame.Ip;
+
         // 不推进 Ip：挂起时主循环没有前进，恢复后必须**重跑本节点**。
         // 节点靠「槽位已绑定」判断玩家已经选过，从而继续执行而不是再次挂起。
         // （DoSelect 同样依赖这一点：它检查槽位非空后直接放行）

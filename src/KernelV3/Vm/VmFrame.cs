@@ -33,6 +33,16 @@ public sealed class VmFrame
     /// <summary>指令指针 —— 执行到第几条。</summary>
     public int Ip { get; set; }
 
+    /// <summary>
+    /// 刚刚由玩家 SubmitChoice 完成选择的指令下标（未完成时为 -1）。
+    ///
+    /// 用来区分「这条 Select/Choose 刚被玩家选完、重入」与
+    /// 「这是同一条能力里的**另一条** Select」。
+    /// 只靠「槽位里有没有东西」判断会串槽：第一句 Select 选完留下 $selected，
+    /// 第二句 Select 一看非空就跳过选择，效果全打在第一个目标上。
+    /// </summary>
+    public int ResolvedChoiceIp { get; set; } = -1;
+
     /// <summary>本帧归属的能力（用于「复刻能力」回溯）。</summary>
     public AbilityDef Ability { get; init; }
 

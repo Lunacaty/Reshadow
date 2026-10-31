@@ -27,13 +27,13 @@ public sealed partial class CardVm
         switch (node)
         {
             case SelectTargetNode n: return DoSelect(n, frame);
-            case DealDamageNode n: return DoDamage(n, scope);
-            case RestoreLifeNode n: return DoRestore(n, scope);
-            case ModifyStatsNode n: return DoModifyStats(n, scope);
+            case DealDamageNode n: return DoDamage(n, frame);
+            case RestoreLifeNode n: return DoRestore(n, frame);
+            case ModifyStatsNode n: return DoModifyStats(n, frame);
             case ModifyCostNode n: return DoModifyCost(n, scope);
             case ModifyKeywordNode n: return DoModifyKeyword(n, scope);
             case ModifyCounterNode n: return DoModifyCounter(n, scope);
-            case MoveZoneNode n: return DoMoveZone(n, scope);
+            case MoveZoneNode n: return DoMoveZone(n, frame);
             case SpawnCardNode n: return DoSpawn(n, scope);
             case ReplaceDeckNode n: return DoReplaceDeck(n, scope);
             case EvolveNode n: return DoEvolve(n, scope);
@@ -54,24 +54,32 @@ public sealed partial class CardVm
     /// 解析目标，若 Mode == Choose 则挂起等玩家选。
     /// 返回 null 表示已挂起（调用方必须直接 return true，不要执行后续动作）。
     /// </summary>
-    private List<RuntimeEntity> ResolveOrBlock(TargetSpec spec, VmScope scope, string slot)
+    private List<RuntimeEntity> ResolveOrBlock(TargetSpec spec, VmScope scope, string slot, VmFrame frame)
     {
         if (spec == null) return new List<RuntimeEntity>();
 
         if (spec.Mode == SelectMode.Choose)
         {
-            // 若该槽位已经绑定了本次选择的实体，说明玩家已选过，直接取用
-            var chosenBefore = scope.Read(slot);
-            if (chosenBefore.Count > 0)
+            // 只有「**本条指令**刚被玩家选完」才复用槽位。
+            // 用「槽位非空」判断会串槽：同一能力里第二处 Choose 会拿到第一处的选择。
+            bool justResolved = frame != null && frame.ResolvedChoiceIp == frame.Ip;
+            if (justResolved)
             {
-                var liveChosen = new List<RuntimeEntity>();
-                foreach (var cr in chosenBefore)
+                if (frame != null) frame.ResolvedChoiceIp = -1;
+                var chosenBefore = scope.Read(slot);
+                if (chosenBefore.Count > 0)
                 {
-                    var lv = _world.GetLive(cr.EntityId, cr.EntrySerial);
-                    if (lv != null) liveChosen.Add(lv);
+                    var liveChosen = new List<RuntimeEntity>();
+                    foreach (var cr in chosenBefore)
+                    {
+                        var lv = _world.GetLive(cr.EntityId, cr.EntrySerial);
+                        if (lv != null) liveChosen.Add(lv);
+                    }
+                    if (liveChosen.Count > 0) return liveChosen;
                 }
-                if (liveChosen.Count > 0) return liveChosen;
             }
+            // 新一轮选择：清掉上一次留下的同槽位结果。
+            scope.Clear(slot);
 
             var pool = _eval.ResolveRef(spec, scope);
             // 能力选目标时要过滤对手的潜行 / 灵气：
@@ -132,8 +140,15 @@ public sealed partial class CardVm
 
     private bool DoSelect(SelectTargetNode n, VmFrame frame)
     {
-        // 玩家已经选过（槽位已被 SubmitChoice 绑定）—— 直接放行，不要再次挂起
-        if (frame.Scope.Read(n.OutSlot).Count > 0) return false;
+        // 只有「**本条指令**刚被玩家选完」才放行。
+        // 用「槽位非空」判断会串槽：同一能力里第二句 Select 看到第一句留下的
+        // $selected 非空，就跳过玩家选择，把第二个效果打在第一个目标上。
+        if (frame.ResolvedChoiceIp == frame.Ip)
+        {
+            frame.ResolvedChoiceIp = -1;
+            return false;
+        }
+        frame.Scope.Clear(n.OutSlot);
 
         var candidates = _eval.Resolve(n.Target, frame.Scope);
 
@@ -146,6 +161,8 @@ public sealed partial class CardVm
         candidates = candidates.Where(c =>
         {
             if (c == null || c.Zone != ZoneRef.Board) return true;
+            // 土之印 / Clue 这类「不可点选」的护符与 ResolveOrBlock 保持同一守卫。
+            if (_world is Battle.BattleState bsSel && bsSel.IsProtectedAmulet(c)) return false;
             if (c.PlayerId == controller) return true;
             return !c.Keywords.Contains(ambushKw) && !c.Keywords.Contains(auraKw);
         }).ToList();
@@ -157,6 +174,8 @@ public sealed partial class CardVm
             int min = 1;
             int max = n.Target.Count != null ? _eval.EvalNum(n.Target.Count, frame.Scope) : 1;
             if (max <= 0) max = candidates.Count;
+            // 候选不足时必须钳制，否则 PendingChoice 会要求选 3 个而只有 2 个可选。
+            if (max > candidates.Count) max = candidates.Count;
             return Block(new PendingChoice
             {
                 Player = frame.Scope.Owner,
@@ -175,9 +194,10 @@ public sealed partial class CardVm
 
     // ---------- 伤害 / 恢复 ----------
 
-    private bool DoDamage(DealDamageNode n, VmScope scope)
+    private bool DoDamage(DealDamageNode n, VmFrame frame)
     {
-        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected);
+        var scope = frame.Scope;
+        var targets = ResolveOrBlock(n.Target, frame.Scope, TargetSpec.SlotSelected, frame);
         if (targets == null) return true;   // 已挂起
         if (targets.Count == 0) return false;
         int total = _eval.EvalNum(n.Amount, scope);
@@ -230,9 +250,10 @@ public sealed partial class CardVm
         _world.ApplyDamage(t, amount, srcPlayer);
     }
 
-    private bool DoRestore(RestoreLifeNode n, VmScope scope)
+    private bool DoRestore(RestoreLifeNode n, VmFrame frame)
     {
-        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected);
+        var scope = frame.Scope;
+        var targets = ResolveOrBlock(n.Target, frame.Scope, TargetSpec.SlotSelected, frame);
         if (targets == null) return true;   // 已挂起
         foreach (var t in targets)
         {
@@ -246,9 +267,10 @@ public sealed partial class CardVm
 
     // ---------- 属性 / 费用 ----------
 
-    private bool DoModifyStats(ModifyStatsNode n, VmScope scope)
+    private bool DoModifyStats(ModifyStatsNode n, VmFrame frame)
     {
-        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected);
+        var scope = frame.Scope;
+        var targets = ResolveOrBlock(n.Target, frame.Scope, TargetSpec.SlotSelected, frame);
         if (targets == null) return true;   // 已挂起
 
         foreach (var t in targets)
@@ -473,8 +495,9 @@ public sealed partial class CardVm
                      .ToList();
     }
 
-    private bool DoMoveZone(MoveZoneNode n, VmScope scope)
+    private bool DoMoveZone(MoveZoneNode n, VmFrame frame)
     {
+        var scope = frame.Scope;
         // 能力抽牌必须走统一管线：自己 MoveEntity 会绕开 OnDraw 与抽空判负。
         if (IsPlainDraw(n))
         {
@@ -482,7 +505,7 @@ public sealed partial class CardVm
             return false;
         }
 
-        var targets = ResolveOrBlock(n.Target, scope, n.OutSlot);
+        var targets = ResolveOrBlock(n.Target, frame.Scope, n.OutSlot, frame);
         if (targets == null) return true;   // 已挂起等玩家选
         var moved = new List<RuntimeEntity>();
         foreach (var t in targets)

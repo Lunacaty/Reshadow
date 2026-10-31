@@ -411,12 +411,26 @@ public sealed class TurnRunner
             ZoneScope.Opponent => 1 - playerId,
             _ => -1,
         };
-        var pool = _state.EnumerateZone(spec.Zone, owner).ToList();
+        // 必须走 VmEval.ResolveRef 而不是裸 EnumerateZone：
+        // spec.Where（「带 Fuse」「攻击力 3 以上」等）与历史池都在那里生效，
+        // 只按区域枚举会把所有不符合条件的卡也算成合法目标，
+        // 于是「没有合法目标就不能打出」这道预检形同虚设。
+        var eval = new Vm.VmEval(_state);
+        var sc = new Vm.VmScope { Owner = spec.Owner, Controller = playerId };
+        var pool = new List<RuntimeEntity>();
+        foreach (var r in eval.ResolveRef(spec, sc))
+        {
+            var live = _state.GetLive(r.EntityId, r.EntrySerial);
+            if (live != null) pool.Add(live);
+        }
+
         var ambush = _schema.Keyword("ambush");
         var aura = _schema.Keyword("aura");
         pool = pool.Where(e =>
         {
             if (e.Zone != ZoneRef.Board) return true;
+            // 土之印 / Clue 不可被能力点选，预检也要排除。
+            if (_state.IsProtectedAmulet(e)) return false;
             if (e.PlayerId == playerId) return true;
             return !e.Keywords.Contains(ambush) && !e.Keywords.Contains(aura);
         }).ToList();
