@@ -157,6 +157,24 @@ public sealed class TargetSpec
     public const string SlotCounter = "$counter";
     public const string SlotItem = "$item";
 
+    /// <summary>
+    /// "other / another" 的排除槽位**待定**：编译期还不知道这句话落在哪种上下文里。
+    ///
+    /// 语义事实：other 要排除的是「这句效果的主体视角」，而视角随上下文切换：
+    ///   · "Whenever an allied follower enters the field, deal 1 damage to all other followers."
+    ///     —— 触发上下文，other 排除**事件主体**（刚进场的那个），不是监听者自己；
+    ///   · "Fanfare: Deal 2 damage to another enemy follower." / "Select another follower"
+    ///     —— 普通动作上下文，other 排除**本卡自身**。
+    ///
+    /// 编译期不猜：TargetParser 只在「本句处于触发器从句的效果体里」（DefaultPronounSlot
+    /// 已被 EnglishCompiler 置成 $trigger，且当前不是在解析从句主语本身）时写这个待定值，
+    /// 其余一律直接写 $self —— 包括触发器从句的**主语**，
+    /// "Whenever another allied follower enters the field" 里的 another 指本卡以外，
+    /// 排除事件主体会让过滤条件恒假、能力永不触发。
+    /// 求值时由 VmEval 按 scope.Trigger 有无所指落定，见 VmEval.NotSameEntityExpr。
+    /// </summary>
+    public const string SlotExcludeTriggerOrSelf = "$excludeTriggerOrSelf";
+
     // ---------- 常用构造 ----------
 
     /// <summary>本卡自身。</summary>

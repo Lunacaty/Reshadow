@@ -83,7 +83,19 @@ public sealed class PrefixParser
             if (TryConsumeFrequency(cur, b)) continue;
             if (TryConsumeTurnBoundary(cur, b)) continue;
             if (TryConsumeKeywordHeader(cur, b)) continue;
-            if (cur.Current.IsAnyWord("whenever", "when") && TryConsumeWhenClause(cur, b)) continue;
+            if (cur.Current.IsAnyWord("whenever", "when"))
+            {
+                // 从句里的**主语**是「谁算数」的判据，不是效果体的视角。
+                // 必须打上标记，否则主语里的 another 会被当成效果体的 other
+                // （"Whenever another allied follower enters the field, …" 的
+                //  another 指本卡以外，不是事件主体以外 —— 后者恒假，能力永不触发）。
+                // 用 try/finally 是因为 TryConsumeWhenClause 有多个返回点。
+                bool consumed;
+                _target.InTriggerSubject = true;
+                try { consumed = TryConsumeWhenClause(cur, b); }
+                finally { _target.InTriggerSubject = false; }
+                if (consumed) continue;
+            }
             if (cur.Current.IsWord("if") && TryConsumeIfClause(cur, b)) continue;
 
             cur.Seek(saved);
@@ -489,7 +501,14 @@ public sealed class PrefixParser
         if (cur.MatchPhrase("is", "destroyed")) return CoreEvent.OnDestroy;
         if (cur.MatchPhrase("is", "banished", "from", "the", "field")) return CoreEvent.OnBanish;
         if (cur.MatchPhrase("is", "banished")) return CoreEvent.OnBanish;
-        if (cur.MatchPhrase("takes", "damage"))
+        // 受伤事件有两种卡面写法，语义完全等价：
+        //   "takes damage"            —— 随从/主战者主语
+        //   "is damaged"              —— 被动写法，NaturalPrinter 渲染 OnDamaged 用的就是它
+        // 后者此前只在 ConditionCompiler 里有分支（那是条件路径，不是事件头），
+        // 事件头这里不认，于是 "Whenever this follower is damaged, ..." 整句
+        // 在位置 0 报「无法解析的动作 / 停在 [Whenever]」—— 编译不出能力。
+        // 两条必须走同一段逻辑，"but isn't destroyed" 的存活条件对两者同样成立。
+        if (cur.MatchPhrase("takes", "damage") || cur.MatchPhrase("is", "damaged"))
         {
             // "takes damage but isn't destroyed" = 受到伤害后仍然存活。
             // 旧实现塞的是 UnitState.None —— VmEval.MatchState 对它恒返回 false，
