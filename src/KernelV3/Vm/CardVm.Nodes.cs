@@ -501,6 +501,37 @@ public sealed partial class CardVm
         t.IsSuperEvolved = false;
         t.IsSilenced = false;
         t.TempModifiers.Clear();
+
+        // 回手要「洗白为印刷值」：临时获得的关键词、带参关键词的数值、
+        // 临时计数器全部清掉，再按卡面重新装配常驻部分。
+        // 之前只清了数值，于是回手再打出可以白拿一次守护。
+        t.Keywords.Clear();
+        t.KeywordValues.Clear();
+        t.Counters.Clear();
+        if (def == null) return;
+
+        foreach (var k in def.InnateKeywords) t.Keywords.Add(k);
+        foreach (var kv in def.InnateCounters) t.Counters[kv.Key] = kv.Value;
+
+        // 与 CreateEntity 的 PassiveAura 装配保持一致。
+        foreach (var ab in def.Abilities)
+        {
+            if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.PassiveAura) continue;
+            foreach (var n in ab.Body ?? Array.Empty<EffectNode>())
+            {
+                switch (n)
+                {
+                    case ModifyKeywordNode mk when mk.Op == KeywordOp.Grant:
+                        t.Keywords.Add(mk.Keyword);
+                        if (mk.Value?.Op == NumOp.Const) t.KeywordValues[mk.Keyword] = mk.Value.Value;
+                        break;
+                    case ModifyCounterNode mc
+                        when mc.Op == CounterOp.Set && mc.Delta?.Op == NumOp.Const:
+                        t.Counters[mc.Counter] = mc.Delta.Value;
+                        break;
+                }
+            }
+        }
     }
 
     /// <summary>

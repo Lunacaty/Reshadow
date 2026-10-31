@@ -585,8 +585,34 @@ public sealed class BattleState : IVmWorld
 
                 foreach (var n in ab.Body ?? Array.Empty<Ast.EffectNode>())
                 {
-                    if (n is Ast.ModifyKeywordNode mk && mk.Op == Ast.KeywordOp.Grant)
-                        if (!e.Keywords.Contains(mk.Keyword)) e.Keywords.Add(mk.Keyword);
+                    switch (n)
+                    {
+                        // 裸关键词（Ward / Storm / Rush / Can't be destroyed …）
+                        case Ast.ModifyKeywordNode mk when mk.Op == Ast.KeywordOp.Grant:
+                            if (!e.Keywords.Contains(mk.Keyword)) e.Keywords.Add(mk.Keyword);
+                            if (mk.Value?.Op == Ast.NumOp.Const) e.KeywordValues[mk.Keyword] = mk.Value.Value;
+                            break;
+
+                        // 「X starts at N」的初始计数器。
+                        // 之前这条分支不存在，PassiveAura 只被当成关键词装配器，
+                        // 于是 X 计数器从未创建，`Deal X damage` 恒打 0 点。
+                        // 只认 Op == Set：Increase X by 1 走触发路径，不能被入场重刷。
+                        case Ast.ModifyCounterNode mc
+                            when mc.Op == Ast.CounterOp.Set && mc.Delta?.Op == Ast.NumOp.Const:
+                            e.Counters[mc.Counter] = mc.Delta.Value;
+                            break;
+
+                        // 真光环（PassiveAura + ModifyStats，如「所有友方随从 +2/+2」）。
+                        // 只吃常量增量，非常量留给运行时求值。
+                        case Ast.ModifyStatsNode ms when ms.Op == Ast.StatModOp.Add:
+                            if (ms.Attack?.Op == Ast.NumOp.Const) e.Attack += ms.Attack.Value;
+                            if (ms.Life?.Op == Ast.NumOp.Const)
+                            {
+                                e.Life += ms.Life.Value;
+                                e.MaxLife += ms.Life.Value;
+                            }
+                            break;
+                    }
                 }
 
                 foreach (var c in ab.Costs ?? Array.Empty<Ast.CostSpec>())

@@ -680,9 +680,30 @@ public sealed class EnglishCompiler
                 continue;
             }
 
+            // 无头独立段落要分两种时机：
+            //   "Deal 4 damage to all enemy followers."   → OnPlay（动作句，打出时结算一次）
+            //   "Can't be destroyed by abilities."        → PassiveAura（常驻修正）
+            //   "Can attack 2 times per turn."            → PassiveAura（常驻修正）
+            //
+            // 判据是「这句是不是纯自指常驻修正」：无显式头、无条件、无代价、
+            // body 全部是指向本卡槽位的 ModifyKeywordNode。动作句永不满足。
+            // 不分的话，静态限制词会编成 OnPlay —— 只有从手牌打出才授予，
+            // 召唤 / 复活 / 复制进场的同一张卡完全没有这个关键词。
+            bool selfOnlyRestriction =
+                !hb.EventExplicit
+                && hb.Costs.Count == 0
+                && (hb.Condition == null || hb.Condition is ConstBoolExpr)
+                && body.All(n => n is ModifyKeywordNode mk
+                               && mk.Op == KeywordOp.Grant
+                               && mk.Target != null
+                               && mk.Target.SourceKind == TargetSourceKind.Slot
+                               && mk.Target.Slot == TargetSpec.SlotSelf);
+
             var built = new AbilityDef
             {
-                Trigger = hb.BuildTrigger(),
+                Trigger = selfOnlyRestriction
+                    ? new TriggerSpec { Event = CoreEvent.PassiveAura }
+                    : hb.BuildTrigger(),
                 Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs)),
                 Costs = hb.Costs,
                 Body = body,
