@@ -46,7 +46,11 @@ public sealed class VmEval
             case NumOp.Count:
             {
                 var t = e.Of ?? TargetSpec.Self;
-                return Resolve(t, scope).Count;
+                // 必须用 ResolveRef（含历史快照），不能用 Resolve（只认当前活体）：
+                // 「本局入场过的 N 张同名卡」「本局被破坏的 N 张」这些候选
+                // 在事件到达时早已离场或死亡，GetLive 必然返回 null，
+                // 用 Resolve 计数会恒为 0 —— 条件永久为假。
+                return ResolveRef(t, scope).Count;
             }
 
             case NumOp.Sum:
@@ -132,8 +136,13 @@ public sealed class VmEval
             case NumOp.DistinctCount:
             {
                 var t = e.Of ?? TargetSpec.Self;
-                var ents = Resolve(t, scope);
-                return ents.Where(x => x.Def != null).Select(x => x.Def.CardId).Distinct().Count();
+                // 同 NumOp.Count：历史池里的候选没有活体，必须走引用池。
+                // 卡号取「活体 or 快照」，两者都缺才计 0（那不是一张可识别的卡）。
+                return ResolveRef(t, scope)
+                    .Select(r => RefDef(r)?.CardId ?? (r.Snapshot?.CardId ?? 0))
+                    .Where(id => id != 0)
+                    .Distinct()
+                    .Count();
             }
 
             case NumOp.MaxGroupSize:
@@ -174,7 +183,8 @@ public sealed class VmEval
 
             case ExistsExpr ex:
             {
-                int n = Resolve(ex.Target, scope).Count;
+                // 存在性判断同样要看得见历史池。
+                int n = ResolveRef(ex.Target, scope).Count;
                 return Compare(n, ex.Op, EvalNum(ex.Count, scope));
             }
 
@@ -215,7 +225,10 @@ public sealed class VmEval
             case NotSameEntityExpr ne:
             {
                 var t = ne.Of ?? TargetSpec.Item;
-                var ents = Resolve(t, scope);
+                // 同样必须用引用池：这句 other 通常就是在过滤历史池里的候选
+                // （"... copies of X have entered the field this match"），
+                // 用活体池会把已经离场的候选全部算成「不存在」，过滤恒 true。
+                var ents = ResolveRef(t, scope);
                 // 排除槽位可能是「待定」的（见 TargetSpec.SlotExcludeTriggerOrSelf）：
                 // 编译期说不出这句 other 落在触发上下文还是普通动作上下文，
                 // 只有执行时才知道。判据是本次作用域有没有绑定事件主体。

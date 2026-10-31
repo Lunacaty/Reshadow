@@ -321,8 +321,9 @@ public sealed class BattleState : IVmWorld
         e.Counters[crestKey] = 1;
 
         // 「When you gain this crest」的触发点：纹章进入纹章区就算获得。
-        // 不发这条事件，Mjerrabaine 那类「获得纹章时换牌库」永远不会执行。
-        NotifySummoned(e);
+        // 不能走 NotifySummoned —— 它第一行就是 `if (e.Zone != Board) return;`，
+        // 而纹章的 Zone 是 CrestArea，会被直接退回，事件永远发不出去。
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnEnterField, Subject = EntityRef.From(e) });
         return e;
     }
 

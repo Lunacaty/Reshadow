@@ -236,7 +236,11 @@ public sealed class ActionParser
                     {
                         new ModifyCounterNode
                         {
-                            Target = TargetSpec.Self,
+                            // Target 必须为 null：信仰是**资源计数器**，住在玩家身上
+                            // （BattleState.ReadCounter 的 faith 分支会转去信仰实体）。
+                            // 写 TargetSpec.Self 会让「随从卡上的这句」去改随从自己的
+                            // 同名计数器 —— 随从没有 faith，值永远加不上。
+                            Target = null,
                             Owner = ZoneScope.Self,
                             Counter = _lex.Counter(ctr),
                             Op = CounterOp.Add,
@@ -837,6 +841,28 @@ public sealed class ActionParser
                     continue;
                 }
                 cur.Seek(saveF);
+            }
+
+            // 0b. "... to give it \"Increase the number of Modes you can select by 1.\""
+            // 前半句（"Reduce your faith's value by 10"）已经把 $counter 登记为本句主体，
+            // 这里的 it 指的就是那个资源计数器。
+            // 不识别的话它会被当成实体目标，编译成 GrantAbilityNode(slot:$counter)，
+            // 而 $counter 槽位里没有实体，运行期完全落空。
+            if (cur.Current.IsWord("it")
+                && _target.BoundSlots.Contains(TargetSpec.SlotCounter)
+                && cur.Peek().Kind == TokKind.Quoted)
+            {
+                cur.Advance();                       // it
+                var qIt = cur.Current;
+                cur.Advance();                       // 引号块
+                result.Add(new GrantCounterAbilityNode
+                {
+                    Counter = _lex.Counter("faith"),
+                    Owner = ZoneScope.Self,
+                    Granted = _compileQuotedAbility(qIt.Inner),
+                });
+                ConsumeDuration(cur);
+                continue;
             }
 
             // 1. 解析 1 个或多个并列目标

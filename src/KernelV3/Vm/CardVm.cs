@@ -674,8 +674,43 @@ public sealed partial class CardVm
             Source = EntityRef.From(owner),
             Trigger = subject,
         };
-        var pool0 = _eval.ResolveRef(filter, scope0);
-        return pool0.Any(r => r.EntityId == subject.EntityId);
+        // 槽位型过滤器（$self / $trigger）仍按槽位解析。
+        if (filter.SourceKind == TargetSourceKind.Slot)
+        {
+            var pool0 = _eval.ResolveRef(filter, scope0);
+            return pool0.Any(r => r.EntityId == subject.EntityId);
+        }
+
+    // 非槽位过滤器不能拿去「把 subject 扔进区域里捞」——事件主体此刻往往
+    // 根本不在 filter 声明的区域里：
+    //   打出一张 Loot 法术时它在 Hand；被融合的 Loot 在 FuseMaterial；
+    //   被破坏的随从在 Cemetery；被放逐的在 Banished；被弃的在 Cemetery。
+    // 去 Board 捞必然空池，于是「Whenever you play or Fuse a Loot card」
+    // 「Whenever an allied amulet is destroyed」这类触发器在实战中全部哑火。
+    // 正确做法：直接检验 subject 这个**候选**是否满足 filter 的归属/卡号/Where。
+    bool MatchOne(EntityRef cand)
+    {
+        if (!SubjectBelongsTo(filter.Owner, owner.PlayerId, cand)) return false;
+        if (filter.CardId > 0 && (cand.Snapshot?.CardId ?? 0) != filter.CardId) return false;
+        if (!string.IsNullOrEmpty(filter.CardName)
+            && !string.Equals(cand.Snapshot?.Name, filter.CardName, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (filter.Where == null || (filter.Where is Ast.ConstBoolExpr cb && cb.Value)) return true;
+        var sub = scope0.Derive();
+        sub.BindRefs(TargetSpec.SlotItem, new[] { cand });
+        return _eval.EvalBool(filter.Where, sub);
+    }
+
+    if (MatchOne(subject)) return true;
+
+    // 融合事件的 Subject 是融合**主体**，材料停在 FuseMaterial 区。
+    // 「Whenever you play or Fuse a Loot card」要检验的是被喂进去的那张。
+    foreach (var m in _world.EnumerateZone(ZoneRef.FuseMaterial, owner.PlayerId))
+    {
+        if (m != null && m.FusedIntoId == subject.EntityId && MatchOne(EntityRef.From(m)))
+            return true;
+    }
+    return false;
     }
 
     /// <summary>

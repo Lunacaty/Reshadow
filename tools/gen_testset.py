@@ -147,7 +147,10 @@ add('Kindled Blade', 3, 2, None, None, H('Fanfare') + ': Draw a card.')
 add('Sigil of Resolve', 4, 0, None, None, '')
 
 out = {'_schema': 'handcrafted test pool (official phrasing)', 'cards': cards}
-d = 'E:/text/reshadow/game/data/cards'
+# 基于本文件位置推导，不写死绝对路径。
+# 写死后在 git worktree 里跑会去读主工作区的数据，而不是当前 worktree。
+_HERE = os.path.dirname(os.path.abspath(__file__))
+d = os.path.join(_HERE, '..', 'data', 'cards')
 io.open(d + '/testset_cards.json', 'w', encoding='utf-8').write(json.dumps(out, ensure_ascii=False, indent=1))
 print('cards: %d -> %d bytes' % (len(cards), os.path.getsize(d + '/testset_cards.json')))
 

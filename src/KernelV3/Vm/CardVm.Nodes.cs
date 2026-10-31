@@ -351,6 +351,21 @@ public sealed partial class CardVm
                     CounterName = n.Counter.Name,
                     PlayerId = e.PlayerId,
                 });
+
+                // 吟唱被能力推进到 0：**当场**到期。
+                //
+                // 否则会变成不死钉子户：回合初的 StepCrestArea / StepBoardCountdown
+                // 第一行是 `if (... cd <= 0) continue;`，已经归 0 的实体
+                // 会被直接跳过 —— 既不当场触发谢幕曲，下回合也不会被回收。
+                // curE 可能本来就是 0（这张护符没有吟唱），推进后变负；
+                // 只有「从正数跨到 <= 0」才算真的到期，否则无吟唱的护符会被误杀。
+                if (n.Counter.Name == "countdown" && curE > 0 && nextE <= 0)
+                {
+                    _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnCountdownExpire, Subject = EntityRef.From(e) });
+                    if (e.Zone == ZoneRef.Board) _world.DestroyEntity(e);
+                    else if (e.Zone == ZoneRef.CrestArea && _world is Battle.BattleState bsCrest)
+                        bsCrest.ExpireCrest(e);
+                }
             }
             return false;
         }
@@ -799,17 +814,19 @@ public sealed partial class CardVm
                 // 每进入一次就少一次机会，到 0 就不再递归。
                 int budget = _repeatBudgets.TryGetValue(n, out var b) ? b : max;
                 if (budget <= 0) { _repeatBudgets.Remove(n); return false; }
+
+                // 条件已成立：停，并清掉本节点的预算记录。
+                if (_eval.EvalBool(n.Until, scope)) { _repeatBudgets.Remove(n); return false; }
+
                 _repeatBudgets[n] = budget - 1;
 
-                PushBody(new List<EffectNode>
-                {
-                    new ConditionalNode
-                    {
-                        Condition = n.Until,
-                        Then = new List<EffectNode>(),          // 条件成立：停
-                        Else = new List<EffectNode>(n.Body),    // 不成立：再跑一轮
-                    },
-                }, scope.Derive());
+                // 跑一轮 Body，**并把 n 自己接在末尾** —— 这才构成帧栈级的尾递归。
+                //
+                // 只压 n.Body 是不够的：DoLoop 返回后主循环会 frame.Ip++ 跨过当前
+                // LoopNode，而栈顶的 body 跑完就再也不会回到这里 ——
+                // 结果是 Body 只执行 1 次循环就结束，且 _repeatBudgets 永久残留。
+                var pass = new List<EffectNode>(n.Body) { n };
+                PushBody(pass, scope.Derive());
                 return false;
             }
             default:
@@ -916,6 +933,17 @@ public sealed partial class CardVm
     private bool DoGrantCounter(GrantCounterAbilityNode n, VmScope scope)
     {
         _world.GrantCounterAbility(scope.ResolvePlayer(n.Owner), n.Counter, n.Granted);
+
+        // 挂上去的是**常驻修正**（如 "Increase the number of Modes you can select by 1."）时，
+        // 它不会再有第二次触发机会 —— 只登记进表就永远不会执行。
+        // 常驻修正的语义就是「立刻生效并一直生效」，所以这里当场跑一遍它的 Body。
+        //
+        // 例：Sham-Nacha 扣 10 信仰后给信仰挂这条，玩家的 mode_count 应当立即 +1，
+        // 否则「信仰满 10 之后可以多选一个模式」永远不成立。
+        if (n.Granted?.Trigger != null
+            && n.Granted.Trigger.Event == CoreEvent.PassiveAura
+            && n.Granted.Body != null && n.Granted.Body.Count > 0)
+            PushBody(n.Granted.Body, scope.Derive());
         return false;
     }
 

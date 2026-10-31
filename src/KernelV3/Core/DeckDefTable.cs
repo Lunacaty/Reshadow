@@ -92,6 +92,12 @@ public sealed class DeckDefTable
             new DeckEntry(90004130, 3),   // Demon of Purgatory
             new DeckEntry(90004310, 1),   // Astaroth's Reckoning
         });
+
+        // "Replace your deck with a deck of 40 cards."（Mjerrabaine, Great Manifest）
+        // 不注册的话，获得纹章的那一刻会抛「未定义的具名牌组」。
+        // 40 张用同一张填充卡表示 —— 官方这张卡组的实际内容不影响当前引擎语义
+        // （换牌库只改变牌库张数与后续抽牌），张数才是被消费的那个事实。
+        t.Register("deck of 40 cards", new[] { new DeckEntry(90004110, 40) });
         return t;
     }
 }
