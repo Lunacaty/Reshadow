@@ -44,10 +44,50 @@ public sealed class TargetParser
     /// <summary>是否启用设计3 5.3 的代词强制校验。整卡为 true，单句语料为 false。</summary>
     public bool StrictPronounCheck { get; set; } = true;
 
+    /// <summary>
+    /// 正在解析 "When/Whenever ..." 从句的**主语**本身。
+    ///
+    /// 必须与「触发器从句下的效果体」区分开，否则两种 other 会被混为一谈：
+    ///   · 主语里的 another —— "Whenever **another** allied follower enters the field, give it Rush"
+    ///     是「本卡以外的随从」，排除的是**监听者自己**（$self）。若改成排除事件主体，
+    ///     过滤条件就恒不成立，这条能力永远不触发。
+    ///   · 效果体里的 other —— "…, deal 1 damage to all **other** followers"
+    ///     排除的是**刚进场的那个**（$trigger）。
+    /// 主语解析发生在 EnglishCompiler 设定 DefaultPronounSlot 之前（前缀先剥、后定上下文），
+    /// 那时刻的值还是上一句留下的，不能拿它当判据 —— 否则同一张卡里
+    /// 前面的触发句会污染后面的主语。
+    /// </summary>
+    public bool InTriggerSubject { get; set; }
+
     public TargetParser(Lexicon lex) => _lex = lex;
 
     /// <summary>诊断用：上一次 TryParse 在后置定语循环里消费了多 token。</summary>
     public static int LastPostfixConsumed;
+
+    /// <summary>
+    /// "other / another" 该排除哪个槽位 —— 由**当前句所处的上下文**决定，不能写死。
+    ///
+    /// 三种情形，缺一不可：
+    ///   1. 触发器从句的**主语**："Whenever another allied follower enters the field, …"
+    ///      → another = 本卡以外，排除 $self。不能待定：主语是「谁算数」的判据，
+    ///        与事件主体是同一个东西，拿它去排除事件主体会让条件恒假。
+    ///   2. 触发器从句的**效果体**："…, deal 1 damage to all other followers"
+    ///      → other = 刚进场的那个以外，排除 $trigger。
+    ///   3. 普通动作上下文："Fanfare: Deal 2 damage to another enemy follower."
+    ///      → another = 本卡以外，排除 $self（旧行为，逐字不变）。
+    ///
+    /// 情形 1 与 2 的判据不能都用 DefaultPronounSlot：主语解析发生在前缀剥离阶段，
+    /// 那时 EnglishCompiler 还没根据本句设置该字段，读到的是上一句的残留值。
+    /// 因此情形 1 用显式的 InTriggerSubject（由 PrefixParser 在解析主语时置位），
+    /// 情形 2 才看 DefaultPronounSlot。
+    /// </summary>
+    private string OtherExcludeSlot()
+    {
+        if (InTriggerSubject) return TargetSpec.SlotSelf;
+        return DefaultPronounSlot == TargetSpec.SlotTrigger
+            ? TargetSpec.SlotExcludeTriggerOrSelf
+            : TargetSpec.SlotSelf;
+    }
 
     /// <summary>尝试从 cursor 当前位置解析一个目标。解析不了返回 null（cursor 不动）。</summary>
     public TargetSpec TryParse(TokenCursor cur)
@@ -351,7 +391,7 @@ public sealed class TargetParser
             }
             if (cur.MatchAnyWord("another", "other"))
             {
-                wheres.Add(new NotSameEntityExpr { ExcludeSlot = TargetSpec.SlotSelf, Of = TargetSpec.Item });
+                wheres.Add(new NotSameEntityExpr { ExcludeSlot = OtherExcludeSlot(), Of = TargetSpec.Item });
                 matched = true; continue;
             }
 
@@ -475,7 +515,7 @@ public sealed class TargetParser
             if (cur.Current.IsAnyWord("another", "other"))
             {
                 cur.Advance();
-                wheres.Add(new NotSameEntityExpr { ExcludeSlot = TargetSpec.SlotSelf, Of = TargetSpec.Item });
+                wheres.Add(new NotSameEntityExpr { ExcludeSlot = OtherExcludeSlot(), Of = TargetSpec.Item });
                 matched = true; continue;
             }
 

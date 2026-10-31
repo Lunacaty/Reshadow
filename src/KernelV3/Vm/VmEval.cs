@@ -205,9 +205,27 @@ public sealed class VmEval
             {
                 var t = ne.Of ?? TargetSpec.Item;
                 var ents = Resolve(t, scope);
-                var excluded = scope.Read(ne.ExcludeSlot);
-                if (excluded.Count == 0 && ne.ExcludeSlot == TargetSpec.SlotSelf && scope.Source != null)
-                    excluded = new List<EntityRef> { scope.Source.Value };
+                // 排除槽位可能是「待定」的（见 TargetSpec.SlotExcludeTriggerOrSelf）：
+                // 编译期说不出这句 other 落在触发上下文还是普通动作上下文，
+                // 只有执行时才知道。判据是本次作用域有没有绑定事件主体。
+                //   触发上下文（scope.Trigger 非空）→ 排除事件主体；
+                //   普通动作上下文（scope.Trigger 为空）→ 退回 $self。
+                // 为什么不在编译期定死：同一条效果文本在两种上下文里都会被用到，
+                // 而 TargetParser 拿到 DefaultPronounSlot=$trigger 只说明「本句位于触发器从句下」，
+                // 真正的事件主体属于运行期事实。
+                var slot = ne.ExcludeSlot == TargetSpec.SlotExcludeTriggerOrSelf
+                    ? (scope.Trigger != null ? TargetSpec.SlotTrigger : TargetSpec.SlotSelf)
+                    : ne.ExcludeSlot;
+                // 必须走 ResolveRef 而不是 scope.Read：寄存器里通常没有这两枚锚点
+                // （CardVm 只设了 scope.Source / scope.Trigger 两个属性），
+                // ResolveRef 的槽位分支才带「$self 回退 Source / $trigger 回退 Trigger」
+                // —— 直接 Read 会拿到空集合，于是 "other" 静默退化成「不排除任何人」。
+                var excluded = ResolveRef(new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Slot,
+                    Slot = slot,
+                    Mode = Core.SelectMode.All,
+                }, scope);
                 if (excluded.Count == 0) return ents.Count > 0;
                 // 排除自己：候选里至少有一个 EntityId 不在排除集合中
                 var bad = new HashSet<int>();
