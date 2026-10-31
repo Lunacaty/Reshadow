@@ -84,6 +84,15 @@ public sealed class TargetSpec
     public int TopN { get; init; }
 
     public bool DistinctByName { get; init; }
+
+    /// <summary>
+    /// 只保留**重复**的那些（每张卡的第一张留下，多余的取出）。
+    ///
+    /// 「Banish all duplicates from your deck」用它。
+    /// 没有这个标记时，TargetParser 会吃掉 duplicates 这个词却不留痕迹，
+    /// 候选池退化成「牌库里的全部卡」—— 一句就把整副牌库放逐光。
+    /// </summary>
+    public bool DuplicatesOnly { get; init; }
     public Core.SelectMode Mode { get; init; } = Core.SelectMode.All;
     public NumExpr Count { get; init; } = NumExpr.Const(1);
     /// <summary>
@@ -120,7 +129,7 @@ public sealed class TargetSpec
     {
         SourceKind = SourceKind, Owner = Owner, Zone = Zone, Slot = Slot,
         CardId = CardId, CardName = CardName, Sort = Sort,
-        SortDescending = SortDescending, DistinctByName = DistinctByName,
+        SortDescending = SortDescending, DistinctByName = DistinctByName, DuplicatesOnly = DuplicatesOnly,
         Mode = Mode, Count = Count,
         IncludeLeader = IncludeLeader,
         OmittedFields = OmittedFields & ~TargetField.Where,

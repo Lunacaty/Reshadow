@@ -154,7 +154,17 @@ public static class ConditionCompiler
                     {
                         int n = c.Current.Value;
                         c.Advance();
-                        while (!c.IsAtEnd) c.Advance();
+                        // "or less" / "or more" 是**比较方向**，不是废话：
+                        // 一律吞掉会让「费用 4 以下」退化成「费用正好 4」。
+                        if (c.MatchWord("or"))
+                        {
+                            if (c.MatchWord("less")) op = CompareOp.Le;
+                            else if (c.MatchWord("more")) op = CompareOp.Ge;
+                            else if (c.MatchWord("fewer")) op = CompareOp.Le;
+                            else if (c.MatchWord("greater")) op = CompareOp.Ge;
+                        }
+                        // 只吃到句读或并列连词，别把 and / or 之后的兄弟条件吞掉。
+                        while (!c.IsAtEnd && !c.Current.IsAnyWord("and", "or")) c.Advance();
                         return new CompareExpr
                         {
                             Left = NumExpr.Prop(key, TargetSpec.Self),

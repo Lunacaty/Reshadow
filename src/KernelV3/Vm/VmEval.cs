@@ -613,6 +613,15 @@ public sealed class VmEval
             pool = pool.Where(r => seen.Add(r.Snapshot?.CardId ?? 0)).ToList();
         }
 
+        // 「只要重复的那些」：每张卡的第一张留在池外（保留在牌库），
+        // 从第二张起全部取出。与 DistinctByName 正好互补 ——
+        // 执行完之后牌库里恰好只剩每种一张，宇宙条件随即成立。
+        if (t.DuplicatesOnly)
+        {
+            var seenOnce = new HashSet<int>();
+            pool = pool.Where(r => !seenOnce.Add(r.Snapshot?.CardId ?? 0)).ToList();
+        }
+
         // 排序 —— 同样活体优先、离场退回快照（Reanimate 挑最高费时池子里全是快照）
         Func<EntityRef, int> sortKey = r => t.Sort switch
         {

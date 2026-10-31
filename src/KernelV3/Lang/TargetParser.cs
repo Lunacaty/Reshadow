@@ -113,6 +113,7 @@ public sealed class TargetParser
         // 不识别的话，这类条件会退回「当前活在场上的」——与卡面的
         // 「本局入场过的 / 本局被破坏的」完全不是一回事。
         var history = Core.HistoryScope.None;
+        bool duplicatesOnly = false;   // 显式声明「只要重复的那些」
 
         // ---- -1. 特殊整体指代（最高优先级拦截）----
 
@@ -631,7 +632,9 @@ public sealed class TargetParser
         }
         else if (cur.Current.IsAnyWord("duplicate", "duplicates"))
         {
-            cur.Advance(); matched = true;
+            // 必须留痕：只吃掉词而不留标记，候选池会退化成「区域里的全部卡」，
+            // "Banish all duplicates from your deck" 一句就把整副牌库放逐光。
+            cur.Advance(); duplicatesOnly = true; matched = true;
         }
         else
         if (cur.Current.Kind == TokKind.CardName)
@@ -811,13 +814,17 @@ public sealed class TargetParser
             // 也被当成「本回合被破坏」，整句去墓地找一个根本不存在的历史池。
             // 判定只认「前面已经出现了 destroyed / entered the field 这类动词」，
             // 那才是历史池成立的依据；没有动词就只是时间状语，吃掉即可。
-            if (cur.MatchPhrase("this", "match"))
+            // 只有**已经进入历史池**（前面见到了 destroyed / entered the field）
+            // 才把 this match / this turn 当作历史限定语。
+            // 裸的时间状语（"a card added to your hand this turn"）若也被换成
+            // DestroyedThisTurn，整句会去墓地找一个根本不存在的历史池。
+            if (history != Core.HistoryScope.None && cur.MatchPhrase("this", "match"))
             {
                 if (history == Core.HistoryScope.DestroyedThisTurn)
                     history = Core.HistoryScope.DestroyedThisMatch;
                 matched = true; continue;
             }
-            if (cur.MatchPhrase("this", "turn"))
+            if (history != Core.HistoryScope.None && cur.MatchPhrase("this", "turn"))
             {
                 if (history == Core.HistoryScope.DestroyedThisMatch)
                     history = Core.HistoryScope.DestroyedThisTurn;
@@ -1078,6 +1085,7 @@ public sealed class TargetParser
             Sort = sort,
             SortDescending = desc,
             DistinctByName = distinct,
+            DuplicatesOnly = duplicatesOnly,
             IncludeLeader = includeLeader,
             History = history,
         };
