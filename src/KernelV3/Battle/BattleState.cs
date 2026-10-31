@@ -70,13 +70,29 @@ public sealed class BattleState : IVmWorld
                 int fid = FaithEntityIdBase + card.Def.CardId;
                 if (!_cardPool.ContainsKey(fid))
                 {
-                    _cardPool[fid] = new CardDef
-                    {
-                        CardId = fid,
-                        Name = card.Def.Name,
-                        Kind = CardKind.Faith,
-                        BaseCost = 0,
-                    };
+                    // 优先用主人卡内嵌的定义（带 Abilities）：
+                    // 卡面正文只写「信仰」，它的效果文本在主人卡的 alt_modes 里。
+                    // 不接这条，开局生成的信仰就是个没有能力的空壳。
+                    var fd = card.Def.FaithDef;
+                    _cardPool[fid] = fd != null
+                        ? new CardDef
+                        {
+                            CardId = fid,
+                            Name = fd.Name ?? card.Def.Name,
+                            Kind = CardKind.Faith,
+                            BaseCost = fd.BaseCost,
+                            Abilities = fd.Abilities,
+                            InnateKeywords = fd.InnateKeywords,
+                            InnateCounters = fd.InnateCounters,
+                            SourceText = fd.SourceText,
+                        }
+                        : new CardDef
+                        {
+                            CardId = fid,
+                            Name = card.Def.Name,
+                            Kind = CardKind.Faith,
+                            BaseCost = 0,
+                        };
                 }
                 var fe = CreateEntity(fid, ZoneRef.CrestArea, pid);
                 if (fe == null) continue;
@@ -483,6 +499,34 @@ public sealed class BattleState : IVmWorld
         return e;
     }
 
+    /// <summary>
+    /// 可堆叠护符进场时的合并：土之印与 Clue 场上只保留 1 个，
+    /// 新进场的那个继承旧的全部层数，旧的无声明移除。
+    /// </summary>
+    private void MergeStackableAmulet(RuntimeEntity fresh)
+    {
+        if (fresh?.Def == null) return;
+        bool isSigil = fresh.Def.CardId == MagicSedimentCardId;
+        bool isClue = fresh.Def.CardId == ClueDefaultCardId;
+        if (!isSigil && !isClue) return;
+
+        var key = Schema.Counter(isSigil ? "earth_sigil" : "clues");
+        int carried = 0;
+        foreach (var old in Players[fresh.PlayerId].Board.ToList())
+        {
+            if (ReferenceEquals(old, fresh) || old.Def == null) continue;
+            if (old.Def.CardId != fresh.Def.CardId) continue;
+            old.Counters.TryGetValue(key, out int cv);
+            carried += cv;
+            RemoveQuietly(old);
+        }
+        if (carried > 0)
+        {
+            fresh.Counters.TryGetValue(key, out int own);
+            fresh.Counters[key] = own + carried;
+        }
+    }
+
     /// <summary>无声移除：不触发谢幕曲、不加墓场（用于合并）。</summary>
     private void RemoveQuietly(RuntimeEntity e)
     {
@@ -736,6 +780,12 @@ public sealed class BattleState : IVmWorld
         e.Zone = zone;
         e.PlayerId = playerId;
         list.Add(e);
+
+        // 土之印 / Clue 进场即合并：场上永远只留 1 个，层数累加。
+        // 合并逻辑原先只写在 SummonEarthSigil 里，于是「从手牌打出」
+        // 与「能力直接 SpawnCard」这两条路径都绕过了它，场上堆出多个同类护符。
+        // 放在这里是因为它是**所有**进场路径的唯一汇合点。
+        if (zone == ZoneRef.Board) MergeStackableAmulet(e);
 
         if (zone == ZoneRef.Board)
         {
