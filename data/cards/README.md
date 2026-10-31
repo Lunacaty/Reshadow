@@ -5,7 +5,7 @@
 | 类别 | 文件 | 用途 | 进 64 号文档 |
 |---|---|---|---|
 | **官方卡池** | `cards_eng_flat.json`（1.1 MB）<br>`sva_cards_text.json`（1.0 MB） | 参考数据，编译器的真实语料来源 | ❌ 排除 |
-| **测试卡池** | `testset_cards.json`（39 KB）<br>`testset_lexicon.json`（15 KB）<br>`testset_sentences.json`（11 KB） | 回归测试专用，覆盖全部要素 | ✅ 追踪 |
+| **测试卡池** | `testset_cards.json`（15 KB）<br>`testset_sentences.json`（11 KB） | 回归测试专用，要素覆盖驱动（30 张 / 98 项要素） | ✅ 追踪 |
 
 官方卡池体积大，只作参考，不进文档。测试卡池是手工设计的，进文档。
 

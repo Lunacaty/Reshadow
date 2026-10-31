@@ -154,9 +154,10 @@ d = os.path.join(_HERE, '..', 'data', 'cards')
 io.open(d + '/testset_cards.json', 'w', encoding='utf-8').write(json.dumps(out, ensure_ascii=False, indent=1))
 print('cards: %d -> %d bytes' % (len(cards), os.path.getsize(d + '/testset_cards.json')))
 
-# 词表
-lx = [{'id': c['card_id'], 'name': c['name_eng'], 'text': c['eng_text']} for c in cards]
-io.open(d + '/testset_lexicon.json', 'w', encoding='utf-8').write(json.dumps(lx, ensure_ascii=False, indent=1))
+# 词表文件（testset_lexicon.json）已废弃，不再生成：
+#   它曾是上一代 97 张卡的 name+text 清单，与 testset_cards.json 的 30 张
+#   占用同一号段（81000000 起）却内容完全不同 —— 同一 id 指向两张卡。
+#   卡片测试集是唯一真相源，词表与句级语料都从它派生。
 
 # 句级语料
 import re
@@ -174,6 +175,6 @@ for s in sents:
     seen.add(s); uniq.append({'text': s})
 io.open(d + '/testset_sentences.json', 'w', encoding='utf-8').write(
     json.dumps([{'group': 'testset', 'sentences': uniq}], ensure_ascii=False, indent=1))
-print('lexicon: %d, sentences: %d' % (len(lx), len(uniq)))
-for f in ['testset_cards.json','testset_lexicon.json','testset_sentences.json']:
+print('cards: %d, sentences: %d' % (len(cards), len(uniq)))
+for f in ['testset_cards.json','testset_sentences.json']:
     print('  %-24s %d bytes' % (f, os.path.getsize(d + '/' + f)))
