@@ -787,22 +787,39 @@ public sealed class TargetParser
                 includeLeader = true; matched = true; continue;
             }
 
-            // 历史池限定语（"... entered the field this match" / "... destroyed this match"）
+            // 历史池限定语（"... entered the field this match" / "... destroyed this match"）。
+            // 关系代词 that 必须先吃掉：它在后置循环的停用词表里，
+            // 「followers **that** entered the field this match」会就此收尾，
+            // 整句剩下的部分被当成无法解析的尾缀。
+            {
+                int rp = cur.Position;
+                cur.TryMatchAnyWord("that", "which");
+                bool hit = cur.MatchPhrase("have", "entered", "the", "field", "this", "match")
+                        || cur.MatchPhrase("entered", "the", "field", "this", "match");
+                if (hit) { history = Core.HistoryScope.EnteredThisMatch; matched = true; continue; }
+                cur.Seek(rp);
+            }
             if (cur.MatchPhrase("have", "entered", "the", "field", "this", "match")
                 || cur.MatchPhrase("entered", "the", "field", "this", "match"))
             {
                 history = Core.HistoryScope.EnteredThisMatch; matched = true; continue;
             }
-            // 前置 destroyed 已经登记了 DestroyedThisMatch，这里只需吃掉后半句限定语。
+            // 「this match」/「this turn」只是**限定语**，本身不决定历史池的种类。
+            //
+            // 之前这里无条件把裸 this match 改写成 DestroyedThisMatch ——
+            // 于是「a card added to your hand this turn」里的 this turn
+            // 也被当成「本回合被破坏」，整句去墓地找一个根本不存在的历史池。
+            // 判定只认「前面已经出现了 destroyed / entered the field 这类动词」，
+            // 那才是历史池成立的依据；没有动词就只是时间状语，吃掉即可。
             if (cur.MatchPhrase("this", "match"))
             {
-                if (history == Core.HistoryScope.None) history = Core.HistoryScope.DestroyedThisMatch;
+                if (history == Core.HistoryScope.DestroyedThisTurn)
+                    history = Core.HistoryScope.DestroyedThisMatch;
                 matched = true; continue;
             }
             if (cur.MatchPhrase("this", "turn"))
             {
-                if (history == Core.HistoryScope.DestroyedThisMatch
-                    || history == Core.HistoryScope.None)
+                if (history == Core.HistoryScope.DestroyedThisMatch)
                     history = Core.HistoryScope.DestroyedThisTurn;
                 matched = true; continue;
             }
