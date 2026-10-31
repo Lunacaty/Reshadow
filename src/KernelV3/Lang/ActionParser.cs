@@ -137,8 +137,13 @@ public sealed class ActionParser
                         // "Evolve this follower" / "Remove Ward from this follower"
                         // 「本卡」也是可绑定来源，后续的 it 指向它。
                         case EvolveNode: _target.MarkBound(TargetSpec.SlotSelf); break;
-                        case ModifyStatsNode ms when ms.Target == TargetSpec.Self: _target.MarkBound(TargetSpec.SlotSelf); break;
-                        case ModifyKeywordNode mk when mk.Target == TargetSpec.Self: _target.MarkBound(TargetSpec.SlotSelf); break;
+                        // 不能写 `ms.Target == TargetSpec.Self`：TargetSpec 是 class、
+                        // 未重载 ==，而 TargetSpec.Self 是 `=> new()` 属性 ——
+                        // 每次访问都是新实例，引用比较恒为 false，等于这段判断从未生效。
+                        // 后果：「swap this follower's ... and give it +1/+0」的 it
+                        // 找不到 $self，回退成 $trigger，加成全打到触发器身上。
+                        case ModifyStatsNode ms when IsSelfTarget(ms.Target): _target.MarkBound(TargetSpec.SlotSelf); break;
+                        case ModifyKeywordNode mk when IsSelfTarget(mk.Target): _target.MarkBound(TargetSpec.SlotSelf); break;
                         // "Reduce your faith's value by 10 to give it ..."
                         // 这里的 it 指被操作的资源计数器（信仰 / 纹章等）。
                         case ModifyCounterNode mc: _target.MarkBound(TargetSpec.SlotCounter); break;
@@ -1759,6 +1764,15 @@ public sealed class ActionParser
             throw LangException.At("transform into", "既不是卡名也不是可解析的目标集合", rc, rhs);
         return new List<EffectNode> { new TransformNode { Target = target, CopySource = copySrc } };
     }
+
+    /// <summary>
+    /// 该目标是否是「本卡自身」。
+    ///
+    /// 必须按字段判断：TargetSpec 是 class 且未重载 ==，而 TargetSpec.Self 是
+    /// `=> new()` 属性，每次访问都是新实例 —— 用 == 比较恒为 false。
+    /// </summary>
+    private static bool IsSelfTarget(TargetSpec t)
+        => t != null && t.SourceKind == TargetSourceKind.Slot && t.Slot == TargetSpec.SlotSelf;
 
     /// <summary>
     /// 「消耗 N 点资源 **才能** 做某事」：把「扣费 + 效果」包进同一条件分支。
