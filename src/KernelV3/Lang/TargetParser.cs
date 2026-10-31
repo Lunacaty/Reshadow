@@ -113,7 +113,8 @@ public sealed class TargetParser
         // 不识别的话，这类条件会退回「当前活在场上的」——与卡面的
         // 「本局入场过的 / 本局被破坏的」完全不是一回事。
         var history = Core.HistoryScope.None;
-        bool duplicatesOnly = false;   // 显式声明「只要重复的那些」
+        bool duplicatesOnly = false;
+        bool surfacedAll = false;   // 原文出现过 all / each（区别于默认的 All）   // 显式声明「只要重复的那些」
 
         // ---- -1. 特殊整体指代（最高优先级拦截）----
 
@@ -346,6 +347,9 @@ public sealed class TargetParser
         {
             cur.Advance();
             mode = SelectMode.All;
+            // 记下「全体」是原文明确写的。后置的 another/other 只排除自身，
+            // 不得据此把全体缩成单选。
+            surfacedAll = true;
             matched = true;
         }
         else if (cur.Current.IsAnyWord("a", "an"))
@@ -359,6 +363,7 @@ public sealed class TargetParser
         {
             cur.Advance();
             mode = SelectMode.All;
+            surfacedAll = true;
             matched = true;
         }
 
@@ -409,6 +414,21 @@ public sealed class TargetParser
             }
             if (cur.MatchAnyWord("another", "other"))
             {
+                // "another" 是**限定词**，不是量词 —— 它本身不表示「选几个」。
+                //
+                // 「Select another allied card」与「all other followers」的分界在于
+                // 前面有没有出现 all/each：
+                //   · "Select another allied card" —— 没有量词，单指一个，交玩家选；
+                //   · "all other followers" —— all 已定下全体，another 只是排除自身。
+                // 之前一律不改 mode（停在默认 All），前者会直接作用于全场的其他卡；
+                // 而一律改成 Choose 又会把后者的「全体」缩成「让玩家挑一个」。
+                // surfacedAll 记录「前面出现过 all/each」，是两者的唯一区分依据。
+                if (!countSet && !surfacedAll)
+                {
+                    count = NumExpr.Const(1);
+                    countSet = true;
+                    mode = SelectMode.Choose;
+                }
                 wheres.Add(new NotSameEntityExpr { ExcludeSlot = OtherExcludeSlot(), Of = TargetSpec.Item });
                 matched = true; continue;
             }
