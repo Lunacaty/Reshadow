@@ -749,6 +749,10 @@ public sealed class BattleState : IVmWorld
 
         if (leftBoard)
             EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
+
+        // 迁入战场的路径不止 SpawnCard：能力把牌库/手牌/墓地的卡搬上场也走这里。
+        // 不在这里通知，「进入战场时」与连携对这条路径一律失明。
+        if (!leftBoard && toZone == ZoneRef.Board) NotifySummoned(e);
     }
 
     /// <summary>
@@ -842,6 +846,19 @@ public sealed class BattleState : IVmWorld
         // 卡面写着 Can't be destroyed 也照样一把炸掉。
         if (e.Keywords.Contains(Schema.Keyword("cannot_destroy"))) return;
 
+        // 「以消失替代破坏」：先跑一次离场时触发链。
+        // 卡面写 "When this card leaves the field, banish it." 的实体
+        // （Ghost 是典型）会在这一步被搬到放逐区；此时它已不在战场，
+        // 后面整条破坏流程自然失去目标。
+        //
+        // 这正是「替代」与「事后补救」的区别：先破坏再被 OnLeaveField 挪走，
+        // shadow 已经加了、DestroyedThisMatch 已经记了、墓场已经走过一遭。
+        if (ShouldBanishOnLeave(e))
+        {
+            BanishEntity(e);
+            if (e.Zone != ZoneRef.Board) return;
+        }
+
         int owner = e.PlayerId;
         var snap = e.TakeSnapshot();
 
@@ -859,13 +876,49 @@ public sealed class BattleState : IVmWorld
         EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
     }
 
-    /// <summary>放逐（Banish）：进放逐区，不触发 OnDestroy，不加 shadow。</summary>
+    /// <summary>
+    /// 该实体是否声明了「离场时改为放逐」（"When this card leaves the field, banish it."）。
+    ///
+    /// 判据是卡面能力本身，不是卡名：任何写成这句话的卡都适用，
+    /// Ghost 只是其中一张（它同时还有回合末自我放逐）。
+    /// 被沉默的实体没有能力，所以不享受这条替换。
+    /// </summary>
+    private static bool ShouldBanishOnLeave(RuntimeEntity e)
+    {
+        if (e?.Def?.Abilities == null || e.IsSilenced) return false;
+        foreach (var ab in e.Def.Abilities)
+        {
+            if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.OnLeaveField) continue;
+            if (ab.Body == null) continue;
+            foreach (var n in ab.Body)
+            {
+                if (n is Ast.MoveZoneNode mz
+                    && mz.ToZone == ZoneRef.Banished
+                    && mz.Target != null
+                    && mz.Target.SourceKind == Ast.TargetSourceKind.Slot
+                    && (mz.Target.Slot == Ast.TargetSpec.SlotTrigger
+                        || mz.Target.Slot == Ast.TargetSpec.SlotSelf))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 放逐（Banish）：进放逐区，不触发 OnDestroy，不加 shadow。
+    ///
+    /// 先发 OnLeaveField，再移区，最后发 OnBanish。
+    /// 不能反过来：MoveEntity 内部也会对「离开战场」补发一次 OnLeaveField，
+    /// 两条路径叠加时事件发两次，而 OnBanish 反而一次都没有——
+    /// 于是「当被放逐时」类能力全体失明。
+    /// </summary>
     public void BanishEntity(RuntimeEntity e)
     {
-        if (e == null) return;
-        if (e.Zone == ZoneRef.Board)
-            EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
+        if (e == null || e.Zone == ZoneRef.Banished) return;
+        // OnLeaveField 由 MoveEntity 统一发一次（它只在「离开战场」时发）。
+        // 这里手发会与之叠加成两次，而 OnBanish 反倒一次都没有。
         MoveEntity(e, ZoneRef.Banished, e.PlayerId);
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnBanish, Subject = EntityRef.From(e) });
     }
 
     public void RemoveEntity(RuntimeEntity e) => _all.Remove(e);
@@ -941,7 +994,30 @@ public sealed class BattleState : IVmWorld
     // ---------- 生成 / 变形 / 授予 ----------
 
     public RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId)
-        => CreateEntity(cardId, toZone, toPlayerId);
+    {
+        var e = CreateEntity(cardId, toZone, toPlayerId);
+        // 召唤进场的随从同样要发「进入战场时」并加连携。
+        // 早期只在 TurnRunner.PlayCard 里手写发事件，于是 Summon / Reanimate /
+        // Invoke / 复制这几条路径造出来的实体对「进入战场时」完全失明。
+        NotifySummoned(e);
+        return e;
+    }
+
+    /// <summary>
+    /// 通知「一个实体刚刚进入战场」：连携 +1（仅随从），再发 OnEnterField / OnSummon。
+    /// 幂等：e 不在战场时直接返回，所以可以在多条进场路径上重复调用。
+    /// </summary>
+    public void NotifySummoned(RuntimeEntity e)
+    {
+        if (e == null || e.Zone != ZoneRef.Board) return;
+        if (e.Def?.Kind == Ast.CardKind.Follower)
+        {
+            var rallyKey = Schema.Counter("rally");
+            WriteCounter(e.PlayerId, rallyKey, ReadCounter(e.PlayerId, rallyKey) + 1);
+        }
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnEnterField, Subject = EntityRef.From(e) });
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnSummon, Subject = EntityRef.From(e) });
+    }
 
     public void ReplaceDeck(int playerId, string deckName, IReadOnlyList<int> cardIds)
     {

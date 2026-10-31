@@ -193,6 +193,9 @@ public static partial class Regress
             st.WriteCounter(0, st.Schema.Counter("pp"), 10);
             var played = st.SpawnCard(301, ZoneRef.Hand, 0);
             st.ClearEvents();
+            // 布置阶段造的 watcher 入场也会发 OnEnterField；
+            // 那不是本用例要测的事件，先丢掉待机触发再开始。
+            vm.DropPendingTriggers();
             tr.PlayCard(0, played, vm);
             chk("core-3a 进场触发的 it 指向事件主体",
                 played.Attack == 2 && played.Life == 2 && watcher.Attack == 1,

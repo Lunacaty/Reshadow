@@ -110,6 +110,20 @@ public interface IVmWorld
     RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId);
 
     /// <summary>
+    /// 通知「一个实体刚刚进入战场」。
+    ///
+    /// 必须在**所有**进场路径的末端调用一次：SpawnCard、MoveZone 到战场、
+    /// 复制上场、Invoke 都算。早期只在 TurnRunner.PlayCard 里手写发事件，
+    /// 于是召唤 / 复活 / 复制进场的随从既不触发「进入战场时」，也不加连携。
+    ///
+    /// 实现方的契约：
+    ///   1. e 不在战场时直接返回（幂等，允许重复调用）
+    ///   2. 先加连携（仅随从），再发 OnEnterField 与 OnSummon
+    ///   3. 不推进 VM —— 结算时机仍由 StepUntilBlocked 独占
+    /// </summary>
+    void NotifySummoned(RuntimeEntity e);
+
+    /// <summary>
     /// 用一副具名牌组替换某玩家的整个牌库（"Replace your deck with ..."）。
     ///
     /// 语义契约（三条，实现必须全部满足）：

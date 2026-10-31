@@ -230,6 +230,15 @@ public sealed partial class CardVm
         return Status;
     }
 
+    /// <summary>
+    /// 丢弃尚未结算的触发队列。
+    ///
+    /// 供测试的布置阶段使用：SpawnCard 现在会真的发出 OnEnterField（召唤进场的
+    /// 随从否则不计连携、不触发「进入战场时」），但布置用的 SpawnCard 不该在
+    /// 测试正式开始前就把监听者的能力跑掉。布置完成后调用一次即可。
+    /// </summary>
+    public void DropPendingTriggers() => _triggerQueue.Clear();
+
     // ---------- 挂起与恢复 ----------
 
     /// <summary>设置挂起状态。返回 true（表示已阻塞）。</summary>
@@ -398,6 +407,12 @@ public sealed partial class CardVm
         // 与 earth rite 的土之印，前面的能力反而没资源可用。
         var toPush = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope)>();
 
+        // 同一时机里同名卡只发动 1 张（76-c 6.2-8 瞬念召唤铁律）。
+        // 牌组里的两张同名 Invoke 卡都会收到 TurnStart，
+        // 各自的能力体都是「把自己移到战场」，不去重就会两张一起上场。
+        // 按 (CardId, 事件种类) 去重，键在本次入列内有效。
+        var firedOnce = new HashSet<(int CardId, Core.CoreEvent Ev)>();
+
         foreach (var kv in byEntity)
         {
             var e = kv.Value[0].e;
@@ -437,6 +452,14 @@ public sealed partial class CardVm
                 var earthKey = Schema.Counter("earth_sigil");
                 if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey)) continue;
                 CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey);
+
+                // 只有「在自己卡上监听的牌库能力」(Invoke) 走同名去重。
+                // 场上两个同名随从的 Whenever 必须各触发一次，不能被这条吃掉。
+                if (ab.Trigger.ActiveZone == Core.ActiveZoneScope.Deck)
+                {
+                    int cid = e.Def?.CardId ?? 0;
+                    if (cid != 0 && !firedOnce.Add((cid, ev.Kind))) continue;
+                }
 
                 toPush.Add((ab.Body, scope));
             }

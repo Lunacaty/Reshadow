@@ -94,42 +94,13 @@ public sealed class TurnRunner
         // （当前无独立的“对手回合开始”事件，留待下一步扩展）
 
         // ── 第 6 步：直接召唤（Invoke）（R-6.2） ──
-        // 满场时不发动；同一时机同名卡只发动 1 张。
-        if (p.Board.Count < PlayerState.MaxBoard)
-        {
-            var fired = new HashSet<int>();
-            foreach (var card in p.Deck.ToList())
-            {
-                if (card.Def?.Abilities == null) continue;
-                if (!fired.Add(card.Def.CardId)) continue;   // 同名卡同一时机只跳 1 张
-
-                // 它是否声明了「在牌组中监听的回合开始时能力」
-                bool hasInvoke = false;
-                foreach (var ab in card.Def.Abilities)
-                {
-                    if (ab?.Trigger == null) continue;
-                    if (ab.Trigger.ActiveZone != ActiveZoneScope.Deck) continue;
-                    if (ab.Trigger.Event != CoreEvent.TurnStart) continue;
-                    hasInvoke = true;
-                    break;
-                }
-                if (!hasInvoke) continue;
-
-                // 条件由 VM 在触发时判定；这里只负责把满足条件的卡拉上场。
-                // 具体做法：把它移到战场，再发 OnEnterField；
-                // 入场曲（OnPlay）不发动——直接召唤不是打出。
-                _state.MoveEntity(card, ZoneRef.Board, playerId);
-                vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnSummon, Subject = EntityRef.From(card) });
-                if (card.Def.Kind == Ast.CardKind.Follower)
-                {
-                    var rallyKey = _schema.Counter("rally");
-                    _state.WriteCounter(playerId, rallyKey,
-                        _state.ReadCounter(playerId, rallyKey) + 1);
-                }
-                vm?.StepUntilBlocked();
-                if (p.Board.Count >= PlayerState.MaxBoard) break;
-            }
-        }
+        //
+        // 这里**不再手写搬卡**。Invoke 卡的能力体本身就是 `move $self to Board`，
+        // 第 7 步的 TurnStart 事件会让它以 ActiveZone=Deck 的身份入列并自行上场。
+        // 两处都做会把同名卡抬上场两次（实测牌组 2 张同名 → 上场 2 张）。
+        //
+        // 「满场不发动」由 MoveEntity 的满场拦截负责（牌库→战场被拒时原地不动）；
+        // 「同一时机同名只 1 张」由 CardVm.FlushNextTrigger 的按 (CardId, 事件) 去重负责。
 
         // ── 第 7 步：清空待机队列 ──
         vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnStart });
@@ -254,20 +225,25 @@ public sealed class TurnRunner
         {
             _state.MoveEntity(card, ZoneRef.Board, playerId);
 
-            // 「当随从进入战场时」全场监听
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEnterField, Subject = EntityRef.From(card) });
+            // OnEnterField / OnSummon / 连携 已由 MoveEntity → NotifySummoned 发出，
+            // 这里**不能再调一次**，否则连携会被记两次。
+            //
+            // 打出的卡只有一个时序例外：官方的连携在**入场曲结算之后**才 +1，
+            // 所以当前这张在它自己的入场曲里不该已经算进去。
+            // 把 NotifySummoned 加的那一次先扣回来，等 OnPlay 结算完再补上——
+            // 净效果仍是 +1，只是生效时点推迟到入场曲之后。
+            bool isFollower = card.Def.Kind == Ast.CardKind.Follower;
+            var rallyKey = _schema.Counter("rally");
+            if (isFollower)
+                _state.WriteCounter(playerId, rallyKey, _state.ReadCounter(playerId, rallyKey) - 1);
 
             // 自身【入场曲】（优先级 10）
             vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
             vm?.StepUntilBlocked();
 
-            // 协作（Rally）：入场曲结算完之后才 +1，
-            // 所以当前这张在它自己的入场曲里不算进 rally。
-            if (card.Def.Kind == Ast.CardKind.Follower)
-            {
-                var rallyKey = _schema.Counter("rally");
+            // 协作（Rally）：入场曲结算完之后才 +1。
+            if (isFollower)
                 _state.WriteCounter(playerId, rallyKey, _state.ReadCounter(playerId, rallyKey) + 1);
-            }
         }
         else
         {

@@ -207,9 +207,14 @@ public static partial class Regress
             st2.ClearEvents();
             st2.ApplyDamage(big, 1, 1);
             var status2 = vm2.StepUntilBlocked();
+            // 两个熔断点都合法：主循环的「执行步数超过上限」与触发队列的
+            // 「触发链超过步数上限」。自激链先撞哪一个取决于每步执行了多少个节点，
+            // 断言写成「任一熔断点生效」即可 —— 这里要守的是「有硬截断」，
+            // 不是「恰好走某个分支」。
+            bool hardStopped = vm2.FaultMessage == "触发链超过步数上限"
+                            || vm2.FaultMessage == "执行步数超过上限";
             Check("trigger-7b 自激链超出步数上限时被硬截断（Faulted，不是无限循环）",
-                  status2 == VmStatus.Faulted && vm2.FaultMessage == "触发链超过步数上限"
-                  && big.Life > 0,
+                  status2 == VmStatus.Faulted && hardStopped && big.Life > 0,
                   $"status={status2} fault='{vm2.FaultMessage}' life={big.Life} steps={vm2.StepsExecuted}");
         }
 

@@ -163,6 +163,8 @@ public static partial class Regress
         var bystander = st.SpawnCard(711, ZoneRef.Board, 0);
         var entrant = st.SpawnCard(712, ZoneRef.Board, 0);
 
+        // 布置用的 SpawnCard 也会发 OnEnterField；那不是本用例要测的那一次。
+        vm.DropPendingTriggers();
         vm.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEnterField, Subject = EntityRef.From(entrant) });
         vm.StepUntilBlocked();
 
@@ -217,6 +219,8 @@ public static partial class Regress
         var other = st.SpawnCard(731, ZoneRef.Board, 0);
         int otherAtkBefore = other.Attack;
 
+        // 布置用的 SpawnCard 也会发 OnEnterField；那不是本用例要测的那一次。
+        vm.DropPendingTriggers();
         vm.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEnterField, Subject = EntityRef.From(other) });
         vm.StepUntilBlocked();
         int otherAtkAfter = other.Attack;

@@ -216,6 +216,9 @@ public sealed class MemoryWorld : IVmWorld
         TriggerSink?.Invoke(ev);
     }
 
+    /// <summary>内存世界不区分召唤与放置，只需要满足接口。</summary>
+    public void NotifySummoned(RuntimeEntity e) { }
+
     public RuntimeEntity SpawnCard(int cardId, ZoneRef toZone, int toPlayerId)
     {
         var e = Create(cardId, toZone, toPlayerId);
