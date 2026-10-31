@@ -108,6 +108,17 @@ public sealed class VmEval
             }
 
             case NumOp.Counter:
+                // 显式指定了取值玩家时（"both players have N max play points" 的对手侧
+                // 就是 NumExpr.Ctr(max_pp, Of=OpponentLeader)），必须直接读那个玩家的
+                // 玩家级计数器。不能落回事件源实体：源实体身上同名计数器不存在，
+                // 而且同一张卡的自我侧与对手侧会被读成同一个值 —— 那就又变回单侧条件了。
+                if (e.Of != null)
+                {
+                    if (e.Of.Owner != ZoneScope.Self && e.Of.Owner != ZoneScope.Opponent)
+                        throw new VmFaultException(
+                            "计数器读取的取值玩家必须是 Self 或 Opponent，实际 " + e.Of.Owner);
+                    return _world.ReadCounter(scope.ResolvePlayer(e.Of.Owner), e.Counter);
+                }
                 // 奥义槽是**每张手牌各自**的数值，不能读玩家级计数器。
                 // 先查事件源实体自己身上的计数器，没有才退回玩家级。
                 if (scope.Source != null)

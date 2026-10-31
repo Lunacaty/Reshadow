@@ -222,7 +222,10 @@ public static class AstEnglishPrinter
         return e.Op switch
         {
             NumOp.Const => e.Value.ToString(),
-            NumOp.Counter => "ctr:" + e.Counter.Name,
+            // 显式取值玩家必须打印出来：否则两侧读同一个计数器名的条件
+            // （"both players have N max play points"）打印成完全相同的两半，
+            // 验收时看不出它到底只判了一侧还是判了两侧。
+            NumOp.Counter => "ctr:" + e.Counter.Name + CounterOwnerSuffix(e),
             NumOp.Property => "prop:" + e.Stat + (e.Of != null ? "(" + PrintTarget(e.Of) + ")" : ""),
             NumOp.Count => "count(" + PrintTarget(e.Of) + ")",
             // 必须打印 Stat，否则 sum(攻击) 与 sum(防御) 看起来完全一样。
@@ -237,6 +240,15 @@ public static class AstEnglishPrinter
             _ => e.Op.ToString().ToLowerInvariant(),
         };
     }
+
+    /// <summary>Counter 的取值玩家后缀：未指定（=自我侧默认）时不打。</summary>
+    private static string CounterOwnerSuffix(NumExpr e)
+        => e.Of == null ? "" : e.Of.Owner switch
+        {
+            Core.ZoneScope.Self => "@self",
+            Core.ZoneScope.Opponent => "@opp",
+            _ => "@any",
+        };
 
     private static string PrintArith(NumExpr e)
     {

@@ -32,12 +32,21 @@ public static class ConditionCompiler
         try { return ParseCondition(c1, lex); }
         catch (LangException) { }
 
+        var raw = string.Join(" ", toks.Select(t => t.Text));
+
+        // 双主语条件**不提供兜底**。
+        // 兜底路径是按单个主语（TargetSpec.Self）构造比较式的，
+        // 对 "both players ..." 只会产出「只判自己」的条件，
+        // 而这正是本文件要消灭的错译形态：报错比静默错一半安全得多。
+        if (raw.IndexOf("both players", StringComparison.OrdinalIgnoreCase) >= 0)
+            throw new LangException(
+                "both players 的谓词无法建模（需两侧同时求值），拒绝静默退化为单侧条件：[" + raw + "]");
+
         // 回退：整段当作「主语 + is/are + 数值比较」
         var c2 = new TokenCursor(toks);
         var fallback = TryParseGenericComparison(c2, lex);
         if (fallback != null) return fallback;
 
-        var raw = string.Join(" ", toks.Select(t => t.Text));
         throw new LangException("条件无法建模: [" + raw + "]");
     }
 
@@ -529,18 +538,11 @@ public static class ConditionCompiler
 
         // ---- 资源 / 手牌 / 场上计数类 ----
 
-        // "you have N max play points" / "both players have N max play points"
-        if (c.MatchPhrase("both", "players", "have"))
-        {
-            int n = ReadNumber(c);
-            c.MatchPhrase("max", "play", "points");
-            return new CompareExpr
-            {
-                Left = NumExpr.Ctr(lex.Counter("max_pp")),
-                Op = CompareOp.Ge,
-                Right = NumExpr.Const(n),
-            };
-        }
+        // "both players <谓词>" —— 双主语，必须展开成两侧合取。
+        // 单侧写法 "if you have N max play points" 由下面的 "you have" 分支处理，
+        // 仍然只判自己；两条路径不能合流。
+        if (c.MatchPhrase("both", "players"))
+            return ParseBothPlayers(c, lex);
         if (c.MatchPhrase("you", "have"))
         {
             // "you have a Clue amulet in your hand"
@@ -791,5 +793,124 @@ public static class ConditionCompiler
         int v = c.Current.Value;
         c.Advance();
         return v;
+    }
+
+    // ========================================================================
+    // "both players <谓词>" —— 双主语展开
+    //
+    // 语义：卡面写「双方都满足」时，条件必须对**两侧分别成立**。
+    // 旧实现吃掉 "both players have" 之后只构造了一个读 self 侧计数器的
+    // CompareExpr，于是 "If both players have 10 max play points" 退化成
+    // 「自己满 10 费」—— 对手没满费时 Gilnelise 照样塞手牌。
+    //
+    // 这里只认**显式白名单**里的谓词形态，每一种都能同时对两侧求值。
+    // 认不出来的一律抛 LangException：静默生成只判一侧的条件，
+    // 比直接编译失败危险得多（编译失败会在全卡池统计里立刻暴露）。
+    // ========================================================================
+
+    /// <summary>玩家级计数器比较：自己读 scope.Owner，对手读 Of=OpponentLeader。</summary>
+    private static BoolExpr BothSidesCounter(Core.SymbolId<Core.CounterTag> counter,
+                                             CompareOp op, int n)
+    {
+        var right = NumExpr.Const(n);
+        return BoolExpr.And(
+            new CompareExpr { Left = NumExpr.Ctr(counter, TargetSpec.SelfLeader), Op = op, Right = right },
+            new CompareExpr
+            {
+                Left = NumExpr.Ctr(counter, TargetSpec.OpponentLeader),
+                Op = op,
+                Right = right,
+            });
+    }
+
+    /// <summary>区域张数比较：两侧各自数自己的区域。</summary>
+    private static BoolExpr BothSidesCount(ZoneRef zone, CompareOp op, int n)
+    {
+        var right = NumExpr.Const(n);
+        return BoolExpr.And(
+            new CompareExpr
+            {
+                Left = NumExpr.CountOf(TargetSpec.InZone(zone, ZoneScope.Self)),
+                Op = op,
+                Right = right,
+            },
+            new CompareExpr
+            {
+                Left = NumExpr.CountOf(TargetSpec.InZone(zone, ZoneScope.Opponent)),
+                Op = op,
+                Right = right,
+            });
+    }
+
+    /// <summary>"both players" 之后的谓词。进来说明已经吃掉了 <c>both players</c>。</summary>
+    private static BoolExpr ParseBothPlayers(TokenCursor c, Lexicon lex)
+    {
+        int start = c.Position;
+
+        // ---- overflow 由规则决定阈值，不来自卡面数字 ----
+        if (c.MatchPhrase("are", "in", "overflow") || c.MatchPhrase("is", "in", "overflow"))
+            return BothSidesCounter(lex.Counter("max_pp"), CompareOp.Ge, OverflowMaxPp);
+        if (c.MatchPhrase("have", "overflow") || c.MatchPhrase("are", "overflow"))
+            return BothSidesCounter(lex.Counter("max_pp"), CompareOp.Ge, OverflowMaxPp);
+        c.Seek(start);
+
+        // ---- "have" / "has" 可写可不写：官方两种写法都有 ----
+        c.MatchPhrase("have");
+        if (c.Current.IsWord("has")) c.Advance();
+
+        // ---- 比较方向 + 数值：全部从文本读，不硬编码 ----
+        bool atLeast = c.MatchPhrase("at", "least");
+        int n;
+        var op = CompareOp.Ge;
+        if (c.Current.Kind == TokKind.Number)
+        {
+            n = c.Current.Value;
+            c.Advance();
+            if (c.MatchPhrase("or", "more")) op = CompareOp.Ge;
+            else if (c.MatchPhrase("or", "less") || c.MatchPhrase("or", "fewer")) op = CompareOp.Le;
+        }
+        else
+        {
+            c.Seek(start);
+            throw new LangException("both players 谓词缺少可读的数值：" + RestText(c));
+        }
+        if (atLeast) op = CompareOp.Ge;
+
+        // ---- 谓词主体：资源计数器 ----
+        var counter = MatchResourceCounter(c, lex);
+        if (counter != null)
+            return BothSidesCounter(counter.Value, op, n);
+
+        // ---- 谓词主体：区域张数 ----
+        if (c.MatchPhrase("cards", "in", "hand") || c.MatchPhrase("cards", "in", "their", "hand")
+            || c.MatchPhrase("cards", "in", "their", "hands"))
+            return BothSidesCount(ZoneRef.Hand, op, n);
+        if (c.MatchPhrase("cards", "in", "deck") || c.MatchPhrase("cards", "in", "their", "deck"))
+            return BothSidesCount(ZoneRef.Deck, op, n);
+        if (c.MatchPhrase("followers", "on", "the", "field")
+            || c.MatchPhrase("followers", "on", "their", "field"))
+            return BothSidesCount(ZoneRef.Board, op, n);
+
+        // ---- 白名单之外：显式失败，绝不静默只判一侧 ----
+        c.Seek(start);
+        throw new LangException(
+            "both players 的谓词无法建模（需两侧同时求值），拒绝静默退化为单侧条件：[" + RestText(c) + "]");
+    }
+
+    /// <summary>Overflow 的规则阈值：最大能量点 7（与 EngineCompiler 的 overflow 分支一致）。</summary>
+    private const int OverflowMaxPp = 7;
+
+    /// <summary>把游标剩余部分拼回人类可读的条件文本，用于报错信息。</summary>
+    private static string RestText(TokenCursor c)
+    {
+        var parts = new List<string>();
+        int save = c.Position;
+        while (!c.IsAtEnd)
+        {
+            parts.Add(c.Current.Text);
+            c.Advance();
+        }
+        c.Seek(save);
+        return string.Join(" ", parts);
     }
 }
