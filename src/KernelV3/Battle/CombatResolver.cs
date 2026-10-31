@@ -53,6 +53,13 @@ public sealed class CombatResolver
         if (!isLeaderTarget && defender.Def != null && defender.Def.Kind != Ast.CardKind.Follower)
         { reason = "护符不能被攻击"; return false; }
 
+        // 「Can't attack leaders」只封主战者；随从照打（76-c 3.1 第 1 条）。
+        // 「Can't attack followers」是对称的另一半。
+        if (isLeaderTarget && Has(attacker, "cannot_attack_leaders"))
+        { reason = "该随从不能攻击主战者"; return false; }
+        if (!isLeaderTarget && Has(attacker, "cannot_attack_followers"))
+        { reason = "该随从不能攻击随从"; return false; }
+
         // 攻击次数上限
         int maxAttacks = 1;
         var maxKey = _schema.Keyword("max_attacks_per_turn");

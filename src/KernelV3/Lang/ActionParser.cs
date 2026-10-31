@@ -391,15 +391,26 @@ public sealed class ActionParser
             }
             case "takes":
             {
-                // "Takes 1 more damage." —— 受伤增幅，用关键词承载
-                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
+                // "Takes 1 more damage." —— 受伤增幅，用带参关键词承载。
+                //
+                // 写入端与读取端必须是**同一个名字**：CombatResolver 读的是
+                // damage_taken_bonus，这里却写成 takes_more_damage，
+                // 于是授了「多受 1 点」完全没效果。数值也必须带上，
+                // 否则「多受 N 点」里的 N 会被吞掉。
+                int bonusVal = 1;
+                while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
+                {
+                    if (cur.Current.Kind == TokKind.Number) bonusVal = cur.Current.Value;
+                    cur.Advance();
+                }
                 return new List<EffectNode>
                 {
                     new ModifyKeywordNode
                     {
                         Target = TargetSpec.Self,
                         Op = KeywordOp.Grant,
-                        Keyword = _lex.Keyword("takes_more_damage"),
+                        Keyword = _lex.Keyword("damage_taken_bonus"),
+                        Value = NumExpr.Const(bonusVal),
                     },
                 };
             }
@@ -430,7 +441,14 @@ public sealed class ActionParser
                 // 带参关键词必须把数值带上，否则运行时无法区分「最多受 0 点」和「最多受 3 点」
                 string kw;
                 NumExpr kwVal = null;
-                if (j.Contains("attack followers") || j.Contains("attack leaders"))
+                // 「Can't attack leaders」只禁主战者，随从照打；
+                // 「Can't attack followers or leaders」或裸「Can't attack」才是全面禁止。
+                // 之前一律并成 cannot_attack，带前者字样的随从连随从都打不了。
+                if (j.Contains("attack leaders") && !j.Contains("attack followers"))
+                    kw = "cannot_attack_leaders";
+                else if (j.Contains("attack followers") && !j.Contains("attack leaders"))
+                    kw = "cannot_attack_followers";
+                else if (j.Contains("attack followers") || j.Contains("attack leaders"))
                     kw = "cannot_attack";
                 else if (j.Contains("be destroyed"))
                     kw = "cannot_destroy";

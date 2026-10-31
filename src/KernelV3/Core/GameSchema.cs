@@ -112,6 +112,11 @@ public sealed class GameSchema
         "ward", "rush", "storm", "bane", "drain", "ambush", "aura",
         "intimidate", "barrier", "cannot_attack", "cannot_destroy", "cannot_be_played",
         "attack_limit", "damage_cap", "ignores ward",
+
+        // 带参关键词与派生限制。不注册的话 check_keywords.py 扫不到，
+        // 写入端与读取端名字写岔了也没人发现（damage_taken_bonus 就出过这种事）。
+        "damage_taken_bonus", "max_attacks_per_turn", "cannot_attack_leaders",
+        "cannot_attack_followers", "targeting_restriction",
     };
 
     /// <summary>构造一份装好内置词条的 schema。</summary>
