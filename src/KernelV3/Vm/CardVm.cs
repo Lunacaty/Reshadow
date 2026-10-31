@@ -319,6 +319,13 @@ public sealed partial class CardVm
         AddZone(ZoneRef.Hand, othP);
         AddZone(ZoneRef.Deck, curP);
         AddZone(ZoneRef.Deck, othP);
+        // 墓地也必须扫：DestroyEntity 的顺序是「移区 -> 发事件」，
+        // 谢幕曲卡收到 OnDestroy 时**已经在墓地**，不在场上。
+        // 不扫墓地，全卡池的谢幕曲都是白板。
+        // 放宽只在 MatchesTrigger 里按「事件主体就是它自己」逐条判定，
+        // 墓地里的卡不会因为这条扫描而响应别人的死亡。
+        AddZone(ZoneRef.Cemetery, curP);
+        AddZone(ZoneRef.Cemetery, othP);
 
         foreach (var e in candidates)
         {
@@ -446,9 +453,23 @@ public sealed partial class CardVm
             // 若按默认 Board 判定，挂在信仰上的被动永远不会触发。
             _ => owner.Zone == ZoneRef.CrestArea ? ZoneRef.CrestArea : ZoneRef.Board,
         };
-        // 豁免只放行「本卡自己的入场曲」这一种情形：
-        // 法术正在结算，它还没进墓地，此刻必须被当作在场。
-        if (owner.Zone != need && !(need == ZoneRef.Board && ActsAsOnField(ev, owner)))
+        // 豁免一：本卡自己的入场曲 —— 法术正在结算，它还没进墓地，此刻必须被当作在场。
+        // 豁免二：本卡自己的谢幕曲 —— 破坏是「先移区、再发事件」，
+        //   等 OnDestroy / OnLeaveField 送达时卡已经在墓地，按 Board 判定必然落空。
+        //
+        // 豁免二的两个限定缺一不可：
+        //   · 只对 OnDestroy / OnLeaveField 这两类离场语义生效 —— 墓地里的卡
+        //     仍然收不到 Fanfare / Strike / Evolve，非谢幕曲能力不会跟着复活；
+        //   · 只对「事件主体就是这张卡」生效，且用 EntrySerial 锁定身份 ——
+        //     EntityId 永不复用，EntrySerial 在移区时 +1，两者同时相等才说明
+        //     这具尸体正是本次事件的主体，而不是另一张同名卡。
+        bool graveSelf = need == ZoneRef.Board
+                         && owner.Zone == ZoneRef.Cemetery
+                         && (ev.Kind == CoreEvent.OnDestroy || ev.Kind == CoreEvent.OnLeaveField)
+                         && ev.Subject != null
+                         && ev.Subject.Value.EntityId == owner.EntityId
+                         && ev.Subject.Value.EntrySerial == owner.EntrySerial;
+        if (owner.Zone != need && !graveSelf && !(need == ZoneRef.Board && ActsAsOnField(ev, owner)))
             return false;
 
         // 2. 回合归属
