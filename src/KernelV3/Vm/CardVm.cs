@@ -386,6 +386,24 @@ public sealed partial class CardVm
         list.Add((e, ab));
     }
 
+    /// <summary>
+    /// 事件主体此刻被视同「在场」的依据。
+    ///
+    /// 打出法术时它还在手牌区（结算完才进墓地），
+    /// 而它自己印的 Fanfare: 编译成 ActiveZone=Board。
+    /// 只按区域判定的话，这一条 OnPlay 会被直接丢掉 —— 法术一次效果都不跑。
+    ///
+    /// 豁免只对事件主体自身生效，且只对「它被打出」这一条 OnPlay：
+    /// 手牌 / 牌组里**其它**卡的监听语义一字不改。
+    /// </summary>
+    private static bool ActsAsOnField(VmEvent ev, RuntimeEntity owner)
+    {
+        if (ev.Subject == null) return false;
+        if (ev.Subject.Value.EntityId != owner.EntityId) return false;
+        if (ev.Subject.Value.EntrySerial != owner.EntrySerial) return false;
+        return ev.Kind == CoreEvent.OnPlay;
+    }
+
     /// <summary>判断一次事件是否满足某个触发器的过滤条件。</summary>
     /// <summary>
     /// 判断一次事件是否满足某个触发器。
@@ -409,7 +427,10 @@ public sealed partial class CardVm
             // 若按默认 Board 判定，挂在信仰上的被动永远不会触发。
             _ => owner.Zone == ZoneRef.CrestArea ? ZoneRef.CrestArea : ZoneRef.Board,
         };
-        if (owner.Zone != need) return false;
+        // 豁免只放行「本卡自己的入场曲」这一种情形：
+        // 法术正在结算，它还没进墓地，此刻必须被当作在场。
+        if (owner.Zone != need && !(need == ZoneRef.Board && ActsAsOnField(ev, owner)))
+            return false;
 
         // 2. 回合归属
         if (trig.DuringTurn != TurnOwnerScope.Any)
