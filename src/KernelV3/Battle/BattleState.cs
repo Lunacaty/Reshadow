@@ -238,20 +238,20 @@ public sealed class BattleState : IVmWorld
         }
         if (def == null)
         {
-            // 卡池里没有这张纹章：用名字合成一个，保证同名唯一能生效。
-            cardId = CrestEntityIdBase + (cardName ?? "crest").GetHashCode() % 100000;
-            if (cardId < 0) cardId = -cardId;
-            if (!_cardPool.ContainsKey(cardId))
-            {
-                _cardPool[cardId] = new CardDef
-                {
-                    CardId = cardId,
-                    Name = cardName ?? "Crest",
-                    Kind = CardKind.Crest,
-                };
-            }
+            // 卡池里没有这张纹章：按卡名合成一个 cardId，保证同名唯一能生效。
+            // 绝不能用 string.GetHashCode()：.NET 默认开启字符串哈希随机化
+            // （UseRandomizedStringHashAlgorithm），同一个卡名在两个进程里会得到
+            // 不同的值，于是「同名唯一」「存档 / 回放 / 网络同步」全部失配。
+            //
+            // 旧实现另有两处隐患，这里一并收口：
+            //   · '%' 在 C# 里可以为负，取负号之后基址丢失，id 会掉出保留号段；
+            //   · 撞车时 if (!ContainsKey) 静默跳过写入，两个不同卡名共用同一 cardId。
+            int synthId = ResolveCrestCardId(cardName ?? CrestFallbackName);
+            if (synthId <= 0) return null;   // 号段耗尽：安静失败，绝不覆盖已有卡
+            cardId = synthId;
             _cardPool.TryGetValue(cardId, out def);
         }
+        if (def == null) return null;
 
         // 纹章必须以 Crest 卡种进入纹章区。
         var e = CreateEntity(cardId, ZoneRef.CrestArea, playerId);
@@ -266,8 +266,93 @@ public sealed class BattleState : IVmWorld
         return e;
     }
 
-    /// <summary>纹章实体的卡 ID 偏移量。</summary>
+    /// <summary>纹章实体的卡 ID 偏移量（旧号段，已废弃：只覆盖 1e5 个槽位，且原实现
+    /// 依赖随机化的 string.GetHashCode）。仅为兼容既有引用保留；
+    /// 新的合成走 <see cref="CrestSynthCardIdBase"/>。</summary>
     public const int CrestEntityIdBase = 970000;
+
+    /// <summary>按卡名合成纹章 cardId 的保留号段起点，区间 [400000000, 499999999]。
+    ///
+    /// 号段选择依据（实测）：真实 card_id 只落在 [10001110, 90074320]；
+    /// 既有保留常量是 FaithEntityIdBase = 900000、LeaderCardIdBase = 990000、
+    /// MagicSedimentCardId = 90031210、ClueDefaultCardId = 90001210 —— 全都远低于 4 亿。
+    /// 因此这个区间既不与真实卡号重叠，也不与任何既有保留号段重叠。</summary>
+    public const int CrestSynthCardIdBase = 400000000;
+
+    /// <summary>合成号段容量。1e8 个槽位下 FNV-1a 的碰撞概率可忽略，
+    /// 但仍必须线性探测兜底（见 <see cref="ResolveCrestCardId"/>）。</summary>
+    public const int CrestSynthSlots = 100000000;
+
+    private const string CrestFallbackName = "Crest";
+
+    /// <summary>卡名 → 纹章 cardId 的**确定性**映射。
+    ///
+    /// 哈希是自实现的 FNV-1a-64（按 UTF-16 码元逐字节），只依赖卡名本身，
+    /// 与进程、平台、.NET 的字符串哈希随机化无关 —— 同一卡名在任何进程、
+    /// 任何调用顺序下都得到同一个 id。
+    ///
+    /// 防碰撞：算出的槽位若已被**另一个**卡名占用，按 probe = 1, 2, … 换偏移基
+    /// 重算，直到找到空槽或命中同名。全程绝不覆盖卡池里已有的定义，
+    /// 也不会静默返回一个撞车的 id。
+    ///
+    /// 返回 0 表示号段探尽，调用方按安静失败处理。</summary>
+    private int ResolveCrestCardId(string cardName)
+    {
+        if (string.IsNullOrEmpty(cardName)) cardName = CrestFallbackName;
+
+        // 同一个卡名在本进程内已分配过：直接复用。
+        if (_crestNameToCardId.TryGetValue(cardName, out int known)) return known;
+
+        string ownerName = null;
+        for (int probe = 0; probe < CrestSynthSlots; probe++)
+        {
+            int id = CrestSynthCardIdBase + (int)(CrestNameHash(cardName, probe) % (ulong)CrestSynthSlots);
+
+            if (!_cardPool.TryGetValue(id, out var occupant))
+            {
+                _cardPool[id] = new CardDef { CardId = id, Name = cardName, Kind = CardKind.Crest };
+                _crestNameToCardId[cardName] = id;
+                return id;
+            }
+
+            // 槽位被占：同名则复用（可能是别处注册进来的定义），异名则继续探测。
+            if (occupant != null && occupant.Name == cardName)
+            {
+                _crestNameToCardId[cardName] = id;
+                return id;
+            }
+            ownerName = occupant?.Name;
+        }
+
+        // 号段探尽：不覆盖任何已有卡，交给调用方安静失败。
+        LastCrestIdCollision = ownerName;
+        return 0;
+    }
+
+    /// <summary>FNV-1a-64，按 UTF-16 码元（低字节在前）逐字节喂入。
+    /// probe &gt; 0 时换一个偏移基，用于碰撞后的线性探测。
+    /// 全程 ulong 运算，不依赖 string.GetHashCode()，因此跨进程稳定。</summary>
+    private static ulong CrestNameHash(string name, int probe)
+    {
+        const ulong FnvOffsetBasis = 14695981039346656037UL;
+        const ulong FnvPrime = 1099511628211UL;
+        const ulong GoldenGamma = 0x9E3779B97F4A7C15UL;
+
+        ulong h = FnvOffsetBasis ^ (unchecked((ulong)(uint)probe) * GoldenGamma);
+        foreach (char c in name)
+        {
+            h = (h ^ (byte)(c & 0xFF)) * FnvPrime;
+            h = (h ^ (byte)((c >> 8) & 0xFF)) * FnvPrime;
+        }
+        return h;
+    }
+
+    /// <summary>卡名 → 合成 cardId 的记忆（同一进程内复用，避免重复探测）。
+    /// 跨进程不复用：跨进程靠的仍然是上面的确定性哈希。</summary>
+    private readonly Dictionary<string, int> _crestNameToCardId = new();
+
+    /// <summary>最近一次号段探尽时占住槽位的卡名，仅用于诊断。</summary>
+    public string LastCrestIdCollision { get; private set; }
 
     /// <summary>
     /// 土之印与 Clue 护符的保护（R-6.2）：
