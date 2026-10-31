@@ -46,6 +46,9 @@ public sealed class AbilityHeaderBuilder
     /// <summary>本段出现过 `Fuse: <材料>` 声明头（材料段本身不产出能力）。</summary>
     public bool HasFuse;
 
+    /// <summary>`Fuse: <材料>` 里那个材料过滤条件（null = 不限）。</summary>
+    public TargetSpec FuseMaterialFilter;
+
     /// <summary>护符的初始吟唱值。属于卡牌属性，不是代价。</summary>
     public int? CountdownValue;
 
@@ -158,12 +161,21 @@ public sealed class PrefixParser
         // 材料声明段不产出能力，所以「这张卡能不能融合」必须单独记一个事实位。
         b.HasFuse = true;
 
-        // 消费融合材料描述，直到下一个已知头/触发词/事件从句
-        while (!cur.IsAtEnd &&
-               !cur.Current.IsAnyWord("whenever", "when", "fanfare", "evolve", "super-evolve",
-                                      "at", "draw", "deal", "transform", "summon", "give", "destroy"))
+        // 材料描述不是垃圾：`Fuse: Loot cards` / `Fuse: Artifact amulets`
+        // 决定了「什么卡才能喂进去」。先把它切出来，再交给目标语法解析，
+        // 否则任何一张手牌都能当材料。
         {
-            cur.Advance();
+            int matStart = cur.Position;
+            while (!cur.IsAtEnd &&
+                   !cur.Current.IsAnyWord("whenever", "when", "fanfare", "evolve", "super-evolve",
+                                          "at", "draw", "deal", "transform", "summon", "give", "destroy"))
+            {
+                cur.Advance();
+            }
+            var matToks = new List<Token>();
+            for (int k = matStart; k < cur.Position; k++) matToks.Add(cur.All[k]);
+            if (matToks.Count > 0)
+                b.FuseMaterialFilter = _target.TryParse(new TokenCursor(matToks));
         }
 
         // "When you've Fused both to this card," —— 融合条件从句。

@@ -69,6 +69,9 @@ public sealed class EnglishCompiler
 
         /// <summary>卡面是否有 `Fuse: ...` 材料声明（供「with Fuse」谓词判定）。</summary>
         public bool HasFuse { get; set; }
+
+        /// <summary>`Fuse: <材料>` 的材料过滤条件（null = 不限）。</summary>
+        public TargetSpec FuseMaterialFilter { get; set; }
     }
 
     /// <summary>编译整张卡的效果文本。</summary>
@@ -82,10 +85,12 @@ public sealed class EnglishCompiler
     /// </summary>
     public Result Compile(string text,
                           IReadOnlyList<(string typeEng, int cost, string textEng)> altModes = null,
-                          string cardName = null)
+                          string cardName = null,
+                          int cardId = 0)
     {
         _altModes = altModes;
         _currentCardName = cardName;
+        _currentCardId = cardId;
 
         // 先把 alt_modes 里的纹章/信仰定义编出来，供动作解析器在生成
         // 「Gain Crest: ...」时一并带上。必须早于正文编译。
@@ -98,6 +103,7 @@ public sealed class EnglishCompiler
         r.CrestDef = pre.CrestDef ?? r.CrestDef;
         r.FaithDef = pre.FaithDef ?? r.FaithDef;
         r.HasFuse = _sawFuseDecl;
+        r.FuseMaterialFilter = _fuseMaterialFilter;
         // 材料声明段不产出能力，事实位必须贴到已有能力上，运行期才查得到。
         if (_sawFuseDecl && r.Abilities.Count > 0 && !r.Abilities[0].HasFuse)
         {
@@ -190,6 +196,12 @@ public sealed class EnglishCompiler
     /// <summary>本卡是否出现过 Fuse 材料声明（由 CompileSegment 置位）。</summary>
     private bool _sawFuseDecl;
 
+    /// <summary>`Fuse: <材料>` 的材料过滤条件（由 CompileSegment 置位）。</summary>
+    private TargetSpec _fuseMaterialFilter;
+
+    /// <summary>当前正在编译的卡号（激奏/结晶子定义要继承它）。</summary>
+    private int _currentCardId;
+
     /// <summary>
     /// 把 alt_modes 里的 Crest / Faith 段各自编译成一个完整 CardDef 挂到 Result 上。
     /// Crystallize / Accelerate 不在这里处理：它们是**出牌模式**，不是独立实体。
@@ -216,11 +228,13 @@ public sealed class EnglishCompiler
             var sub = new EnglishCompiler(_lex).Compile(textEng);
             var def = new Ast.CardDef
             {
-                // 纹章 / 信仰的 CardId 留 0，运行期按名字合成号段
+                // 纹章 / 信仰是**独立实体**，CardId 留 0，运行期按名字合成号段
                 // （BattleState.ResolveCrestCardId / FaithEntityIdBase）。
-                // 激奏与结晶是**同一张卡的另一张脸**，沿用本体卡号即可，
-                // 由 TurnRunner 在打出时按需要临时换 Def。
-                CardId = 0,
+                //
+                // 激奏与结晶是**同一张卡的另一张脸**，必须继承本体卡号：
+                // 留 0 会让它在墓地/牌库里认不出自己是哪张卡 ——
+                // 亡者召还、按卡号检索、以及回手后的还原全部失效。
+                CardId = (isAccel || isCryst) ? _currentCardId : 0,
                 Name = _currentCardName ?? "",
                 // 激奏按法术结算（结算完进墓地、shadow +1）；
                 // 结晶按护符进场（带自己的 Countdown 与谢幕曲）。
@@ -706,6 +720,7 @@ public sealed class EnglishCompiler
             var hb = new AbilityHeaderBuilder();
             _prefixes.ParseAll(c, hb);
             if (hb.HasFuse) _sawFuseDecl = true;
+            if (hb.FuseMaterialFilter != null) _fuseMaterialFilter = hb.FuseMaterialFilter;
 
             // 剥离掉能力头之后才露出来的变身表，例如
             //   "Fanfare: 1: A. 2: B. 3 or more: C."

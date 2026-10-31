@@ -630,7 +630,10 @@ public sealed partial class CardVm
         if (ev.Subject == null) return false;
         if (ev.Subject.Value.EntityId != owner.EntityId) return false;
         if (ev.Subject.Value.EntrySerial != owner.EntrySerial) return false;
-        return ev.Kind == CoreEvent.OnPlay;
+        // OnPlay：法术/随从打出时它还不在场上（结算完才进墓地）。
+        // OnFuse：融合时主体卡在**手牌**里，而「When you Fuse to this card」
+        // 编译出的 ActiveZone 默认是 Board —— 不放行的话手牌融合永不触发。
+        return ev.Kind == CoreEvent.OnPlay || ev.Kind == CoreEvent.OnFuse;
     }
 
     /// <summary>判断一次事件是否满足某个触发器的过滤条件。</summary>

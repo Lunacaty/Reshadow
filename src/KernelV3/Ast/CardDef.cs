@@ -131,6 +131,16 @@ public sealed class CardDef
     /// </summary>
     public bool HasFuse { get; init; }
 
+    /// <summary>
+    /// `Fuse: <材料>` 声明里的材料过滤条件。
+    ///
+    /// 例：`Fuse: Loot cards` → 只看带 Loot 兵种的卡；
+    ///     `Fuse: Artifact amulets` → 只看带 Artifact 兵种的护符。
+    /// 为空表示「不限材料」。融合前必须用它逐张校验，
+    /// 否则把任意一张手牌喂进去都能融合。
+    /// </summary>
+    public TargetSpec FuseMaterialFilter { get; init; }
+
     /// <summary>原始英文文本（仅诊断用，不参与执行）。</summary>
     public string SourceText { get; init; } = "";
 

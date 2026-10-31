@@ -471,12 +471,13 @@ public sealed class BattleState : IVmWorld
             var key = Schema.Counter("clues");
             oldClue.Counters.TryGetValue(key, out carried);
 
-            // Clue 的旧护符是被 Banish，不是被破坏——
-            // 所以要发 OnBanish，但不加墓场、不进 DestroyedThisMatch。
-            oldClue.Zone = ZoneRef.Banished;
-            oldClue.EntrySerial++;
-            Players[playerId].Banished.Add(oldClue);
-            EmitEvent(new VmEvent { Kind = CoreEvent.OnBanish, Subject = EntityRef.From(oldClue) });
+            // Clue 的旧护符是被 Banish，不是被破坏 —— 必须走权威管线 BanishEntity。
+            //
+            // 早先这里手写「改 Zone + 塞进 Banished 列表」而**忘了 Detach**：
+            // 旧护符于是同时留在 Board 列表里，白占一个战场格子，
+            // 而且活在两个区域（区域唯一不变量当场被打破）。
+            // BanishEntity 内部会 Detach + 移区 + 发 OnBanish，一步不缺。
+            BanishEntity(oldClue);
         }
 
         var e = SpawnCard(ClueDefaultCardId, ZoneRef.Board, playerId);
@@ -529,7 +530,11 @@ public sealed class BattleState : IVmWorld
     {
         if (fresh?.Def == null) return;
         bool isSigil = fresh.Def.CardId == MagicSedimentCardId;
-        bool isClue = fresh.Def.CardId == ClueDefaultCardId;
+        // Clue 不只认默认卡号：任何带 Clue 兵种的护符都按线索护符合并，
+        // 否则换过卡面的线索护符会与默认那张同时占两个格子。
+        var clueTrait = Schema.Trait("Clue");
+        bool isClue = fresh.Def.CardId == ClueDefaultCardId
+                      || fresh.Traits.Contains(clueTrait);
         if (!isSigil && !isClue) return;
 
         var key = Schema.Counter(isSigil ? "earth_sigil" : "clues");
@@ -537,10 +542,17 @@ public sealed class BattleState : IVmWorld
         foreach (var old in Players[fresh.PlayerId].Board.ToList())
         {
             if (ReferenceEquals(old, fresh) || old.Def == null) continue;
-            if (old.Def.CardId != fresh.Def.CardId) continue;
+            bool sameKind = isSigil
+                ? old.Def.CardId == MagicSedimentCardId
+                : (old.Def.CardId == ClueDefaultCardId || old.Traits.Contains(clueTrait));
+            if (!sameKind) continue;
             old.Counters.TryGetValue(key, out int cv);
             carried += cv;
-            RemoveQuietly(old);
+            // 土之印是安静合并（被吸收，不算离场）；
+            // 线索护符按 76-c 6.2-2 铁律走【消失】：必须发 OnBanish，
+            // 让它自己的「当这张卡被放逐时」能力照常触发。
+            if (isSigil) RemoveQuietly(old);
+            else BanishEntity(old);
         }
         if (carried > 0)
         {
@@ -883,6 +895,17 @@ public sealed class BattleState : IVmWorld
         // PlaceInZone 只能把它置 None —— 卡就从牌库消失了。
         if (toZone == ZoneRef.Board && RejectBoardMoveIfFull(e, toPlayerId)) return;
 
+        // 「离场时改为放逐」对**一切离场路径**生效，不只是破坏。
+        // 回手、回牌库、弃牌这些非破坏移动同样算「离场」——
+        // 之前只有 DestroyEntity 判这一条，于是场上的 Ghost 被能力弹回手牌时
+        // 会老老实实进手牌，与它自己的卡面矛盾。
+        if (e.Zone == ZoneRef.Board && toZone != ZoneRef.Board && toZone != ZoneRef.Banished
+            && ShouldBanishOnLeave(e))
+        {
+            BanishEntity(e);
+            return;
+        }
+
         var fromZone = e.Zone;                                  // 移出前记下来源区域
         bool leftBoard = fromZone == ZoneRef.Board && toZone != ZoneRef.Board;
         bool fromDeck = fromZone == ZoneRef.Deck;
@@ -898,6 +921,19 @@ public sealed class BattleState : IVmWorld
 
         if (leftBoard)
             EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
+
+        // 激奏 / 结晶打出的卡在**离开战场之后**必须还原成本体卡面：
+        // 结晶护符进墓地或回牌库后若仍挂着 CrystallizeDef，
+        // 亡者召还会把它当护符复活、抽回手牌时会显示成护符 ——
+        // 而它在规则上始终是原来那张随从。
+        //
+        // 注意时机：必须排在上面的 OnLeaveField/OnDestroy 之后 ——
+        // 谢幕曲挂在 CrystallizeDef 上，还原早了就读不到它。
+        if (leftBoard && e.OriginalDef != null)
+        {
+            e.Def = e.OriginalDef;
+            e.OriginalDef = null;
+        }
 
         // 迁入战场的路径不止 SpawnCard：能力把牌库/手牌/墓地的卡搬上场也走这里。
         // 不在这里通知，「进入战场时」与连携对这条路径一律失明。
@@ -1169,6 +1205,15 @@ public sealed class BattleState : IVmWorld
     {
         if (e == null || e.Zone != ZoneRef.Board) return;
 
+        // 「离场时改为放逐」在**生命归 0 这条路径**上同样生效。
+        // 之前这条替代只写在 DestroyEntity（能力破坏）里，于是 Ghost 战死时
+        // 照样进墓地、shadow +1、还进了 DestroyedThisMatch —— 与它自己的卡面相反。
+        if (ShouldBanishOnLeave(e))
+        {
+            BanishEntity(e);
+            if (e.Zone != ZoneRef.Board) return;
+        }
+
         int owner = e.PlayerId;
         var snap = e.TakeSnapshot();
 
@@ -1317,6 +1362,11 @@ public sealed class BattleState : IVmWorld
         // 只清 Keywords 不清 _granted，会让授予的 Ward 在变身之后依然生效。
         ClearGrantedAbilities(e);
         e.LastWordsRemoved = false;
+
+        // 融合记录归零：变身后这是**一张新卡**，
+        // 旧卡吃过的材料种类不该算到新卡头上（否则 fuse_kinds 会虚高）。
+        e.FusedKinds.Clear();
+        e.FusedThisTurn = false;
 
         // 清空旧状态之后必须**重新装配新卡的常驻属性**。
         // 不调这一步，任何卡变身成带 Rush / Storm / Ward / Countdown 的卡之后

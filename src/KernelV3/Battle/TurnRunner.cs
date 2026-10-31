@@ -580,12 +580,66 @@ public sealed class TurnRunner
     /// 启动护符（Engage）：支付 Engage (N) 的 PP，发 OnEngage。
     /// 每回合每个护符只能启动 1 次。
     /// </summary>
-    public bool EngageAmulet(int playerId, RuntimeEntity amulet, int cost, CardVm vm)
+    /// <summary>
+    /// 这个护符现在能不能启动。纯查询，供 UI 与 GetLegalActions 使用。
+    ///
+    /// 早先没有这道检查：任何白板护符都能被启动，被沉默的也能，
+    /// 而且费用要外部手填 —— 卡面上印的启动费完全没被读过。
+    /// </summary>
+    public bool CanEngageAmulet(int playerId, RuntimeEntity amulet, out int engageCost)
     {
+        engageCost = 0;
         if (playerId != _state.ActivePlayer) return false;
         if (amulet == null || amulet.Zone != ZoneRef.Board || amulet.PlayerId != playerId) return false;
         if (amulet.EngagedThisTurn) return false;
+        // 被沉默的实体没有能力，自然也不能启动。
+        if (amulet.IsSilenced) return false;
 
+        // 必须真的声明了 Engage —— 没有启动能力的护符是白板。
+        var engage = FindEngageAbility(amulet);
+        if (engage == null) return false;
+
+        // 启动费写在能力的 Costs 里（CostKind.UsePp + label=engage）。
+        foreach (var c in engage.Costs ?? Array.Empty<Ast.CostSpec>())
+        {
+            if (c.Kind != Ast.CostKind.UsePp) continue;
+            if (c.Amount?.Op == Ast.NumOp.Const) engageCost = c.Amount.Value;
+        }
+
+        var ppKey = _schema.Counter("pp");
+        return _state.ReadCounter(playerId, ppKey) >= engageCost;
+    }
+
+    /// <summary>实体（含运行时授予）身上声明的 OnEngage 能力。</summary>
+    private Ast.AbilityDef FindEngageAbility(RuntimeEntity e)
+    {
+        if (e?.Def?.Abilities != null)
+            foreach (var ab in e.Def.Abilities)
+                if (ab?.Trigger != null && ab.Trigger.Event == CoreEvent.OnEngage) return ab;
+        foreach (var (ge, gab) in _state.GrantedAbilities)
+            if (ge != null && ge.EntityId == e?.EntityId
+                && gab?.Trigger != null && gab.Trigger.Event == CoreEvent.OnEngage) return gab;
+        return null;
+    }
+
+    /// <summary>以卡面声明的启动费启动护符。</summary>
+    public bool EngageAmulet(int playerId, RuntimeEntity amulet, CardVm vm)
+    {
+        if (!CanEngageAmulet(playerId, amulet, out int autoCost)) return false;
+        return EngageAmuletCore(playerId, amulet, autoCost, vm);
+    }
+
+    public bool EngageAmulet(int playerId, RuntimeEntity amulet, int cost, CardVm vm)
+    {
+        // 显式传费用时也要过能力检查：能启动的前提是「它真有 Engage 能力」。
+        if (!CanEngageAmulet(playerId, amulet, out int cardCost)) return false;
+        // 卡面写了启动费就以卡面为准；卡面没写（0）才采用调用方给的值。
+        int pay = cardCost > 0 ? cardCost : Math.Max(0, cost);
+        return EngageAmuletCore(playerId, amulet, pay, vm);
+    }
+
+    private bool EngageAmuletCore(int playerId, RuntimeEntity amulet, int cost, CardVm vm)
+    {
         var ppKey = _schema.Counter("pp");
         if (_state.ReadCounter(playerId, ppKey) < cost) return false;
         _state.WriteCounter(playerId, ppKey, _state.ReadCounter(playerId, ppKey) - cost);
@@ -600,20 +654,67 @@ public sealed class TurnRunner
     /// 融合（Fuse）：把关卡作为材料融合进 baseCard，累计 fuse_count / fuse_cost，发 OnFuse。
     /// 每个融合目标每回合只能融合 1 次。
     /// </summary>
+    /// <summary>
+    /// 这组卡能不能融合。纯查询，不改状态 —— 供 UI 判定与 GetLegalActions 枚举。
+    ///
+    /// 四条必须同时成立：主体可融合、材料在手、材料不是主体、材料满足声明条件。
+    /// 早先 FuseCards 只检查了「都在手牌」，于是任意手牌都能喂进任意一张卡。
+    /// </summary>
+    public bool CanFuseCards(int playerId, RuntimeEntity baseCard,
+                             IReadOnlyList<RuntimeEntity> materials, out string reason)
+    {
+        reason = "";
+        if (playerId != _state.ActivePlayer) { reason = "不是你的回合"; return false; }
+        if (baseCard == null || baseCard.Zone != ZoneRef.Hand || baseCard.PlayerId != playerId)
+        { reason = "主体卡不在你的手牌"; return false; }
+        if (baseCard.FusedThisTurn) { reason = "本回合已经融合过"; return false; }
+
+        // 主体必须能融合 —— 否则任何一张手牌都能当融合台。
+        // 两个判据任一成立即可：
+        //   · HasFuse：卡面有 `Fuse: <材料>` 声明（编译器置位）
+        //   · 存在 OnFuse 能力：手工构造的 CardDef 可能只写了能力
+        if (baseCard.Def == null) { reason = "这张卡不能融合"; return false; }
+        bool canFuse = baseCard.Def.HasFuse;
+        if (!canFuse && baseCard.Def.Abilities != null)
+            foreach (var ab in baseCard.Def.Abilities)
+                if (ab?.Trigger != null && ab.Trigger.Event == CoreEvent.OnFuse) { canFuse = true; break; }
+        if (!canFuse) { reason = "这张卡不能融合"; return false; }
+
+        if (materials == null || materials.Count == 0)
+        { reason = "没有融合材料"; return false; }
+
+        var eval = new Vm.VmEval(_state);
+        var seen = new HashSet<int>();
+        foreach (var m in materials)
+        {
+            if (m == null || m.Zone != ZoneRef.Hand || m.PlayerId != playerId)
+            { reason = "材料不在你的手牌"; return false; }
+            if (m.EntityId == baseCard.EntityId)
+            { reason = "不能把主体自己当材料"; return false; }
+            if (!seen.Add(m.EntityId))
+            { reason = "同一张材料出现了两次"; return false; }
+
+            // `Fuse: Loot cards` / `Fuse: Artifact amulets` 的材料条件。
+            var filter = baseCard.Def.FuseMaterialFilter;
+            if (filter != null && filter.Where != null
+                && !(filter.Where is Ast.ConstBoolExpr cb && cb.Value))
+            {
+                var sc = new Vm.VmScope { Owner = Core.ZoneScope.Self, Controller = playerId };
+                sc.BindRefs(Ast.TargetSpec.SlotItem, new[] { Vm.EntityRef.From(m) });
+                if (!eval.EvalBool(filter.Where, sc))
+                { reason = "材料不满足融合条件"; return false; }
+            }
+        }
+        return true;
+    }
+
     public bool FuseCards(int playerId, RuntimeEntity baseCard,
                           IReadOnlyList<RuntimeEntity> materials, CardVm vm)
     {
-        if (playerId != _state.ActivePlayer) return false;
-        if (baseCard == null || baseCard.Zone != ZoneRef.Hand || baseCard.PlayerId != playerId) return false;
-        if (baseCard.FusedThisTurn) return false;
-        if (materials == null || materials.Count == 0) return false;
+        if (!CanFuseCards(playerId, baseCard, materials, out _)) return false;
 
         int totalCost = 0;
-        foreach (var m in materials)
-        {
-            if (m == null || m.Zone != ZoneRef.Hand || m.PlayerId != playerId) return false;
-            totalCost += m.Cost;
-        }
+        foreach (var m in materials) totalCost += m.Cost;
 
         // 三个计数器全部挂在**这张卡**上，不是玩家级 —— 卡面写的是
         // 「Fused to **this card**」，是这张卡各自的累计。
