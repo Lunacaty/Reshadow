@@ -503,6 +503,19 @@ public sealed partial class CardVm
         t.TempModifiers.Clear();
     }
 
+    /// <summary>
+    /// 第 5 步：亡者召还上场的随从**额外附加 Departed（死者）兵种标签**。
+    ///
+    /// GameSchema.Trait 是 GetOrRegister，首次调用即完成注册，
+    /// 所以不需要在 Lexicon / GameSchema 里预先声明这个兵种。
+    /// </summary>
+    private void TagDeparted(RuntimeEntity e)
+    {
+        var schema = (_world as Battle.BattleState)?.Schema ?? Schema;
+        var departed = schema.Trait("Departed");
+        if (!e.Traits.Contains(departed)) e.Traits.Add(departed);
+    }
+
     private bool DoSpawn(SpawnCardNode n, VmScope scope)
     {
         int count = _eval.EvalNum(n.Count, scope);
@@ -518,6 +531,7 @@ public sealed partial class CardVm
                 e = _world is Battle.BattleState bs2
                     ? bs2.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner), n.IsExactCopy)
                     : _world.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner));
+                if (n.AddDepartedTrait && e != null) TagDeparted(e);
             }
             else if (n.SourceKind == CardSourceKind.CopyOfPrevious)
             {
