@@ -50,11 +50,26 @@ public static class AstEnglishPrinter
                 sb.Append(" on(" + PrintTarget(a.Trigger.SubjectFilter) + ")");
             if (a.Trigger.SecondaryFilter != null)
                 sb.Append(" vs(" + PrintTarget(a.Trigger.SecondaryFilter) + ")");
+
+            // 并列事件与「仅手动进化」是**运行期判定依据**：
+            // Octrice 的「打出**或融合**」全靠 SecondaryEvent。
+            // 不打出来的话，往返丢了这个字段也只会表现为「融合时不触发」。
+            if (a.Trigger.SecondaryEvent != null)
+                sb.Append(" or=" + a.Trigger.SecondaryEvent.Value);
+            if (a.Trigger.ManualEvolveOnly)
+                sb.Append(" manual");
         }
 
 
         if (a.Costs != null && a.Costs.Count > 0)
-            sb.Append(" [" + string.Join("+", a.Costs.Select(c => c.Kind + "(" + PrintNum(c.Amount) + ")")) + "]");
+            // Label 必须打出来：TurnRunner.EnhanceTiers 只认 Label=="enhance"，
+            // 丢了它就认不出爆能强化，而卡面文字一模一样。
+            sb.Append(" [" + string.Join("+", a.Costs.Select(c =>
+                // Label 归一成下划线：EnglishCompiler 写 "earth rite"，
+                // 脚本端写 "earth_rite"，两者语义相同，不该因为空格判成不同。
+                c.Kind + (string.IsNullOrEmpty(c.Label)
+                    ? "" : ":" + c.Label.ToLowerInvariant().Replace(' ', '_'))
+                + "(" + PrintNum(c.Amount) + ")")) + "]");
 
         if (a.Condition != null && a.Condition is not ConstBoolExpr)
             sb.Append(" if " + PrintBool(a.Condition));
@@ -124,15 +139,23 @@ public static class AstEnglishPrinter
                     if (NeedsParen(m.Life)) life = "(" + life + ")";
                     sb.Append("modifystats " + m.Op + " " + atk + "/" + life + " to " + PrintTarget(m.Target));
                 }
+                // Duration 必须打出来：「直到回合结束」与「永久」在 AST 上只差这一个字段，
+                // 不打它，往返把限时效果变成永久也会被判成等价。
+                if (m.Duration != Ast.DurationKind.Permanent) sb.Append(" dur=" + m.Duration);
                 break;
             case ModifyCostNode mc:
                 sb.Append("modifycost " + mc.Op + " " + PrintNum(mc.Value) + " to " + PrintTarget(mc.Target));
+                if (mc.Duration != Ast.DurationKind.Permanent) sb.Append(" dur=" + mc.Duration);
                 break;
             case ModifyKeywordNode k:
-                sb.Append("keyword " + k.Op + " " + k.Keyword.Name + " to " + PrintTarget(k.Target));
+                sb.Append("keyword " + k.Op + " " + k.Keyword.Name
+                          + (k.Value != null ? "(" + PrintNum(k.Value) + ")" : "")
+                          + " to " + PrintTarget(k.Target));
+                if (k.Duration != Ast.DurationKind.Permanent) sb.Append(" dur=" + k.Duration);
                 break;
             case GrantAbilityNode g:
                 sb.Append("grant to " + PrintTarget(g.Target) + " \"" + PrintAbility(g.Granted) + "\"");
+                if (g.Duration != Ast.DurationKind.Permanent) sb.Append(" dur=" + g.Duration);
                 break;
             case SpawnCardNode sp:
                 // CopyOfPrevious （"Summon 2 instead"）没有 CardName，
@@ -150,12 +173,21 @@ public static class AstEnglishPrinter
                     sb.Append("gain crest " + what);
                 else
                     sb.Append("spawn " + PrintNum(sp.Count) + " " + what + " to " + sp.ToZone);
+
+                // ToOwner 必须打出来：Slaus 的「给**对手**贴纹章」与「给自己贴」
+                // 在 AST 上只差这一个字段，不打它就会把前者判成后者。
+                if (sp.ToOwner != Core.ZoneScope.Self) sb.Append(" owner=" + sp.ToOwner);
+                // CardId 决定运行期召出的是真卡还是空壳，必须可见。
+                if (sp.CardId > 0) sb.Append(" id=" + sp.CardId);
                 break;
             case MoveZoneNode mv:
                 sb.Append("move " + PrintTarget(mv.Target) + " to " + mv.ToZone);
                 break;
             case TransformNode tr:
-                sb.Append("transform " + PrintTarget(tr.Target) + " into " + (tr.CopySource != null ? "copy of " + PrintTarget(tr.CopySource) : tr.IntoCardName));
+                sb.Append("transform " + PrintTarget(tr.Target) + " into "
+                          + (tr.CopySource != null ? "copy of " + PrintTarget(tr.CopySource) : tr.IntoCardName));
+                // IntoCardId 是变身能否生效的唯一依据，必须可见。
+                if (tr.CopySource == null) sb.Append(" id=" + tr.IntoCardId);
                 break;
             case EvolveNode ev:
                 sb.Append((ev.IsSuperEvolve ? "superevolve " : "evolve ") + PrintTarget(ev.Target));
@@ -165,7 +197,8 @@ public static class AstEnglishPrinter
                           + (ctr.Target != null ? " of " + PrintTarget(ctr.Target) : ""));
                 break;
             case InvokeAbilityNode inv:
-                sb.Append("invoke " + inv.Event);
+                // Target 是 DoInvoke 的第一行依赖，丢了就是空操作。
+                sb.Append("invoke " + inv.Event + " on " + PrintTarget(inv.Target ?? TargetSpec.Self));
                 break;
             case ConditionalNode cn:
                 sb.Append("if " + PrintBool(cn.Condition)
@@ -199,6 +232,14 @@ public static class AstEnglishPrinter
         return sb.ToString();
     }
 
+    /// <summary>条件的 Of 后缀：$item 是缺省，不打；其余必须可见。</summary>
+    private static string OfSuffix(TargetSpec of)
+    {
+        if (of == null) return "";
+        if (of.SourceKind == TargetSourceKind.Slot && of.Slot == TargetSpec.SlotItem) return "";
+        return "(" + PrintTarget(of) + ")";
+    }
+
     public static string PrintTarget(TargetSpec t)
     {
         if (t == null) return "null";
@@ -212,7 +253,11 @@ public static class AstEnglishPrinter
             case TargetSourceKind.CardId:
                 // 必须打 Owner 与 Zone：不然 "hand" / "deck" / "hand and deck"
                 // 三种写法的 AST 打印完全一样，审计时分不出编译器到底取了哪个区域。
+                // 卡名与卡号都要打：CardId==0 时运行期会退化成「任意卡」
+                // （VmEval 的历史池分支写的是 `t.CardId == 0 || …`），
+                // 只打卡名会让 Obsessed Test Subject 的「同名卡 5 张」变成「任意随从 5 张」。
                 sb.Append("card:" + (string.IsNullOrEmpty(t.CardName) ? t.CardId.ToString() : t.CardName)
+                          + "#" + t.CardId
                           + "@" + t.Owner.ToString().ToLowerInvariant()
                           + ":" + t.Zone.ToString().ToLowerInvariant());
                 if (t.History != Core.HistoryScope.None) sb.Append(" history=" + t.History);
@@ -309,8 +354,11 @@ public static class AstEnglishPrinter
         {
             ConstBoolExpr c => c.Value ? "true" : "false",
             CompareExpr cmp => PrintNum(cmp.Left) + " " + CmpWord(cmp.Op) + " " + PrintNum(cmp.Right),
-            HasStateExpr hs => "is " + hs.State,
-            HasKindExpr hk => "is " + hk.Kind,
+            // Of 必须打出来：能力级条件判的是 $self，where 里判的是 $item。
+            // 不打它，「本卡是否已进化」与「被筛的那张是否已进化」打印完全一样，
+            // 而前者在触发时作用域里只有 $self，写成 $item 会恒为 false。
+            HasStateExpr hs => "is " + hs.State + OfSuffix(hs.Of),
+            HasKindExpr hk => "is " + hk.Kind + OfSuffix(hk.Of),
             HasKeywordExpr hk => "has " + hk.Keyword.Name,
             HasTraitExpr ht => "has trait " + ht.Trait.Name,
             HasClanExpr hc => "has clan " + hc.Clan.Name,

@@ -84,6 +84,22 @@ public sealed class Glossary
         g.Add("Aura", "灵气");
         g.Add("Barrier", "屏障");
 
+        // ---------- 内部限制关键词 ----------
+        // 这些词对应卡面的「Can't be played.」「Cannot attack.」等负向限制。
+        // 没有中文译名时渲染器原样吐出英文内码（【cannot_be_played】），
+        // 而带下划线的内码还能骗过「零英文残留」检查 —— 所以必须逐个登记。
+        g.Add("cannot_be_played", "无法打出");
+        g.Add("cannot_attack", "无法攻击");
+        g.Add("cannot_destroy", "无法被能力破坏");
+        g.Add("cannot_attack_leaders", "无法攻击主战者");
+        g.Add("cannot_attack_followers", "无法攻击随从");
+        g.Add("ignores ward", "无视守护");
+        g.Add("targeting_restriction", "敌方只能选择本卡牌");
+        g.Add("max_attacks_per_turn", "1回合可攻击");
+        g.Add("damage_taken_bonus", "受到伤害增加");
+        g.Add("damage_cap", "受到伤害上限");
+        g.Add("attack_limit", "攻击力上限");
+
         // ---------- 机制 ----------
         g.Add("Combo", "连击");
         g.Add("Rally", "协作");

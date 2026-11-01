@@ -523,12 +523,15 @@ public sealed class ChineseCardPrinter
             : "召唤" + count + "个《" + CardZh(sp.CardName) + "》到战场上。";
     }
 
+    /// <summary>
+    /// 取亡者召还的费用上限。
+    ///
+    /// 不能直接看 CopyFrom.Where 是不是 CompareExpr ——
+    /// 标准形状是 AndExpr(CompareExpr, HasKindExpr)，裸 CompareExpr 判据恒为 false，
+    /// 于是所有 Reanimate(4) 都会被印成字母 N。
+    /// </summary>
     private string DepartedCostCap(SpawnCardNode sp)
-    {
-        var w = sp.CopyFrom?.Where;
-        if (w is CompareExpr cmp && cmp.Right?.Op == NumOp.Const) return cmp.Right.Value.ToString();
-        return "N";
-    }
+        => Diy.ReanimateHelper.TryExtractCostCap(sp, out var cap) ? PrintNum(cap) : "N";
 
     private string PrintMove(MoveZoneNode mv)
     {
@@ -761,10 +764,13 @@ public sealed class ChineseCardPrinter
                 SortKey.Attack => "攻击力",
                 SortKey.Life => "生命值",
                 SortKey.Cost => "费用",
+                SortKey.BaseCost => "基础费用",
                 _ => "",
             };
+            // 先拼好再 Append：对 StringBuilder 调 Replace 会把它前面已写的
+            // 「攻击力」也一起换掉，把整句话改花。
             if (key.Length > 0)
-                sb.Append(t.SortDescending ? "攻击力最高的" : "攻击力最低的").Replace("攻击力", key);
+                sb.Append(key + (t.SortDescending ? "最高的" : "最低的"));
         }
 
         // ⑤ 属性条件（把后置定语提到名词前）
@@ -1097,9 +1103,10 @@ public sealed class ChineseCardPrinter
     private string FuseMaterialText(TargetSpec filter)
     {
         if (filter?.Where == null || IsTrue(filter.Where)) return null;
-        var parts = new List<string>();
-        CollectWhere(filter.Where, parts);
-        return parts.Count == 0 ? null : string.Concat(parts).Replace("兵种的", "").TrimEnd('的');
+        // 必须带上核心名词：只拼定语会把「神器护符」印成「神器」，
+        // 而「融合：神器」与「融合：神器护符」是两种不同的材料范围。
+        string noun = TargetNounOnly(filter);
+        return string.IsNullOrEmpty(noun) ? null : noun;
     }
 
     public string KeywordZh(string en) => _glossary.ToChinese(en);

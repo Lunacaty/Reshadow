@@ -409,6 +409,17 @@ public sealed class DiyBlockCompiler
                     _ => CostKind.UsePp,
                 },
                 Amount = NumExpr.Const(amount),
+                // Label 决定「爆能强化」与「启动」的区别：
+                // TurnRunner.EnhanceTiers 只认 Label=="enhance"，
+                // 丢了它，Enhance(4) 会被当成普通启动费，爆能强化整条机制失效。
+                Label = kind == "enhance" ? "enhance"
+                      : kind == "engage" ? "engage"
+                      : kind == "necromancy" ? "necromancy"
+                      : kind == "earth_rite" ? "earth_rite"
+                      : kind == "combo" ? "combo"
+                      : kind == "rally" ? "rally"
+                      : kind == "countdown" ? "countdown"
+                      : "",
             });
         }
 
@@ -417,6 +428,13 @@ public sealed class DiyBlockCompiler
             Event = ev,
             SubjectFilter = subject,
             ManualEvolveOnly = hat.FlagA,
+            // 并列事件（打出**或融合**）与每回合次数上限都是运行期判定依据：
+            // 丢了 SecondaryEvent，Octrice 在融合时不再推进吟唱；
+            // 丢了 MaxTriggersPerTurn，「每回合一次」会变成每次触发。
+            SecondaryEvent = string.IsNullOrEmpty(hat.EnumB) ? null : EventOf(hat.EnumB),
+            // 缺省是 0（= 不限制）。写成 1 会把所有能力都限制成「每回合一次」，
+            // 而卡面文字完全看不出差别。
+            MaxTriggersPerTurn = hat.IntA,
             ActiveZone = hat.ActiveZone switch
             {
                 "Hand" => ActiveZoneScope.Hand,
@@ -822,6 +840,8 @@ public sealed class DiyBlockCompiler
                 return new TargetSpec
                 {
                     SourceKind = string.IsNullOrEmpty(b.CardNameA) ? TargetSourceKind.Zone : TargetSourceKind.CardId,
+                    // 卡号必须填：CardId==0 时历史池筛选会退化成「任意卡」。
+                    CardId = string.IsNullOrEmpty(b.CardNameA) ? 0 : CardIdOf(b.CardNameA),
                     CardName = b.CardNameA ?? "",
                     IncludeLeader = b.FlagB,
                     DuplicatesOnly = b.FlagC,
@@ -1110,6 +1130,8 @@ public sealed class DiyBlockDecompiler
             Opcode = opcode,
             Text = ab.Trigger.Event.ToString(),
             FlagA = ab.Trigger.ManualEvolveOnly,
+            EnumB = ab.Trigger.SecondaryEvent?.ToString(),
+            IntA = ab.Trigger.MaxTriggersPerTurn,
             ActiveZone = ab.Trigger.ActiveZone == ActiveZoneScope.Board ? null : ab.Trigger.ActiveZone.ToString(),
             DuringTurn = ab.Trigger.DuringTurn == TurnOwnerScope.Any ? null : ab.Trigger.DuringTurn.ToString(),
             Target = opcode == "hat_watch_event" ? Target(ab.Trigger.SubjectFilter) : null,
@@ -1118,15 +1140,21 @@ public sealed class DiyBlockDecompiler
 
         foreach (var c in ab.Costs ?? Array.Empty<CostSpec>())
         {
-            string kind = c.Kind switch
-            {
-                CostKind.Necromance => "necromancy",
-                CostKind.DestroyAlly => "earth_rite",
-                CostKind.TurnPlayCount => "combo",
-                CostKind.MatchPlayCount => "rally",
-                CostKind.Countdown => "countdown",
-                _ => "pp",
-            };
+            // 优先用 Label 还原具体种类：UsePp 既可能是「爆能强化」也可能是「启动」，
+            // 光看 Kind 分不出来，而两者的运行期行为完全不同。
+            // Label 可能带空格（EnglishCompiler 写的是 "earth rite"），
+            // 归一成下划线才能与脚本/积木的关键字对上。
+            string labelKey = c.Label?.ToLowerInvariant().Replace(' ', '_');
+            string kind = !string.IsNullOrEmpty(labelKey) ? labelKey
+                        : c.Kind switch
+                        {
+                            CostKind.Necromance => "necromancy",
+                            CostKind.DestroyAlly => "earth_rite",
+                            CostKind.TurnPlayCount => "combo",
+                            CostKind.MatchPlayCount => "rally",
+                            CostKind.Countdown => "countdown",
+                            _ => "enhance",
+                        };
             int amt = c.Amount != null && c.Amount.Op == NumOp.Const ? c.Amount.Value : 1;
             hat.Costs.Add((kind, amt));
         }

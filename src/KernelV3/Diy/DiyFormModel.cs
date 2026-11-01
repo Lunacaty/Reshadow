@@ -135,9 +135,24 @@ public sealed class CardFormModel
 public sealed class DiyFormCompiler
 {
     private readonly GameSchema _schema;
+    private readonly Lang.Lexicon _lex;
     public List<string> Errors { get; } = new();
 
-    public DiyFormCompiler(GameSchema schema) { _schema = schema; }
+    public DiyFormCompiler(GameSchema schema, Lang.Lexicon lexicon = null)
+    {
+        _schema = schema;
+        _lex = lexicon;
+    }
+
+    /// <summary>
+    /// 卡名 → 卡号。DoSpawn 只认 CardId、DoTransform 只认 IntoCardId，
+    /// 缺了它们生成的是一张「卡面正确、运行时空操作」的卡。
+    /// </summary>
+    private int CardIdOf(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || _lex == null) return 0;
+        return _lex.TryGetCardId(name.Trim(), out var id) ? id : 0;
+    }
 
     /// <summary>触发时机下拉项（UI 直接绑定）。</summary>
     public static readonly (string key, string labelChs, string labelEng)[] TriggerChoices =
@@ -370,11 +385,25 @@ public sealed class DiyFormCompiler
                 };
 
             case FormActionKind.Summon:
-                return new SpawnCardNode { CardName = row.Name ?? "", Count = num, ToZone = ZoneRef.Board };
+                return new SpawnCardNode
+                {
+                    CardId = CardIdOf(row.Name), CardName = row.Name ?? "",
+                    Count = num, ToZone = ZoneRef.Board,
+                };
             case FormActionKind.AddToHand:
-                return new SpawnCardNode { CardName = row.Name ?? "", Count = num, ToZone = ZoneRef.Hand };
+                return new SpawnCardNode
+                {
+                    CardId = CardIdOf(row.Name), CardName = row.Name ?? "",
+                    Count = num, ToZone = ZoneRef.Hand,
+                };
             case FormActionKind.GainCrest:
-                return new SpawnCardNode { IsCrest = true, CardName = row.Name ?? "", ToOwner = ZoneScope.Self };
+                return new SpawnCardNode
+                {
+                    IsCrest = true,
+                    // 纹章是独立实体，不带主人卡号；落点是纹章区，不是战场。
+                    CardId = 0, CardName = row.Name ?? "",
+                    ToZone = ZoneRef.CrestArea, ToOwner = ZoneScope.Self,
+                };
 
             case FormActionKind.Destroy:
                 return new MoveZoneNode { Target = tgt, ToZone = ZoneRef.Cemetery, IsDestroy = true };
@@ -422,17 +451,16 @@ public sealed class DiyFormCompiler
             }
 
             case FormActionKind.Transform:
-                return new TransformNode { Target = tgt, IntoCardName = row.Name ?? "" };
-            case FormActionKind.Reanimate:
-                return new SpawnCardNode
+                // DoTransform 只认 IntoCardId：没有它变身是彻底的空操作。
+                return new TransformNode
                 {
-                    AddDepartedTrait = true, Count = num, ToZone = ZoneRef.Board,
-                    CopyFrom = new TargetSpec
-                    {
-                        SourceKind = TargetSourceKind.Zone, Owner = ZoneScope.Self,
-                        Zone = ZoneRef.Cemetery, Mode = SelectMode.All,
-                    },
+                    Target = tgt,
+                    IntoCardId = CardIdOf(row.Name), IntoCardName = row.Name ?? "",
                 };
+            case FormActionKind.Reanimate:
+                // 用唯一标准构造：手写会漏掉 SourceKind=CopyOfTarget 与 BaseCost 上限，
+                // 漏了就是召出一个 CardId=0 的白壳，且费用筛选完全失效。
+                return ReanimateHelper.Build(num);
 
             default:
                 Errors.Add("未知动作：" + row.Kind);
@@ -640,6 +668,20 @@ public sealed class DiyFormCompiler
         reason = "";
         if (ab?.Trigger == null) { reason = "能力缺少触发规格"; return null; }
 
+        // 表单的触发时机只有一个下拉框，装不下「回合归属」「并列事件」
+        // 「每回合次数」「主体过滤」这些限定词。
+        // 静默丢掉它们会让 Ghost 的「我方回合结束时」变成「回合结束时」，
+        // 卡面中文看不出差别，实战里双方回合都触发。
+        if (ab.Trigger.DuringTurn != TurnOwnerScope.Any
+            || ab.Trigger.SecondaryEvent != null
+            || ab.Trigger.MaxTriggersPerTurn > 0
+            || ab.Trigger.SubjectFilter != null)
+        {
+            reason = "该能力带回合归属/并列事件/每回合次数/主体过滤，超出表单表达能力"
+                     + "（请改用积木或脚本模式）";
+            return null;
+        }
+
         var item = new AbilityFormItem
         {
             Trigger = ab.Trigger.Event.ToString(),
@@ -769,8 +811,18 @@ public sealed class DiyFormCompiler
 
             case SpawnCardNode sp:
             {
-                if (sp.AddDepartedTrait)
-                    return new ActionFormRow { Kind = FormActionKind.Reanimate };
+                if (ReanimateHelper.IsReanimate(sp))
+                {
+                    // 费用上限在 CopyFrom.Where 里，Count 恒为 1 —— 拿 Count 顶替会把
+                    // Reanimate(8) 变成 Reanimate(1)。
+                    var reRow = new ActionFormRow { Kind = FormActionKind.Reanimate };
+                    if (ReanimateHelper.TryExtractCostCap(sp, out var cap)
+                        && SrcOf(cap, out var rs, out var rv, out var rcn, out reason))
+                    {
+                        reRow.NumberSource = rs; reRow.Number = rv; if (rcn != null) reRow.Name = rcn;
+                    }
+                    return reRow;
+                }
                 var row = new ActionFormRow
                 {
                     Kind = sp.IsCrest ? FormActionKind.GainCrest
@@ -877,6 +929,17 @@ public sealed class DiyFormCompiler
         if (e == null) return true;
 
         if (e.Op == NumOp.Const) { val = e.Value; return true; }
+
+        // 「0 - N」是取负的编码方式（英文编译器与表单正向都这么生成）。
+        // 不认它，任何「减 N」的数值反填都会报「超出表单表达能力」。
+        if (e.Op == NumOp.Arith && e.Arith == ArithOp.Sub && e.Args.Count == 2
+            && e.Args[0].Op == NumOp.Const && e.Args[0].Value == 0
+            && e.Args[1].Op == NumOp.Const)
+        {
+            src = FormNumberSource.Const;
+            val = -e.Args[1].Value;
+            return true;
+        }
         if (e.Op == NumOp.Counter)
         {
             if (e.Counter.Name == "combo") { src = FormNumberSource.ComboCount; return true; }

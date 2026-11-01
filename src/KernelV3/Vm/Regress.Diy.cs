@@ -98,6 +98,17 @@ public static partial class Regress
                     bad.Add(c.CardId + " 残留「" + f.Trim() + "」");
             }
 
+            // 兜底：任何连续 3 个以上 ASCII 字母都是英文残留。
+            // 之前按「已知英文语法词」列表查，带下划线的内码（cannot_be_played）
+            // 与没列进表的词全都能蒙混过去 —— 白名单式检查永远漏。
+            // 卡名（《…》）豁免：DIY 卡本来就可能没有中文名。
+            foreach (var line in zh.Split('\n'))
+            {
+                if (line.Contains("《") || line.Contains("【关联")) continue;
+                var m = System.Text.RegularExpressions.Regex.Match(line, "[A-Za-z]{3,}");
+                if (m.Success) bad.Add(c.CardId + " 残留英文 \"" + m.Value + "\"");
+            }
+
             // 「有中文能力标签」：任意一个【…】形式的触发头即可。
             // 触发头有二十多种，只列几个已知的会让正确渲染被判成失败。
             bool anyLabel = System.Text.RegularExpressions.Regex.IsMatch(
@@ -147,7 +158,10 @@ public static partial class Regress
 
     private static (bool, string) GateBlockRoundTrip()
     {
-        var ws = DiyCtx();
+        // DiyCtx 已默认加载测试集；这里不能再 LoadInto 一次 ——
+        // 重复加载会把同一张卡注册两遍，第二次的 CardDef 覆盖第一次，
+        // 而 TestsetLoader 内部的词法层也已 Build 过，符号会漂移。
+        var ws = DiyCtx(withTestset: false);
         var cards = TestsetLoader.LoadInto(ws.Context);
         var dec = new DiyBlockDecompiler(ws.Schema);
 
@@ -160,13 +174,16 @@ public static partial class Regress
             var derrs = dec.Errors.ToList();
             if (derrs.Count > 0) { bad.Add(c.CardId + " 反编译失败：" + derrs[0]); continue; }
 
-            var res = new DiyBlockCompiler(ws.Schema).Compile(blocks);
+            // 必须传 Lexicon：不传的话 CardIdOf 恒返回 0，
+            // 召唤/变身/具名卡池全部退化成空壳或「任意卡」——
+            // 而门禁若在这里也不传，就永远测不到那条真实路径。
+            var res = new DiyBlockCompiler(ws.Schema, ws.Lexicon).Compile(blocks);
             if (!res.Ok) { bad.Add(c.CardId + " 重编译失败：" + res.Errors.FirstOrDefault()); continue; }
 
             string diff = "";
             if (!DiyWorkspace.StructurallyEqual(c.Def, res.Def, out diff))
             {
-                bad.Add(c.CardId + " 不等价：" + diff.Split('\n')[0]);
+                bad.Add(c.CardId + " 不等价：" + diff.Replace("\n", " "));
                 continue;
             }
             ok++;
@@ -307,7 +324,7 @@ public static partial class Regress
                     },
                 },
             });
-            var res = new DiyBlockCompiler(ws.Schema).Compile(doc);
+            var res = new DiyBlockCompiler(ws.Schema, ws.Lexicon).Compile(doc);
             made.Add(("Blocks", res.Def, res.Ok ? null : res.Errors.FirstOrDefault()));
         }
 
@@ -349,7 +366,7 @@ public static partial class Regress
                     },
                 },
             };
-            var fc = new DiyFormCompiler(ws.Schema);
+            var fc = new DiyFormCompiler(ws.Schema, ws.Lexicon);
             var def = fc.FormToCardDef(form);
             made.Add(("Form", def, fc.Errors.Count > 0 ? fc.Errors[0] : null));
         }
@@ -381,7 +398,7 @@ public static partial class Regress
         // 真正要的是「玩家能在四种模式之间来回切换而不丢效果」，
         // 而表单读不回自己造的卡，就是这条升级路径断在表单这一端。
         var formDef = made.First(m => m.way == "Form").def;
-        var fc2 = new DiyFormCompiler(ws.Schema);
+        var fc2 = new DiyFormCompiler(ws.Schema, ws.Lexicon);
         if (!fc2.TryCardDefToForm(formDef, out var formBack, out var why))
             return (false, "表单读不回自己造的卡：" + why);
 

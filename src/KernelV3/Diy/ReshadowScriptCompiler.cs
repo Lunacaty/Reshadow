@@ -595,7 +595,8 @@ public sealed class ReshadowScriptCompiler
             "countdown" => CostKind.Countdown,
             _ => CostKind.UsePp,
         };
-        return new CostSpec { Kind = k, Amount = NumExpr.Const(amt) };
+        // Label 必须写回：EnhanceTiers 只认 Label=="enhance"。
+        return new CostSpec { Kind = k, Amount = NumExpr.Const(amt), Label = kind };
     }
 
     /// <summary>解析 { ... } 内的语句序列（调用时 { 已被吃掉）。</summary>
@@ -1369,6 +1370,10 @@ public sealed class ReshadowScriptCompiler
             return new TargetSpec
             {
                 SourceKind = TargetSourceKind.CardId,
+                // 卡号必须填：VmEval 的历史池分支写的是 `t.CardId == 0 || sn.CardId == t.CardId`，
+                // CardId==0 会让「同名卡 5 张」退化成「任意随从 5 张」——
+                // 条件照样成立，但成立的范围被悄悄放大了。
+                CardId = CardIdOf(name),
                 CardName = name,
                 Owner = inner.Owner, Zone = inner.Zone, Mode = inner.Mode,
                 Count = inner.Count, Where = inner.Where, History = inner.History,
@@ -1791,6 +1796,12 @@ public sealed class ReshadowScriptCompiler
 
     private static string PrintCost(CostSpec c)
     {
+        // Label 优先：UsePp 既可能是爆能强化也可能是启动，Kind 分不出来。
+        if (!string.IsNullOrEmpty(c.Label))
+        {
+            int amt0 = c.Amount != null && c.Amount.Op == NumOp.Const ? c.Amount.Value : 0;
+            return c.Label.ToLowerInvariant().Replace(' ', '_') + "(" + amt0 + ")";
+        }
         string kind = c.Kind switch
         {
             CostKind.UsePp => "pp",
