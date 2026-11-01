@@ -74,8 +74,10 @@ public sealed class MatchRunner
         // 生成土之印与线索护符都要读 CardDef，缺一个就会造出 Def == null 的空壳。
         _state.RegisterBuiltinTokens();
 
-        CreateLeader(0, leaderLife);
-        CreateLeader(1, leaderLife);
+        // 主战者初始生命：显式传入的 leaderLife 优先，否则用规则里的值。
+        int life = leaderLife > 0 ? leaderLife : _state.Rules.LeaderInitialLife;
+        CreateLeader(0, life);
+        CreateLeader(1, life);
 
         InitCounters(0);
         InitCounters(1);
@@ -88,8 +90,8 @@ public sealed class MatchRunner
         // 信仰必须在抽牌之前生成（它扫牌组内容）
         _state.SetupFaith();
 
-        _state.DrawCards(0, 4);
-        _state.DrawCards(1, 4);
+        _state.DrawCards(0, _state.Rules.StartingHandSize);
+        _state.DrawCards(1, _state.Rules.StartingHandSize);
 
         _state.ActivePlayer = firstPlayer;
         _state.TurnNumber = 0;
@@ -125,10 +127,12 @@ public sealed class MatchRunner
 
     private void InitCounters(int playerId)
     {
+        // 初始各项走规则集：DIY 卡池可以给不同的起始能量/进化点。
+        var rules = _state.Rules;
         _state.WriteCounter(playerId, _schema.Counter("pp"), 0);
-        _state.WriteCounter(playerId, _schema.Counter("max_pp"), 0);
-        _state.WriteCounter(playerId, _schema.Counter("ep"), 2);
-        _state.WriteCounter(playerId, _schema.Counter("sep"), 2);
+        _state.WriteCounter(playerId, _schema.Counter("max_pp"), rules.InitialMaxPp);
+        _state.WriteCounter(playerId, _schema.Counter("ep"), rules.InitialEp(playerId));
+        _state.WriteCounter(playerId, _schema.Counter("sep"), rules.InitialSep(playerId));
         _state.WriteCounter(playerId, _schema.Counter("shadow"), 0);
         _state.WriteCounter(playerId, _schema.Counter("combo"), 0);
         _state.WriteCounter(playerId, _schema.Counter("rally"), 0);

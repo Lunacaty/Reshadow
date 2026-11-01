@@ -40,13 +40,31 @@ public sealed class BattleState : IVmWorld
     private readonly List<(int playerId, SymbolId<CounterTag> ctr, AbilityDef ab)> _grantedCounters = new();
     private int _nextEntityId = 1;
 
-    public BattleState(GameSchema schema = null, int seed = 0)
+    public BattleState(GameSchema schema = null, int seed = 0, MatchRules rules = null)
     {
         Schema = schema ?? GameSchema.CreateDefault();
+        // 默认标准规则：所有现有测试不传 rules，行为与改造前完全一致。
+        Rules = rules ?? MatchRules.CreateStandard();
         Rng = seed == 0 ? new Random() : new Random(seed);
         Players[0] = new PlayerState { PlayerId = 0 };
         Players[1] = new PlayerState { PlayerId = 1 };
+
+        // 规则里声明的上限必须落到 Schema.CounterLimits，
+        // 否则 WriteCounter 的钳制仍按内置值走 —— 改了规则却不生效。
+        Schema.CounterLimits["pp"] = (0, Math.Max(Rules.MaxPpCap, Rules.InitialMaxPp));
+        Schema.CounterLimits["max_pp"] = (0, Math.Max(Rules.MaxPpCap, Rules.InitialMaxPp));
+        Schema.CounterLimits["ep"] = (0, Rules.MaxEpCap);
+        Schema.CounterLimits["sep"] = (0, Rules.MaxSepCap);
     }
+
+    /// <summary>
+    /// 本局的规则集。
+    ///
+    /// 20 血、5 格、7 觉醒、10 费上限、第 5 回合解锁进化……
+    /// 这些常数过去散落在引擎各处写死；现在统一从这里读，
+    /// DIY 卡池才能真正做到「不改引擎就改规则」。
+    /// </summary>
+    public MatchRules Rules { get; }
 
     /// <summary>
     /// 开局扫描信仰（R-1.2 / c-2.1 第 2 步）。

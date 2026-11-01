@@ -51,7 +51,9 @@ public sealed class TurnRunner
         // ── 第 1 步：涨费与回费、重置本回合计数、奥义槽 +1 ──
         var maxPpKey = _schema.Counter("max_pp");
         var ppKey = _schema.Counter("pp");
-        int maxPp = Math.Min(10, _state.ReadCounter(playerId, maxPpKey) + 1);
+        // 涨费量与上限都走规则：DIY 卡池可以设「每回合 +2、上限 12」。
+        var rules = _state.Rules;
+        int maxPp = Math.Min(rules.MaxPpCap, _state.ReadCounter(playerId, maxPpKey) + rules.PpGainPerTurn);
         _state.WriteCounter(playerId, maxPpKey, maxPp);
         _state.WriteCounter(playerId, ppKey, maxPp);
 
@@ -108,19 +110,31 @@ public sealed class TurnRunner
         // ── 第 8 步：常规抽牌（先手第一回合也抽） ──
         // 必须等第 2～7 步的回合初能力**彻底结算完**（含玩家完成所有选择）再抽。
         // 直接写在 StepUntilBlocked() 后面会让抽牌抢在挂起的回合初能力之前。
-        if (vm != null)
+        int drawCount = ShouldDrawThisTurn(playerId) ? rules.CardsDrawnPerTurn : 0;
+        if (drawCount > 0)
         {
-            vm.EnqueueContinuation(() =>
+            if (vm != null)
             {
-                _state.DrawCards(playerId, 1);
+                vm.EnqueueContinuation(() =>
+                {
+                    _state.DrawCards(playerId, drawCount);
+                    vm.StepUntilBlocked();
+                });
                 vm.StepUntilBlocked();
-            });
-            vm.StepUntilBlocked();
+            }
+            else
+            {
+                _state.DrawCards(playerId, drawCount);
+            }
         }
-        else
-        {
-            _state.DrawCards(playerId, 1);
-        }
+    }
+
+    /// <summary>本回合该不该常规抽牌（先手第 1 回合按规则可开关）。</summary>
+    private bool ShouldDrawThisTurn(int playerId)
+    {
+        var rules = _state.Rules;
+        if (_state.TurnNumber == 1 && playerId == 0 && !rules.FirstPlayerDrawsOnTurn1) return false;
+        return true;
     }
 
     /// <summary>纹章区：回合初能力排入队列 + 吟唱推进。</summary>
@@ -923,8 +937,7 @@ public sealed class TurnRunner
         var p = _state.Players[playerId];
         if (p.ManualEvolvedThisTurn) return false;
 
-        int unlock = playerId == 0 ? 5 : 4;
-        if (_state.TurnNumber < unlock) return false;
+        if (_state.TurnNumber < _state.Rules.EvolveUnlockTurn(playerId)) return false;
 
         var epKey = _schema.Counter("ep");
         return _state.ReadCounter(playerId, epKey) > 0;
@@ -937,8 +950,7 @@ public sealed class TurnRunner
         var p = _state.Players[playerId];
         if (p.ManualEvolvedThisTurn) return false;
 
-        int unlock = playerId == 0 ? 7 : 6;
-        if (_state.TurnNumber < unlock) return false;
+        if (_state.TurnNumber < _state.Rules.SuperEvolveUnlockTurn(playerId)) return false;
 
         var sepKey = _schema.Counter("sep");
         return _state.ReadCounter(playerId, sepKey) > 0;
@@ -960,18 +972,18 @@ public sealed class TurnRunner
             _state.WriteCounter(playerId, sepKey, _state.ReadCounter(playerId, sepKey) - 1);
             e.IsSuperEvolved = true;
             e.IsEvolved = true;          // 超进化包含普通进化状态
-            e.Attack += 3;
-            e.Life += 3;
-            e.MaxLife += 3;
+            e.Attack += _state.Rules.SuperEvolveBonusAttack;
+            e.Life += _state.Rules.SuperEvolveBonusLife;
+            e.MaxLife += _state.Rules.SuperEvolveBonusLife;
         }
         else
         {
             var epKey = _schema.Counter("ep");
             _state.WriteCounter(playerId, epKey, _state.ReadCounter(playerId, epKey) - 1);
             e.IsEvolved = true;
-            e.Attack += 2;
-            e.Life += 2;
-            e.MaxLife += 2;
+            e.Attack += _state.Rules.EvolveBonusAttack;
+            e.Life += _state.Rules.EvolveBonusLife;
+            e.MaxLife += _state.Rules.EvolveBonusLife;
         }
 
         // 超进化同时触发 Evolve 与 Super-Evolve 两种能力（官方铁律）。
