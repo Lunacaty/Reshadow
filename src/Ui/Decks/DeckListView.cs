@@ -21,9 +21,10 @@ public partial class DeckListView : Control
     public event Action OnCreateDeck;
 
     private readonly GameSessionStore _store;
-    private readonly string _poolFilter;
+    private string _poolFilter;
 
     private GridContainer _grid;
+    private HBoxContainer _poolTabs;
     private Label _countLabel;
 
     public DeckListView(GameSessionStore store, string poolFilter = null)
@@ -77,6 +78,7 @@ public partial class DeckListView : Control
         _grid.AddThemeConstantOverride("v_separation", 20);
         scroll.AddChild(_grid);
 
+        BuildPoolTabs();
         Refresh();
     }
 
@@ -103,6 +105,12 @@ public partial class DeckListView : Control
         title.AddThemeColorOverride("font_color", SvWbTheme.TextPrimary);
         row.AddChild(title);
 
+        // 赛制卡池过滤页签：从 data/pools/*.pool.json 动态生成。
+        // 写死「全部/标准/高费」会让新增卡池在 UI 上永远看不见。
+        _poolTabs = new HBoxContainer();
+        _poolTabs.AddThemeConstantOverride("separation", 6);
+        row.AddChild(_poolTabs);
+
         var spacer = new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         row.AddChild(spacer);
 
@@ -117,6 +125,37 @@ public partial class DeckListView : Control
         row.AddChild(_countLabel);
 
         return bar;
+    }
+
+    /// <summary>重建卡池过滤页签。选中项由 _poolFilter 决定，空串代表「全部卡池」。</summary>
+    private void BuildPoolTabs()
+    {
+        if (_poolTabs == null) return;
+        foreach (var c in _poolTabs.GetChildren()) c.QueueFree();
+
+        AddPoolTab("全部卡池", null);
+        // Dictionary 遍历顺序不稳定，页签位置每次启动都可能变。
+        // 按 PoolId 排序保证顺序固定（standard 会在最后，符合「官方标准」的定位）。
+        foreach (var kv in _store.PoolConfigs.OrderBy(k => k.Key, StringComparer.Ordinal))
+            AddPoolTab(kv.Value.Name ?? kv.Key, kv.Key);
+    }
+
+    private void AddPoolTab(string caption, string poolId)
+    {
+        bool selected = string.IsNullOrEmpty(poolId)
+            ? string.IsNullOrEmpty(_poolFilter)
+            : string.Equals(_poolFilter, poolId, StringComparison.OrdinalIgnoreCase);
+
+        var b = new Button { Text = caption };
+        SvWbTheme.StyleButton(b, isPrimary: selected);
+        string pid = poolId;
+        b.Pressed += () =>
+        {
+            _poolFilter = pid;
+            BuildPoolTabs();
+            Refresh();
+        };
+        _poolTabs.AddChild(b);
     }
 
     public void Refresh()

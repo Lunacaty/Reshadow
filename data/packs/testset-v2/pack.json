@@ -11,6 +11,27 @@
   {
    "name": "Neutral",
    "name_chs": "Neutral"
+  },
+  {
+   "name": "Forestcraft"
+  },
+  {
+   "name": "Swordcraft"
+  },
+  {
+   "name": "Runecraft"
+  },
+  {
+   "name": "Dragoncraft"
+  },
+  {
+   "name": "Abysscraft"
+  },
+  {
+   "name": "Havencraft"
+  },
+  {
+   "name": "Portalcraft"
   }
  ],
  "traits": [
@@ -46,7 +67,7 @@
    "name_chs": "不屈的战士",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Swordcraft",
    "traits": [
     "Officer"
    ],
@@ -62,7 +83,7 @@
    "name_chs": "侦探的放大镜",
    "kind": 2,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Havencraft",
    "traits": [],
    "cost": 2,
    "attack": null,
@@ -76,7 +97,7 @@
    "name_chs": "漏洞警报",
    "kind": 3,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Runecraft",
    "traits": [],
    "cost": 1,
    "attack": null,
@@ -90,7 +111,7 @@
    "name_chs": "原初剑士·阿玛兹",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Forestcraft",
    "traits": [
     "Pixie"
    ],
@@ -106,13 +127,21 @@
    "name_chs": "匍匐的懦夫",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Abysscraft",
    "traits": [],
    "cost": 5,
    "attack": 4,
    "life": 5,
    "source_format": "eng_cnl",
-   "text": "When this follower enters the field, restore 2 defense to your leader.\n<hr><b><color=Keyword>Bane</color></b>\n<b><color=Keyword>Ward</color></b>"
+   "text": "When this follower enters the field, restore 2 defense to your leader.\n<hr><b><color=Keyword>Bane</color></b>\n<b><color=Keyword>Ward</color></b>",
+   "alt_modes": [
+    {
+     "type_key": "crystallize",
+     "type_eng": "Crystallize",
+     "cost": 2,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Prostrating Coward</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 81000005,
@@ -120,13 +149,21 @@
    "name_chs": "粗劣的玩物",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Abysscraft",
    "traits": [],
    "cost": 6,
    "attack": 1,
    "life": 3,
    "source_format": "eng_cnl",
-   "text": "<b><color=Keyword>Fanfare</color></b>: Draw 3 cards.\n<hr><b><color=Keyword>Ward</color></b>"
+   "text": "<b><color=Keyword>Fanfare</color></b>: Draw 3 cards.\n<hr><b><color=Keyword>Ward</color></b>",
+   "alt_modes": [
+    {
+     "type_key": "accelerate",
+     "type_eng": "Accelerate",
+     "cost": 2,
+     "text_eng": "Summon a <b><i><color=Keyword>Shoddy Plaything</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 81000006,
@@ -134,7 +171,7 @@
    "name_chs": "森林淑女·艾莉雅",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Forestcraft",
    "traits": [
     "Pixie"
    ],
@@ -142,7 +179,15 @@
    "attack": 4,
    "life": 4,
    "source_format": "eng_cnl",
-   "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Aria, Lady of the Woods</i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Summon 3 copies of <b><i><color=Keyword>Fairy</color></i></b>.</ev>"
+   "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Aria, Lady of the Woods</i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Summon 3 copies of <b><i><color=Keyword>Fairy</color></i></b>.</ev>",
+   "alt_modes": [
+    {
+     "type_key": "crest",
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>."
+    }
+   ]
   },
   {
    "card_id": 81000007,
@@ -150,13 +195,21 @@
    "name_chs": "缠绕的继承者·杉那查",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Forestcraft",
    "traits": [],
    "cost": 2,
    "attack": 2,
    "life": 2,
    "source_format": "eng_cnl",
-   "text": "<b><color=Keyword>Fanfare</color></b>: Reduce your faith's value by 10 to give it \"Increase the number of Modes you can select by 1.\""
+   "text": "<b><color=Keyword>Fanfare</color></b>: Reduce your faith's value by 10 to give it \"Increase the number of Modes you can select by 1.\"",
+   "alt_modes": [
+    {
+     "type_key": "faith",
+     "type_eng": "Faith",
+     "cost": 0,
+     "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <color=Keyword>Mode</color><color=Keyword>s</color>, increase this faith's value by 1."
+    }
+   ]
   },
   {
    "card_id": 81000010,
@@ -164,7 +217,7 @@
    "name_chs": "魔女的新酿",
    "kind": 2,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Runecraft",
    "traits": [],
    "cost": 3,
    "attack": null,
@@ -178,7 +231,7 @@
    "name_chs": "符文刃指挥者",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Runecraft",
    "traits": [],
    "cost": 4,
    "attack": 3,
@@ -192,7 +245,7 @@
    "name_chs": "烈焰破坏者",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Dragoncraft",
    "traits": [],
    "cost": 7,
    "attack": 6,
@@ -206,7 +259,7 @@
    "name_chs": "神木法杖",
    "kind": 2,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Forestcraft",
    "traits": [],
    "cost": 2,
    "attack": null,
@@ -220,7 +273,7 @@
    "name_chs": "贤光守护·雪绒花",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Havencraft",
    "traits": [],
    "cost": 5,
    "attack": 3,
@@ -234,7 +287,7 @@
    "name_chs": "辉翼羽族·蕾诺",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Havencraft",
    "traits": [],
    "cost": 3,
    "attack": 2,
@@ -248,7 +301,7 @@
    "name_chs": "幽灵",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Abysscraft",
    "traits": [
     "Departed"
    ],
@@ -264,7 +317,7 @@
    "name_chs": "篡夺的继承者·辛西罗",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Swordcraft",
    "traits": [
     "Loot"
    ],
@@ -280,7 +333,7 @@
    "name_chs": "突击神器",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Portalcraft",
    "traits": [
     "Artifact"
    ],
@@ -296,7 +349,7 @@
    "name_chs": "旋转的命运之轮·斯劳斯",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Portalcraft",
    "traits": [],
    "cost": 5,
    "attack": 3,
@@ -310,7 +363,7 @@
    "name_chs": "原初继承者·圣导天",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Havencraft",
    "traits": [],
    "cost": 8,
    "attack": 5,
@@ -324,7 +377,7 @@
    "name_chs": "执着的实验体",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Portalcraft",
    "traits": [],
    "cost": 3,
    "attack": 2,
@@ -338,7 +391,7 @@
    "name_chs": "帕斯卡尔的舞蹈",
    "kind": 2,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Runecraft",
    "traits": [],
    "cost": 3,
    "attack": null,
@@ -366,7 +419,7 @@
    "name_chs": "虚无显现·奥克翠丝",
    "kind": 2,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Swordcraft",
    "traits": [],
    "cost": 4,
    "attack": null,
@@ -408,7 +461,7 @@
    "name_chs": "夜华·夏克多",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Forestcraft",
    "traits": [],
    "cost": 7,
    "attack": 5,
@@ -436,7 +489,7 @@
    "name_chs": "远古加农炮",
    "kind": 2,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Portalcraft",
    "traits": [],
    "cost": 3,
    "attack": null,
@@ -450,7 +503,7 @@
    "name_chs": "野心的齿轮",
    "kind": 2,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Portalcraft",
    "traits": [
     "Artifact"
    ],
@@ -466,7 +519,7 @@
    "name_chs": "秘术猎人·尤娜",
    "kind": 1,
    "is_token": false,
-   "clan": "Neutral",
+   "clan": "Abysscraft",
    "traits": [],
    "cost": 4,
    "attack": 3,

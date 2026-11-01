@@ -93,11 +93,14 @@ public partial class DeckBuilderView : Control
         SvWbTheme.StyleButton(back);
         back.Pressed += () =>
         {
-            // Name 是 init-only：必须由 store 重建一份，不能就地赋值。
-            if (_nameEdit != null)
-                _store.RenameDeck(_vm.WorkingDeck, _nameEdit.Text);
-            _store.SaveDeck(_vm.WorkingDeck);
-            OnSaveAndBack?.Invoke(_vm.WorkingDeck);
+            // Name 是 init-only：RenameDeck 会**返回一个新实例**。
+            // 必须把返回值一路传下去 —— 拿着旧的 WorkingDeck 去 SaveDeck，
+            // 写回磁盘的就是改名前的名字，UI 上看着像"改名没生效"。
+            var toSave = _nameEdit != null
+                ? _store.RenameDeck(_vm.WorkingDeck, _nameEdit.Text)
+                : _vm.WorkingDeck;
+            _store.SaveDeck(toSave);
+            OnSaveAndBack?.Invoke(toSave);
         };
         row.AddChild(back);
 
