@@ -1,0 +1,291 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using ShadowverseFan.KernelV3.Ast;
+using ShadowverseFan.KernelV3.Battle;
+using ShadowverseFan.KernelV3.Core;
+using ShadowverseFan.KernelV3.Lang;
+
+namespace ShadowverseFan.KernelV3.Packs;
+
+// ============================================================================
+// 卡池（CardPool）—— 一套自洽的「游戏宇宙 / 赛制环境」
+//
+// 卡包管「我有什么」，卡池管「把这些包合流成一个不自相矛盾的宇宙」。
+// 构建卡池是**编译**，不是拼装：要跑两遍扫描、跨包解析、冲突拦截。
+//
+// 为什么必须两遍：
+//   卡包 A 的卡面写着「Summon a Fairy」，而 Fairy 定义在卡包 B。
+//   如果边扫边编译，A 在编译时 B 的卡名还没进词法表 —— 认不出，静默失败。
+//   所以 Pass 1 只登记名字与卡号，Pass 2 才真正编译。
+// ============================================================================
+
+/// <summary>卡池配置单。</summary>
+public sealed class CardPoolConfig
+{
+    public string PoolId { get; init; } = "standard";
+    public string Name { get; init; } = "标准卡池";
+    public MatchRules Rules { get; init; } = MatchRules.CreateStandard();
+    public List<string> EnabledPackIds { get; init; } = new();
+}
+
+/// <summary>编译并校验通过后的卡池运行时环境。</summary>
+public sealed class CardPoolRuntime
+{
+    public string PoolId { get; init; } = "";
+    public MatchRules Rules { get; init; } = MatchRules.CreateStandard();
+    public GameSchema Schema { get; init; }
+    public Lexicon Lexicon { get; init; }
+    public Glossary Glossary { get; init; }
+    public DeckDefTable DeckDefs { get; init; }
+
+    private readonly Dictionary<int, CardDef> _cardsById = new();
+    private readonly Dictionary<string, CardDef> _cardsByName = new(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<int, CardDef> AllCards => _cardsById;
+    public IReadOnlyDictionary<string, CardDef> CardsByName => _cardsByName;
+
+    /// <summary>可收藏卡（供组牌界面）。Token 不在其中。</summary>
+    public IReadOnlyList<CardDef> CollectibleCards
+        => _cardsById.Values.Where(c => !c.IsToken).OrderBy(c => c.CardId).ToList();
+
+    internal void RegisterCompiledCard(CardDef def)
+    {
+        if (def == null) return;
+        _cardsById[def.CardId] = def;
+        if (!string.IsNullOrWhiteSpace(def.Name)) _cardsByName[def.Name.Trim()] = def;
+    }
+
+    /// <summary>用本卡池的完整环境建一个全新对局状态。</summary>
+    public BattleState CreateBattleState(int seed = 0)
+    {
+        var state = new BattleState(Schema, seed, Rules);
+        foreach (var card in _cardsById.Values) state.RegisterCard(card);
+        return state;
+    }
+}
+
+public sealed class PoolBuildResult
+{
+    public CardPoolRuntime Pool { get; init; }
+    public List<string> Errors { get; } = new();
+    public bool Ok => Errors.Count == 0 && Pool != null;
+
+    internal PoolBuildResult With(CardPoolRuntime pool)
+    {
+        var r = new PoolBuildResult { Pool = pool };
+        r.Errors.AddRange(Errors);
+        return r;
+    }
+}
+
+public static class CardPoolBuilder
+{
+    /// <summary>
+    /// 五步流水线：
+    ///   1. 原生卡池防脱离 + 显式依赖检查
+    ///   2. Pass 1：全局符号 / 卡号 / 卡名预注册 + 冲突拦截
+    ///   3. 具名牌组跨包解析
+    ///   4. Pass 2：编译全部卡片 AST
+    ///   5. 组装运行时环境
+    /// </summary>
+    public static PoolBuildResult Build(
+        CardPoolConfig config,
+        IReadOnlyDictionary<string, CardPackDef> availablePacks)
+    {
+        var res = new PoolBuildResult();
+        if (config == null) { res.Errors.Add("卡池配置为空"); return res; }
+        if (availablePacks == null) { res.Errors.Add("无可用的卡包"); return res; }
+
+        config.Rules.Validate(res.Errors);
+
+        var enabledSet = new HashSet<string>(config.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
+
+        // ================= 第 1 步 =================
+        foreach (var pack in availablePacks.Values)
+        {
+            if (string.Equals(pack.NativePoolId, config.PoolId, StringComparison.OrdinalIgnoreCase)
+                && !enabledSet.Contains(pack.PackId))
+            {
+                res.Errors.Add("卡包 [" + pack.PackId + "] 的原生卡池是 [" + config.PoolId
+                               + "]，不能脱离原生卡池被移除！");
+            }
+        }
+
+        var packs = new List<CardPackDef>();
+        foreach (var pid in config.EnabledPackIds)
+        {
+            if (!availablePacks.TryGetValue(pid, out var pack))
+            {
+                res.Errors.Add("卡池引用了不存在的卡包：[" + pid + "]");
+                continue;
+            }
+            foreach (var dep in pack.Dependencies)
+                if (!enabledSet.Contains(dep))
+                    res.Errors.Add("卡包 [" + pack.PackId + "] 依赖卡包 [" + dep + "]，必须一并加入卡池！");
+            packs.Add(pack);
+        }
+        if (res.Errors.Count > 0) return res;
+
+        // ================= 第 2 步：Pass 1 =================
+        var schema = GameSchema.CreateDefault();
+        var lexicon = new Lexicon(schema);
+        var glossary = Glossary.CreateDefault();
+        var deckDefs = new DeckDefTable();
+
+        var cardOwnerPack = new Dictionary<int, string>();
+        var nameOwnerPack = new Dictionary<string, (string packId, int cardId)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pack in packs)
+        {
+            foreach (var t in pack.Traits)
+            {
+                schema.Trait(t.Name);
+                lexicon.AddTrait(t.Name);
+                if (!string.IsNullOrEmpty(t.NameChs)) glossary.Add(t.Name, t.NameChs);
+            }
+            foreach (var c in pack.Clans)
+            {
+                schema.Clan(c.Name);
+                lexicon.AddClan(c.Name);
+                if (!string.IsNullOrEmpty(c.NameChs)) glossary.Add(c.Name, c.NameChs);
+            }
+            foreach (var k in pack.Keywords)
+            {
+                schema.Keyword(k.Name);
+                lexicon.AddKeyword(k.Name);
+                if (!string.IsNullOrEmpty(k.NameChs)) glossary.Add(k.Name, k.NameChs);
+            }
+            foreach (var ctr in pack.Counters)
+            {
+                if (schema.CounterLimits.TryGetValue(ctr.Name, out var ex)
+                    && (ex.min != ctr.Min || ex.max != ctr.Max))
+                {
+                    res.Errors.Add("计数器冲突：卡包 [" + pack.PackId + "] 把 '" + ctr.Name
+                                   + "' 定义为 (" + ctr.Min + ".." + ctr.Max + ")，与已有定义 ("
+                                   + ex.min + ".." + ex.max + ") 矛盾！");
+                    continue;
+                }
+                schema.Counter(ctr.Name);
+                schema.CounterLimits[ctr.Name] = (ctr.Min, ctr.Max);
+                if (!string.IsNullOrEmpty(ctr.NameChs)) glossary.Add(ctr.Name, ctr.NameChs);
+            }
+            foreach (var sa in pack.StackableAmulets)
+                schema.StackableAmulets[sa.CounterName] = sa;
+
+            foreach (var c in pack.Cards)
+            {
+                if (cardOwnerPack.TryGetValue(c.CardId, out var prevPack))
+                {
+                    res.Errors.Add("卡号冲突：卡包 [" + pack.PackId + "] 与 [" + prevPack
+                                   + "] 都定义了 CardId=" + c.CardId + "（《" + c.NameEng + "》）！");
+                    continue;
+                }
+                cardOwnerPack[c.CardId] = pack.PackId;
+
+                if (nameOwnerPack.TryGetValue(c.NameEng, out var prevName) && prevName.cardId != c.CardId)
+                {
+                    res.Errors.Add("卡名冲突：卡包 [" + pack.PackId + "] 与 [" + prevName.packId
+                                   + "] 定义了同名但不同号的卡片 '" + c.NameEng + "'！");
+                    continue;
+                }
+                nameOwnerPack[c.NameEng] = (pack.PackId, c.CardId);
+                lexicon.AddCard(c.NameEng, c.CardId);
+            }
+        }
+        if (res.Errors.Count > 0) return res;
+        lexicon.Build();
+
+        // ================= 第 3 步：具名牌组跨包解析 =================
+        foreach (var pack in packs)
+        {
+            foreach (var nd in pack.NamedDecks)
+            {
+                var entries = new List<DeckEntry>();
+                foreach (var e in nd.Entries)
+                {
+                    int resolvedId = e.CardId;
+                    if (resolvedId <= 0 && !string.IsNullOrEmpty(e.CardName))
+                        lexicon.TryGetCardId(e.CardName, out resolvedId);
+
+                    if (resolvedId <= 0 || !cardOwnerPack.ContainsKey(resolvedId))
+                    {
+                        res.Errors.Add("跨包依赖缺失：卡包 [" + pack.PackId + "] 的具名牌组《" + nd.DeckName
+                                       + "》引用了卡片 '"
+                                       + (string.IsNullOrEmpty(e.CardName) ? e.CardId.ToString() : e.CardName)
+                                       + "'，但该卡片不在当前卡池的任何已启用卡包中！");
+                        continue;
+                    }
+                    entries.Add(new DeckEntry(resolvedId, e.Copies));
+                }
+                deckDefs.Register(nd.DeckName, entries);
+            }
+        }
+        if (res.Errors.Count > 0) return res;
+
+        // ================= 第 4 步：Pass 2 编译 =================
+        var pool = new CardPoolRuntime
+        {
+            PoolId = config.PoolId,
+            Rules = config.Rules,
+            Schema = schema,
+            Lexicon = lexicon,
+            Glossary = glossary,
+            DeckDefs = deckDefs,
+        };
+
+        var comp = new EnglishCompiler(lexicon);
+        foreach (var pack in packs)
+            foreach (var c in pack.Cards)
+            {
+                var card = CompileCard(pack, c, schema, comp, res.Errors);
+                if (card != null) pool.RegisterCompiledCard(card);
+            }
+
+        if (res.Errors.Count > 0) return res;
+
+        // ================= 第 5 步 =================
+        return res.With(pool);
+    }
+
+    private static CardDef CompileCard(
+        CardPackDef pack, CardRawEntry c, GameSchema schema,
+        EnglishCompiler comp, List<string> errors)
+    {
+        var traits = new List<SymbolId<TraitTag>>();
+        foreach (var t in c.Traits) traits.Add(schema.Trait(t));
+
+        var clan = string.IsNullOrEmpty(c.Clan) ? SymbolId<ClanTag>.Invalid : schema.Clan(c.Clan);
+
+        // 无效果文本的卡不必过编译器：省一次解析，也避免空串误报。
+        if (string.IsNullOrWhiteSpace(c.Text))
+        {
+            return new CardDef
+            {
+                CardId = c.CardId, Name = c.NameEng, Kind = c.Kind,
+                BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
+                Traits = traits, Clan = clan,
+                PackId = pack.PackId, IsToken = c.IsToken,
+                SourceText = "",
+            };
+        }
+
+        var alts = c.AltModes.Select(a => (a.TypeEng, a.Cost, a.TextEng)).ToArray();
+        var result = comp.Compile(c.Text, alts, c.NameEng, c.CardId);
+        foreach (var e in result.Errors)
+            errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》编译失败：" + e);
+
+        return new CardDef
+        {
+            CardId = c.CardId, Name = c.NameEng, Kind = c.Kind,
+            BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
+            Abilities = result.Abilities,
+            Traits = traits, Clan = clan,
+            HasFuse = result.HasFuse, FuseMaterialFilter = result.FuseMaterialFilter,
+            CrestDef = result.CrestDef, FaithDef = result.FaithDef,
+            AccelerateDef = result.AccelerateDef, CrystallizeDef = result.CrystallizeDef,
+            PackId = pack.PackId, IsToken = c.IsToken,
+            SourceText = c.Text,
+        };
+    }
+}
