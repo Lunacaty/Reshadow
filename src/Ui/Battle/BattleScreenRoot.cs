@@ -330,16 +330,17 @@ public partial class BattleScreenRoot : Control
         float trayTop = _handExpanded ? 528f : 596f;
         float trayH = cardH + 14f;
 
-        var tray = new Panel
+        // 手牌区**不画外层矩形**。
+        // 之前套了一个 Panel 当托盘底板，屏幕上就凭空多出一个暗色方框，
+        // 把五张卡圈在里面像张表格 —— 原版是没有这个框的，
+        // 手牌本身就是唯一的视觉元素。
+        // 这里只用一个透明的 Control 承接点击（点它 = 展开/收起）。
+        var tray = new Control
         {
             Position = new Vector2(trayLeft, trayTop),
             Size = new Vector2(trayW, trayH),
             MouseFilter = MouseFilterEnum.Stop,
         };
-        tray.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
-            new Color(0.05f, 0.07f, 0.12f, _handExpanded ? 0.90f : 0.72f),
-            _handExpanded ? new Color("D4AF37") : SvWbTheme.BorderSubtle,
-            10, _handExpanded ? 2 : 1, 6));
         tray.GuiInput += e =>
         {
             if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)

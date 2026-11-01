@@ -43,6 +43,24 @@ public partial class LeaderMedallionWidget : Control
         QueueRedraw();
     }
 
+    // 拱框几何（唯一真相：下面所有球与盾都从这几个常量推出来，
+    // 不再各自写死坐标 —— 之前 EP 球跑到 x=2、SEP 在 x=168，
+    // 距中线差了 118 与 48，肉眼一看就是歪的）。
+    private const float FrameL = 34f;
+    private const float FrameW = 172f;
+    private const float FrameT = 14f;
+    private const float FrameH = 108f;
+    private const float FrameR = FrameL + FrameW;           // 206
+    private const float FrameCx = FrameL + FrameW * 0.5f;   // 120 —— 拱框中线
+
+    /// <summary>
+    /// 拱顶朝上画（我方），或垂直翻转画（敌方）。
+    ///
+    /// 原版里敌方主战者是从自己视角摆在下方，所以拱顶朝下 ——
+    /// 直接复制我方的形状会让两个人的框看起来「一个正一个倒」却没倒。
+    /// </summary>
+    private float FlipY(float y) => IsEnemy ? (FrameT + FrameH - (y - FrameT)) : y;
+
     public override void _Draw()
     {
         if (Leader?.Def == null) return;
@@ -50,27 +68,32 @@ public partial class LeaderMedallionWidget : Control
 
         var clanCol = SvWbTheme.ClanColor(Leader.Def.Clan.IsValid ? Leader.Def.Clan.Name : null);
 
-        // 半圆拱形框
-        float w = 172f, h = 108f, l = 34f, t = 14f;
+        float l = FrameL, w = FrameW, t = FrameT, h = FrameH;
+
+        // 半圆拱形框：敌方把拱顶翻到下方
         Vector2[] arch =
         {
-            new(l, t + h),
-            new(l, t + 42f),
-            new(l + w * 0.16f, t + 12f),
-            new(l + w * 0.5f, t),
-            new(l + w * 0.84f, t + 12f),
-            new(l + w, t + 42f),
-            new(l + w, t + h),
+            new(l, FlipY(t + h)),
+            new(l, FlipY(t + 42f)),
+            new(l + w * 0.16f, FlipY(t + 12f)),
+            new(l + w * 0.5f, FlipY(t)),
+            new(l + w * 0.84f, FlipY(t + 12f)),
+            new(l + w, FlipY(t + 42f)),
+            new(l + w, FlipY(t + h)),
         };
         DrawColoredPolygon(arch, new Color("D6C7B2"));
 
+        // 内层轮廓：把外轮廓的每个顶点向形状中心收缩。
+        // 不能拿「翻转后的基点」去做仿射 —— arch 已经是翻转坐标，
+        // 再减一次翻转基点会把比例算反，敌方框会缩成一条缝。
+        Vector2 shapeCenter = new(FrameCx, FlipY(t + h * 0.5f));
         Vector2[] inner = new Vector2[arch.Length];
         for (int i = 0; i < arch.Length; i++)
-            inner[i] = new Vector2(l + 5f, t + 6f) + (arch[i] - new Vector2(l, t)) * 0.94f;
+            inner[i] = shapeCenter + (arch[i] - shapeCenter) * 0.92f;
         DrawColoredPolygon(inner, clanCol.Darkened(0.72f).Lerp(new Color("141020"), 0.5f));
 
         // 立绘窗内的职业纹章
-        Vector2 c = new(l + w * 0.5f, t + h * 0.55f);
+        Vector2 c = new(l + w * 0.5f, FlipY(t + h * 0.55f));
         DrawCircle(c, 30f, clanCol.Lightened(0.10f) with { A = 0.35f });
         DrawArc(c, 30f, 0, Mathf.Tau, 32, new Color(0.9f, 0.94f, 1f, 0.25f), 1.5f);
         string initial = SvWbTheme.ClanDisplayZh(Leader.Def.Clan.IsValid ? Leader.Def.Clan.Name : null);
@@ -79,8 +102,8 @@ public partial class LeaderMedallionWidget : Control
         DrawString(font, new Vector2(c.X - isz.X * 0.5f, c.Y + 10f), initial,
                    HorizontalAlignment.Left, -1, 30, Colors.White);
 
-        // 生命红盾（右侧）
-        Vector2 shield = new(l + w - 4f, t + 46f);
+        // 生命红盾（右侧，垂直位置同样跟随翻转）
+        Vector2 shield = new(FrameR - 4f, FlipY(t + 46f));
         Vector2[] sp =
         {
             new(shield.X, shield.Y - 26f), new(shield.X + 22f, shield.Y - 18f),
@@ -98,24 +121,28 @@ public partial class LeaderMedallionWidget : Control
         DrawString(font, new Vector2(shield.X - lsz.X * 0.5f, shield.Y + 8f), life,
                    HorizontalAlignment.Left, -1, 22, Colors.White);
 
-        // 名字
-        // 严禁印出内部代号 Leader0 / Leader1 —— 那是调试名。
+        // 名字：我方在框下、敌方在框上（跟随翻转）
         string nm = SvWbTheme.ClanDisplayZh(
             Leader.Def.Clan.IsValid ? Leader.Def.Clan.Name : null) + "主战者";
         var nsz = font.GetStringSize(nm, HorizontalAlignment.Left, -1, 12);
-        DrawString(font, new Vector2(l + w * 0.5f - nsz.X * 0.5f, t + h - 6f), nm,
+        DrawString(font, new Vector2(FrameCx - nsz.X * 0.5f, FlipY(t + h - 6f) + (IsEnemy ? 0f : 0f)), nm,
                    HorizontalAlignment.Left, -1, 12, new Color("E2E8F0"));
 
         if (_ctrl == null) return;
 
-        // EP / SEP 进化球（镶在拱框左右）
+        // EP / SEP 进化球：必须关于拱框中线 FrameCx **严格对称**。
+        // 之前 EP 在 x=2、SEP 在 x=168，距中线 118 / 48 ——
+        // 肉眼看起来就是「EP 悬空吊在左边、SEP 贴着框」。
         int ep = _ctrl.ReadCounter(_playerId, "ep");
         int sep = _ctrl.ReadCounter(_playerId, "sep");
-        // 敌方主战者的进化球镶在拱框下沿，我方的镶在上沿（与原版一致）。
-        float orbY = IsEnemy ? (t + h - 10f) : (t + 10f);
-        DrawEvolutionOrb(new Vector2(EpOrbOffset.X, orbY), ep,
+
+        // 球心落在拱框两肩上，且左右等距；
+        // 纵向贴着横梁内侧（我方在上沿、敌方在下沿）。
+        float orbY = FlipY(t + 8f);
+        float orbDx = FrameW * 0.5f - 14f;   // 距中线的水平偏移，左右同值
+        DrawEvolutionOrb(new Vector2(FrameCx - orbDx, orbY), ep,
                          new Color("F59E0B"), "EP", font);
-        DrawEvolutionOrb(new Vector2(SepOrbOffset.X, orbY), sep,
+        DrawEvolutionOrb(new Vector2(FrameCx + orbDx, orbY), sep,
                          new Color("A855F7"), "SEP", font);
     }
 
@@ -152,9 +179,11 @@ public partial class LeaderMedallionWidget : Control
         if (@event is not InputEventMouseButton mb || !mb.Pressed) return;
         if (mb.ButtonIndex != MouseButton.Left) return;
 
-        float orbY = IsEnemy ? (14f + 108f - 10f) : (14f + 10f);
-        var epC = new Vector2(EpOrbOffset.X, orbY);
-        var sepC = new Vector2(SepOrbOffset.X, orbY);
+        // 与绘制用同一套推导，避免「看到的球」和「点得到的球」错位。
+        float orbY = FlipY(FrameT + 8f);
+        float orbDx = FrameW * 0.5f - 14f;
+        var epC = new Vector2(FrameCx - orbDx, orbY);
+        var sepC = new Vector2(FrameCx + orbDx, orbY);
 
         if (mb.Position.DistanceTo(sepC) <= OrbRadius + 3f) { OnEvolveOrbClicked?.Invoke(true); AcceptEvent(); }
         else if (mb.Position.DistanceTo(epC) <= OrbRadius + 3f) { OnEvolveOrbClicked?.Invoke(false); AcceptEvent(); }
