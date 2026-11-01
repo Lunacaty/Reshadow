@@ -96,6 +96,47 @@ public sealed class DiyWorkshopController
             return false;
         }
 
+        // 只读模式守卫：本卡的效果超出表单表达能力（有纹章/信仰/激奏/结晶/融合…），
+        // 表单里的 Abilities 是空的。若直接拿它编译，会把《艾莉雅》的纹章、
+        // 进化能力全部洗空 —— 玩家只是想改个费用，结果卡废了。
+        //
+        // 只允许用表单更新**头部属性**，复杂能力原样保留。
+        if (FormIsReadOnly && CurrentDef != null)
+        {
+            var merged = new CardDef
+            {
+                CardId = CurrentDef.CardId,
+                PackId = CurrentDef.PackId,
+                IsToken = CurrentDef.IsToken,
+                Name = string.IsNullOrWhiteSpace(form.NameEng) ? CurrentDef.Name : form.NameEng,
+                NameChs = !string.IsNullOrWhiteSpace(form.NameChs) ? form.NameChs : CurrentDef.NameChs,
+                Kind = CurrentDef.Kind,
+                Clan = ParseClanOrKeep(form.Clan, CurrentDef.Clan),
+                Traits = ParseTraitsOrKeep(form.Traits, CurrentDef.Traits),
+                BaseCost = form.Cost,
+                BaseAttack = form.Attack,
+                BaseLife = form.Life,
+                InnateKeywords = CurrentDef.InnateKeywords,
+                InnateCounters = CurrentDef.InnateCounters,
+                // 以下全部原样保留
+                Abilities = CurrentDef.Abilities,
+                DeckModifiers = CurrentDef.DeckModifiers,
+                HasFuse = CurrentDef.HasFuse,
+                FuseMaterialFilter = CurrentDef.FuseMaterialFilter,
+                CrestDef = CurrentDef.CrestDef,
+                FaithDef = CurrentDef.FaithDef,
+                AccelerateDef = CurrentDef.AccelerateDef,
+                CrystallizeDef = CurrentDef.CrystallizeDef,
+                SourceText = CurrentDef.SourceText,
+            };
+
+            CurrentDef = merged;
+            SyncAllEndpointsFromCurrentDef();
+            LastStatusMessage = "✔ 已更新基础属性（本卡效果超出表单表达，复杂能力已保留）";
+            OnCardUpdated?.Invoke();
+            return true;
+        }
+
         CurrentDef = PreserveChineseName(def, form.NameChs);
         SyncAllEndpointsFromCurrentDef();
         LastStatusMessage = "✔ 从【表单向导端】编译成功，已同步至其余三端";
@@ -196,9 +237,18 @@ public sealed class DiyWorkshopController
         {
             FormIsReadOnly = true;
             FormReadOnlyReason = string.IsNullOrEmpty(reason) ? "该效果超出表单表达能力" : reason;
+            // 兜底也要把卡号/英文名/卡种/职业/兵种填上 ——
+            // 缺这些的话，玩家切到表单页签会看到「卡号 0、职业 中立」，
+            // 完全认不出这是自己刚导入的那张卡。
             FormModel = new CardFormModel
             {
+                CardId = CurrentDef.CardId,
                 NameChs = DeckEditorViewModel.DisplayName(CurrentDef),
+                NameEng = CurrentDef.Name ?? "",
+                Kind = CurrentDef.Kind.ToString(),
+                Clan = CurrentDef.Clan.IsValid ? CurrentDef.Clan.Name : "Neutral",
+                Traits = (CurrentDef.Traits ?? Array.Empty<SymbolId<TraitTag>>())
+                         .Select(t => t.Name).ToList(),
                 Cost = CurrentDef.BaseCost,
                 Attack = CurrentDef.BaseAttack,
                 Life = CurrentDef.BaseLife,
@@ -295,6 +345,21 @@ public sealed class DiyWorkshopController
     /// 各端的编译器只从自己的输入里取英文名，中文名会丢 ——
     /// 而中文名是卡面上玩家实际看到的那行字，丢了卡面就变英文了。
     /// </summary>
+    private SymbolId<ClanTag> ParseClanOrKeep(string clanName, SymbolId<ClanTag> keep)
+    {
+        if (string.IsNullOrWhiteSpace(clanName)) return keep;
+        if (string.Equals(clanName, "Neutral", StringComparison.OrdinalIgnoreCase))
+            return SymbolId<ClanTag>.Invalid;
+        return Workspace.Schema.Clan(clanName);
+    }
+
+    private IReadOnlyList<SymbolId<TraitTag>> ParseTraitsOrKeep(
+        List<string> names, IReadOnlyList<SymbolId<TraitTag>> keep)
+    {
+        if (names == null || names.Count == 0) return keep;
+        return names.Select(n => Workspace.Schema.Trait(n)).ToList();
+    }
+
     private static CardDef PreserveChineseName(CardDef d, string nameChs)
     {
         if (d == null) return null;

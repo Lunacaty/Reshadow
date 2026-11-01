@@ -361,14 +361,38 @@ public sealed class GameSessionStore
         return "[" + string.Join(", ", parts) + "]";
     }
 
+    /// <summary>
+    /// 构筑修正的序列化。
+    ///
+    /// kind 必须写 CardPackLoader.ParseDeckMods 认的**短名**（size / leader_life /
+    /// allow_clan_choose …），不能写枚举名。加载器遇到不认识的 kind 会静默落到
+    /// ModifyDeckSize —— 于是「主战者 +10 血」存盘再读回来变成「牌组 +10 张」。
+    /// 另外必须带 clan 与 value2，否则「允许指定职业」「超进化点」这些字段会丢。
+    /// </summary>
     private static string JsonDeckModArr(IEnumerable<DeckBuildModifier> items)
     {
         if (items == null) return "[]";
         var parts = items.Where(x => x != null).Select(m =>
-            "{ \"kind\": " + JsonStr(m.Kind.ToString())
-            + ", \"value\": " + m.Value
-            + ", \"stack_per_copy\": " + (m.StackPerCopy ? "true" : "false")
-            + ", \"exclusive_group\": " + JsonStr(m.ExclusiveGroup ?? "") + " }");
+        {
+            string kindStr = m.Kind switch
+            {
+                DeckModKind.ModifyDeckSize => "size",
+                DeckModKind.ModifyLeaderStartLife => "leader_life",
+                DeckModKind.ModifyStartingHandSize => "hand",
+                DeckModKind.ModifyStartEvolvePoints => m.Value2 != 0 && m.Value == 0 ? "sep" : "ep",
+                DeckModKind.OverrideSelfCopyLimit => "self_copy",
+                DeckModKind.AllowSpecificClan => "allow_clan_fixed",
+                DeckModKind.AllowChosenClans => "allow_clan_choose",
+                _ => "size",
+            };
+            int val = kindStr == "sep" ? m.Value2 : m.Value;
+            return "{ \"kind\": " + JsonStr(kindStr)
+                 + ", \"value\": " + val
+                 + ", \"value2\": " + m.Value2
+                 + ", \"clan\": " + JsonStr(m.TargetClan ?? "")
+                 + ", \"stack_per_copy\": " + (m.StackPerCopy ? "true" : "false")
+                 + ", \"exclusive_group\": " + JsonStr(m.ExclusiveGroup ?? "") + " }";
+        });
         return "[" + string.Join(", ", parts) + "]";
     }
 

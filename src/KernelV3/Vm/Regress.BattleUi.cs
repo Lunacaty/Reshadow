@@ -62,6 +62,8 @@ public static class RegressBattleUi
         Check("DIYU-9 法术卡存盘重载不蜕变", CaseSpellSurvivesSave);
         Check("DIYU-10 卡池规则 13 项键名往返", CasePoolRulesKeyRoundTrip);
         Check("DIYU-11 规则字段中文名全覆盖", CaseRuleLabelsCoverage);
+        Check("DIYU-12 只读表单不抹空复杂能力", CaseReadOnlyFormPreserves);
+        Check("DIYU-13 构筑修正 kind 往返不串种", CaseDeckModKindRoundTrip);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -1027,5 +1029,92 @@ public static class RegressBattleUi
                     + " 缺失=" + missing.Count
                     + (missing.Count > 0 ? "(" + string.Join(",", missing) + ")" : "")
                     + " 未知字段回落=" + fallbackOk);
+    }
+
+    // ---------------------------------------------------------------- DIYU-12
+
+    /// <summary>
+    /// 只读表单不得抹空复杂能力。
+    ///
+    /// 《森林淑女·艾莉雅》(81000006) 带纹章 + 进化能力，
+    /// TryCardDefToForm 对它返回 false → FormIsReadOnly = true。
+    /// 此时若拿空 Abilities 的 FormModel 直接编译，纹章和能力会被洗掉 ——
+    /// 玩家只是想改个费用，结果卡废了。
+    /// </summary>
+    private static (bool, string) CaseReadOnlyFormPreserves()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        var aria = store.Catalog.AllCards.TryGetValue(81000006, out var d) ? d : null;
+        if (aria == null) return (false, "找不到测试卡 81000006");
+
+        ctrl.LoadExistingCard(aria);
+        bool readOnly = ctrl.FormIsReadOnly;
+
+        int abilitiesBefore = ctrl.CurrentDef.Abilities?.Count ?? 0;
+        bool crestBefore = ctrl.CurrentDef.CrestDef != null;
+
+        var fm = ctrl.FormModel;
+        if (fm == null) return (false, "表单模型为空");
+
+        // 只改费用
+        fm.Cost = 5;
+        bool compiled = ctrl.CompileFromForm(fm);
+        if (!compiled) return (false, "编译失败：" + string.Join("；", ctrl.LastErrors));
+
+        var after = ctrl.CurrentDef;
+        int abilitiesAfter = after.Abilities?.Count ?? 0;
+        bool crestAfter = after.CrestDef != null;
+
+        bool costOk = after.BaseCost == 5;
+        bool abilitiesKept = abilitiesAfter == abilitiesBefore;
+        bool crestKept = crestAfter == crestBefore;
+
+        bool ok = readOnly && costOk && abilitiesKept && crestKept;
+        return (ok, "只读态=" + readOnly + " 费用改到=" + after.BaseCost
+                    + " 能力 " + abilitiesBefore + "->" + abilitiesAfter
+                    + " 纹章保留=" + crestKept);
+    }
+
+    // ---------------------------------------------------------------- DIYU-13
+
+    /// <summary>
+    /// 构筑修正的 kind 必须写成加载器认的短名，否则存盘再读回会变成另一种修正。
+    /// </summary>
+    private static (bool, string) CaseDeckModKindRoundTrip()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        const int probeId = 959904;
+        string script = string.Join("\n",
+            "card " + probeId + " \"修正测试\" (Follower, cost: 2, atk: 1, life: 1) {",
+            "    deck_mod leader_life(+10)",
+            "    deck_mod size(+20)",
+            "}");
+
+        if (!ctrl.CompileFromScript(script))
+            return (false, "脚本编译失败：" + string.Join("；", ctrl.LastErrors));
+
+        int modsBefore = ctrl.CurrentDef.DeckModifiers?.Count ?? 0;
+        if (modsBefore == 0) return (false, "编译后没有构筑修正");
+
+        bool saved = ctrl.SaveCurrentCardToPack("testset-v2", out string msg);
+        if (!saved) return (false, "保存失败：" + msg);
+
+        var store2 = NewStore();
+        var back = store2.Catalog.AllCards.TryGetValue(probeId, out var b) ? b : null;
+        if (back == null) { CleanupProbeCard("testset-v2", probeId); return (false, "读回失败"); }
+
+        var mods = back.DeckModifiers ?? new List<DeckBuildModifier>();
+        bool hasLeaderLife = mods.Any(m => m.Kind == DeckModKind.ModifyLeaderStartLife && m.Value == 10);
+        bool hasSize = mods.Any(m => m.Kind == DeckModKind.ModifyDeckSize && m.Value == 20);
+
+        CleanupProbeCard("testset-v2", probeId);
+
+        bool ok = hasLeaderLife && hasSize;
+        return (ok, "修正条数 " + modsBefore + "->" + mods.Count
+                    + " 主战者+10血=" + hasLeaderLife + " 牌组+20张=" + hasSize);
     }
 }

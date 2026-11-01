@@ -605,8 +605,12 @@ public partial class DiyWorkshopView : Control
             case DiyEndpointKind.EnglishCnl:
                 ok = ApplyEnglishEdits();
                 break;
+            case DiyEndpointKind.Block:
+                // 积木端是可编辑的（增删移动作块），必须真的重新编译。
+                // 少了这一支，点底部编译按钮只会提示「只读投影」。
+                ok = _ctrl.CompileFromBlocks(_ctrl.BlockModel);
+                break;
             default:
-                // 其余三端目前为只读投影，编译退化为「用当前 AST 重投影」
                 RefreshAll();
                 _statusLabel.Text = "当前端为只读投影，已从 AST 重投影";
                 return;

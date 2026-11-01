@@ -219,9 +219,16 @@ public partial class PackAndPoolManagerView : Control
         if (_poolPicker != null)
         {
             _poolPicker.Clear();
-            int pi = 0;
+            int pi = 0, selIdx = 0;
             foreach (var k in _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal))
+            {
+                // Clear + AddItem 会把选中项重置到第 0 项，
+                // 不在这里恢复下标，下拉框文字就会永远弹回第一个卡池。
+                if (string.Equals(k, _selectedPoolId, StringComparison.OrdinalIgnoreCase))
+                    selIdx = pi;
                 _poolPicker.AddItem(k, pi++);
+            }
+            _poolPicker.Selected = selIdx;
         }
 
         if (string.IsNullOrEmpty(_selectedPoolId)
