@@ -24,6 +24,12 @@ public partial class BattlefieldCanvas : Control
     public Vector2 AttackDragStart { get; set; }
     public Vector2 AttackDragCurrent { get; set; }
 
+    /// <summary>挂了 SelectTarget 时是否要画「底部中央 → 鼠标」的金色虚线瞄准线。</summary>
+    public bool IsAiming { get; set; }
+
+    /// <summary>鼠标当前位置（瞄准线终点）。</summary>
+    public Vector2 AimTarget { get; set; }
+
     public event Action<RuntimeEntity> OnCrestClicked;
 
     // 敌方右上 5 个纹章圆槽（上 3 下 2）
@@ -85,6 +91,12 @@ public partial class BattlefieldCanvas : Control
         // 3. 攻击瞄准箭头（最上层）
         if (IsDraggingAttack)
             DrawAttackArrow(AttackDragStart, AttackDragCurrent);
+
+        // 4. SelectTarget 瞄准虚线：从底部中央指向鼠标。
+        //    原版在「请选择目标」时会从玩家侧拉出一条虚线，
+        //    让人一眼知道「现在这一下点击会作用到哪」。
+        if (IsAiming)
+            DrawAimDashedLine(AimTarget);
     }
 
     private void DrawEllipse(Vector2 c, float rx, float ry, Color col)
@@ -97,6 +109,41 @@ public partial class BattlefieldCanvas : Control
             pts[i] = new Vector2(c.X + Mathf.Cos(a) * rx, c.Y + Mathf.Sin(a) * ry);
         }
         DrawColoredPolygon(pts, col);
+    }
+
+    /// <summary>
+    /// 从底部中央向我方鼠标位置画一条金色虚线瞄准线，末端带小箭头。
+    ///
+    /// 用「分段 draw」而不是引擎的虚线 API：Godot 4 没有内置虚线绘制，
+    /// 手工按固定步长切段反而更可控（步长与间隙都能按需调）。
+    /// </summary>
+    private void DrawAimDashedLine(Vector2 target)
+    {
+        Vector2 start = new(Size.X * 0.5f, Size.Y - 40f);
+        Vector2 delta = target - start;
+        float dist = delta.Length();
+        if (dist < 24f) return;
+
+        Vector2 dir = delta / dist;
+        const float dash = 14f, gap = 9f;
+        var col = new Color(0.98f, 0.85f, 0.28f, 0.80f);
+
+        for (float d = 0; d < dist - 12f; d += dash + gap)
+        {
+            float e = Mathf.Min(d + dash, dist - 12f);
+            DrawLine(start + dir * d, start + dir * e, col, 2.5f);
+        }
+
+        // 末端箭头
+        Vector2 perp = new(-dir.Y, dir.X);
+        Vector2 tip = target;
+        var head = new[]
+        {
+            tip,
+            tip - dir * 18f + perp * 9f,
+            tip - dir * 18f - perp * 9f,
+        };
+        DrawColoredPolygon(head, new Color(0.98f, 0.85f, 0.28f, 0.9f));
     }
 
     private void DrawAttackArrow(Vector2 from, Vector2 to)

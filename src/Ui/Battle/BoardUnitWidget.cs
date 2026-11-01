@@ -32,12 +32,34 @@ public partial class BoardUnitWidget : Control
 
     private bool _selected;
     private bool _canAttack;
+
+    /// <summary>
+    /// 候选态：当前有一处挂起选择正在等玩家点它。
+    /// 与 _selected 不同 —— _selected 是「已被选中的那个」，
+    /// _isCandidate 是「可以被点的那些」。
+    /// </summary>
+    private bool _isCandidate;
+
+    /// <summary>
+    /// 压暗态：有挂起选择时，非候选棋子要淡出，
+    /// 让玩家的视线自动落到可选目标上。
+    /// </summary>
+    private bool _dimmed;
     private UnitAbilityBadge _badge = UnitAbilityBadge.None;
     private float _triggerFlash;
+    private float _pulseTime;
     private bool _dragging;
 
     private const float W = 96f;
     private const float H = 124f;
+
+    /// <summary>设置挂起选择的候选态。</summary>
+    public void SetChoiceState(bool isCandidate, bool dimmed)
+    {
+        _isCandidate = isCandidate;
+        _dimmed = dimmed;
+        QueueRedraw();
+    }
 
     public void Setup(RuntimeEntity e, bool selected, bool canAttack)
     {
@@ -62,6 +84,13 @@ public partial class BoardUnitWidget : Control
 
     public override void _Process(double delta)
     {
+        // 候选圈需要持续脉动，所以有候选时也必须每帧重绘。
+        if (_isCandidate)
+        {
+            _pulseTime += (float)delta;
+            QueueRedraw();
+        }
+
         if (_triggerFlash <= 0f) return;
         _triggerFlash = Mathf.Max(0f, _triggerFlash - (float)delta * 1.6f);
         QueueRedraw();
@@ -96,6 +125,37 @@ public partial class BoardUnitWidget : Control
             Color glow = Entity.IsSuperEvolved ? SvWbTheme.AccentPurple : SvWbTheme.AccentGold;
             DrawRect(new Rect2(0, 0, W, H), glow, false, 3f);
         }
+
+        // 候选态：金色呼吸瞄准圈。
+        // 这是 SelectTarget 挂起时给玩家的唯一视觉线索 ——
+        // 没有它，玩家只能靠「点了有反应/没反应」来猜哪些是合法目标。
+        if (_isCandidate)
+        {
+            float pulse = 0.55f + 0.45f * Mathf.Sin(_pulseTime * 4f);
+            var gold = new Color(0.98f, 0.85f, 0.28f, pulse);
+            DrawRect(new Rect2(-5, -5, W + 10, H + 10), gold, false, 3f);
+            DrawRect(new Rect2(-9, -9, W + 18, H + 18),
+                     new Color(0.98f, 0.85f, 0.28f, pulse * 0.35f), false, 1.5f);
+
+            // 四角瞄准刻线
+            float c = 14f;
+            var corners = new[]
+            {
+                (new Vector2(-5, -5), new Vector2(-5 + c, -5), new Vector2(-5, -5 + c)),
+                (new Vector2(W + 5, -5), new Vector2(W + 5 - c, -5), new Vector2(W + 5, -5 + c)),
+                (new Vector2(-5, H + 5), new Vector2(-5 + c, H + 5), new Vector2(-5, H + 5 - c)),
+                (new Vector2(W + 5, H + 5), new Vector2(W + 5 - c, H + 5), new Vector2(W + 5, H + 5 - c)),
+            };
+            foreach (var (o, a, b) in corners)
+            {
+                DrawLine(o, a, gold, 2.5f);
+                DrawLine(o, b, gold, 2.5f);
+            }
+        }
+
+        // 压暗态：非候选棋子淡出
+        if (_dimmed)
+            DrawRect(new Rect2(0, 0, W, H), new Color(0.02f, 0.03f, 0.06f, 0.62f));
 
         if (_selected) DrawRect(new Rect2(-3, -3, W + 6, H + 6), SvWbTheme.AccentCyan, false, 2.5f);
 

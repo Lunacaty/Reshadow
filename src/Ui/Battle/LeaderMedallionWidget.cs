@@ -23,6 +23,25 @@ public partial class LeaderMedallionWidget : Control
     private BattleSessionController _ctrl;
     private int _playerId;
 
+    private bool _isCandidate;
+    private bool _dimmed;
+    private float _pulseTime;
+
+    /// <summary>挂起选择时的候选态（金色呼吸圈）/ 压暗态。</summary>
+    public void SetChoiceState(bool isCandidate, bool dimmed)
+    {
+        _isCandidate = isCandidate;
+        _dimmed = dimmed;
+        QueueRedraw();
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!_isCandidate) return;
+        _pulseTime += (float)delta;
+        QueueRedraw();
+    }
+
     // 紧贴拱框左右肩部（拱框 l=34, w=172 -> 左肩 36 / 右肩 202），
     // 早先写 -34 会让进化球脱离拱框飞到沙地上。
     private static readonly Vector2 EpOrbOffset = new(2f, 0f);
@@ -150,6 +169,21 @@ public partial class LeaderMedallionWidget : Control
                          new Color("F59E0B"), "EP", font);
         DrawEvolutionOrb(new Vector2(FrameCx + orbDx, orbY), sep,
                          new Color("A855F7"), "SEP", font);
+
+        // 候选态：主战者也能被点选时，套一圈金色呼吸光环。
+        // 没有它，玩家会以为「只有随从能选」，对着主战者犹豫。
+        if (_isCandidate)
+        {
+            float pulse = 0.55f + 0.45f * Mathf.Sin(_pulseTime * 4f);
+            var gold = new Color(0.98f, 0.85f, 0.28f, pulse);
+            DrawRect(new Rect2(FrameL - 8f, FrameT - 8f, FrameW + 16f, FrameH + 16f),
+                     gold, false, 3f);
+            DrawRect(new Rect2(FrameL - 13f, FrameT - 13f, FrameW + 26f, FrameH + 26f),
+                     new Color(0.98f, 0.85f, 0.28f, pulse * 0.32f), false, 1.5f);
+        }
+
+        if (_dimmed)
+            DrawRect(new Rect2(0, 0, Size.X, Size.Y), new Color(0.02f, 0.03f, 0.06f, 0.62f));
     }
 
     private void DrawEvolutionOrb(Vector2 c, int count, Color tint, string label, Font font)

@@ -229,6 +229,7 @@ public sealed class BattleSessionController
         }
 
         Runner.Attack(attacker, defender);
+        ResolveAiPendingIfAny();
         return true;
     }
 

@@ -241,6 +241,30 @@ public partial class BattleScreenRoot : Control
         }
 
         StepOpponentIfNeeded(delta);
+        UpdateAimLine();
+    }
+
+    /// <summary>
+    /// 挂了 SelectTarget 时，让战场画一条「底部中央 → 鼠标」的虚线瞄准线。
+    /// 只在「候选都在场上/手牌」的那种形态下画 —— 弹窗形态本来就有自己的界面，
+    /// 再叠一条线只是噪音。
+    /// </summary>
+    private void UpdateAimLine()
+    {
+        if (_field == null || _ctrl == null) return;
+
+        var p = _ctrl.Runner?.PendingChoice;
+        bool aiming = p != null
+                      && p.Kind == ChoiceKind.SelectTarget
+                      && p.PlayerId == _ctrl.MyPlayerId
+                      && _pending != null && IsInstanceValid(_pending);
+
+        _field.IsAiming = aiming;
+        if (aiming)
+        {
+            _field.AimTarget = GetGlobalMousePosition();
+            _field.QueueRedraw();
+        }
     }
 
     /// <summary>
@@ -270,12 +294,39 @@ public partial class BattleScreenRoot : Control
         RebuildBoards();
         RebuildHand();
         ConsumeNewEventsToVfx();
+        ApplyChoiceHighlightToLeaders();
+
         _allyLeader.QueueRedraw();
         _foeLeader.QueueRedraw();
         _rightCol.QueueRedraw();
         _field.QueueRedraw();
 
         RefreshOverlays();
+    }
+
+    /// <summary>把挂起选择的候选态同步到双方主战者框。</summary>
+    private void ApplyChoiceHighlightToLeaders()
+    {
+        var p = _ctrl?.Runner?.PendingChoice;
+        bool choosing = p != null
+                        && p.Kind == ChoiceKind.SelectTarget
+                        && p.PlayerId == _ctrl.MyPlayerId;
+
+        ApplyLeader(_allyLeader, _ctrl.Leader(0), choosing, p);
+        ApplyLeader(_foeLeader, _ctrl.Leader(1), choosing, p);
+
+        static void ApplyLeader(LeaderMedallionWidget w, RuntimeEntity e,
+                                bool choosing, PendingChoice p)
+        {
+            if (w == null || e == null) return;
+            if (!choosing)
+            {
+                w.SetChoiceState(false, false);
+                return;
+            }
+            bool isCand = p.Candidates.Contains(e.EntityId);
+            w.SetChoiceState(isCand, !isCand);
+        }
     }
 
     private void RebuildBoards()
@@ -300,6 +351,16 @@ public partial class BattleScreenRoot : Control
             bool selected = _actionPanel.BoundEntity != null
                             && _actionPanel.BoundEntity.EntityId == e.EntityId;
             w.Setup(e, selected, canAtk);
+
+            // 挂起选择时：候选棋子亮金圈，其余压暗。
+            // 没有这一层，玩家只能靠「点了有没有反应」猜哪些能点。
+            var pend = _ctrl.Runner.PendingChoice;
+            if (pend != null && pend.Kind == ChoiceKind.SelectTarget
+                && pend.PlayerId == _ctrl.MyPlayerId)
+            {
+                bool isCand = pend.Candidates.Contains(e.EntityId);
+                w.SetChoiceState(isCand, !isCand);
+            }
 
             w.OnClicked += ent =>
             {
