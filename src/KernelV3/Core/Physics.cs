@@ -28,6 +28,18 @@ public enum ZoneRef
     Leader,
 
     /// <summary>
+    /// 外部区域：当前对局所属的卡池（用于「发现 Discover」或从当前卡池随机生成）。
+    /// 不是真的场地：这里没有实体，只有 CardDef。
+    /// </summary>
+    CardPool,
+
+    /// <summary>
+    /// 外部区域：GlobalCatalog 全量已安装卡包
+    /// （用于「混沌发现 Chaos Discover」或全卡池随机生成）。
+    /// </summary>
+    GlobalPool,
+
+    /// <summary>
     /// 融合素材区：被融合吞掉的材料实体停在这里（**实体保留**，不再销毁）。
     ///
     /// 与「彻底移除」相比，保留实体让三件事成立：

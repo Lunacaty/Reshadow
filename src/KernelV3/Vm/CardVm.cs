@@ -337,6 +337,35 @@ public sealed partial class CardVm
         var frame = _frames.Count > 0 ? _frames[^1] : null;
         if (frame == null) throw new VmFaultException("没有可恢复的帧");
 
+        // ---- 发现：候选是 CardId（不是实体 id），选完要真的把卡造出来 ----
+        if (Pending.Kind == ChoiceKind.DiscoverCard)
+        {
+            int chosenId = selectedEntityIds[0];
+
+            // Prompt 里带着 "discover|<zone>|<owner>"。
+            var zone = ZoneRef.Hand;
+            int owner = frame.Scope.ResolvePlayer(frame.Scope.Owner);
+            var parts = (Pending.Prompt ?? "").Split('|');
+            if (parts.Length == 3)
+            {
+                if (int.TryParse(parts[1], out var z)) zone = (ZoneRef)z;
+                if (int.TryParse(parts[2], out var o)) owner = o;
+            }
+
+            var made = _world.SpawnCard(chosenId, zone, owner);
+            var madeRefs = made != null
+                ? new List<EntityRef> { EntityRef.From(made) }
+                : new List<EntityRef>();
+            frame.Scope.BindRefs(Pending.Slot, madeRefs);
+            frame.Scope.Chosen = madeRefs.Count > 0 ? madeRefs[0] : null;
+            if (made != null) frame.Scope.LastSpawnedCardId = chosenId;
+
+            frame.ResolvedChoiceIp = frame.Ip;
+            Pending = null;
+            Status = VmStatus.Running;
+            return;
+        }
+
         // ---- 模式抉择：候选是模式下标，不是实体 ID ----
         if (Pending.Kind == ChoiceKind.SelectMode)
         {

@@ -146,6 +146,12 @@ public enum CardSourceKind
     CopyOfTarget,
     /// <summary>"Summon 2 instead" —— 重复上一个动作生成的卡，只改次数。</summary>
     CopyOfPrevious,
+
+    /// <summary>
+    /// 从外部卡池检索：由 CopyFrom 的 Zone（CardPool / GlobalPool）决定是
+    /// 标准发现还是混沌发现；Mode=Random 时直接抽一张，Mode=Choose 时挂起三选一。
+    /// </summary>
+    PoolQuery,
 }
 
 /// <summary>凭空生成（召唤衍生物 / 加手牌 / 复制体）。</summary>

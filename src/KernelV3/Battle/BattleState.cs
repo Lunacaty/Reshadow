@@ -73,6 +73,27 @@ public sealed class BattleState : IVmWorld
     public MatchRules Rules { get; }
 
     /// <summary>
+    /// 本局所属的卡池视图（发现与随机生成要查它）。
+    ///
+    /// 可以为 null —— 那时发现类效果会直接报「本局未绑定卡池」，
+    /// 而不是静默生成一张白卡。宁可炸得清楚，也不要悄悄错。
+    /// </summary>
+    public Packs.CardPool Pool { get; set; }
+
+    /// <summary>本局可发现的候选卡（标准发现查 Pool，混沌发现查 Catalog）。</summary>
+    public IEnumerable<Ast.CardDef> EnumerateDiscoverPool(bool chaos, bool includeTokens = false)
+    {
+        if (chaos)
+        {
+            if (Pool?.Catalog == null) yield break;
+            foreach (var c in Pool.Catalog.EnumerateChaosDiscoverPool(includeTokens)) yield return c;
+            yield break;
+        }
+        if (Pool == null) yield break;
+        foreach (var c in Pool.EnumerateCurrentPoolDiscover(includeTokens)) yield return c;
+    }
+
+    /// <summary>
     /// 开局扫描信仰（R-1.2 / c-2.1 第 2 步）。
     /// 牌组里每张「带信仰能力」的卡，在开局就在纹章区生成一个对应信仰实体，
     /// 初始信仰值 = 0。同名信仰只生成一个。

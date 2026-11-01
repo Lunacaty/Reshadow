@@ -43,6 +43,7 @@ public static class RegressPacks
         Check("POOL-C 多作者冲突拦截", GateAuthorConflicts);
         Check("POOL-D 卡池自定义规则生效", GateCustomRules);
         Check("POOL-E 局外构筑校验与局内牌库隔离", GateDeckIsolation);
+        Check("POOL-F 标准发现 / 混沌发现 / 随机生成", GateDiscover);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -395,5 +396,110 @@ public static class RegressPacks
                     + " 张数拦截=" + sizeBlocked + " 合法通过=" + legalOk
                     + " 局内牌库=" + deckCount + "(期望36) 局外不变=" + unchanged
                     + " 展开一致=" + expandSame);
+    }
+
+    // ---------------------------------------------------------------- 门禁 F
+
+    /// <summary>
+    /// 三种「从卡池取卡」的行为：
+    ///   标准发现（CardPool + Choose）→ 候选必须全部来自当前卡池
+    ///   混沌发现（GlobalPool + Choose）→ 候选可跨卡包
+    ///   随机生成（Random）→ 不挂起，直接进手牌
+    /// </summary>
+    private static (bool, string) GateDiscover()
+    {
+        // 用真实卡包：core-wb（全 Token）+ testset-v2（可收藏）
+        var root = CardPackLoader.ResolvePacksRoot();
+        if (root == null) return (false, "找不到 data/packs");
+        var cat = GlobalCatalog.LoadAll(root);
+        if (cat.AllCards.Count == 0) return (false, "总表为空");
+
+        // 只启用 testset-v2：标准发现不该挑到 core-wb 的 Token
+        var narrow = new CardPool
+        {
+            PoolId = "standard",
+            Catalog = cat,
+            EnabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "testset-v2" },
+        };
+        // 全启用：混沌发现可以跨到 core-wb
+        var wide = new CardPool
+        {
+            PoolId = "standard",
+            Catalog = cat,
+            EnabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "core-wb", "testset-v2" },
+        };
+
+        // ---- 标准发现 ----
+        var (n1, ok1, inPool, cand1) = RunDiscover(narrow, ZoneRef.CardPool, SelectMode.Choose, 71);
+        bool standardOk = ok1 && n1 == 3 && inPool;
+
+        // ---- 混沌发现 ----
+        var (n2, ok2, _, cand2) = RunDiscover(wide, ZoneRef.GlobalPool, SelectMode.Choose, 72);
+        bool chaosOk = ok2 && n2 == 3;
+
+        // 「混沌发现能跨包」不能靠单次抽样断言：
+        // 从 60 张里抽 3 张，本就不保证一定抽到某个包（约 36% 概率抽不到）。
+        // 断言池子规模才有意义 —— 混沌池 = 全宇宙，标准池 = 仅本卡池。
+        int chaosPoolSize = cat.EnumerateChaosDiscoverPool(includeTokens: true).Count();
+        int narrowPoolSize = narrow.EnumerateCurrentPoolDiscover(includeTokens: true).Count();
+        bool crossPack = chaosPoolSize > narrowPoolSize;
+
+        // ---- 随机生成 ----
+        var (n3, ok3, _, _) = RunDiscover(narrow, ZoneRef.CardPool, SelectMode.Random, 73);
+        bool randomOk = ok3 && n3 == 0;      // 不挂起
+
+        return (standardOk && chaosOk && randomOk && crossPack,
+                "标准发现=" + (n1 == 3 && inPool) + " 混沌发现=" + (n2 == 3)
+                + " 混沌池" + chaosPoolSize + ">标准池" + narrowPoolSize + "=" + crossPack
+                + " 随机不挂起=" + randomOk);
+    }
+
+    /// <summary>跑一次 PoolQuery。返回(候选数, 是否成功走完, 候选是否全属本卡池, 候选列表)。</summary>
+    private static (int count, bool ok, bool inPool, List<int> cands) RunDiscover(
+        CardPool pool, ZoneRef sourceZone, SelectMode mode, int seed)
+    {
+        var st = new BattleState(pool.Catalog.Schema, seed, MatchRules.CreateStandard());
+        st.Pool = pool;
+        foreach (var kv in pool.Catalog.AllCards) st.RegisterCard(kv.Value);
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 0; st.TurnNumber = 3;
+        st.WriteCounter(0, st.Schema.Counter("pp"), 10);
+
+        // 用一张真实存在的卡作为效果来源
+        int srcId = pool.Catalog.AllCards.Keys.First();
+        var src = st.SpawnCard(srcId, ZoneRef.Hand, 0);
+
+        var node = new SpawnCardNode
+        {
+            SourceKind = CardSourceKind.PoolQuery,
+            CopyFrom = new TargetSpec { Zone = sourceZone, Mode = mode },
+            ToZone = ZoneRef.Hand, ToOwner = ZoneScope.Self,
+            Count = NumExpr.Const(1),
+        };
+
+        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+        var sco = new VmScope { Owner = ZoneScope.Self, Controller = 0, Source = EntityRef.From(src) };
+        int hand0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+        vm.PushBody(new List<EffectNode> { node }, sco);
+        vm.StepUntilBlocked();
+
+        if (vm.Pending == null)
+        {
+            // 随机模式：不该挂起，且手牌 +1
+            int hand1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+            return (0, hand1 == hand0 + 1, false, new List<int>());
+        }
+
+        var cands = vm.Pending.Candidates.ToList();
+        bool inPool = cands.All(id => pool.ContainsCard(id));
+        int pick = cands[0];
+        vm.SubmitChoice(vm.Pending.ChoiceId, new[] { pick });
+        vm.StepUntilBlocked();
+
+        bool got = st.EnumerateZone(ZoneRef.Hand, 0)
+                     .Any(e => e.Def != null && e.Def.CardId == pick);
+        return (cands.Count, got, inPool, cands);
     }
 }

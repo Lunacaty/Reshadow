@@ -698,6 +698,15 @@ public sealed partial class CardVm
                 if (prevId <= 0) break;
                 e = _world.SpawnCard(prevId, n.ToZone, scope.ResolvePlayer(n.ToOwner));
             }
+            else if (n.SourceKind == CardSourceKind.PoolQuery)
+            {
+                // 从外部卡池检索：CopyFrom.Zone 决定查哪张表。
+                //   CardPool   → 当前对局所属卡池（标准发现）
+                //   GlobalPool → GlobalCatalog 全量已安装卡包（混沌发现）
+                e = SpawnFromPool(n, scope, created);
+                // 挂起或已创建都没有第二张可做了：发现是一次性的。
+                break;
+            }
             else if (n.IsCrest)
             {
                 // 纹章走自己的集成点：同名唯一与区域上限都在 GainCrest 里处理，
@@ -1020,6 +1029,83 @@ public sealed partial class CardVm
         // 「本回合赋予某能力」到了下回合依然生效。
         foreach (var t in targets) _world.GrantAbility(t, n.Granted, n.Duration);
         return false;
+    }
+
+    /// <summary>
+    /// 从外部卡池检索并生成。
+    ///
+    /// 关键点：**复用现成的布尔求值器**。候选卡的属性（费用/攻击/兵种/职业/关键词）
+    /// 用一个临时探针实体喂给 EvalBool，于是「发现一张费用 ≤3 的机械随从」
+    /// 这类条件不需要任何新语法、任何新求值逻辑。
+    /// </summary>
+    private RuntimeEntity SpawnFromPool(SpawnCardNode n, VmScope scope, List<RuntimeEntity> created)
+    {
+        bool chaos = n.CopyFrom != null && n.CopyFrom.Zone == ZoneRef.GlobalPool;
+        var owner = scope.ResolvePlayer(n.ToOwner);
+
+        var candidates = new List<CardDef>();
+        foreach (var def in _world.Schema != null && _world is Battle.BattleState bst
+                     ? bst.EnumerateDiscoverPool(chaos, includeTokens: true)
+                     : Enumerable.Empty<CardDef>())
+        {
+            // 即使包含 Token 也要排除纹章/信仰这类非卡牌实体。
+            if (def == null) continue;
+            if (def.Kind is not (CardKind.Follower or CardKind.Spell or CardKind.Amulet)) continue;
+            candidates.Add(def);
+        }
+
+        // 条件过滤：把候选卡造成探针实体，交给现成的 EvalBool。
+        if (n.CopyFrom?.Where != null && candidates.Count > 0)
+        {
+            var filtered = new List<CardDef>();
+            foreach (var def in candidates)
+            {
+                var probe = _world.SpawnCard(def.CardId, ZoneRef.None, owner);
+                if (probe != null)
+                {
+                    bool pass = _eval.EvalBool(n.CopyFrom.Where, scope.Derive());
+                    filtered.Add(def);
+                }
+            }
+            if (filtered.Count > 0) candidates = filtered;
+            else return null;
+        }
+
+        if (candidates.Count == 0) return null;
+
+        bool chooseMode = n.CopyFrom != null && n.CopyFrom.Mode == SelectMode.Choose;
+        if (!chooseMode)
+        {
+            // 随机抽一张
+            var pick = candidates[_world.Rng.Next(candidates.Count)];
+            var made = _world.SpawnCard(pick.CardId, n.ToZone, owner);
+            if (made != null)
+            {
+                created.Add(made);
+                scope.LastSpawnedCardId = pick.CardId;
+            }
+            return made;
+        }
+
+        // 三选一发现：不放回抽样，挂起虚拟机等待玩家点选。
+        int want = Math.Max(1, Math.Min(3, candidates.Count));
+        var shuffled = candidates.OrderBy(_ => _world.Rng.Next()).Take(want).ToList();
+        var ids = shuffled.Select(c => c.CardId).ToList();
+
+        var slot = string.IsNullOrEmpty(n.OutSlot) ? TargetSpec.SlotSelected : n.OutSlot;
+        // PendingChoice 没有 ToZone/Owner 字段，把它们编进 Prompt：
+        // 恢复时按这个格式解回来。格式固定为 "discover|<zone>|<owner>"。
+        var pending = new PendingChoice
+        {
+            Kind = ChoiceKind.DiscoverCard,
+            Candidates = ids,
+            MinSelect = 1,
+            MaxSelect = 1,
+            Slot = slot,
+            Prompt = "discover|" + (int)n.ToZone + "|" + owner,
+        };
+        Block(pending);
+        return null;
     }
 
     /// <summary>给资源计数器挂载能力（faith 等）。</summary>

@@ -74,6 +74,12 @@ public enum ChoiceKind
     SelectTarget = 0,
     SelectMode,
     Mulligan,
+
+    /// <summary>
+    /// 从卡池抽样若干候选卡供玩家三选一（炉石式发现）。
+    /// 与 SelectTarget 的区别：这里的 Candidates 是 **CardDef.CardId**，不是场上实体。
+    /// </summary>
+    DiscoverCard,
 }
 
 /// <summary>VM 状态。</summary>
