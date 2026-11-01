@@ -123,11 +123,15 @@ public static partial class Regress
     private static CompileContext UtilCtx(int seed) => CompileContext.Create(seed)
         .Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier")
         .Traits("Pixie", "Artifact", "Loot", "Clue", "Golem", "Officer")
-        .Cards(("Fairy", 90001110), ("Bat", 90001120), ("Ghost", 90001130),
+        // 卡名 → 卡号必须与 BattleState.BuiltinTokenDefs 一致。
+        // 「Ghost」曾被错绑到 90001130（那是 Knight）—— 效果想加 Ghost，
+        // 手里却出现一张白板骑士；81000020 才是测试集里的真 Ghost。
+        // 同理 Striker / Gear / Shoddy 都是测试集真卡，不能另起 9000 号段。
+        .Cards(("Fairy", 90001110), ("Bat", 90001120), ("Ghost", 81000020),
                ("Kindled Blade", 90005150), ("Ominous Artifact \u03b1", 90005110),
                ("Ominous Artifact \u03b2", 90005120), ("Ominous Artifact \u03b3", 90005130),
-               ("Striker Artifact", 90005170), ("Remnant of Hollowness", 90005140),
-               ("Gear of Ambition", 90005180), ("Shoddy Plaything", 90001234))
+               ("Striker Artifact", 81000022), ("Remnant of Hollowness", 90005140),
+               ("Gear of Ambition", 81000038), ("Shoddy Plaything", 81000005))
         .Build();
 
     private static (BattleState st, TurnRunner tr, CardVm vm) UtilState(CompileContext ctx)
@@ -246,15 +250,17 @@ public static partial class Regress
 
         var (st, tr, vm) = UtilState(ctx);
         st.WriteCounter(0, st.Schema.Counter("pp"), 2);
-        // 召唤目标是词法层登记的「Shoddy Plaything」，必须有对应 CardDef ——
-        // 否则激奏会召唤出一个 Def == null 的空壳，看着「成功了」其实什么也没有。
+        // Shoddy Plaything 是测试集里的真卡（81000005），卡号必须统一 ——
+        // 另起 9000 号段会让激奏召唤出来的那张「同名卡」其实是另一个实体，
+        // 看着召唤成功，实际拿到的是一张没有 Fanfare/Ward 的白板。
+        const int ShoddyId = 81000005;
         st.RegisterCard(new CardDef
         {
-            CardId = 90001234, Name = "Shoddy Plaything", Kind = CardKind.Follower,
+            CardId = ShoddyId, Name = "Shoddy Plaything", Kind = CardKind.Follower,
             BaseAttack = 1, BaseLife = 3, BaseCost = 6,
             Abilities = accel.Abilities, AccelerateDef = accel.AccelerateDef,
         });
-        var c = st.SpawnCard(90001234, ZoneRef.Hand, 0);
+        var c = st.SpawnCard(ShoddyId, ZoneRef.Hand, 0);
         vm.DropPendingTriggers();
         int handBefore = st.EnumerateZone(ZoneRef.Hand, 0).Count();
         bool played = tr.PlayCard(0, c, vm);
@@ -262,10 +268,8 @@ public static partial class Regress
 
         bool spellPath = played && c.Zone == ZoneRef.Cemetery && c.Def?.BaseCost == 6;
         bool noFanfare = st.EnumerateZone(ZoneRef.Hand, 0).Count() <= handBefore;
-        // 激奏召唤的是词法层登记的那张「Shoddy Plaything」，它有自己的卡号，
-        // 不一定是这里注册主体时的 2008 —— 按「召唤出了一张同名新卡」判定。
         bool summoned = st.EnumerateZone(ZoneRef.Board, 0)
-            .Any(e => !ReferenceEquals(e, c) && e.Def?.Name == "Shoddy Plaything");
+            .Any(e => !ReferenceEquals(e, c) && e.Def?.CardId == ShoddyId);
 
         // 结晶：2 费按护符进场，带吟唱
         var cryAlt = new (string, int, string)[] { ("Crystallize", 2, "Countdown (3)") };

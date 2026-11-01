@@ -219,6 +219,8 @@ public sealed class BattleState : IVmWorld
         (90005140, "Remnant of Hollowness", CardKind.Spell, 1, 0, 0, new[] { "Loot" }, null),
         (90005150, "Kindled Blade", CardKind.Spell, 2, 0, 0, null, null),
         (90005160, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null, null),
+        // Fortifier Artifact 不在测试集里，只是 Striker Artifact 分档表的另一档目标。
+        (90005190, "Fortifier Artifact", CardKind.Follower, 4, 3, 3, new[] { "Artifact" }, new[] { "ward" }),
         (90004110, "Silent Rider", CardKind.Follower, 6, 8, 8, null, new[] { "storm" }),
         (90004120, "Servant of Cocytus", CardKind.Follower, 1, 13, 13, null, null),
         (90004130, "Demon of Purgatory", CardKind.Follower, 4, 9, 6, null, null),
@@ -272,40 +274,13 @@ public sealed class BattleState : IVmWorld
             });
         }
 
-        // 土之印 / 线索：可堆叠护符，靠计数器承载层数。
-        Token(MagicSedimentCardId, "Magic Sediment", CardKind.Amulet, 1, 0, 0, null);
-        Token(ClueDefaultCardId, "Divine Evidence", CardKind.Amulet, 1, 0, 0, new[] { "Clue" });
-
-        // 测试集与常见召唤物。兵种是效果判定的一部分（Aria 的纹章只认 Pixie）。
-        Token(90001110, "Fairy", CardKind.Follower, 1, 1, 1, new[] { "Pixie" });
-        Token(90001120, "Bat", CardKind.Follower, 1, 1, 1, null);
-        Token(90001130, "Knight", CardKind.Follower, 1, 1, 1, new[] { "Officer" });
-        Token(90031120, "Guardian Golem", CardKind.Follower, 2, 2, 2, new[] { "Golem" }, "ward");
-
-        // 融合分档的目标卡（Striker Artifact 的三档变身）。
-        Token(90005110, "Ominous Artifact α", CardKind.Follower, 1, 2, 1, new[] { "Artifact" });
-        Token(90005120, "Ominous Artifact β", CardKind.Follower, 2, 3, 2, new[] { "Artifact" });
-        Token(90005130, "Ominous Artifact γ", CardKind.Follower, 3, 5, 3, new[] { "Artifact" });
-        Token(90005140, "Remnant of Hollowness", CardKind.Spell, 1, 0, 0, new[] { "Loot" });
-        Token(90005150, "Kindled Blade", CardKind.Spell, 2, 0, 0, null);
-        Token(90005160, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null);
-
-        // 融合链的第三端只有 Fortifier Artifact 需要内置：
-        // 它不在测试集里，只是 Striker Artifact 分档表的另一档目标。
+        // 全部衍生卡只从 BuiltinTokenDefs 这一张表来。
         //
-        // 注意：**绝不能**为测试集里已有的真卡另起 9000xxxx 号段 ——
-        // Striker Artifact(81000022) / Gear of Ambition(81000038) /
-        // Shoddy Plaything(81000005) / Prostrating Coward(81000004) /
-        // Ghost(81000020) 都已由 TestsetLoader 注册为带完整能力与兵种的真定义。
-        // 再注册一份同名的空壳，运行时会拿到空壳：融合不了、变不了身、
-        // 谢幕曲不触发，而且看起来「什么都没发生」。
-        Token(90005190, "Fortifier Artifact", CardKind.Follower, 4, 3, 3, new[] { "Artifact" }, "ward");
-
-        // Apocalypse Deck 的四张（Mjerrabaine 换牌库后必须能打出）。
-        Token(90004110, "Silent Rider", CardKind.Follower, 6, 8, 8, null, "storm");
-        Token(90004120, "Servant of Cocytus", CardKind.Follower, 1, 13, 13, null);
-        Token(90004130, "Demon of Purgatory", CardKind.Follower, 4, 9, 6, null);
-        Token(90004310, "Astaroth's Reckoning", CardKind.Spell, 10, 0, 0, null);
+        // 之前这里是第二份手抄清单，与那张表并存 —— 改表不生效，改这里表又不同步。
+        // 「同一份真相写两遍」的结果必然是漂移，而漂移的表现是
+        // 「某个衍生卡突然变成白板」，不是编译错误。
+        foreach (var t in BuiltinTokenDefs)
+            Token(t.id, t.name, t.kind, t.cost, t.atk, t.life, t.traits, t.keywords);
     }
 
     public CardDef CardDefOf(int cardId)
