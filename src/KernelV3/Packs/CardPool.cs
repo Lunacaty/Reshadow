@@ -154,6 +154,8 @@ public static class CardPoolBuilder
         var glossary = Glossary.CreateDefault();
         var deckDefs = new DeckDefTable();
 
+        var cardIndex = new Core.PoolCardIndex();
+        var idOf = new Dictionary<CardRawEntry, int>();
         var cardOwnerPack = new Dictionary<int, string>();
         var nameOwnerPack = new Dictionary<string, (string packId, int cardId)>(StringComparer.OrdinalIgnoreCase);
 
@@ -196,13 +198,29 @@ public static class CardPoolBuilder
 
             foreach (var c in pack.Cards)
             {
-                if (cardOwnerPack.TryGetValue(c.CardId, out var prevPack))
+                // local_id 分配：作者可以不写 card_id，只写 local_id。
+                // 之前 PoolCardIndex 是彻头彻尾的死代码 —— 建了类、加了属性，
+                // 但从没调用过 Assign，于是第二张 local_id 的卡就撞 CardId=0。
+                int effectiveId = c.CardId;
+                if (effectiveId <= 0 && !string.IsNullOrEmpty(c.LocalId))
+                    effectiveId = cardIndex.Assign(pack.PackId, c.LocalId);
+                else if (effectiveId > 0)
+                    cardIndex.RegisterExplicit(pack.PackId, c.LocalId, effectiveId);
+                idOf[c] = effectiveId;
+                if (effectiveId <= 0)
                 {
-                    res.Errors.Add("卡号冲突：卡包 [" + pack.PackId + "] 与 [" + prevPack
-                                   + "] 都定义了 CardId=" + c.CardId + "（《" + c.NameEng + "》）！");
+                    res.Errors.Add("卡包 [" + pack.PackId + "] 的卡《" + c.NameEng
+                                   + "》既没有 card_id 也没有 local_id，无法分配卡号！");
                     continue;
                 }
-                cardOwnerPack[c.CardId] = pack.PackId;
+
+                if (cardOwnerPack.TryGetValue(effectiveId, out var prevPack))
+                {
+                    res.Errors.Add("卡号冲突：卡包 [" + pack.PackId + "] 与 [" + prevPack
+                                   + "] 都定义了 CardId=" + effectiveId + "（《" + c.NameEng + "》）！");
+                    continue;
+                }
+                cardOwnerPack[effectiveId] = pack.PackId;
 
                 // 同名消歧（文档「破局 1」的三级优先）：
                 //   本包优先 → 显式依赖包优先 → 卡池全局唯一匹配
@@ -210,7 +228,7 @@ public static class CardPoolBuilder
                 // 前两级在**单包内**已经由「名字只在本包的卡里出现」自然满足；
                 // 真正要拦的是第三级失败的情况：两个互不相关的包都定义了同名卡，
                 // 谁赢都是错的 —— 因为引用方没有表达偏好，引擎也不该替它猜。
-                if (nameOwnerPack.TryGetValue(c.NameEng, out var prevName) && prevName.cardId != c.CardId)
+                if (nameOwnerPack.TryGetValue(c.NameEng, out var prevName) && prevName.cardId != effectiveId)
                 {
                     bool sameOwnerChain = IsDependencyRelated(pack.PackId, prevName.packId, packs)
                                           || IsDependencyRelated(prevName.packId, pack.PackId, packs);
@@ -226,8 +244,8 @@ public static class CardPoolBuilder
                     bool prevWins = IsDependencyRelated(pack.PackId, prevName.packId, packs);
                     if (prevWins) continue;
                 }
-                nameOwnerPack[c.NameEng] = (pack.PackId, c.CardId);
-                lexicon.AddCard(c.NameEng, c.CardId);
+                nameOwnerPack[c.NameEng] = (pack.PackId, effectiveId);
+                lexicon.AddCard(c.NameEng, effectiveId);
             }
         }
         if (res.Errors.Count > 0) return res;
@@ -270,6 +288,7 @@ public static class CardPoolBuilder
             Glossary = glossary,
             DeckDefs = deckDefs,
             EnabledPackIds = new HashSet<string>(config.EnabledPackIds, StringComparer.OrdinalIgnoreCase),
+            CardIndex = cardIndex,
         };
 
         // 全卡包的卡定义（含未启用包）—— 依赖校验要靠它说清「缺的那张在哪个包」。
@@ -282,7 +301,8 @@ public static class CardPoolBuilder
         foreach (var pack in packs)
             foreach (var c in pack.Cards)
             {
-                var card = CompileCard(pack, c, schema, comp, res.Errors);
+                var card = CompileCard(pack, c, schema, comp, res.Errors,
+                                       idOf.TryGetValue(c, out var eid) ? eid : c.CardId);
                 if (card != null)
                 {
                     pool.RegisterCompiledCard(card);
@@ -321,7 +341,7 @@ public static class CardPoolBuilder
 
     private static CardDef CompileCard(
         CardPackDef pack, CardRawEntry c, GameSchema schema,
-        EnglishCompiler comp, List<string> errors)
+        EnglishCompiler comp, List<string> errors, int cardId)
     {
         var traits = new List<SymbolId<TraitTag>>();
         foreach (var t in c.Traits) traits.Add(schema.Trait(t));
@@ -333,7 +353,7 @@ public static class CardPoolBuilder
         {
             return new CardDef
             {
-                CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
+                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
                 DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
                 BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
                 Traits = traits, Clan = clan,
@@ -359,7 +379,7 @@ public static class CardPoolBuilder
             var d = made[0];
             return new CardDef
             {
-                CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = d.Kind,
+                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = d.Kind,
                 BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
                 Abilities = d.Abilities, Traits = traits, Clan = clan,
                 InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k)).ToList(),
@@ -375,7 +395,7 @@ public static class CardPoolBuilder
 
         return new CardDef
         {
-            CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
+            CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
                 DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
             BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
             Abilities = result.Abilities,

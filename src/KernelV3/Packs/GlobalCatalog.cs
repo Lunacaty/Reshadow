@@ -167,6 +167,30 @@ public sealed class GlobalCatalog
             };
         }
 
+        // 脚本格式的卡不能丢给 EnglishCompiler —— 当场会编译报错。
+        if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
+        {
+            var ws = Diy.DiyWorkspace.Create(c.CardId);
+            var sc = new Diy.ReshadowScriptCompiler(ws);
+            var made = sc.Compile(c.Text);
+            if (made.Count == 0)
+            {
+                foreach (var e in sc.Errors)
+                    Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》脚本编译失败：" + e);
+                return null;
+            }
+            var sd = made[0];
+            return new CardDef
+            {
+                CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = sd.Kind,
+                BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
+                Abilities = sd.Abilities, Traits = traits, Clan = clan,
+                InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k)).ToList(),
+                DeckModifiers = sd.DeckModifiers ?? c.DeckModifiers ?? new List<DeckBuildModifier>(),
+                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text,
+            };
+        }
+
         var alts = c.AltModes.Select(a => (a.TypeEng, a.Cost, a.TextEng)).ToArray();
         var r = comp.Compile(c.Text, alts, c.NameEng, c.CardId);
         foreach (var e in r.Errors) Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》编译失败：" + e);
@@ -203,6 +227,21 @@ public sealed class CardPool
                EnabledPackIds.Contains(c.PackId) && !c.IsToken
                && c.Kind is CardKind.Follower or CardKind.Spell or CardKind.Amulet)
            .OrderBy(c => c.CardId);
+
+    /// <summary>
+    /// 用本卡池视图建一个对局。
+    ///
+    /// 与 CardPoolRuntime.CreateBattleState 的区别只是入口不同：
+    /// 两条路都必须把 Pool 挂上去，否则发现类效果恒为空。
+    /// </summary>
+    public Battle.BattleState CreateBattleState(int seed = 0)
+    {
+        var state = new Battle.BattleState(Catalog?.Schema, seed, BaseRules);
+        if (Catalog != null)
+            foreach (var c in Catalog.AllCards.Values) state.RegisterCard(c);
+        state.Pool = this;
+        return state;
+    }
 
     public IEnumerable<CardDef> EnumerateCurrentPoolDiscover(bool includeTokens = false)
         => Catalog.AllCards.Values.Where(c =>

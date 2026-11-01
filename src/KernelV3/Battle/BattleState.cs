@@ -464,7 +464,20 @@ public sealed class BattleState : IVmWorld
     }
 
     public CardDef CardDefOf(int cardId)
-        => _cardPool.TryGetValue(cardId, out var d) ? d : null;
+    {
+        if (_cardPool.TryGetValue(cardId, out var d)) return d;
+
+        // 回退到全量宇宙总表：混沌发现可能选中「未启用卡包」里的卡，
+        // 那只查本局的 _cardPool 会拿到 null —— 于是造出 Def == null 的白板空壳
+        // 并让 UnresolvedSpawnCount 递增。
+        var fromCatalog = Pool?.Catalog?.TryGetCard(cardId);
+        if (fromCatalog != null)
+        {
+            _cardPool[cardId] = fromCatalog;      // 顺手登记，后续不再回退
+            return fromCatalog;
+        }
+        return null;
+    }
 
     // ---------- 计数器：一律按绝对玩家编号 ----------
 
@@ -1589,7 +1602,10 @@ public sealed class BattleState : IVmWorld
         //
         // 这里不抛异常（底层构造与测试布置会合法地造裸实体），
         // 而是把失败记录成可观测的计数：回归门禁断言它必须为 0。
-        if (!_cardPool.ContainsKey(cardId)) UnresolvedSpawnCount++;
+        // 先走一次 CardDefOf：它会从全量宇宙总表回退并顺手登记进 _cardPool。
+        // 不这么做的话，混沌发现选中「未启用卡包」的卡时会直接造出空壳 ——
+        // 明明总表里有完整定义，只是还没登记进本局。
+        if (CardDefOf(cardId) == null) UnresolvedSpawnCount++;
 
         var e = CreateEntity(cardId, toZone, toPlayerId);
         // 召唤进场的随从同样要发「进入战场时」并加连携。

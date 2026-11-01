@@ -1095,6 +1095,11 @@ public sealed partial class CardVm
                 };
                 foreach (var t in def.Traits ?? Array.Empty<SymbolId<TraitTag>>()) probe.Traits.Add(t);
 
+                // 固有属性（自带关键词 ward/storm 等）也要装上：
+                // 不装的话「发现一张带守护的随从」会永远发现不了 ——
+                // 关键词筛选读的是 Keywords，而它由 MountInnateProperties 挂。
+                if (_world is Battle.BattleState bsMount) bsMount.MountInnateProperties(probe);
+
                 // $item 与 $self 都要绑到探针上：
                 //   HasKindExpr / HasTraitExpr 的默认 Of 是 Self，
                 //   CompareExpr(Property) 的默认对象也是 Self，

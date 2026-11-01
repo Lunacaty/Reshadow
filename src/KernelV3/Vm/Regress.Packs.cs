@@ -48,6 +48,7 @@ public static class RegressPacks
         Check("POOL-H 发现条件真过滤（含干扰项）", GateDiscoverFilter);
         Check("POOL-I 卡包关键词与脚本格式", GatePackKeywords);
         Check("POOL-J 自定义规则接进执行层", GateRuleEnforcement);
+        Check("POOL-K local_id 分配与跨包召唤无空壳", GateCardIndexAndCrossPack);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -899,5 +900,79 @@ public static class RegressPacks
         bool ok = boardCapped && extraPpBlocked;
         return (ok, "场上限3生效=" + boardCapped + "(" + before + "→" + after + ")"
                     + " 后手加PP被禁=" + extraPpBlocked);
+    }
+
+    // ---------------------------------------------------------------- 门禁 K
+
+    /// <summary>
+    /// 两件事一起测：
+    ///   ① 只写 local_id 不写 card_id 的卡包，由 PoolCardIndex 分配唯一正整数卡号
+    ///   ② 混沌发现抽到「未启用卡包」的卡时，上场实体必须拿到完整定义
+    ///      （Def != null、身材正确、UnresolvedSpawnCount == 0）
+    ///
+    /// 这两条对应文档 Bug 4：PoolCardIndex 曾是死代码，
+    /// CardDefOf 不回退总表则跨包召唤造白板。
+    /// </summary>
+    private static (bool, string) GateCardIndexAndCrossPack()
+    {
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["pa"] = new CardPackDef
+            {
+                PackId = "pa", NativePoolId = "pa-pool",
+                Cards = new List<CardRawEntry>
+                {
+                    new CardRawEntry { LocalId = "c1", NameEng = "A1", Kind = CardKind.Follower,
+                                       Cost = 1, Attack = 1, Life = 1 },
+                },
+            },
+            ["pb"] = new CardPackDef
+            {
+                PackId = "pb", NativePoolId = "pb-pool",
+                Cards = new List<CardRawEntry>
+                {
+                    new CardRawEntry { LocalId = "c1", NameEng = "B1", Kind = CardKind.Follower,
+                                       Cost = 2, Attack = 3, Life = 3 },
+                },
+            },
+        };
+
+        // ① 两个包都只写 local_id: "c1" —— 不许撞号
+        var both = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "pa-pool", EnabledPackIds = new List<string> { "pa", "pb" },
+        }, packs);
+        if (!both.Ok) return (false, "建池失败：" + string.Join("|", both.Errors.Take(2)));
+
+        var ids = both.Pool.AllCards.Keys.OrderBy(x => x).ToList();
+        bool assigned = ids.Count == 2 && ids.All(i => i > 0) && ids.Distinct().Count() == 2;
+        bool indexed = both.Pool.CardIndex.Count == 2;
+
+        // ② 卡池只启用 pa，但总表里有 pb 的卡 —— 跨包召唤不能造空壳
+        var onlyA = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "pa-pool", EnabledPackIds = new List<string> { "pa" },
+        }, packs);
+        if (!onlyA.Ok) return (false, "仅 pa 建池失败");
+
+        var st = onlyA.Pool.CreateBattleState(seed: 92);
+        // 把 pb 的卡放进本局总表（模拟混沌发现抽到未启用卡包的卡）
+        var pbCard = new CardDef
+        {
+            CardId = 779001, Name = "CrossPack", Kind = CardKind.Follower,
+            BaseCost = 2, BaseAttack = 3, BaseLife = 3, PackId = "pb",
+        };
+        st.Pool.Catalog.RegisterCompiledCard(pbCard);
+
+        var made = st.SpawnCard(779001, ZoneRef.Board, 0);
+        bool defOk = made?.Def != null;
+        bool statsOk = made != null && made.Attack == 3 && made.Life == 3;
+        int unresolved = st.UnresolvedSpawnCount;
+
+        bool ok = assigned && indexed && defOk && statsOk && unresolved == 0;
+        return (ok, "local_id 唯一分配=" + assigned + "(" + string.Join(",", ids) + ")"
+                    + " 索引表=" + indexed + " 跨包 Def=" + defOk
+                    + " 身材=" + (made?.Attack ?? -1) + "/" + (made?.Life ?? -1)
+                    + " Unresolved=" + unresolved);
     }
 }
