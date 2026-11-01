@@ -143,6 +143,44 @@ public sealed class ReshadowScriptCompiler
     /// discover 是「从卡池里按条件找」，条件住在 TargetSpec.Where 里。
     /// </summary>
     /// <summary>
+    /// 解析 clan 筛选：self / 单职业 / A|B 多职业。
+    /// </summary>
+    private HasClanExpr ParseClanFilter(Cursor p)
+    {
+        var first = ReadDashedId(p);
+        if (string.Equals(first, "self", StringComparison.OrdinalIgnoreCase))
+            return new HasClanExpr { IsSelfClan = true, Of = TargetSpec.Item };
+
+        var names = new List<string> { first };
+        while (p.PeekChar() == '|')
+        {
+            p.NextChar();
+            names.Add(ReadDashedId(p));
+        }
+
+        if (names.Count == 1)
+            return new HasClanExpr { Clan = _schema.Clan(names[0]), Of = TargetSpec.Item };
+
+        return new HasClanExpr
+        {
+            Clans = names.Select(n => _schema.Clan(n)).ToList(),
+            Of = TargetSpec.Item,
+        };
+    }
+
+    /// <summary>解析 pack 列表（core-wb|testset-v2），逐段拼回连字符 ID。</summary>
+    private static string ReadDashedPackList(Cursor p)
+    {
+        var parts = new List<string> { ReadDashedId(p) };
+        while (p.PeekChar() == '|')
+        {
+            p.NextChar();
+            parts.Add(ReadDashedId(p));
+        }
+        return string.Join("|", parts);
+    }
+
+    /// <summary>
     /// 读一个可能带连字符的标识符（core-wb / my-pack-2）。
     /// tokenizer 把 '-' 当成独立 token，逐 token 拼接才能还原原样。
     /// </summary>
@@ -170,13 +208,16 @@ public sealed class ReshadowScriptCompiler
         if (spec == null) return null;
 
         var toZone = ZoneRef.Hand;
-        if (p.TryChar(','))
+        int offer = 3;
+        int pick = 1;
+
+        // 可选的键值参数：to: / offer: / pick:
+        while (p.TryChar(','))
         {
             var key = p.PeekToken();
             if (key == "to")
             {
-                p.Next();
-                p.TryChar(':');
+                p.Next(); p.TryChar(':');
                 toZone = p.Next() switch
                 {
                     "hand" => ZoneRef.Hand,
@@ -186,7 +227,17 @@ public sealed class ReshadowScriptCompiler
                     _ => ZoneRef.Hand,
                 };
             }
-            // 其余键交给通用解析跳过（保持向前兼容）
+            else if (key == "offer")
+            {
+                p.Next(); p.TryChar(':');
+                offer = p.TryInt() ?? 3;
+            }
+            else if (key == "pick")
+            {
+                p.Next(); p.TryChar(':');
+                pick = p.TryInt() ?? 1;
+            }
+            else break;
         }
         p.TryChar(')');
 
@@ -196,7 +247,9 @@ public sealed class ReshadowScriptCompiler
             CopyFrom = spec,
             ToZone = toZone,
             ToOwner = ZoneScope.Self,
-            Count = NumExpr.Const(1),
+            Count = NumExpr.Const(Math.Max(1, pick)),
+            // 展示候选数 X（1~5）。默认 3 = 传统三选一。
+            OfferCount = Math.Clamp(offer, 1, 5),
         };
     }
 
@@ -1676,19 +1729,14 @@ public sealed class ReshadowScriptCompiler
                 // 职业筛选：只从某个职业的卡里发现。
                 case "clan":
                     p.TryChar(':');
-                    wheres.Add(new HasClanExpr
-                    {
-                        Clan = _schema.Clan(p.Next() ?? ""),
-                        Of = TargetSpec.Item,
-                    });
+                    wheres.Add(ParseClanFilter(p));
                     break;
 
                 // 卡包筛选：只从某个特定卡包发现（区别于 card_pool / global_pool 的范围）。
                 case "pack":
                     p.TryChar(':');
-                    // 卡包 ID 常带连字符（core-wb），而 tokenizer 会把 '-' 切成独立 token。
-                    // 只读一个 token 会得到 "core"，把 "-wb" 留在流里。
-                    wheres.Add(new HasPackExpr { PackId = ReadDashedId(p), Of = TargetSpec.Item });
+                    // 卡包 ID 常带连字符（core-wb），且允许用 '|' 串联多个包。
+                    wheres.Add(new HasPackExpr { PackId = ReadDashedPackList(p), Of = TargetSpec.Item });
                     break;
 
                 default: break;
@@ -2312,7 +2360,12 @@ public sealed class ReshadowScriptCompiler
                         Where = sp.CopyFrom?.Where,
                         Count = sp.CopyFrom?.Count,
                     };
-                    return ind + "discover(" + PrintTargetExpr(spec) + ", to: " + toWord + ")\n";
+                    string extra = "";
+                    // 非默认的 X/Y 必须打出来，否则往返后 5 选 2 会变回 3 选 1。
+                    if (sp.OfferCount != 3) extra += ", offer: " + sp.OfferCount;
+                    if (sp.Count is NumExpr cnt && cnt.Op == NumOp.Const && cnt.Value != 1)
+                        extra += ", pick: " + cnt.Value;
+                    return ind + "discover(" + PrintTargetExpr(spec) + extra + ", to: " + toWord + ")\n";
                 }
                 // 复制体：SourceKind=CopyOfTarget 时没有卡名，
                 // 落到 summon 分支会导出成 summon("", 1)，CopyFrom 与 IsExactCopy 全丢。
@@ -2552,7 +2605,12 @@ public sealed class ReshadowScriptCompiler
                     });
                     break;
                 case HasTraitExpr ht: parts.Add("trait: " + ht.Trait.Name); break;
-                case HasClanExpr hcl: parts.Add("clan: " + hcl.Clan.Name); break;
+                case HasClanExpr hcl:
+                    if (hcl.IsSelfClan) parts.Add("clan: self");
+                    else if (hcl.Clans != null && hcl.Clans.Count > 0)
+                        parts.Add("clan: " + string.Join("|", hcl.Clans.Select(x => x.Name)));
+                    else parts.Add("clan: " + hcl.Clan.Name);
+                    break;
                 case HasPackExpr hpk: parts.Add("pack: " + hpk.PackId); break;
                 case NotSameEntityExpr: parts.Add("other"); break;
                 case ConstBoolExpr cb0 when cb0.Value: break;

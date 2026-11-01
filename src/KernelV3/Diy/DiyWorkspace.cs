@@ -318,6 +318,7 @@ public sealed class DiyWorkspace
                     CopyFrom = NormalizeTarget(sp.CopyFrom),
                     ToOwner = sp.ToOwner, ToZone = sp.ToZone,
                     Count = NormalizeNum(sp.Count), OutSlot = sp.OutSlot,
+                    OfferCount = sp.OfferCount,
                 };
 
             case GrantAbilityNode ga:
@@ -406,7 +407,8 @@ public sealed class DiyWorkspace
         if (e is HasTraitExpr ht)
             return new HasTraitExpr { Trait = ht.Trait, Of = NormalizeTarget(ht.Of) };
         if (e is HasClanExpr hcl)
-            return new HasClanExpr { Clan = hcl.Clan, Of = NormalizeTarget(hcl.Of) };
+            return new HasClanExpr { Clan = hcl.Clan, Clans = hcl.Clans,
+                                     IsSelfClan = hcl.IsSelfClan, Of = NormalizeTarget(hcl.Of) };
         if (e is HasPackExpr hpk)
             return new HasPackExpr { PackId = hpk.PackId, Of = NormalizeTarget(hpk.Of) };
         if (e is NotSameEntityExpr ne)

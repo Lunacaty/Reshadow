@@ -213,13 +213,46 @@ public sealed class VmEval
             case HasPackExpr hp:
             {
                 var t = hp.Of ?? TargetSpec.Self;
+                // PackId 允许用 '|' 分隔多个卡包（"core-wb|diy-mecha"）。
+                var allowed = (hp.PackId ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries);
                 return ResolveRef(t, scope).Any(r =>
-                    string.Equals(RefDef(r)?.PackId, hp.PackId, StringComparison.OrdinalIgnoreCase));
+                {
+                    var pack = RefDef(r)?.PackId ?? "";
+                    return allowed.Any(x => string.Equals(pack, x.Trim(), StringComparison.OrdinalIgnoreCase));
+                });
             }
 
             case HasClanExpr hc:
             {
                 var t = hc.Of ?? TargetSpec.Self;
+
+                // ① 「本职业」：读我方主战者的职业，未设则回退到来源卡。
+                if (hc.IsSelfClan)
+                {
+                    int myPid = scope.ResolvePlayer(Core.ZoneScope.Self);
+                    var leaderDef = _world.EnumerateZone(Core.ZoneRef.Leader, myPid)
+                        .FirstOrDefault()?.Def;
+                    var myClan = (leaderDef != null && leaderDef.Clan.IsValid)
+                        ? leaderDef.Clan
+                        : (scope.Source != null
+                            ? (RefDef(scope.Source.Value)?.Clan ?? Core.SymbolId<Core.ClanTag>.Invalid)
+                            : Core.SymbolId<Core.ClanTag>.Invalid);
+                    if (!myClan.IsValid) return false;
+                    return ResolveRef(t, scope).Any(r => RefDef(r)?.Clan.Id == myClan.Id);
+                }
+
+                // ② 多职业区间（"Swordcraft|Runecraft"）
+                if (hc.Clans != null && hc.Clans.Count > 0)
+                {
+                    var want = hc.Clans;
+                    return ResolveRef(t, scope).Any(r =>
+                    {
+                        var c = RefDef(r)?.Clan ?? Core.SymbolId<Core.ClanTag>.Invalid;
+                        return c.IsValid && want.Any(x => x.Id == c.Id);
+                    });
+                }
+
+                // ③ 单一固定职业
                 return ResolveRef(t, scope).Any(r => RefDef(r)?.Clan.Id == hc.Clan.Id);
             }
 

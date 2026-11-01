@@ -602,20 +602,30 @@ public sealed class ChineseCardPrinter
         // 三者措辞不同，玩家要能一眼分清「从本环境找」还是「从全宇宙找」。
         if (sp.SourceKind == CardSourceKind.PoolQuery)
         {
+            // 范围三态：显式卡包 > 全卡包 > 当前卡池。
+            // 有 HasPackExpr 时不再重复印「从当前卡池中」——那会自相矛盾。
+            string packId = FindPackFilter(sp.CopyFrom?.Where);
             bool chaos = sp.CopyFrom != null && sp.CopyFrom.Zone == ZoneRef.GlobalPool;
             bool choose = sp.CopyFrom != null && sp.CopyFrom.Mode == SelectMode.Choose;
-            string from = chaos ? "从全部卡包中" : "从当前卡池中";
+
+            string from = !string.IsNullOrEmpty(packId)
+                ? "从【" + packId.Replace("|", "、") + "】卡包中"
+                : (chaos ? "从全部卡包中" : "从当前卡池中");
+
             string verb = choose ? (chaos ? "【混沌发现】" : "【发现】") : "随机选择";
             string what = PrintPoolFilter(sp.CopyFrom);
-            if (choose)
-            {
-                return sp.ToZone == ZoneRef.Hand
-                    ? from + verb + count + "张" + what + "加入我方手牌。"
-                    : from + verb + count + "个" + what + "召唤到战场上。";
-            }
+
+            // X 选 Y：默认三选一时不啰嗦，自定义时才写出来。
+            int offerX = sp.OfferCount > 0 ? sp.OfferCount : 3;
+            int pickY = sp.Count is NumExpr cnt && cnt.Op == NumOp.Const ? cnt.Value : 1;
+            string label = (choose && (offerX != 3 || pickY != 1))
+                ? verb + "（" + offerX + "选" + pickY + "）"
+                : verb;
+
+            string countText = pickY > 1 ? pickY.ToString() : count;
             return sp.ToZone == ZoneRef.Hand
-                ? from + verb + count + "张" + what + "加入我方手牌。"
-                : from + verb + count + "个" + what + "召唤到战场上。";
+                ? from + label + countText + "张" + what + "加入我方手牌。"
+                : from + label + countText + "个" + what + "召唤到战场上。";
         }
 
         if (sp.SourceKind == CardSourceKind.CopyOfTarget)
@@ -636,6 +646,16 @@ public sealed class ChineseCardPrinter
     /// 条件本身是通用 BoolExpr，这里只挑最常见的几类译出来；
     /// 译不出的部分退回「卡牌」，宁可笼统也不要印出英文。
     /// </summary>
+    /// <summary>从 Where 里找 PackId（含 And/Or/Not 嵌套）。</summary>
+    private static string FindPackFilter(BoolExpr e) => e switch
+    {
+        HasPackExpr hp => hp.PackId,
+        AndExpr a => a.Items.Select(FindPackFilter).FirstOrDefault(x => !string.IsNullOrEmpty(x)),
+        OrExpr o => o.Items.Select(FindPackFilter).FirstOrDefault(x => !string.IsNullOrEmpty(x)),
+        NotExpr nt => FindPackFilter(nt.Inner),
+        _ => null,
+    };
+
     private string PrintPoolFilter(TargetSpec spec)
     {
         if (spec == null) return "卡牌";
@@ -686,11 +706,14 @@ public sealed class ChineseCardPrinter
                 // 卡包与职业筛选也必须渲染出来：
                 // 少了它们，卡面会印成「发现1张随从」，
                 // 玩家完全看不出它限定在某个卡包或某个职业里。
-                case HasPackExpr hp:
-                    pack = "来自【" + hp.PackId + "】卡包的";
-                    break;
+                // 卡包范围由 PrintSpawn 的 from 前缀统一表达，
+                // 这里再印一次会变成「从【A】卡包中…来自【A】卡包的」。
+                case HasPackExpr: break;
                 case HasClanExpr hcl:
-                    clan = ClanZh(hcl.Clan.Name) + "职业的";
+                    if (hcl.IsSelfClan) clan = "本职业的";
+                    else if (hcl.Clans != null && hcl.Clans.Count > 0)
+                        clan = string.Join("或", hcl.Clans.Select(x => ClanZh(x.Name))) + "职业的";
+                    else clan = ClanZh(hcl.Clan.Name) + "职业的";
                     break;
             }
         }

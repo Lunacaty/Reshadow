@@ -157,6 +157,11 @@ public enum CardSourceKind
 /// <summary>凭空生成（召唤衍生物 / 加手牌 / 复制体）。</summary>
 public sealed class SpawnCardNode : EffectNode
 {
+    /// <summary>
+    /// PoolQuery + Choose 时：从池中抽样展示给玩家的候选数 X（1~5，默认 3）。
+    /// 玩家实际选取的张数 Y 由 Count 表达。
+    /// </summary>
+    public int OfferCount { get; init; } = 3;
     public CardSourceKind SourceKind { get; init; } = CardSourceKind.CardId;
     public int CardId { get; init; }
     public string CardName { get; init; } = "";

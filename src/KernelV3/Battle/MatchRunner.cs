@@ -87,8 +87,8 @@ public sealed class MatchRunner
         // 内置衍生卡必须先就位，否则效果召唤 Fairy / 神器会造出 Def == null 的空壳。
         _state.RegisterBuiltinTokens();
 
-        CreateLeader(0, prof0.LeaderInitialLife, prof0.LeaderMaxLife);
-        CreateLeader(1, prof1.LeaderInitialLife, prof1.LeaderMaxLife);
+        CreateLeader(0, prof0.LeaderInitialLife, prof0.LeaderMaxLife, deck0.LeaderClan);
+        CreateLeader(1, prof1.LeaderInitialLife, prof1.LeaderMaxLife, deck1.LeaderClan);
 
         InitCountersWithBonus(0, prof0, _schema);
         InitCountersWithBonus(1, prof1, _schema);
@@ -165,6 +165,11 @@ public sealed class MatchRunner
         }
 
         // 本卡池的具名牌组表必须挂上，否则「替换为启示录牌组」会找不到定义。
+        // 外部可能用裸 new BattleState() 建 runner —— 这里补挂卡池视图与卡片，
+        // 否则发现类效果会因为 state.Pool == null 而恒为空。
+        _state.Pool ??= view;
+        foreach (var c in pool.AllCards.Values) _state.RegisterCard(c);
+
         CardVm.DeckDefs = pool.DeckDefs;
         // 转发给 StartWithProfiles：两个入口共用同一条开局路径才不会漂移。
         StartWithProfiles(firstPlayer, deck0, prof0, deck1, prof1);
@@ -215,7 +220,7 @@ public sealed class MatchRunner
     private void CreateLeader(int playerId, int life) => CreateLeader(playerId, life, life);
 
     /// <summary>建主战者：初始生命与生命上限分开指定（构筑卡可以只加其一）。</summary>
-    private void CreateLeader(int playerId, int life, int maxLife)
+    private void CreateLeader(int playerId, int life, int maxLife, string leaderClan = null)
     {
         int cardId = LeaderCardIdBase + playerId;
         if (_state.CardDefOf(cardId) == null)
@@ -228,6 +233,10 @@ public sealed class MatchRunner
                 BaseLife = life,
                 BaseAttack = 0,
                 BaseCost = 0,
+                // 主战者的职业要写进 Def：『发现本职业卡牌』(clan: self)
+                // 是靠读我方主战者的 Clan 来判定的。
+                Clan = string.IsNullOrEmpty(leaderClan)
+                    ? SymbolId<ClanTag>.Invalid : _schema.Clan(leaderClan),
             });
         }
         var e = _state.CreateEntity(cardId, ZoneRef.Leader, playerId);
@@ -424,7 +433,7 @@ public sealed class MatchRunner
     /// <summary>以卡面声明的启动费启动护符。</summary>
     public bool EngageAmulet(RuntimeEntity a)
     {
-        if (IsWaitingForInput) return false;
+        if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
         bool ok = _turns.EngageAmulet(_state.ActivePlayer, a, _vm);
         DrainVm();
         return ok;

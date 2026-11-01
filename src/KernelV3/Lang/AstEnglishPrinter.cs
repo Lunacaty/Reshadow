@@ -371,7 +371,11 @@ public static class AstEnglishPrinter
             HasKeywordExpr hk => "has " + hk.Keyword.Name,
             HasTraitExpr ht => "has trait " + ht.Trait.Name,
             HasPackExpr hp => "in pack " + hp.PackId,
-            HasClanExpr hc => "has clan " + hc.Clan.Name,
+            HasClanExpr hc => hc.IsSelfClan
+                ? "has clan $self"
+                : (hc.Clans != null && hc.Clans.Count > 0
+                    ? "has clan " + string.Join("|", hc.Clans.Select(x => x.Name))
+                    : "has clan " + hc.Clan.Name),
             NotSameEntityExpr => "other than itself",
             IsPreviousExpr ip => "is selected",
             AndExpr a => "(" + string.Join(" and ", a.Items.Select(PrintBool)) + ")",

@@ -485,7 +485,12 @@ public sealed class DiyFormCompiler
                     };
                     break;
                 case HasTraitExpr ht: f.Trait = ht.Trait.Name; break;
-                case HasClanExpr hcl: f.Clan = hcl.Clan.Name; break;
+                case HasClanExpr hcl:
+                    f.Clan = hcl.IsSelfClan ? "self"
+                        : (hcl.Clans != null && hcl.Clans.Count > 0
+                            ? string.Join("|", hcl.Clans.Select(x => x.Name))
+                            : hcl.Clan.Name);
+                    break;
                 case HasPackExpr hpk: f.PackId = hpk.PackId; break;
                 case CompareExpr cmpGe when cmpGe.Op == CompareOp.Ge
                                            && cmpGe.Left?.Op == NumOp.Property
@@ -548,7 +553,22 @@ public sealed class DiyFormCompiler
             });
         }
         if (!string.IsNullOrEmpty(f.Clan) && !string.Equals(f.Clan, "Any", StringComparison.OrdinalIgnoreCase))
-            items.Add(new HasClanExpr { Clan = _schema.Clan(f.Clan), Of = TargetSpec.Item });
+        {
+            if (string.Equals(f.Clan, "self", StringComparison.OrdinalIgnoreCase))
+                items.Add(new HasClanExpr { IsSelfClan = true, Of = TargetSpec.Item });
+            else
+            {
+                var names = f.Clan.Split('|', StringSplitOptions.RemoveEmptyEntries);
+                if (names.Length > 1)
+                    items.Add(new HasClanExpr
+                    {
+                        Clans = names.Select(x => _schema.Clan(x.Trim())).ToList(),
+                        Of = TargetSpec.Item,
+                    });
+                else
+                    items.Add(new HasClanExpr { Clan = _schema.Clan(f.Clan), Of = TargetSpec.Item });
+            }
+        }
         if (!string.IsNullOrEmpty(f.PackId))
             items.Add(new HasPackExpr { PackId = f.PackId, Of = TargetSpec.Item });
         return items.Count == 0 ? BoolExpr.True
@@ -679,7 +699,9 @@ public sealed class DiyFormCompiler
                     CopyFrom = spec,
                     ToZone = ZoneRef.Hand,
                     ToOwner = ZoneScope.Self,
-                    Count = NumExpr.Const(1),
+                    // Number = 选取数 Y，Number2 = 展示数 X。
+                    Count = NumExpr.Const(row.Number > 0 ? row.Number : 1),
+                    OfferCount = row.Number2 > 0 ? Math.Clamp(row.Number2, 1, 5) : 3,
                 };
             }
 

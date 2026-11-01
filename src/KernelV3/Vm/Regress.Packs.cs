@@ -58,6 +58,8 @@ public static class RegressPacks
         Check("POOL-P 发现的多维组合筛选（卡包+职业+区间+兵种）", GateDiscoverMultiFilter);
         Check("POOL-Q 无头双 Bot 完整对局模拟", GateHeadlessFullMatch);
         Check("POOL-R 多维发现的四端同构与中文渲染", GateMultiDimFourEnds);
+        Check("POOL-S 5选2 自定义发现", GateDiscoverFivePickTwo);
+        Check("POOL-T 本职业 self 与多职业区间发现", GateDiscoverClanRanges);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -1565,5 +1567,185 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
         else if (e is OrExpr o) foreach (var x in o.Items) n += WalkCount(x, pred);
         else if (e is NotExpr nt) n += WalkCount(nt.Inner, pred);
         return n;
+    }
+
+    // ---------------------------------------------------------------- 门禁 S
+
+    /// <summary>
+    /// 「展示 X 张选 Y 张」：offer=5 / pick=2。
+    ///
+    /// 两条都要测：
+    ///   · 挂起时 Candidates.Count == 5 且 Min/MaxSelect == 2
+    ///   · 提交 2 个卡号后手牌**精确**增加这 2 张
+    /// 只验第一条会漏掉 SubmitChoice 写死 selectedEntityIds[0] 的旧 Bug。
+    /// </summary>
+    private static (bool, string) GateDiscoverFivePickTwo()
+    {
+        var entries = new List<CardRawEntry>();
+        for (int i = 0; i < 8; i++)
+            entries.Add(new CardRawEntry
+            {
+                CardId = 792100 + i, NameEng = "Pool" + i, Kind = CardKind.Follower,
+                Cost = 3, Attack = 1, Life = 1,
+            });
+
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["five"] = new CardPackDef { PackId = "five", NativePoolId = "f5", Cards = entries },
+        };
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "f5", EnabledPackIds = new List<string> { "five" },
+        }, packs);
+        if (!built.Ok) return (false, "建池失败");
+
+        var st = built.Pool.CreateBattleState(seed: 97);
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 0; st.TurnNumber = 3;
+
+        var node = new SpawnCardNode
+        {
+            SourceKind = CardSourceKind.PoolQuery,
+            CopyFrom = new TargetSpec { Zone = ZoneRef.CardPool, Mode = SelectMode.Choose },
+            ToZone = ZoneRef.Hand, ToOwner = ZoneScope.Self,
+            Count = NumExpr.Const(2),
+            OfferCount = 5,
+        };
+        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+        st.RegisterCard(new CardDef { CardId = 792100, Name = "Pool0", Kind = CardKind.Follower,
+            BaseCost = 3, BaseAttack = 1, BaseLife = 1, PackId = "five" });
+        var src = st.SpawnCard(792100, ZoneRef.Hand, 0);
+        var sco = new VmScope { Owner = ZoneScope.Self, Controller = 0, Source = EntityRef.From(src) };
+
+        int handBefore = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+        vm.PushBody(new List<EffectNode> { node }, sco);
+        vm.StepUntilBlocked();
+
+        if (vm.Pending == null) return (false, "未挂起");
+        int offerN = vm.Pending.Candidates.Count;
+        bool offerOk = offerN == 5;
+        bool selectOk = vm.Pending.MinSelect == 2 && vm.Pending.MaxSelect == 2;
+
+        var picks = vm.Pending.Candidates.Take(2).ToList();
+        vm.SubmitChoice(vm.Pending.ChoiceId, picks);
+        vm.StepUntilBlocked();
+
+        var hand = st.EnumerateZone(ZoneRef.Hand, 0).Select(e => e.Def?.CardId ?? 0).ToList();
+        int got = picks.Count(id => hand.Contains(id));
+        bool allGained = got == 2;
+
+        bool ok = offerOk && selectOk && allGained;
+        return (ok, "候选=" + offerN + " 需选2=" + selectOk
+                    + " 全部入手=" + allGained + "(" + got + "/2)");
+    }
+
+    // ---------------------------------------------------------------- 门禁 T
+
+    /// <summary>
+    /// 本职业（clan: self）与多职业区间（clan: A|B）。
+    /// Neutral 卡绝不能混进「本职业」结果 —— 这是最容易写错的边界。
+    /// </summary>
+    private static (bool, string) GateDiscoverClanRanges()
+    {
+        var entries = new List<CardRawEntry>();
+        // 3 张 Swordcraft
+        for (int i = 0; i < 3; i++)
+            entries.Add(new CardRawEntry { CardId = 793100 + i, NameEng = "Sword" + i,
+                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "Swordcraft" });
+        // 3 张 Runecraft
+        for (int i = 0; i < 3; i++)
+            entries.Add(new CardRawEntry { CardId = 793200 + i, NameEng = "Rune" + i,
+                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "Runecraft" });
+        // 3 张 Neutral（干扰项）
+        for (int i = 0; i < 3; i++)
+            entries.Add(new CardRawEntry { CardId = 793300 + i, NameEng = "Neutral" + i,
+                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "Neutral" });
+
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["cl"] = new CardPackDef
+            {
+                PackId = "cl", NativePoolId = "cp",
+                Clans = new List<SymbolRawEntry>
+                {
+                    new SymbolRawEntry { Name = "Swordcraft" },
+                    new SymbolRawEntry { Name = "Runecraft" },
+                    new SymbolRawEntry { Name = "Neutral" },
+                },
+                Cards = entries,
+            },
+        };
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "cp", EnabledPackIds = new List<string> { "cl" },
+        }, packs);
+        if (!built.Ok) return (false, "建池失败");
+
+        var st = built.Pool.CreateBattleState(seed: 98);
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 0; st.TurnNumber = 3;
+
+        // 把玩家 0 主战者的职业设为 Swordcraft
+        var sword = st.Schema.Clan("Swordcraft");
+        l0.Def = new CardDef
+        {
+            CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20,
+            Clan = sword,
+        };
+
+        bool DiscoverAll(Func<BoolExpr> mkWhere, Func<int, bool> accept, out string note)
+        {
+            var node = new SpawnCardNode
+            {
+                SourceKind = CardSourceKind.PoolQuery,
+                CopyFrom = new TargetSpec
+                {
+                    Zone = ZoneRef.CardPool, Mode = SelectMode.Choose, Where = mkWhere(),
+                },
+                ToZone = ZoneRef.Hand, ToOwner = ZoneScope.Self,
+                Count = NumExpr.Const(1), OfferCount = 3,
+            };
+            var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+            var sco = new VmScope { Owner = ZoneScope.Self, Controller = 0 };
+            vm.PushBody(new List<EffectNode> { node }, sco);
+            vm.StepUntilBlocked();
+            if (vm.Pending == null) { note = "未挂起"; return false; }
+            var cands = vm.Pending.Candidates;
+            note = string.Join(",", cands);
+            return cands.Count > 0 && cands.All(accept);
+        }
+
+        // ① clan: self → 只出 Swordcraft
+        bool selfOk = DiscoverAll(
+            () => new AndExpr(new List<BoolExpr>
+            {
+                new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item },
+                new HasClanExpr { IsSelfClan = true, Of = TargetSpec.Item },
+            }),
+            id => id >= 793100 && id < 793103, out var selfNote);
+
+        // ② clan: Swordcraft|Runecraft → 两个都出，Neutral 不许混入
+        bool rangeOk = DiscoverAll(
+            () => new AndExpr(new List<BoolExpr>
+            {
+                new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item },
+                new HasClanExpr
+                {
+                    Clans = new List<SymbolId<ClanTag>>
+                    {
+                        st.Schema.Clan("Swordcraft"), st.Schema.Clan("Runecraft"),
+                    },
+                    Of = TargetSpec.Item,
+                },
+            }),
+            id => (id >= 793100 && id < 793103) || (id >= 793200 && id < 793203), out var rangeNote);
+
+        bool ok = selfOk && rangeOk;
+        return (ok, "本职业=" + selfOk + "[" + selfNote + "]"
+                    + " 多职业区间=" + rangeOk + "[" + rangeNote + "]");
     }
 }

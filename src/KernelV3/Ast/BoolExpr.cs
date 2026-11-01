@@ -92,6 +92,16 @@ public sealed class HasTraitExpr : BoolExpr
 public sealed class HasClanExpr : BoolExpr
 {
     public Core.SymbolId<Core.ClanTag> Clan { get; init; }
+
+    /// <summary>多职业区间（如同时允许皇家或巫师）。为空时只看 Clan。</summary>
+    public IReadOnlyList<Core.SymbolId<Core.ClanTag>> Clans { get; init; }
+
+    /// <summary>
+    /// true = 动态匹配**我方主战者**的职业（「本职业」）。
+    /// 主战者没设职业时回退到来源卡的职业。
+    /// </summary>
+    public bool IsSelfClan { get; init; }
+
     public TargetSpec? Of { get; init; }
 }
 

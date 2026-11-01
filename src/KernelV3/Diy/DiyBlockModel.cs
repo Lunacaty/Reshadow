@@ -195,6 +195,10 @@ public static class DiyBlockModel
         ["bool_not"] = BlockShape.Hex,
         ["bool_has_kw"] = BlockShape.Hex,
         ["bool_has_trait"] = BlockShape.Hex,
+        // 不登记的话 IsKnown 返回 false，形状退化成 Stack、UI 认不出，
+        // 而编译/反编译逻辑其实都在 —— 表现为「积木面板里放不出来」。
+        ["bool_has_pack"] = BlockShape.Hex,
+        ["bool_has_clan"] = BlockShape.Hex,
         ["bool_has_state"] = BlockShape.Hex,
         ["bool_exists"] = BlockShape.Hex,
         ["bool_true"] = BlockShape.Hex,
@@ -833,6 +837,7 @@ public sealed class DiyBlockCompiler
                     },
                     ToOwner = ZoneScope.Self,
                     Count = NumExpr.Const(b.IntA > 0 ? b.IntA : 1),
+                    OfferCount = b.IntB > 0 ? b.IntB : 3,
                 };
             }
 
@@ -1078,11 +1083,25 @@ public sealed class DiyBlockCompiler
                     Of = CompileTarget(b.Target) ?? TargetSpec.Item,
                 };
             case "bool_has_clan":
+            {
+                var txt = b.Text ?? "";
+                if (string.Equals(txt, "self", StringComparison.OrdinalIgnoreCase))
+                    return new HasClanExpr { IsSelfClan = true, Of = CompileTarget(b.Target) ?? TargetSpec.Item };
+
+                var names = txt.Split('|', StringSplitOptions.RemoveEmptyEntries);
+                if (names.Length > 1)
+                    return new HasClanExpr
+                    {
+                        Clans = names.Select(x => _schema.Clan(x.Trim())).ToList(),
+                        Of = CompileTarget(b.Target) ?? TargetSpec.Item,
+                    };
+
                 return new HasClanExpr
                 {
-                    Clan = _schema.Clan(b.Text ?? ""),
+                    Clan = _schema.Clan(txt),
                     Of = CompileTarget(b.Target) ?? TargetSpec.Item,
                 };
+            }
             case "bool_has_state":
                 return new HasStateExpr
                 {
@@ -1446,6 +1465,7 @@ public sealed class DiyBlockDecompiler
                         Opcode = "act_discover",
                         Target = Target(sp.CopyFrom),
                         IntA = sp.Count != null && sp.Count.Op == NumOp.Const ? sp.Count.Value : 1,
+                    IntB = sp.OfferCount,
                         EnumA = sp.ToZone switch
                         {
                             ZoneRef.Board => "board",
@@ -1781,7 +1801,13 @@ public sealed class DiyBlockDecompiler
             case HasPackExpr hp:
                 return new Block { Opcode = "bool_has_pack", Text = hp.PackId, Target = Target(hp.Of) };
             case HasClanExpr hcl:
-                return new Block { Opcode = "bool_has_clan", Text = hcl.Clan.Name, Target = Target(hcl.Of) };
+            {
+                string txt = hcl.IsSelfClan ? "self"
+                    : (hcl.Clans != null && hcl.Clans.Count > 0
+                        ? string.Join("|", hcl.Clans.Select(x => x.Name))
+                        : hcl.Clan.Name);
+                return new Block { Opcode = "bool_has_clan", Text = txt, Target = Target(hcl.Of) };
+            }
             case HasStateExpr hs:
                 // Of 必须存下来：它区分「本卡是否已进化」与「被筛的那张是否已进化」。
                 return new Block { Opcode = "bool_has_state", EnumA = hs.State.ToString(), Target = Target(hs.Of) };

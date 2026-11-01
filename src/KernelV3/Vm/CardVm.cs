@@ -369,13 +369,18 @@ public sealed partial class CardVm
                 if (int.TryParse(parts[2], out var o)) owner = o;
             }
 
-            var made = _world.SpawnCard(chosenId, zone, owner);
-            var madeRefs = made != null
-                ? new List<EntityRef> { EntityRef.From(made) }
-                : new List<EntityRef>();
+            // 必须遍历**全部**选中的卡：X 选 Y 时 Y 可能 > 1，
+            // 早先写死 selectedEntityIds[0]，第二个选择被整个丢掉。
+            var madeRefs = new List<EntityRef>();
+            foreach (var cid in selectedEntityIds ?? Array.Empty<int>())
+            {
+                var made = _world.SpawnCard(cid, zone, owner);
+                if (made == null) continue;
+                madeRefs.Add(EntityRef.From(made));
+                frame.Scope.LastSpawnedCardId = cid;
+            }
             frame.Scope.BindRefs(Pending.Slot, madeRefs);
             frame.Scope.Chosen = madeRefs.Count > 0 ? madeRefs[0] : null;
-            if (made != null) frame.Scope.LastSpawnedCardId = chosenId;
 
             // 卡已经在这里造好了，不需要重跑 DoSpawn（重跑会再造一张）。
             // 必须显式前进指令指针，与 SelectMode 分支的步进契约一致：

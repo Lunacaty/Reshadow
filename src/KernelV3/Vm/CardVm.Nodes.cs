@@ -674,8 +674,19 @@ public sealed partial class CardVm
 
     private bool DoSpawn(SpawnCardNode n, VmScope scope)
     {
-        int count = _eval.EvalNum(n.Count, scope);
+        int count = Math.Max(1, _eval.EvalNum(n.Count, scope));
         var created = new List<RuntimeEntity>();
+
+        // 卡池检索 / 发现必须在循环外一次性处理：
+        // 放进 for 里会变成「先挂起选 1 张」，Y>1 时第二张永远轮不到。
+        if (n.SourceKind == CardSourceKind.PoolQuery)
+        {
+            SpawnFromPool(n, scope, count, created);
+            if (Pending != null) return true;      // 已挂起等玩家从 X 张里选 Y 张
+            scope.Bind(n.OutSlot, created);
+            return false;
+        }
+
         for (int i = 0; i < count; i++)
         {
             RuntimeEntity e = null;
@@ -697,23 +708,6 @@ public sealed partial class CardVm
                 int prevId = scope.LastSpawnedCardId;
                 if (prevId <= 0) break;
                 e = _world.SpawnCard(prevId, n.ToZone, scope.ResolvePlayer(n.ToOwner));
-            }
-            else if (n.SourceKind == CardSourceKind.PoolQuery)
-            {
-                // 从外部卡池检索：CopyFrom.Zone 决定查哪张表。
-                //   CardPool   → 当前对局所属卡池（标准发现）
-                //   GlobalPool → GlobalCatalog 全量已安装卡包（混沌发现）
-                e = SpawnFromPool(n, scope, created);
-                // 挂起时必须立刻返回 true ——
-                // 返回 false 会让 StepUntilBlocked 执行 frame.Ip++，
-                // 玩家还在选项里，指令指针已经走到了下一条（甚至把能力跑完）。
-                // 同时绝不能执行下面的 scope.Bind(n.OutSlot, created)：
-                // 那会用空的 created 覆盖掉本来要接住选择的槽位。
-                if (Pending != null) return true;
-                // 不能 break：Count > 1 的随机生成要走完整个循环。
-                // 随机模式下 SpawnFromPool 只 return made，不自己 Add ——
-                // 统一由下面那句 if (e != null) created.Add(e); 收口。
-
             }
             else if (n.IsCrest)
             {
@@ -1051,16 +1045,17 @@ public sealed partial class CardVm
     /// 用一个临时探针实体喂给 EvalBool，于是「发现一张费用 ≤3 的机械随从」
     /// 这类条件不需要任何新语法、任何新求值逻辑。
     /// </summary>
-    private RuntimeEntity SpawnFromPool(SpawnCardNode n, VmScope scope, List<RuntimeEntity> created)
+    private void SpawnFromPool(SpawnCardNode n, VmScope scope, int pickCount, List<RuntimeEntity> created)
     {
-        bool chaos = n.CopyFrom != null && n.CopyFrom.Zone == ZoneRef.GlobalPool;
+        // 若 Where 里显式指定了 HasPackExpr（具体卡包范围），自动从全量总表取底座 ——
+        // 这样哪怕指定的卡包没勾进当前卡池，只要装在硬盘上就能发现出来。
+        bool chaos = (n.CopyFrom != null && n.CopyFrom.Zone == ZoneRef.GlobalPool)
+                     || ContainsPackFilter(n.CopyFrom?.Where);
         var owner = scope.ResolvePlayer(n.ToOwner);
 
         var candidates = new List<CardDef>();
         if (_world is Battle.BattleState bst)
         {
-            // includeTokens: false —— 标准/混沌发现都不该抽出《妖精》《魔力残渣》
-            // 这类不可收藏的衍生卡，玩家在「三选一」里看到它们只会困惑。
             foreach (var def in bst.EnumerateDiscoverPool(chaos, includeTokens: false))
             {
                 if (def == null) continue;
@@ -1069,14 +1064,7 @@ public sealed partial class CardVm
             }
         }
 
-        // ---- 条件过滤 ----
-        //
-        // 三个必须同时成立的点：
-        //   ① 真的按 pass 决定去留（早先写完 pass 却无条件 Add，过滤 100% 失效）
-        //   ② 把候选卡绑到 $item（Where 里的 HasKind / HasTrait / 费用比较
-        //      求值对象都是 $item，不绑就恒假）
-        //   ③ 探针**绝不进世界**（SpawnCard 会把实体永久塞进 _all 并推高
-        //      UnresolvedSpawnCount；全局池里的卡甚至还没注册，直接造出空壳）
+        // 条件过滤：纯内存探针，$item 与 $self 都绑到它身上。
         if (n.CopyFrom?.Where != null
             && !(n.CopyFrom.Where is ConstBoolExpr cbTrue && cbTrue.Value)
             && candidates.Count > 0)
@@ -1086,28 +1074,14 @@ public sealed partial class CardVm
             {
                 var probe = new RuntimeEntity
                 {
-                    EntityId = -1,
-                    EntrySerial = 1,
-                    Def = def,
-                    PlayerId = owner,
+                    EntityId = -1, EntrySerial = 1, Def = def, PlayerId = owner,
                     Zone = ZoneRef.None,
-                    Attack = def.BaseAttack,
-                    Life = def.BaseLife,
-                    MaxLife = def.BaseLife,
+                    Attack = def.BaseAttack, Life = def.BaseLife, MaxLife = def.BaseLife,
                     Cost = def.BaseCost,
                 };
-                foreach (var t in def.Traits ?? Array.Empty<SymbolId<TraitTag>>()) probe.Traits.Add(t);
-
-                // 固有属性（自带关键词 ward/storm 等）也要装上：
-                // 不装的话「发现一张带守护的随从」会永远发现不了 ——
-                // 关键词筛选读的是 Keywords，而它由 MountInnateProperties 挂。
+                foreach (var tr in def.Traits ?? Array.Empty<SymbolId<TraitTag>>()) probe.Traits.Add(tr);
                 if (_world is Battle.BattleState bsMount) bsMount.MountInnateProperties(probe);
 
-                // $item 与 $self 都要绑到探针上：
-                //   HasKindExpr / HasTraitExpr 的默认 Of 是 Self，
-                //   CompareExpr(Property) 的默认对象也是 Self，
-                //   只有少数写法显式用 $item。
-                // 只绑一个的话，另一类条件全部判假 —— 表现为「候选永远为空」。
                 var sub = scope.Derive();
                 var probeRef = new[] { EntityRef.From(probe) };
                 sub.BindRefs(TargetSpec.SlotItem, probeRef);
@@ -1117,37 +1091,55 @@ public sealed partial class CardVm
             candidates = filtered;
         }
 
-        if (candidates.Count == 0) return null;
+        if (candidates.Count == 0) return;
 
         bool chooseMode = n.CopyFrom != null && n.CopyFrom.Mode == SelectMode.Choose;
         if (!chooseMode)
         {
-            var pick = candidates[_world.Rng.Next(candidates.Count)];
-            var made = _world.SpawnCard(pick.CardId, n.ToZone, owner);
-            if (made != null) scope.LastSpawnedCardId = pick.CardId;
-            return made;
+            // 随机生成 Y 张
+            for (int i = 0; i < pickCount; i++)
+            {
+                var pick = candidates[_world.Rng.Next(candidates.Count)];
+                var made = _world.SpawnCard(pick.CardId, n.ToZone, owner);
+                if (made != null)
+                {
+                    scope.LastSpawnedCardId = pick.CardId;
+                    created.Add(made);
+                }
+            }
+            return;
         }
 
-        // 三选一发现：不放回抽样，挂起虚拟机等待玩家点选。
-        int want = Math.Max(1, Math.Min(3, candidates.Count));
-        var shuffled = candidates.OrderBy(_ => _world.Rng.Next()).Take(want).ToList();
+        // 发现模式：不放回抽样 X 张（1~5），玩家从中选 Y 张。
+        int offerX = Math.Clamp(n.OfferCount > 0 ? n.OfferCount : 3, 1, 5);
+        int actualOffer = Math.Min(offerX, candidates.Count);
+        int actualPick = Math.Clamp(pickCount, 1, Math.Max(1, actualOffer));
+
+        var shuffled = candidates.OrderBy(_ => _world.Rng.Next()).Take(actualOffer).ToList();
         var ids = shuffled.Select(c => c.CardId).ToList();
 
         var slot = string.IsNullOrEmpty(n.OutSlot) ? TargetSpec.SlotCreated : n.OutSlot;
-        var pending = new PendingChoice
+        Block(new PendingChoice
         {
             Kind = ChoiceKind.DiscoverCard,
-            // Player 必须填：UI 靠它决定在谁的界面上弹选择框。
             Player = scope.Owner,
             Candidates = ids,
-            MinSelect = 1,
-            MaxSelect = 1,
+            MinSelect = actualPick,
+            MaxSelect = actualPick,
             Slot = slot,
             Prompt = "discover|" + (int)n.ToZone + "|" + owner,
-        };
-        Block(pending);
-        return null;
+        });
     }
+
+    /// <summary>Where 里是否显式指定了卡包范围。</summary>
+    private static bool ContainsPackFilter(BoolExpr e) => e switch
+    {
+        HasPackExpr => true,
+        AndExpr a => a.Items.Any(ContainsPackFilter),
+        OrExpr o => o.Items.Any(ContainsPackFilter),
+        NotExpr nt => ContainsPackFilter(nt.Inner),
+        _ => false,
+    };
 
     /// <summary>给资源计数器挂载能力（faith 等）。</summary>
     private bool DoGrantCounter(GrantCounterAbilityNode n, VmScope scope)
