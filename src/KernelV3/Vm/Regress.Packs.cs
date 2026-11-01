@@ -52,6 +52,7 @@ public static class RegressPacks
         Check("POOL-J 自定义规则接进执行层", GateRuleEnforcement);
         Check("POOL-K local_id 分配与跨包召唤无空壳", GateCardIndexAndCrossPack);
         Check("POOL-L 含 discover+deck_mod 的四端同构往返", GateFourWayDiscover);
+        Check("POOL-M Builder 关键词 + UseExtraPp + Overflow 阈值", GateBuilderKeywordsAndRules);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -1041,4 +1042,81 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
 
     private static string Short(string s)
         => string.IsNullOrEmpty(s) ? "-" : s.Replace("\n", " ").Substring(0, Math.Min(120, s.Length));
+
+    // ---------------------------------------------------------------- 门禁 M
+
+    /// <summary>
+    /// 三件事一起测（对应 97 号文档的三条验收断言中尚未覆盖的两条）：
+    ///   ① CardPoolBuilder.Build 出来的卡，无文本分支也必须带 InnateKeywords
+    ///   ② EnableExtraPpForSecondPlayer=false 时 UseExtraPp 必须返回 false
+    ///   ③ 自定义 OverflowThreshold 必须影响「if you're in overflow」的编译
+    ///
+    /// ② 专治「改了 CanUseExtraPp 忘改紧挨着的 UseExtraPp」——
+    /// 只测 CanUseExtraPp 会漏掉真正扣点的那条路径。
+    /// </summary>
+    private static (bool, string) GateBuilderKeywordsAndRules()
+    {
+        // ---- ① Builder 关键词 ----
+        var root = CardPackLoader.ResolvePacksRoot();
+        if (root == null) return (false, "找不到 data/packs");
+        var packs = CardPackLoader.LoadAll(root).ToDictionary(
+            p => p.PackId, StringComparer.OrdinalIgnoreCase);
+
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "standard",
+            EnabledPackIds = new List<string> { "core-wb", "testset-v2" },
+        }, packs);
+        if (!built.Ok) return (false, "建池失败：" + string.Join("|", built.Errors.Take(2)));
+
+        built.Pool.AllCards.TryGetValue(90031120, out var golem);
+        built.Pool.AllCards.TryGetValue(90004110, out var rider);
+        bool golemWard = golem != null && golem.InnateKeywords.Any(k => k.Name == "ward");
+        bool riderStorm = rider != null && rider.InnateKeywords.Any(k => k.Name == "storm");
+
+        // ---- ② UseExtraPp 必须遵守开关 ----
+        var noExtraRules = new MatchRules { EnableExtraPpForSecondPlayer = false };
+        var st = new BattleState(GameSchema.CreateDefault(), 93, noExtraRules);
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 1; st.TurnNumber = 2;
+        var ppKey = st.Schema.Counter("pp");
+        var maxPpKey = st.Schema.Counter("max_pp");
+        st.WriteCounter(1, ppKey, 4);
+        st.WriteCounter(1, maxPpKey, 4);
+        int ppBefore = st.ReadCounter(1, ppKey);
+
+        var tr = new TurnRunner(st, st.Schema);
+        bool canUse = tr.CanUseExtraPp(1);
+        bool used = tr.UseExtraPp(1);
+        int ppAfter = st.ReadCounter(1, ppKey);
+        bool extraPpBlocked = !canUse && !used && ppAfter == ppBefore;
+
+        // ---- ③ OverflowThreshold 影响编译 ----
+        // 走完整英文编译路径，从产出 AST 里读实际使用的阈值。
+        string OverflowAst(int threshold)
+        {
+            var schema = GameSchema.CreateDefault();
+            schema.Rules = new MatchRules { OverflowThreshold = threshold };
+            var lex = new Lexicon(schema);
+            lex.Build();
+            var comp2 = new EnglishCompiler(lex);
+            var r2 = comp2.Compile("If you're in Overflow, draw a card.",
+                                   null, "Probe", 1);
+            if (r2.Abilities == null || r2.Abilities.Count == 0) return "compile-failed";
+            var cond = r2.Abilities[0].Condition;
+            return AstEnglishPrinter.PrintBool(cond);
+        }
+
+        var printA = OverflowAst(4);
+        var printB = OverflowAst(9);
+        bool thresholdWorks = printA != printB
+                              && printA.Contains("4") && printB.Contains("9");
+
+        bool ok = golemWard && riderStorm && extraPpBlocked && thresholdWorks;
+        return (ok, "守护魔像=" + golemWard + " 寂静骑士=" + riderStorm
+                    + " UseExtraPp被禁=" + extraPpBlocked + "(" + ppBefore + "→" + ppAfter + ")"
+                    + " 阈值生效=" + thresholdWorks + "[" + printA + " vs " + printB + "]");
+    }
 }

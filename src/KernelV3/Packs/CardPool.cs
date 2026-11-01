@@ -305,7 +305,8 @@ public static class CardPoolBuilder
             foreach (var c in pack.Cards)
             {
                 var card = CompileCard(pack, c, schema, comp, res.Errors,
-                                       idOf.TryGetValue(c, out var eid) ? eid : c.CardId);
+                                       idOf.TryGetValue(c, out var eid) ? eid : c.CardId,
+                                       lexicon, glossary, nameOwnerPack, config.Rules);
                 if (card != null)
                 {
                     pool.RegisterCompiledCard(card);
@@ -344,7 +345,10 @@ public static class CardPoolBuilder
 
     private static CardDef CompileCard(
         CardPackDef pack, CardRawEntry c, GameSchema schema,
-        EnglishCompiler comp, List<string> errors, int cardId)
+        EnglishCompiler comp, List<string> errors, int cardId,
+        Lexicon sharedLex = null, Glossary sharedGlossary = null,
+        Dictionary<string, (string packId, int cardId)> sharedNames = null,
+        MatchRules rules = null)
     {
         var traits = new List<SymbolId<TraitTag>>();
         foreach (var t in c.Traits) traits.Add(schema.Trait(t));
@@ -373,7 +377,24 @@ public static class CardPoolBuilder
         // 不分支的话这类卡会无脑丢给 EnglishCompiler，当场编译报错。
         if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
         {
-            var ws = Diy.DiyWorkspace.Create(c.CardId);
+            // 必须**复用当前卡池的 schema 与 lexicon**。
+            // DiyWorkspace.Create 会新造一套 GameSchema —— 脚本里拿到的兵种/计数器
+            // SymbolId.Id 与本卡池对不上，summon("Fairy") 也会因为空 lexicon
+            // 解析成 CardId=0，召唤出空壳。
+            // CompileContext.For 接管一个已存在的 BattleState，它自己的 Schema
+            // 就是唯一真相源 —— 这样脚本里定义的兵种/计数器与卡池共用同一套 SymbolId。
+            var probeState = new Battle.BattleState(schema, 0, rules ?? MatchRules.CreateStandard());
+            probeState.Pool = new CardPool
+            {
+                PoolId = "script", Catalog = new GlobalCatalog(), BaseRules = MatchRules.CreateStandard(),
+            };
+            var ctx = Lang.CompileContext.For(probeState);
+            // 把 Pass 1 已预注册的卡名同步进脚本词法表，
+            // 否则脚本里 summon("Fairy") 会解析成 CardId=0。
+            if (sharedNames != null)
+                foreach (var kv in sharedNames) ctx.Lexicon.AddCard(kv.Key, kv.Value.cardId);
+            ctx.Lexicon.Build();
+            var ws = Diy.DiyWorkspace.For(ctx, sharedGlossary);
             var sc = new Diy.ReshadowScriptCompiler(ws);
             var made = sc.Compile(c.Text);
             if (made.Count == 0)
@@ -383,13 +404,31 @@ public static class CardPoolBuilder
                 return null;
             }
             var d = made[0];
+
+            // 合并而不是 ?? —— d.DeckModifiers 可能是空列表（非 null），
+            // 用 ?? 会把 JSON 上的 c.DeckModifiers 整个丢掉。
+            var mergedMods = (d.DeckModifiers != null && d.DeckModifiers.Count > 0)
+                ? d.DeckModifiers
+                : (c.DeckModifiers ?? new List<DeckBuildModifier>());
+            var mergedKws = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k))
+                .Concat(d.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+                .Distinct().ToList();
+
             return new CardDef
             {
                 CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = d.Kind,
-                BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
-                Abilities = d.Abilities, Traits = traits, Clan = clan,
-                InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k)).ToList(),
-                DeckModifiers = d.DeckModifiers ?? c.DeckModifiers ?? new List<DeckBuildModifier>(),
+                BaseCost = c.Cost > 0 ? c.Cost : d.BaseCost,
+                BaseAttack = c.Attack > 0 ? c.Attack : d.BaseAttack,
+                BaseLife = c.Life > 0 ? c.Life : d.BaseLife,
+                Abilities = d.Abilities,
+                Traits = traits.Count > 0 ? traits : d.Traits,
+                Clan = clan.IsValid ? clan : d.Clan,
+                InnateKeywords = mergedKws,
+                DeckModifiers = mergedMods,
+                // 这几个字段也必须拷：漏了会让「脚本写的纹章/融合/激奏卡」变成白板。
+                HasFuse = d.HasFuse, FuseMaterialFilter = d.FuseMaterialFilter,
+                CrestDef = d.CrestDef, FaithDef = d.FaithDef,
+                AccelerateDef = d.AccelerateDef, CrystallizeDef = d.CrystallizeDef,
                 PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text,
             };
         }
