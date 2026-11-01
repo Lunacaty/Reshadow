@@ -610,6 +610,10 @@ public sealed partial class CardVm
             t.Def = t.OriginalDef;
             t.OriginalDef = null;
         }
+        // 回手洗白时一并清掉离场时的旧定义：
+        // 那张卡已经回到手牌、重新成为「一张普通的手牌」，
+        // 再留着 LastFieldDef 会让它在下次离场时拿旧卡面的能力去响应事件。
+        t.LastFieldDef = null;
 
         var def = t.Def;
         t.Attack = def?.BaseAttack ?? t.Attack;

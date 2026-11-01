@@ -233,8 +233,38 @@ public static partial class Regress
         e.Vm.StepUntilBlocked();
         bool evolve = evo && foe.Life == 3;
 
-        return (played && fanfare && evolve,
-            "入场抽牌=" + fanfare + " 进化打2=" + (foe.Life == 3 || foe.Zone != ZoneRef.Board) + "（敌方 " + foe.Life + "）");
+        // Super-Evolve: 对敌方全体随从打 X（X = 手牌数）。
+        // 超进化会同时触发 Evolve: 与 Super-Evolve: 两段，所以先补一个敌方随从
+        // 好让两段都有落点，再断言「全体」那一段确实生效（两只都掉血）。
+        e.Filler(2951, ZoneRef.Board, 1, life: 9);
+        e.Filler(2952, ZoneRef.Board, 1, life: 9);
+        // Super-Evolve 的 X 是**手牌数**：手牌空了 X=0，打 0 点，「全体伤害」看起来就像没生效。
+        for (int i = 0; i < 3; i++) e.Filler(2960 + i, ZoneRef.Hand);
+        var f1 = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2951);
+        var f2 = e.St.EnumerateZone(ZoneRef.Board, 1).First(x => x.Def.CardId == 2952);
+        // 无手动进化与超进化是**同一回合互斥**的两种操作（CanSuperEvolve 第一行就卡它）：
+        // 同一回合先普通进化再超进化必然拒绝。测超进化前必须把该标志清掉。
+        var c2 = e.Put(81000000, ZoneRef.Board);
+        e.St.Players[0].ManualEvolvedThisTurn = false;
+        e.St.WriteCounter(0, e.St.Schema.Counter("sep"), 2);
+        e.Vm.DropPendingTriggers();
+        bool sep = e.Tr.Evolve(0, c2, true, e.Vm);
+        int guard = 0;
+        while (e.Vm.Pending != null && guard++ < 8)
+        {
+            e.Vm.SubmitChoice(e.Vm.Pending.ChoiceId, new[] { e.Vm.Pending.Candidates.FirstOrDefault() });
+            e.Vm.StepUntilBlocked();
+        }
+        e.Vm.StepUntilBlocked();
+        // 两只都必须掉血才叫「全体」。f1 会被 Evolve 段的落点干扰吗？不会 ——
+        // Evolve 段打的是 foe(2950)，2951/2952 是这一轮才放的新目标。
+        bool superAoE = sep && f1.Life < 9 && f2.Life < 9;
+_ = (sep, superAoE);
+
+        return (played && fanfare && evolve && superAoE,
+            "入场抽牌=" + fanfare + " 进化打2=" + evolve
+            + " 超进化全体=" + superAoE + "（" + f1.Life + "/" + f2.Life + "，期望均 <9）"
+            + " sep=" + sep + " 手牌=" + e.St.EnumerateZone(ZoneRef.Hand, 0).Count());
     }
 
     private static (bool, string) MatrixLens(MatrixEnv e)
@@ -307,16 +337,24 @@ public static partial class Regress
         int cd = c.Counters.TryGetValue(e.St.Schema.Counter("countdown"), out var v) ? v : -1;
         bool asAmulet = played && c.Zone == ZoneRef.Board && c.Def?.Kind == CardKind.Amulet && cd == 3;
 
-        // 吟唱归 0 → 谢幕曲召唤本体，本体入场回 2 血
-        int leader0 = e.St.Players[0].Leader.Life;
+        // 吟唱归 0 → 谢幕曲召唤本体 → 本体入场再回 2 血。
+        // 三段都要断言：只验「召唤出来了」等于漏掉「入场曲是否接上」，
+        // 而那条正是结晶链最容易断在半路的地方。
         e.St.Players[0].Leader.Life = 15;
+        e.St.Players[0].Leader.MaxLife = 20;
+        int leader0 = e.St.Players[0].Leader.Life;
         c.Counters[e.St.Schema.Counter("countdown")] = 1;
         e.Vm.DropPendingTriggers();
         e.Tr.StartTurn(0, e.Vm);
         e.Vm.StepUntilBlocked();
-        var spawned = e.St.EnumerateZone(ZoneRef.Board, 0).FirstOrDefault(x => x.Def?.CardId == 81000004 && x.Def.Kind == CardKind.Follower);
-        return (asAmulet && spawned != null,
-            "结晶为护符=" + asAmulet + "(吟唱" + cd + ") 谢幕曲召唤本体=" + (spawned != null));
+        var spawned = e.St.EnumerateZone(ZoneRef.Board, 0)
+            .FirstOrDefault(x => x.Def?.CardId == 81000004 && x.Def.Kind == CardKind.Follower);
+        int leader1 = e.St.Players[0].Leader.Life;
+        bool healed = leader1 == leader0 + 2;
+        return (asAmulet && spawned != null && healed,
+            "结晶为护符=" + asAmulet + "(吟唱" + cd + ")"
+            + " 谢幕曲召唤本体=" + (spawned != null)
+            + " 本体入场回2血=" + healed + "（主战者 " + leader0 + "->" + leader1 + "）");
     }
 
     private static (bool, string) MatrixShoddy(MatrixEnv e)
