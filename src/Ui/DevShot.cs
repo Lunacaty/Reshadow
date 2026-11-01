@@ -58,37 +58,51 @@ public partial class DevShot : Node
 
     private void OpenDiy()
     {
-        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        var root = FindRoot();
         root?.OpenDiyForShot();
     }
 
     private void OpenPackMgr()
     {
-        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        var root = FindRoot();
         root?.OpenPackMgrForShot();
     }
 
     private void OpenBattle()
     {
-        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        var root = FindRoot();
         root?.OpenBattleForShot(_battleExpanded, _battleBadges, _battleMulligan);
     }
 
     private void OpenWizard()
     {
-        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        var root = FindRoot();
         root?.OpenWizardForShot();
     }
 
     private void OpenHover()
     {
-        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        var root = FindRoot();
         root?.OpenHoverForShot();
+    }
+
+    /// <summary>
+    /// 找 DeckManagementRoot。两种场景结构都要兼容：
+    ///   · Shot.tscn —— 根是 ShotRoot，DeckManagementRoot 是它的子节点；
+    ///   · DeckManagement.tscn —— 根自己就是 DeckManagementRoot（导出后的主场景）。
+    /// 早先只写了第一种，导致打包版带 --shot 参数时截图永远不生成。
+    /// </summary>
+    private Decks.DeckManagementRoot FindRoot()
+    {
+        var p = GetParent();
+        if (p is Decks.DeckManagementRoot direct) return direct;
+        return p?.GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot")
+               ?? GetTree().Root.FindChild("DeckManagementRoot", true, false) as Decks.DeckManagementRoot;
     }
 
     private void OpenBuilder()
     {
-        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        var root = FindRoot();
         root?.OpenFirstDeckForShot();
     }
 

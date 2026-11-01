@@ -222,12 +222,8 @@ public partial class BoardUnitWidget : Control
     {
         var art = new Rect2(8f, 14f, W - 16f, H - 30f);
 
-        string path = $"res://assets/cards/{def.CardId}.png";
-        if (ResourceLoader.Exists(path))
-        {
-            var tex = GD.Load<Texture2D>(path);
-            if (tex != null) { DrawTextureRect(tex, art, false); return; }
-        }
+        var tex = ShadowverseFan.Ui.CardArtLoader.Load(def.CardId);
+        if (tex != null) { DrawTextureRect(tex, art, false); return; }
 
         // 棋子只有 96x124，压得太暗就成了一块黑方块。
         // 用职业色作为主调，再叠一层亮心，让「这是什么职业的随从」一眼可辨。

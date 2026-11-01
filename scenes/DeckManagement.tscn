@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/Ui/Decks/DeckManagementRoot.cs" id="1_root"]
+[ext_resource type="Script" path="res://src/Ui/DevShot.cs" id="2_shot"]
 
 [node name="DeckManagementRoot" type="Control"]
 layout_mode = 3
@@ -10,3 +11,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_root")
+
+[node name="DevShot" type="Node" parent="."]
+script = ExtResource("2_shot")

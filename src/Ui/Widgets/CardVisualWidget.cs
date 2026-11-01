@@ -55,8 +55,9 @@ public partial class CardVisualWidget : Control
 
         foreach (var child in GetChildren()) child.QueueFree();
 
-        var artPath = $"res://assets/cards/{def.CardId}.png";
-        _artTexture = ResourceLoader.Exists(artPath) ? GD.Load<Texture2D>(artPath) : null;
+        // 立绘是热加载内容：从 exe 旁边的 assets/cards/ 读松散 png。
+        // 玩家换一张图、重启即生效，不需要重新导出。
+        _artTexture = CardArtLoader.Load(def.CardId);
 
         MouseEntered += () => { _hovered = true; QueueRedraw(); OnHoverEntered?.Invoke(Card, this); };
         MouseExited  += () => { _hovered = false; QueueRedraw(); OnHoverExited?.Invoke(Card); };

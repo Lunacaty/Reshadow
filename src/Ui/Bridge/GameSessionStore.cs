@@ -27,16 +27,92 @@ public sealed class GameSessionStore
     public List<ConstructedDeck> SavedDecks { get; } = new();
     public ChineseCardPrinter CardPrinter { get; private set; }
 
+    /// <summary>只读内容根（data/packs、data/pools 所在）。</summary>
     public string DataRoot { get; private set; } = "";
+
+    /// <summary>
+    /// 玩家存档根：exe 根目录下的 decks/。
+    ///
+    /// 与 DataRoot 分开是有意的 —— 安装目录可能只读（Program Files），
+    /// 而牌组必须可写。玩家在资源管理器里打开 exe 所在文件夹就能看到自己的牌组。
+    /// </summary>
+    public string DeckRoot { get; private set; } = "";
+
+    /// <summary>
+    /// 推导可写存档目录：优先 exe（可执行文件）所在目录下的 decks/。
+    ///
+    /// 开发期从 .godot/mono/temp/bin/Debug 启动时，会向上找到仓库根，
+    /// 落到 仓库根/decks/，不至于把存档丢进构建输出目录里。
+    /// </summary>
+    private string ResolveWritableDeckRoot()
+    {
+        // 判据只有一个：**这个目录里有 data/ 吗**。
+        //
+        // 不用 Environment.ProcessPath 判断「是不是导出环境」——
+        // 开发期用 dotnet run 时它指向 dotnet.exe，会被误判成非导出，
+        // 于是把存档写进 .et/bin/Debug/net9.0/decks（构建输出目录里）。
+        // 而「有 data/ 的目录」在两种环境下都恰好是正确答案：
+        //   导出后 = exe 所在目录；开发期 = 仓库根。
+        string exeDir = null;
+
+        // 1) 优先：从程序集位置向上找带 data/ 的目录
+        var dir0 = AppContext.BaseDirectory;
+        for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir0); i++)
+        {
+            if (Directory.Exists(Path.Combine(dir0, "data"))) { exeDir = dir0; break; }
+            var parent = Path.GetDirectoryName(dir0);
+            if (parent == dir0) break;
+            dir0 = parent;
+        }
+
+        // 2) 兜底：真实 exe 所在目录
+        if (string.IsNullOrEmpty(exeDir))
+        {
+            try
+            {
+                var procPath = Environment.ProcessPath;
+                if (!string.IsNullOrEmpty(procPath) && File.Exists(procPath))
+                    exeDir = Path.GetDirectoryName(procPath);
+            }
+            catch { }
+        }
+
+        if (string.IsNullOrEmpty(exeDir)) exeDir = Directory.GetCurrentDirectory();
+
+        var decks = Path.Combine(exeDir, "decks");
+        try { Directory.CreateDirectory(decks); }
+        catch
+        {
+            // 实在写不了（只读安装目录）才退到用户目录
+            decks = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Reshadow", "decks");
+            Directory.CreateDirectory(decks);
+        }
+        return decks;
+    }
 
     /// <summary>加载全部内容。已加载过则直接返回（幂等）。</summary>
     public void Initialize()
     {
         if (Catalog != null) return;
 
+        // 先把内容定位结果打出来 —— 打包后加载失败时这是唯一线索。
+        // 用 Console 而不是 GD.Print：Bridge 层必须保持零 Godot 依赖，
+        // 否则无头门禁工程将无法引用它。
+        Console.WriteLine(ShadowverseFan.Ui.ContentPaths.Diagnose());
+
         var packsRoot = CardPackLoader.ResolvePacksRoot()
             ?? throw new DirectoryNotFoundException("找不到 data/packs 目录");
+
+        // DataRoot = 只读内容根（data/packs / data/pools 所在）。
+        // 打包后它是 exe 旁边的 data/ —— 玩家可能把它装在 Program Files，
+        // 那里没有写权限，所以**玩家存档不能写这里**。
         DataRoot = Directory.GetParent(packsRoot)?.FullName ?? packsRoot;
+
+        // DeckRoot = 玩家可写根。固定落在 exe 根目录下的 decks/。
+        // 开发期（从 .godot 目录跑）会推到仓库根的 decks/，同样可用。
+        DeckRoot = ResolveWritableDeckRoot();
 
         // 1. 全量宇宙总表
         Catalog = GlobalCatalog.LoadAll(packsRoot);
@@ -55,8 +131,8 @@ public sealed class GameSessionStore
             if (built.Ok) PoolRuntimes[cfg.PoolId] = built.Pool;
         }
 
-        // 3. 玩家构筑存档
-        var decksDir = Path.Combine(DataRoot, "decks");
+        // 3. 玩家构筑存档（写在 exe 旁的 decks/，不是只读的 data/）
+        var decksDir = DeckRoot;
         Directory.CreateDirectory(decksDir);
         SavedDecks.Clear();
         SavedDecks.AddRange(PoolConfigLoader.LoadAllDecks(decksDir));
@@ -108,7 +184,7 @@ public sealed class GameSessionStore
         if (idx >= 0) SavedDecks[idx] = deck;
         else SavedDecks.Add(deck);
 
-        var decksDir = Path.Combine(DataRoot, "decks");
+        var decksDir = DeckRoot;
         Directory.CreateDirectory(decksDir);
         var path = Path.Combine(decksDir, deck.DeckId + ".deck.json");
 
@@ -154,7 +230,7 @@ public sealed class GameSessionStore
         if (string.IsNullOrEmpty(deckId)) return;
         Initialize();
         SavedDecks.RemoveAll(d => d.DeckId == deckId);
-        var path = Path.Combine(DataRoot, "decks", deckId + ".deck.json");
+        var path = Path.Combine(DeckRoot, deckId + ".deck.json");
         if (File.Exists(path)) File.Delete(path);
     }
 
