@@ -68,7 +68,13 @@ for x in (em.group(1).split(',') if em else []):
         allz.append(name)
 print('  ZoneRef \u5168\u90e8\u533a\u57df: %s' % ', '.join(allz))
 
-exempt = {'None', 'Leader'}
+# 豁免表：这些 ZoneRef 在 PlayerState.Zone() 里没有实体列表，而且**不该有**。
+#   None       —— 占位值，实体不落在任何区域
+#   Leader     —— 主战者单独存字段 Players[i].Leader，不进区域列表
+#   CardPool   —— 外部池：卡池视图里只有 CardDef，没有 RuntimeEntity
+#   GlobalPool —— 外部池：全量宇宙总表同理
+# 每加一条都要写明理由，否则这张表会变成藏污纳垢的地方。
+exempt = {'None', 'Leader', 'CardPool', 'GlobalPool'}
 ok2 = True
 for z in allz:
     if z in exempt:
