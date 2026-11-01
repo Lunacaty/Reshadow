@@ -60,6 +60,7 @@ public static class RegressPacks
         Check("POOL-R 多维发现的四端同构与中文渲染", GateMultiDimFourEnds);
         Check("POOL-S 5选2 自定义发现", GateDiscoverFivePickTwo);
         Check("POOL-T 本职业 self 与多职业区间发现", GateDiscoverClanRanges);
+        Check("POOL-U X选Y 的四端同构与中文渲染", GateOfferPickFourEnds);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -1747,5 +1748,65 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
         bool ok = selfOk && rangeOk;
         return (ok, "本职业=" + selfOk + "[" + selfNote + "]"
                     + " 多职业区间=" + rangeOk + "[" + rangeNote + "]");
+    }
+
+    // ---------------------------------------------------------------- 门禁 U
+
+    /// <summary>
+    /// 自定义 X 选 Y 必须在**四端都同构**，且中文把「4选2」印出来。
+    ///
+    /// 这条一次能抓五类问题（都是实测踩过的）：
+    ///   · CopyFrom.Count 未归一（脚本产 null、表单产 Const(1)）→ 判等失败
+    ///   · AndExpr 的排序键只按类型名 → 两个 CompareExpr 顺序随机
+    ///   · AstEnglishPrinter 不打印 OfferCount → 5选2 与 3选1 看起来一样
+    ///   · 表单 NodeToRow 不回读 X/Y → 经表单往返退化成 3选1
+    ///   · 中文不印（4选2）
+    /// </summary>
+    private static (bool, string) GateOfferPickFourEnds()
+    {
+        var ws = Diy.DiyWorkspace.Create(1);
+        ws.Context.Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier");
+        var comp = new ReshadowScriptCompiler(ws);
+
+        const string src = @"
+card 943001 ""四端选卡"" (Follower, cost: 2, atk: 2, life: 2) {
+    on play {
+        discover(target(ally, global_pool, follower, clan: self, min_cost: 2, max_cost: 4, pack: core-wb|testset-v2), offer: 4, pick: 2, to: hand)
+    }
+}
+";
+        var defs = comp.Compile(src);
+        if (defs.Count == 0) return (false, "脚本编译失败：" + string.Join("|", comp.Errors.Take(2)));
+        var def0 = defs[0];
+
+        // 脚本往返
+        var re = comp.Compile(comp.Print(def0));
+        string dS = "";
+        bool scriptOk = re.Count > 0 && DiyWorkspace.StructurallyEqual(def0, re[0], out dS);
+
+        // 积木往返
+        var blk = new DiyBlockCompiler(ws.Schema, ws.Lexicon)
+            .Compile(new DiyBlockDecompiler(ws.Schema).Decompile(def0));
+        string dB = "";
+        bool blockOk = blk.Ok && DiyWorkspace.StructurallyEqual(def0, blk.Def, out dB);
+
+        // 表单往返
+        var fc = new DiyFormCompiler(ws.Schema, ws.Lexicon);
+        bool conv = fc.TryCardDefToForm(def0, out var form, out _);
+        var back = conv ? fc.FormToCardDef(form) : null;
+        string dF = "";
+        bool formOk = back != null && DiyWorkspace.StructurallyEqual(def0, back, out dF);
+
+        // 英文打印含 offer=4（否则判等看不见差异）
+        bool printOffer = AstEnglishPrinter.PrintCard(def0.Abilities).Contains("offer=4");
+
+        // 中文含（4选2）
+        var cn = ws.Printer.PrintCard(def0);
+        bool cnOffer = cn.Contains("4选2");
+
+        bool ok = scriptOk && blockOk && formOk && printOffer && cnOffer;
+        return (ok, "脚本=" + scriptOk + " 积木=" + blockOk + " 表单=" + formOk
+                    + " 打印offer=" + printOffer + " 中文4选2=" + cnOffer
+                    + (ok ? "" : " | S:" + Short(dS) + " B:" + Short(dB) + " F:" + Short(dF)));
     }
 }

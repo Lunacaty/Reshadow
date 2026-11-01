@@ -397,7 +397,12 @@ public sealed class DiyWorkspace
             kept = kept.Where(x => !(x is ConstBoolExpr c2 && c2.Value)).ToList();
             if (kept.Count == 0) return BoolExpr.True;
             if (kept.Count == 1) return kept[0];
-            kept = kept.OrderBy(x => x.GetType().Name, StringComparer.Ordinal).ToList();
+            // 排序键必须含内容：只按类型名排的话，两个 CompareExpr
+            // （如 Cost>=2 与 Cost<=4）谁先谁后取决于原始顺序 ——
+            // 不同端产出的顺序不同，判等就随机失败。
+            kept = kept.OrderBy(x => x.GetType().Name, StringComparer.Ordinal)
+                       .ThenBy(x => AstEnglishPrinter.PrintBool(x), StringComparer.Ordinal)
+                       .ToList();
             return new AndExpr(kept);
         }
         if (e is CompareExpr cmp)

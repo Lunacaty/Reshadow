@@ -692,6 +692,9 @@ public sealed class DiyFormCompiler
                     Mode = SelectMode.Choose,
                     Owner = ZoneScope.Self,
                     Where = BuildDiscoverWhere(row.Target),
+                    // 与脚本端对齐：发现用 SpawnCardNode.Count 表达选取数，
+                    // CopyFrom.Count 不参与语义，统一留 null 才不会四端判等失败。
+                    Count = null,
                 };
                 return new SpawnCardNode
                 {
@@ -1104,6 +1107,12 @@ public sealed class DiyFormCompiler
                         Kind = chaos ? FormActionKind.ChaosDiscover : FormActionKind.Discover,
                     };
                     if (sp.CopyFrom?.Where != null) dRow.Target = DiscoverWhereToFilter(sp.CopyFrom.Where);
+                    // X/Y 必须回读：只写不回会让「5 选 2」经表单往返后退化成「3 选 1」，
+                    // 而表单界面看上去没有任何异常。
+                    if (sp.Count is NumExpr cnt && cnt.Op == NumOp.Const && cnt.Value > 1)
+                        dRow.Number = cnt.Value;
+                    if (sp.OfferCount > 0 && sp.OfferCount != 3)
+                        dRow.Number2 = sp.OfferCount;
                     return dRow;
                 }
 

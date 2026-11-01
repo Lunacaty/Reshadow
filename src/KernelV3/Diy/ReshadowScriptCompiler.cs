@@ -241,6 +241,25 @@ public sealed class ReshadowScriptCompiler
         }
         p.TryChar(')');
 
+        // Mode 必须是 Choose（发现 = 三选一）。
+        // 留成默认的 All 会让四端判等失败：积木与表单回读时都会写成 Choose，
+        // 而 All 与 Choose 在 TargetSpec 上是两个不同的值。
+        // TargetSpec 是 init-only，只能重建一份。
+        spec = new TargetSpec
+        {
+            SourceKind = spec.SourceKind, Owner = spec.Owner, Zone = spec.Zone,
+            Slot = spec.Slot, CardId = spec.CardId, CardName = spec.CardName,
+            Where = spec.Where, Sort = spec.Sort, SortDescending = spec.SortDescending,
+            TopN = spec.TopN, DistinctByName = spec.DistinctByName,
+            DuplicatesOnly = spec.DuplicatesOnly, History = spec.History,
+            IncludeLeader = spec.IncludeLeader,
+            Mode = SelectMode.Choose,
+            // CopyFrom.Count 必须归一成 null：发现用 SpawnCardNode.Count 表达选取数，
+            // CopyFrom.Count 不参与语义。留着原值会让「打印→重解析」多补一个 Const(1)，
+            // 四端判等于是失败（两者其实完全同义）。
+            Count = null,
+        };
+
         return new SpawnCardNode
         {
             SourceKind = CardSourceKind.PoolQuery,

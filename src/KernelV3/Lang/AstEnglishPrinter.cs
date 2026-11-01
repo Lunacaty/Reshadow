@@ -167,7 +167,10 @@ public static class AstEnglishPrinter
                     CardSourceKind.PoolQuery =>
                         (sp.CopyFrom != null && sp.CopyFrom.Zone == ZoneRef.GlobalPool
                             ? "chaos discover of " : "discover of ")
-                        + PrintTarget(sp.CopyFrom),
+                        + PrintTarget(sp.CopyFrom)
+                        // 非默认的展示数必须打出来，否则四端判等看不见 5 选 2 与 3 选 1 的区别。
+                        + (sp.OfferCount > 0 && sp.OfferCount != 3
+                            ? " offer=" + sp.OfferCount : ""),
                     // exact copy 继承当前攻防/关键词，普通 copy 只取印刷白板 ——
                     // 两者语义天差地别，不打出来会被判成等价。
                     CardSourceKind.CopyOfTarget => (sp.IsExactCopy ? "exact copy of " : "copy of ")
