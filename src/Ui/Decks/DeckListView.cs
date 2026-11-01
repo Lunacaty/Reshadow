@@ -19,6 +19,7 @@ public partial class DeckListView : Control
 {
     public event Action<ConstructedDeck> OnEditDeck;
     public event Action OnCreateDeck;
+    public event Action<ConstructedDeck> OnBattleDeck;
 
     private readonly GameSessionStore _store;
     private string _poolFilter;
@@ -319,6 +320,18 @@ public partial class DeckListView : Control
         bottom.AddChild(status);
 
         bottom.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+
+        // 【⚔ 出战】：带这副牌组直接进战斗桌面。
+        // 只有构筑合法时才点亮 —— 不合法时点进去只会被 MatchRunner 拒绝开局，
+        // 与其弹个错误框，不如直接禁掉。
+        var battleBtn = new Button
+        {
+            Text = "⚔ 出战",
+            Disabled = !ok,
+        };
+        SvWbTheme.StyleButton(battleBtn, isPrimary: true, customAccent: SvWbTheme.AccentGold);
+        battleBtn.Pressed += () => OnBattleDeck?.Invoke(deck);
+        bottom.AddChild(battleBtn);
 
         var editBtn = new Button { Text = "编辑" };
         SvWbTheme.StyleButton(editBtn, isPrimary: true);

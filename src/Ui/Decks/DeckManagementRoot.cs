@@ -66,7 +66,19 @@ public partial class DeckManagementRoot : Control
         var view = new DeckListView(_store);
         view.OnCreateDeck += ShowWizard;
         view.OnEditDeck += d => ShowBuilder(d);
+        view.OnBattleDeck += d => ShowBattle(d);
         Swap(view);
+    }
+
+    private void ShowBattle(ConstructedDeck deck)
+    {
+        if (_store == null) return;
+        var view = new Battle.BattleScreenRoot();
+        view.OnExitToDecks += ShowDeckList;
+        Swap(view);
+
+        // 对手用同一副牌组（本地演示没有联机对手）
+        view.Boot(_store, deck, deck);
     }
 
     private void ShowWizard()
@@ -126,6 +138,20 @@ public partial class DeckManagementRoot : Control
     private void ForceHover()
     {
         if (_current is DeckBuilderView bv) bv.ShowFirstTooltipForShot();
+    }
+
+    /// <summary>开发期入口：直接进战斗桌面（截图用）。</summary>
+    public void OpenBattleForShot(bool expanded)
+    {
+        if (_store == null) return;
+        var deck = _store.SavedDecks.OrderByDescending(d => d.Cards.Count).FirstOrDefault()
+                   ?? _store.CreateDeck("all-clans", "Forestcraft", "截图牌组");
+
+        var view = new Battle.BattleScreenRoot();
+        Swap(view);
+        view.Boot(_store, deck, deck);
+
+        if (expanded) view.SetHandExpanded(true);
     }
 
     private void ShowFatal(string msg)

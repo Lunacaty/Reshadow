@@ -1,0 +1,189 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Godot;
+using ShadowverseFan.KernelV3.Core;
+using ShadowverseFan.KernelV3.Vm;
+using ShadowverseFan.Ui.Bridge;
+using ShadowverseFan.Ui.Theme;
+
+namespace ShadowverseFan.Ui.Battle;
+
+/// <summary>
+/// 战场底层画布：中央暖沙石板竞技场 + 四周暗石外环 +
+/// 双方 5 格纹章圆槽 + 区域计数条 + 出牌投放区高亮 + 攻击瞄准箭头。
+///
+/// 全部用 _Draw 矢量绘制 —— 没有 assets/ 时也能出画面。
+/// </summary>
+public partial class BattlefieldCanvas : Control
+{
+    public BattleSessionController Controller { get; set; }
+
+    public bool IsDraggingPlayCard { get; set; }
+    public bool IsDraggingAttack { get; set; }
+    public Vector2 AttackDragStart { get; set; }
+    public Vector2 AttackDragCurrent { get; set; }
+
+    public event Action<RuntimeEntity> OnCrestClicked;
+
+    // 敌方右上 5 个纹章圆槽（上 3 下 2）
+    public static readonly Vector2[] EnemyCrestCenters =
+    {
+        new(902, 42), new(956, 42), new(1010, 42),
+        new(929, 92), new(983, 92),
+    };
+
+    // 我方左下 5 个纹章圆槽（上 2 下 3）
+    public static readonly Vector2[] AllyCrestCenters =
+    {
+        new(124, 566), new(178, 566),
+        new(97, 618), new(151, 618), new(205, 618),
+    };
+
+    public override void _Ready()
+    {
+        SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        MouseFilter = MouseFilterEnum.Pass;
+    }
+
+    public override void _Draw()
+    {
+        Vector2 sz = Size;
+        if (sz.X <= 0 || sz.Y <= 0) return;
+        var font = ThemeDB.FallbackFont;
+
+        // 1. 外围暗石与林木
+        DrawRect(new Rect2(0, 0, sz.X, sz.Y), new Color("1B2A26"));
+        DrawCircle(new Vector2(sz.X * 0.10f, sz.Y * 0.22f), 300f, new Color("2E4A3A"));
+        DrawCircle(new Vector2(sz.X * 0.92f, sz.Y * 0.78f), 280f, new Color("264034"));
+
+        // 2. 中央暖沙竞技场（外暗内明的对比是这块的灵魂）
+        Vector2 arena = new(595f, 352f);
+        DrawEllipse(arena, 470f, 285f, new Color("6E8560") { A = 0.45f });
+        DrawEllipse(arena, 420f, 250f, new Color("C9AE86"));
+        DrawEllipse(arena, 368f, 208f, new Color("E0CCA6"));
+        DrawLine(new Vector2(240f, 330f), new Vector2(950f, 330f),
+                 new Color(0.48f, 0.39f, 0.28f, 0.30f), 2.0f);
+
+        if (IsDraggingPlayCard)
+        {
+            var dropZone = new Rect2(250f, 175f, 700f, 315f);
+            DrawRect(dropZone, new Color(0.0f, 0.90f, 1.0f, 0.13f));
+            DrawRect(dropZone, SvWbTheme.AccentCyan, false, 2.5f);
+        }
+
+        if (Controller?.State == null) return;
+
+        DrawCrestCluster(1, EnemyCrestCenters, font);
+        DrawCrestCluster(0, AllyCrestCenters, font);
+
+        DrawZoneCounterBar(1, new Rect2(1042f, 18f, 218f, 34f), true, font);
+        DrawZoneCounterBar(0, new Rect2(68f, 666f, 206f, 34f), false, font);
+
+        DrawEnemyHandBacks(Controller.Hand(1).Count, new Vector2(265f, 4f), font);
+
+        // 3. 攻击瞄准箭头（最上层）
+        if (IsDraggingAttack)
+            DrawAttackArrow(AttackDragStart, AttackDragCurrent);
+    }
+
+    private void DrawEllipse(Vector2 c, float rx, float ry, Color col)
+    {
+        const int seg = 56;
+        var pts = new Vector2[seg];
+        for (int i = 0; i < seg; i++)
+        {
+            float a = i * Mathf.Tau / seg;
+            pts[i] = new Vector2(c.X + Mathf.Cos(a) * rx, c.Y + Mathf.Sin(a) * ry);
+        }
+        DrawColoredPolygon(pts, col);
+    }
+
+    private void DrawAttackArrow(Vector2 from, Vector2 to)
+    {
+        if (from.DistanceTo(to) < 8f) return;
+        DrawLine(from, to, new Color("FDE047") { A = 0.85f }, 5f);
+        DrawLine(from, to, new Color(1f, 1f, 1f, 0.55f), 2f);
+
+        Vector2 dir = (to - from).Normalized();
+        Vector2 perp = new(-dir.Y, dir.X);
+        var head = new[]
+        {
+            to,
+            to - dir * 22f + perp * 11f,
+            to - dir * 22f - perp * 11f,
+        };
+        DrawColoredPolygon(head, new Color("FDE047"));
+    }
+
+    private void DrawCrestCluster(int playerId, Vector2[] centers, Font font)
+    {
+        var crests = Controller.Crests(playerId);
+
+        for (int i = 0; i < centers.Length; i++)
+        {
+            Vector2 c = centers[i];
+            DrawCircle(c, 22f, new Color(0.14f, 0.18f, 0.16f, 0.62f));
+            DrawArc(c, 22f, 0, Mathf.Tau, 24, new Color(0.45f, 0.52f, 0.48f, 0.40f), 1.5f);
+
+            if (i >= crests.Count) continue;
+            var ent = crests[i];
+            if (ent == null) continue;
+
+            DrawCircle(c, 21f, new Color("0284C7"));
+            DrawArc(c, 22f, 0, Mathf.Tau, 28, new Color("FDE047"), 2.5f);
+
+            string nm = DeckEditorViewModel.DisplayName(ent.Def);
+            if (nm.Length > 1) nm = nm.Substring(0, 1);
+            Vector2 tw = font.GetStringSize(nm, HorizontalAlignment.Left, -1, 15);
+            DrawString(font, new Vector2(c.X - tw.X * 0.5f, c.Y + 6f),
+                       nm, HorizontalAlignment.Left, -1, 15, Colors.White);
+        }
+    }
+
+    private void DrawZoneCounterBar(int playerId, Rect2 r, bool showHand, Font font)
+    {
+        DrawRect(r, new Color(0.06f, 0.08f, 0.08f, 0.88f));
+        DrawRect(r, new Color(0.40f, 0.44f, 0.40f, 0.65f), false, 1f);
+
+        int deck = Controller.State.EnumerateZone(ZoneRef.Deck, playerId).Count();
+        int grave = Controller.State.EnumerateZone(ZoneRef.Cemetery, playerId).Count();
+        int crest = Controller.Crests(playerId).Count;
+
+        string txt = showHand
+            ? $"\U0001F0CF {Controller.Hand(playerId).Count}   \U0001F4E6 {deck}   \U0001FAA6 {grave}"
+            : $"\u2746 {crest}   \U0001F4E6 {deck}   \U0001FAA6 {grave}";
+
+        DrawString(font, r.Position + new Vector2(10f, 23f), txt,
+                   HorizontalAlignment.Left, -1, 13, new Color("E2E8F0"));
+    }
+
+    private void DrawEnemyHandBacks(int count, Vector2 origin, Font font)
+    {
+        int n = Math.Min(count, 8);
+        for (int i = 0; i < n; i++)
+        {
+            var r = new Rect2(origin.X + i * 28f, origin.Y, 24f, 82f);
+            DrawRect(r, new Color("1E3A8A"));
+            DrawRect(r, new Color("93C5FD") { A = 0.5f }, false, 1f);
+        }
+        if (count > 8)
+            DrawString(font, new Vector2(origin.X + 8 * 28f + 4f, origin.Y + 46f),
+                       "+" + (count - 8), HorizontalAlignment.Left, -1, 12, Colors.White);
+    }
+
+    public override void _GuiInput(InputEvent @event)
+    {
+        if (@event is not InputEventMouseButton mb || !mb.Pressed) return;
+        if (mb.ButtonIndex != MouseButton.Left) return;
+
+        for (int i = 0; i < AllyCrestCenters.Length; i++)
+        {
+            if (mb.Position.DistanceTo(AllyCrestCenters[i]) > 22f) continue;
+            var crests = Controller?.Crests(0);
+            if (crests != null && i < crests.Count) OnCrestClicked?.Invoke(crests[i]);
+            AcceptEvent();
+            return;
+        }
+    }
+}

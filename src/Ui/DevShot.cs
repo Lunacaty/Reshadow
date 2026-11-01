@@ -16,6 +16,8 @@ public partial class DevShot : Node
     private bool _openBuilder;
     private bool _openWizard;
     private bool _openHover;
+    private bool _openBattle;
+    private bool _battleExpanded;
 
     public override void _Ready()
     {
@@ -26,6 +28,8 @@ public partial class DevShot : Node
             if (a == "--builder") _openBuilder = true;
             if (a == "--wizard") _openWizard = true;
             if (a == "--hover") _openHover = true;
+            if (a == "--battle") _openBattle = true;
+            if (a == "--battle-expanded") { _openBattle = true; _battleExpanded = true; }
         }
         if (_frames <= 0) _frames = 30;
         SetProcess(true);
@@ -36,6 +40,14 @@ public partial class DevShot : Node
             CallDeferred(nameof(OpenWizard));
         else if (_openHover)
             CallDeferred(nameof(OpenHover));
+        else if (_openBattle)
+            CallDeferred(nameof(OpenBattle));
+    }
+
+    private void OpenBattle()
+    {
+        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        root?.OpenBattleForShot(_battleExpanded);
     }
 
     private void OpenWizard()
