@@ -296,8 +296,9 @@ public partial class BattleScreenRoot : Control
             _field.IsDraggingPlayCard = false;
             _field.QueueRedraw();
 
-            // 越过手牌区上沿（Y < 500）才算「拖到战场」
-            if (mb.GlobalPosition.Y < 500f)
+            // 判定逻辑在 BattleSessionController.ShouldPlayOnRelease 里，
+            // 这里只负责取坐标 —— 那段逻辑在门禁里被测到。
+            if (BattleSessionController.ShouldPlayOnRelease(mb.GlobalPosition.Y, true))
             {
                 _ctrl.TryPlayCard(card, out _);
                 Rebuild();
@@ -313,6 +314,30 @@ public partial class BattleScreenRoot : Control
     }
 
     // ---------------------------------------------------------------- 截图辅助
+
+    /// <summary>
+    /// 截图辅助：在我方场上摆三张代表不同能力类型的卡，
+    /// 用来目视确认「红书页 / 绿旗 / 空」三态真的画对了。
+    /// </summary>
+    public void SpawnBadgeDemo()
+    {
+        if (_ctrl == null) return;
+        var pool = _ctrl.Store.GetPoolView("all-clans");
+        var cards = pool.EnumerateCollectibleCards().ToList();
+
+        // 按能力类型各挑一张
+        var none = cards.FirstOrDefault(c => UnitAbilityBadgeResolver.Resolve(c) == UnitAbilityBadge.None);
+        var lw = cards.FirstOrDefault(c => UnitAbilityBadgeResolver.Resolve(c) == UnitAbilityBadge.LastWords);
+        var trg = cards.FirstOrDefault(c => UnitAbilityBadgeResolver.Resolve(c) == UnitAbilityBadge.Triggered);
+
+        foreach (var def in new[] { lw, trg, none })
+        {
+            if (def == null) continue;
+            var e = _ctrl.State.SpawnCard(def.CardId, ZoneRef.Board, 0);
+            if (e != null) e.EnteredTurn = _ctrl.State.TurnNumber - 1;
+        }
+        Rebuild();
+    }
 
     public void SetHandExpanded(bool v) { _handExpanded = v; RebuildHand(); }
     public BattleSessionController Controller => _ctrl;

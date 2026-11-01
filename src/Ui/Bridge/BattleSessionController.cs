@@ -239,6 +239,44 @@ public sealed class BattleSessionController
 
     public bool TryUseExtraPp() => Runner.UseExtraPp();
 
+    // ---------------------------------------------------------------- 拖拽判定
+
+    /// <summary>手牌区上沿：松手位置高于这条线才算「拖到战场」。</summary>
+    public const float HandZoneTopY = 500f;
+
+    /// <summary>
+    /// 拖拽松手时是否应当打出这张牌。
+    ///
+    /// 抽成纯函数是为了可测：真实判定发生在 Godot 的 _Input 里，
+    /// 而事件没法在无头工程里模拟 —— 但「松手位置 + 卡是否可打」这段
+    /// 逻辑是可以完全确定的，把它留在这里就能被门禁覆盖。
+    /// </summary>
+    public static bool ShouldPlayOnRelease(float releaseGlobalY, bool isDraggingCard)
+        => isDraggingCard && releaseGlobalY < HandZoneTopY;
+
+    /// <summary>
+    /// 攻击松手时该打谁：先判主战者，再判随从。
+    /// 命中框以矩形描述，调用方传入实际屏幕矩形。
+    /// </summary>
+    public RuntimeEntity ResolveAttackTarget(
+        RuntimeEntity attacker,
+        (Rect2Like rect, RuntimeEntity entity)[] candidates,
+        float releaseX, float releaseY)
+    {
+        if (attacker == null) return null;
+        var legal = LegalAttackTargets(attacker);
+
+        foreach (var (rect, entity) in candidates)
+        {
+            if (entity == null) continue;
+            if (!legal.Contains(entity.EntityId)) continue;
+            if (releaseX >= rect.X && releaseX <= rect.X + rect.W
+                && releaseY >= rect.Y && releaseY <= rect.Y + rect.H)
+                return entity;
+        }
+        return null;
+    }
+
     // ---------------------------------------------------------------- 挂起选择
 
     public bool HasPendingChoice => Runner.IsWaitingForInput;
@@ -287,4 +325,11 @@ public static class UnitAbilityBadgeResolver
     /// <summary>该能力是否会在触发时发出一圈光效（时机能力）。</summary>
     public static bool FlashesOnTrigger(UnitAbilityBadge badge)
         => badge == UnitAbilityBadge.Triggered;
+}
+
+/// <summary>与 Godot.Rect2 字段兼容的最小矩形（避免 Bridge 层引用 Godot）。</summary>
+public readonly struct Rect2Like
+{
+    public readonly float X, Y, W, H;
+    public Rect2Like(float x, float y, float w, float h) { X = x; Y = y; W = w; H = h; }
 }

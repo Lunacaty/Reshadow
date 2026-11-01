@@ -141,7 +141,7 @@ public partial class DeckManagementRoot : Control
     }
 
     /// <summary>开发期入口：直接进战斗桌面（截图用）。</summary>
-    public void OpenBattleForShot(bool expanded)
+    public void OpenBattleForShot(bool expanded, bool badges = false)
     {
         if (_store == null) return;
         var deck = _store.SavedDecks.OrderByDescending(d => d.Cards.Count).FirstOrDefault()
@@ -152,6 +152,7 @@ public partial class DeckManagementRoot : Control
         view.Boot(_store, deck, deck);
 
         if (expanded) view.SetHandExpanded(true);
+        if (badges) view.SpawnBadgeDemo();
     }
 
     private void ShowFatal(string msg)

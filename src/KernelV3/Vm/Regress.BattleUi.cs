@@ -41,6 +41,8 @@ public static class RegressBattleUi
         Check("BUI-1 战斗会话可开局且状态可读", CaseBoot);
         Check("BUI-2 能力标记三态（红书页/绿旗/空）", CaseAbilityBadge);
         Check("BUI-3 结算与回合推进不腐坏", CaseAdvance);
+        Check("BUI-4 拖拽出牌判定（Y<500）", CaseDragPlayRelease);
+        Check("BUI-5 拖拽攻击命中判定", CaseDragAttackHit);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -176,4 +178,111 @@ public static class RegressBattleUi
         return (ok, "推进=" + turns + " 回合  主战者存活=" + alive
                     + "  牌库余=" + deckLeft + "  终局=" + ctrl.IsFinished);
     }
+
+    // ---------------------------------------------------------------- BUI-4
+
+    /// <summary>
+    /// 拖拽出牌的松手判定。
+    ///
+    /// 真实判定发生在 Godot 的 _Input 里，事件无法在无头工程模拟；
+    /// 但「松手位置在不在战场区」这段逻辑是纯函数，
+    /// 必须在这里钉死 —— 否则「拖到一半松手也出牌」这类错无人能发现。
+    /// </summary>
+    private static (bool, string) CaseDragPlayRelease()
+    {
+        bool above = BattleSessionController.ShouldPlayOnRelease(300f, true);
+        bool below = BattleSessionController.ShouldPlayOnRelease(650f, true);
+        bool noDrag = BattleSessionController.ShouldPlayOnRelease(300f, false);
+        bool edge = BattleSessionController.ShouldPlayOnRelease(
+            BattleSessionController.HandZoneTopY, true);
+
+        // 上沿本身不算「进入战场」（严格小于），否则手牌区顶部一点就出牌
+        bool edgeOk = !edge;
+
+        bool ok = above && !below && !noDrag && edgeOk;
+        return (ok, "Y=300 出牌=" + above + " Y=650 出牌=" + below
+                    + " 未拖拽=" + noDrag + " 上沿边界=" + edge + "(应为 False)");
+    }
+
+    // ---------------------------------------------------------------- BUI-5
+
+    /// <summary>
+    /// 拖拽攻击的目标命中判定：必须同时满足「在合法目标里」与「松手落在目标矩形内」。
+    /// 只判命中会打错人，只判合法会打出空。
+    /// </summary>
+    private static (bool, string) CaseDragAttackHit()
+    {
+        var store = NewStore();
+        var deck = SampleDeck(store, out string e0);
+        if (deck == null) return (false, e0);
+
+        var ctrl = new BattleSessionController(store, deck, deck, seed: 31);
+
+        var foeLeader = ctrl.Leader(1);
+        var foeUnits = ctrl.Board(1);
+        if (foeLeader == null) return (false, "敌方无主战者");
+
+        // 造两个候选：主战者在 (400,0,240,150)，一块空白在 (0,600,100,50)
+        var candidates = new (Rect2Like, RuntimeEntity)[]
+        {
+            (new Rect2Like(400f, 0f, 240f, 150f), foeLeader),
+            (new Rect2Like(0f, 600f, 100f, 50f), foeLeader),
+        };
+
+        // 我方必须有可攻击随从才能测；开局没有则用一个「非法攻击者」反证返回 null
+        var myUnits = ctrl.Board(0);
+        RuntimeEntity attacker = myUnits.Count > 0 ? myUnits[0] : null;
+
+        // ① 无攻击者 → null
+        var none = ctrl.ResolveAttackTarget(null, candidates, 500f, 50f);
+
+        // ② 攻击者不合法（开局随从通常带召唤失调，不在合法目标列表里）→ null
+        var notLegal = attacker != null
+            ? ctrl.ResolveAttackTarget(attacker, candidates, 500f, 50f)
+            : null;
+
+        // ③ 落点在主战者矩形外 → null（同样用不合法攻击者，验证矩形判定本身不误命中）
+        var miss = attacker != null
+            ? ctrl.ResolveAttackTarget(attacker, candidates, 20f, 50f)
+            : null;
+
+        // ④ 正向用例：造一个真的能攻击的随从，验证「该命中时确实命中」。
+        // 只测「不该命中」是单边测试 —— 一个永远返回 null 的实现也能全过。
+        var st = ctrl.State;
+        var foeL = ctrl.Leader(1);
+
+        // 给我方一个已就绪随从（直接置 Attack，绕过召唤失调）
+        var probe = st.SpawnCard(deck.Cards[0].cardId, ZoneRef.Board, 0);
+        bool positive = false;
+        string posNote = "无法放置随从";
+
+        if (probe != null)
+        {
+            // 清掉召唤失调：CombatResolver.CanAttack 会检查
+            // EnteredTurn >= TurnNumber 就禁止攻击（除非疾走/突进）。
+            // 把入场回合推到上一回合，才是一个「真的能动」的随从。
+            probe.EnteredTurn = st.TurnNumber - 1;
+            probe.AttackedThisTurn = false;
+            probe.AttacksThisTurn = 0;
+            probe.Attack = Math.Max(1, probe.Attack);
+
+            var cands2 = new (Rect2Like, RuntimeEntity)[]
+            {
+                (new Rect2Like(400f, 0f, 240f, 150f), foeL),
+            };
+
+            // 落在主战者框内
+            var hit = ctrl.ResolveAttackTarget(probe, cands2, 500f, 50f);
+            // 落在框外
+            var miss2 = ctrl.ResolveAttackTarget(probe, cands2, 20f, 650f);
+
+            positive = hit != null && miss2 == null;
+            posNote = "框内命中=" + (hit != null) + " 框外落空=" + (miss2 == null);
+        }
+
+        bool ok = none == null && notLegal == null && miss == null && positive;
+        return (ok, "无攻击者=" + (none == null)
+                    + " 非法攻击者=" + (notLegal == null)
+                    + " 落点在外=" + (miss == null)
+                    + " | " + posNote);    }
 }

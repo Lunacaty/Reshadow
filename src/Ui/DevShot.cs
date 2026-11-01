@@ -18,6 +18,7 @@ public partial class DevShot : Node
     private bool _openHover;
     private bool _openBattle;
     private bool _battleExpanded;
+    private bool _battleBadges;
 
     public override void _Ready()
     {
@@ -30,6 +31,7 @@ public partial class DevShot : Node
             if (a == "--hover") _openHover = true;
             if (a == "--battle") _openBattle = true;
             if (a == "--battle-expanded") { _openBattle = true; _battleExpanded = true; }
+            if (a == "--battle-badges") { _openBattle = true; _battleBadges = true; }
         }
         if (_frames <= 0) _frames = 30;
         SetProcess(true);
@@ -47,7 +49,7 @@ public partial class DevShot : Node
     private void OpenBattle()
     {
         var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
-        root?.OpenBattleForShot(_battleExpanded);
+        root?.OpenBattleForShot(_battleExpanded, _battleBadges);
     }
 
     private void OpenWizard()
