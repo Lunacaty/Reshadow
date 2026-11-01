@@ -48,10 +48,20 @@ public partial class LeaderMedallionWidget : Control
     // 距中线差了 118 与 48，肉眼一看就是歪的）。
     private const float FrameL = 34f;
     private const float FrameW = 172f;
-    private const float FrameT = 14f;
+    // 拱框在控件内的上边距。
+    // 控件高 150，拱框 108 高 -> 余量 42。
+    // 我方贴窗口底部时拱框要往下压、敌方贴顶部时要往上抬，
+    // 否则贴边后框会被窗口边缘切掉。
+    private const float FrameT = 4f;
     private const float FrameH = 108f;
     private const float FrameR = FrameL + FrameW;           // 206
     private const float FrameCx = FrameL + FrameW * 0.5f;   // 120 —— 拱框中线
+
+    /// <summary>拱顶在控件内的 y（翻转前）。</summary>
+    public const float DomeTopY = FrameT;
+
+    /// <summary>平直边在控件内的 y（翻转前）。</summary>
+    public const float FlatEdgeY = FrameT + FrameH;
 
     /// <summary>
     /// 拱顶朝上画（我方），或垂直翻转画（敌方）。
@@ -121,12 +131,8 @@ public partial class LeaderMedallionWidget : Control
         DrawString(font, new Vector2(shield.X - lsz.X * 0.5f, shield.Y + 8f), life,
                    HorizontalAlignment.Left, -1, 22, Colors.White);
 
-        // 名字：我方在框下、敌方在框上（跟随翻转）
-        string nm = SvWbTheme.ClanDisplayZh(
-            Leader.Def.Clan.IsValid ? Leader.Def.Clan.Name : null) + "主战者";
-        var nsz = font.GetStringSize(nm, HorizontalAlignment.Left, -1, 12);
-        DrawString(font, new Vector2(FrameCx - nsz.X * 0.5f, FlipY(t + h - 6f) + (IsEnemy ? 0f : 0f)), nm,
-                   HorizontalAlignment.Left, -1, 12, new Color("E2E8F0"));
+        // 不再印「XX主战者」—— 职业已经由立绘窗里的汉字纹章表达了，
+        // 框下再写一遍是冗余，而且会顶到窗口边界。
 
         if (_ctrl == null) return;
 

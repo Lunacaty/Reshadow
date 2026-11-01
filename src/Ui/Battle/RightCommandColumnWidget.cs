@@ -58,20 +58,21 @@ public partial class RightCommandColumnWidget : Control
         DrawString(font, EnemyPpRect.Position + new Vector2(108, 38), "/ " + foeMax,
                    HorizontalAlignment.Left, -1, 13, new Color("94A3B8"));
 
-        // 3. 回合按钮
+        // 3. 回合按钮 —— 只有两种状态：
+        //    红色「敌方回合」（不可点）/ 蓝色「回合结束」（可点）。
+        //    之前写成「您的回合 / 对手回合 + (点击结束)」，三种文案混在一起，
+        //    而且灰底既不表示「等待」也不表示「可操作」。
         bool myTurn = _ctrl.IsMyTurn && !_ctrl.IsWaitingForInput;
+
         DrawCircle(TurnBtnCenter, TurnBtnRadius + 5f, new Color("D4AF37"));
         DrawCircle(TurnBtnCenter, TurnBtnRadius,
                    myTurn ? (_turnBtnHovered ? new Color("1D4ED8") : new Color("1E3A8A"))
-                          : new Color("1E293B"));
-        DrawArc(TurnBtnCenter, TurnBtnRadius + 5f, 0, Mathf.Tau, 48, new Color("FEF08A"), 2.2f);
+                          : (_turnBtnHovered ? new Color("B91C1C") : new Color("7F1D1D")));
+        DrawArc(TurnBtnCenter, TurnBtnRadius + 5f, 0, Mathf.Tau, 48,
+                myTurn ? new Color("FEF08A") : new Color("FCA5A5"), 2.2f);
 
-        string l1 = myTurn ? "您的" : "对手";
-        DrawCentered(font, TurnBtnCenter + new Vector2(0, -6), l1, 22, Colors.White);
-        DrawCentered(font, TurnBtnCenter + new Vector2(0, 20), "回合", 22, Colors.White);
-        if (myTurn)
-            DrawCentered(font, TurnBtnCenter + new Vector2(0, 40), "(点击结束)", 11,
-                         new Color("FDE68A"));
+        string label = myTurn ? "回合结束" : "敌方回合";
+        DrawCentered(font, TurnBtnCenter + new Vector2(0, 8), label, 21, Colors.White);
 
         // 4. 我方能量点
         int myPp = _ctrl.ReadCounter(0, "pp");

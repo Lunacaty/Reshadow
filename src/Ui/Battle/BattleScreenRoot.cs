@@ -65,13 +65,23 @@ public partial class BattleScreenRoot : Control
 
         _foeLeader = new LeaderMedallionWidget();
         _foeLeader.Setup(_ctrl, 1, true);
-        _foeLeader.Position = new Vector2(475, 6);
+        // 主战者要「贴着窗口边、平直边被窗口切掉」。
+        //
+        // 关键：敌方是翻转的（拱顶朝下），翻转后**平直边落在控件内 y=DomeTopY(4)**，
+        // 拱顶落在 y=FlatEdgeY(112)。所以只需把控件放到 Y = -DomeTopY，
+        // 平直边就正好压在屏幕顶沿，拱顶留在屏幕内 108 处。
+        //
+        // 之前错写成 -FlatEdgeY(-112)，把整个框推出屏幕，只剩半个立绘。
+        _foeLeader.Position = new Vector2(475, -LeaderMedallionWidget.DomeTopY);
         _foeLeader.OnLeaderClicked += () => _actionPanel.ShowForEntity(_ctrl.Leader(1));
         AddChild(_foeLeader);
 
         _allyLeader = new LeaderMedallionWidget();
         _allyLeader.Setup(_ctrl, 0, false);
-        _allyLeader.Position = new Vector2(475, 558);
+        // 我方不翻转：平直边在控件内 y=FlatEdgeY(112)，拱顶在 y=DomeTopY(4)。
+        // 放到 Y = 720 - FlatEdgeY，平直边正好压在屏幕底沿。
+        _allyLeader.Position = new Vector2(
+            475, GetViewportRect().Size.Y - LeaderMedallionWidget.FlatEdgeY);
         _allyLeader.OnLeaderClicked += () => _actionPanel.ShowForEntity(_ctrl.Leader(0));
         AddChild(_allyLeader);
 
