@@ -20,7 +20,11 @@ dist/
 dist2/
 extensions/
 _shots/
-decks/
+# Godot 导出目录 / 玩家存档目录。必须带前导斜杠锚定到根，
+# 否则会无差别匹配 src/Ui/Decks/ —— 那个目录里是 UI 源码，
+# 被误忽略后 git 完全看不见，导出包里也就跟着消失了。
+/decks/
+/data/decks/
 
 # 临时与备份
 .tmp*
