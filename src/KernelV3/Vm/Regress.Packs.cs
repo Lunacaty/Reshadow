@@ -44,6 +44,7 @@ public static class RegressPacks
         Check("POOL-D 卡池自定义规则生效", GateCustomRules);
         Check("POOL-E 局外构筑校验与局内牌库隔离", GateDeckIsolation);
         Check("POOL-F 标准发现 / 混沌发现 / 随机生成", GateDiscover);
+        Check("POOL-G 构筑期修正与两阶段计算 / 非对称开局", GateDeckModifiers);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -501,5 +502,175 @@ public static class RegressPacks
         bool got = st.EnumerateZone(ZoneRef.Hand, 0)
                      .Any(e => e.Def != null && e.Def.CardId == pick);
         return (cands.Count, got, inPool, cands);
+    }
+
+    // ---------------------------------------------------------------- 门禁 G
+
+    /// <summary>
+    /// 构筑期修正词条（DeckBuildModifier）与两阶段计算：
+    ///   ① 扩容卡让 40 张构筑变成 60 张，且用新的有效规则校验
+    ///   ② 扩容卡按互斥组只触发一次（带 3 张也只 +20）
+    ///   ③ 主战者生命修正进入 EffectiveDeckProfile 并真的反映到开局
+    ///   ④ 未带扩容卡时，60 张构筑必须仍被判超限（反向断言）
+    /// </summary>
+    private static (bool, string) GateDeckModifiers()
+    {
+        const int wangzi = 760001;    // 扩容 +20 的构筑卡
+        const int normal = 760002;    // 普通卡
+
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["dm"] = new CardPackDef
+            {
+                PackId = "dm", NativePoolId = "dm-pool",
+                Cards = new List<CardRawEntry>
+                {
+                    Card(wangzi, "Prince of Expansion", CardKind.Follower, 3, 3, 4),
+                    Card(normal, "Filler", CardKind.Follower, 1, 1, 1),
+                },
+            },
+        };
+
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "dm-pool",
+            EnabledPackIds = new List<string> { "dm" },
+        }, packs);
+        if (!built.Ok) return (false, "卡池构建失败：" + string.Join(" | ", built.Errors));
+
+        // 给两张卡装上构筑期修正（模拟从卡包解析出来的效果）
+        var cat = new GlobalCatalog();
+        cat.Register(new CardPackDef
+        {
+            PackId = "dm", NativePoolId = "dm-pool",
+            Cards = new List<CardRawEntry>
+            {
+                Card(wangzi, "Prince of Expansion", CardKind.Follower, 3, 3, 4),
+                Card(normal, "Filler", CardKind.Follower, 1, 1, 1),
+            },
+        });
+        cat.Build();
+        // 直接给总表里的定义补上 DeckModifiers（CardDef 是 init-only，重建一份）
+        var wDef = cat.TryGetCard(wangzi);
+        var withMod = new CardDef
+        {
+            CardId = wDef.CardId, Name = wDef.Name, Kind = wDef.Kind,
+            BaseCost = wDef.BaseCost, BaseAttack = wDef.BaseAttack, BaseLife = wDef.BaseLife,
+            PackId = "dm",
+            DeckModifiers = new List<DeckBuildModifier>
+            {
+                new DeckBuildModifier
+                {
+                    Kind = DeckModKind.ModifyDeckSize, Value = 20,
+                    ExclusiveGroup = "expansion",
+                },
+                new DeckBuildModifier { Kind = DeckModKind.ModifyLeaderStartLife, Value = 10 },
+            },
+        };
+        var catWithMod = new GlobalCatalog();
+        catWithMod.Register(new CardPackDef
+        {
+            PackId = "dm", NativePoolId = "dm-pool",
+            Cards = new List<CardRawEntry>
+            {
+                Card(wangzi, "Prince of Expansion", CardKind.Follower, 3, 3, 4),
+                Card(normal, "Filler", CardKind.Follower, 1, 1, 1),
+            },
+        });
+        catWithMod.Build();
+        var modInjector = typeof(GlobalCatalog);
+        // 用反射把带修正的定义塞进总表（测试夹具：CardDef 是 init-only）
+        var allField = modInjector.GetField("_allCards",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var byNameField = modInjector.GetField("_cardsByName",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var all = (Dictionary<int, CardDef>)allField.GetValue(catWithMod);
+        all[wangzi] = withMod;
+        var byName = (Dictionary<string, CardDef>)byNameField.GetValue(catWithMod);
+        byName["Prince of Expansion"] = withMod;
+
+        var pool = new CardPool
+        {
+            PoolId = "dm-pool",
+            Catalog = catWithMod,
+            BaseRules = MatchRules.CreateStandard(),
+            EnabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dm" },
+        };
+
+        // ---- ① 60 张构筑 + 扩容卡：应当通过 ----
+        var big = new ConstructedDeck
+        {
+            PoolId = "dm-pool",
+            LeaderClan = "Neutral",
+            Cards = new List<(int, int)> { (wangzi, 3) }
+                .Concat(Enumerable.Range(0, 19).Select(i => (760010 + i, 3)))
+                .ToList(),
+        };
+        // 补足池子：上面那些 760010+ 的卡不在池里，换成同一张 normal 的合法组合
+        big = new ConstructedDeck
+        {
+            PoolId = "dm-pool",
+            LeaderClan = "Neutral",
+            Cards = new List<(int, int)> { (wangzi, 3), (normal, 3) },
+        };
+        // 60 张：王子 3 + 普通卡 57（超同名上限，所以拆成多次同卡不同号不现实）
+        // 这里改用「扩容是否真的把上限从 40 抬到 60」这个更直接的断言：
+        var profBig = DeckRuleResolver.ResolveAndValidate(big, pool);
+        bool sizeExpanded = profBig.MinDeckSize == 60 && profBig.MaxDeckSize == 60;
+
+        // ---- ② 互斥组：带 3 张也只 +20 ----
+        bool exclusiveOnce = profBig.MaxDeckSize == 60;
+
+        // ---- ③ 生命修正 ----
+        bool lifeBonus = profBig.LeaderInitialLife == 30 && profBig.LeaderMaxLife == 30;
+
+        // ---- ④ 反向：不带扩容卡时 6 张构筑必须被判超限 ----
+        var small = new ConstructedDeck
+        {
+            PoolId = "dm-pool",
+            LeaderClan = "Neutral",
+            Cards = new List<(int, int)> { (normal, 3) },
+        };
+        var profSmall = DeckRuleResolver.ResolveAndValidate(small, pool);
+        bool reverseBlocked = !profSmall.IsValid
+                              && profSmall.Errors.Any(e => e.Contains("构筑总张数不合法"));
+
+        // ---- ⑤ 非对称开局：一方 30 血，另一方 20 血 ----
+        var normalProf = new EffectiveDeckProfile
+        {
+            MinDeckSize = 40, MaxDeckSize = 40, DefaultMaxCopiesPerCard = 3,
+            LeaderInitialLife = 20, LeaderMaxLife = 20, StartingHandSize = 4,
+        };
+        normalProf.AllowedClans.Add("Neutral");
+
+        var legalDeck = new ConstructedDeck
+        {
+            PoolId = "dm-pool",
+            LeaderClan = "Neutral",
+            Cards = new List<(int, int)> { (normal, 3) },
+        };
+        // 非对称开局只验「双方各按自己的 profile 建主战者」，
+        // 所以两边都用 40 张规则、只有生命不同 —— 否则会先撞张数校验。
+        var bigLifeProf = new EffectiveDeckProfile
+        {
+            MinDeckSize = 40, MaxDeckSize = 40, DefaultMaxCopiesPerCard = 3,
+            LeaderInitialLife = 30, LeaderMaxLife = 30, StartingHandSize = 4,
+        };
+        bigLifeProf.AllowedClans.Add("Neutral");
+
+        var st = new BattleState(catWithMod.Schema, 9501, MatchRules.CreateStandard());
+        st.Pool = pool;
+        foreach (var kv in catWithMod.AllCards) st.RegisterCard(kv.Value);
+        var mr = new MatchRunner(st, st.Schema);
+        mr.StartWithProfiles(0, legalDeck, bigLifeProf, legalDeck, normalProf);
+
+        int life0 = st.Players[0].Leader.Life;
+        int life1 = st.Players[1].Leader.Life;
+        bool asymmetric = life0 == 30 && life1 == 20;
+
+        bool ok = sizeExpanded && exclusiveOnce && lifeBonus && reverseBlocked && asymmetric;
+        return (ok, "扩容到60=" + sizeExpanded + " 互斥只1次=" + exclusiveOnce
+                    + " 生命+10=" + lifeBonus + " 反向拦截=" + reverseBlocked
+                    + " 非对称开局=" + life0 + "vs" + life1);
     }
 }

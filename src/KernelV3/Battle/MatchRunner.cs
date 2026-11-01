@@ -65,6 +65,67 @@ public sealed class MatchRunner
     /// 完成后停在 Mulligan 阶段，等待 ConfirmMulligan()。
     /// </summary>
     /// <summary>
+    /// 用「双方各自的生效规则」开局 —— 支持非对称（如一方带 +10 血构筑卡）。
+    ///
+    /// 与 Start 的区别：主战者生命、起手抽牌、初始进化点都按**每一方自己**的
+    /// EffectiveDeckProfile 设置，而不是共用一份全局规则。
+    /// </summary>
+    public void StartWithProfiles(
+        int firstPlayer,
+        Packs.ConstructedDeck deck0, Packs.EffectiveDeckProfile prof0,
+        Packs.ConstructedDeck deck1, Packs.EffectiveDeckProfile prof1)
+    {
+        if (deck0 == null || deck1 == null)
+            throw new ArgumentNullException("构筑不能为空");
+        if (prof0 == null || prof1 == null)
+            throw new ArgumentNullException("生效规则不能为空");
+        if (!prof0.IsValid)
+            throw new InvalidOperationException("玩家 0 构筑不合法：" + string.Join("; ", prof0.Errors));
+        if (!prof1.IsValid)
+            throw new InvalidOperationException("玩家 1 构筑不合法：" + string.Join("; ", prof1.Errors));
+
+        // 内置衍生卡必须先就位，否则效果召唤 Fairy / 神器会造出 Def == null 的空壳。
+        _state.RegisterBuiltinTokens();
+
+        CreateLeader(0, prof0.LeaderInitialLife, prof0.LeaderMaxLife);
+        CreateLeader(1, prof1.LeaderInitialLife, prof1.LeaderMaxLife);
+
+        InitCountersWithBonus(0, prof0, _schema);
+        InitCountersWithBonus(1, prof1, _schema);
+
+        FillDeck(0, deck0.ExpandToCardIds());
+        FillDeck(1, deck1.ExpandToCardIds());
+        ShuffleDeck(0);
+        ShuffleDeck(1);
+
+        _state.SetupFaith();
+
+        _state.DrawCards(0, Math.Max(0, prof0.StartingHandSize));
+        _state.DrawCards(1, Math.Max(0, prof1.StartingHandSize));
+
+        _state.ActivePlayer = firstPlayer;
+        _state.TurnNumber = 0;
+        Phase = MatchPhase.Mulligan;
+
+        _state.EmitEvent(new VmEvent { Kind = CoreEvent.BattleStart });
+        _vm?.StepUntilBlocked();
+    }
+
+    /// <summary>按某一方的生效规则初始化计数器（含 EP/SEP 增量）。</summary>
+    private void InitCountersWithBonus(int playerId, Packs.EffectiveDeckProfile prof, GameSchema schema)
+    {
+        var rules = _state.Rules;
+        _state.WriteCounter(playerId, schema.Counter("pp"), 0);
+        _state.WriteCounter(playerId, schema.Counter("max_pp"), rules.InitialMaxPp);
+        _state.WriteCounter(playerId, schema.Counter("ep"), rules.InitialEp(playerId) + prof.InitialEpBonus);
+        _state.WriteCounter(playerId, schema.Counter("sep"), rules.InitialSep(playerId) + prof.InitialSepBonus);
+        _state.WriteCounter(playerId, schema.Counter("shadow"), 0);
+        _state.WriteCounter(playerId, schema.Counter("combo"), 0);
+        _state.WriteCounter(playerId, schema.Counter("rally"), 0);
+        _state.WriteCounter(playerId, schema.Counter("evolve_count"), 0);
+    }
+
+    /// <summary>
     /// 用「局外构筑 + 卡池环境」开局。
     ///
     /// 构筑在这里被**展开**成卡号序列，再由 FillDeck 生成局内的 40 个实体 ——
@@ -131,7 +192,10 @@ public sealed class MatchRunner
         _vm?.StepUntilBlocked();
     }
 
-    private void CreateLeader(int playerId, int life)
+    private void CreateLeader(int playerId, int life) => CreateLeader(playerId, life, life);
+
+    /// <summary>建主战者：初始生命与生命上限分开指定（构筑卡可以只加其一）。</summary>
+    private void CreateLeader(int playerId, int life, int maxLife)
     {
         int cardId = LeaderCardIdBase + playerId;
         if (_state.CardDefOf(cardId) == null)

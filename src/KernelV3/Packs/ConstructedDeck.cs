@@ -30,6 +30,12 @@ public sealed class ConstructedDeck
     /// <summary>主战者职业（如 "Swordcraft"、"Forestcraft"、"Neutral"）。</summary>
     public string LeaderClan { get; init; } = "Neutral";
 
+    /// <summary>
+    /// 当牌组里带有 AllowChosenClans（允许任选额外职业）的构筑卡时，
+    /// 玩家在 UI 上选定的额外副职业列表。
+    /// </summary>
+    public List<string> ChosenExtraClans { get; init; } = new();
+
     /// <summary>构筑清单：(CardId, 投入张数)。</summary>
     public List<(int cardId, int count)> Cards { get; init; } = new();
 

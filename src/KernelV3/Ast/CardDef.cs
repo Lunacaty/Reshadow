@@ -109,6 +109,12 @@ public sealed class CardDef
     /// 不可放进局外构筑。
     /// </summary>
     public bool IsToken { get; init; }
+
+    /// <summary>
+    /// 构筑期修正词条（对局中不生效）。
+    /// 为空表示这张卡不改变任何构筑规则。
+    /// </summary>
+    public List<DeckBuildModifier> DeckModifiers { get; init; } = new();
     public string Name { get; init; } = "";
     public string NameChs { get; init; } = "";
     public CardKind Kind { get; init; }

@@ -38,6 +38,15 @@ public sealed class ChineseCardPrinter
         if (card == null) return "";
         var sb = new StringBuilder();
 
+        // ⓪ 构筑期修正：放在最前面，用【构筑规则】前缀与战斗效果区分开。
+        // 这类词条在对局中完全不生效，混在能力里会让人以为它能打出来。
+        var deckLines = DeckModifierLines(card.DeckModifiers).ToList();
+        if (deckLines.Count > 0)
+        {
+            foreach (var line in deckLines) sb.Append(line).Append('\n');
+            sb.Append('\n');
+        }
+
         // ① 融合声明
         if (card.HasFuse)
         {
@@ -260,6 +269,59 @@ public sealed class ChineseCardPrinter
     }
 
     /// <summary>及物动词：它们要放在宾语前面。</summary>
+    /// <summary>
+    /// 构筑期修正的地道简中描述。
+    ///
+    /// 这类能力在对局中不生效，卡面上必须放在最上方单独一行，
+    /// 而且措辞要用官方的「【构筑规则】」前缀 —— 否则玩家会以为它是战斗效果。
+    /// </summary>
+    private IEnumerable<string> DeckModifierLines(IReadOnlyList<DeckBuildModifier> mods)
+    {
+        if (mods == null) yield break;
+        foreach (var m in mods)
+        {
+            if (m == null) continue;
+            int v = m.Value;
+            string sign = v >= 0 ? "+" : "";
+            switch (m.Kind)
+            {
+                case DeckModKind.ModifyDeckSize:
+                    yield return "【构筑规则】本牌组的构筑卡牌张数上限与下限" + sign + v + "。";
+                    break;
+
+                case DeckModKind.AllowSpecificClan:
+                    yield return "【构筑规则】本牌组在构筑时可以放入【"
+                                 + ClanZh(m.TargetClan) + "】职业的卡牌。";
+                    break;
+
+                case DeckModKind.AllowChosenClans:
+                    yield return "【构筑规则】本牌组在构筑时可以任选" + v + "个其他职业，"
+                                 + "并放入该职业的卡牌。";
+                    break;
+
+                case DeckModKind.OverrideSelfCopyLimit:
+                    yield return "【构筑规则】本卡牌在牌组中最多可以放入" + v + "张。";
+                    break;
+
+                case DeckModKind.ModifyLeaderStartLife:
+                    yield return "【构筑规则】对战开始时，你的主战者最大生命值与初始生命值"
+                                 + sign + v + "。";
+                    break;
+
+                case DeckModKind.ModifyStartingHandSize:
+                    yield return "【构筑规则】对战开始时，你的起手抽牌数" + sign + v + "。";
+                    break;
+
+                case DeckModKind.ModifyStartEvolvePoints:
+                    if (m.Value != 0)
+                        yield return "【构筑规则】对战开始时，你的进化点" + (m.Value >= 0 ? "+" : "") + m.Value + "。";
+                    if (m.Value2 != 0)
+                        yield return "【构筑规则】对战开始时，你的超进化点" + (m.Value2 >= 0 ? "+" : "") + m.Value2 + "。";
+                    break;
+            }
+        }
+    }
+
     /// <summary>能力持有者（复刻类效果的目标）。</summary>
     private string AbilityOwnerZh(TargetSpec t)
     {
@@ -536,6 +598,26 @@ public sealed class ChineseCardPrinter
 
         string count = PrintNum(sp.Count);
 
+        // 卡池检索：标准发现 / 混沌发现 / 随机生成。
+        // 三者措辞不同，玩家要能一眼分清「从本环境找」还是「从全宇宙找」。
+        if (sp.SourceKind == CardSourceKind.PoolQuery)
+        {
+            bool chaos = sp.CopyFrom != null && sp.CopyFrom.Zone == ZoneRef.GlobalPool;
+            bool choose = sp.CopyFrom != null && sp.CopyFrom.Mode == SelectMode.Choose;
+            string from = chaos ? "从全部卡包中" : "从当前卡池中";
+            string verb = choose ? (chaos ? "【混沌发现】" : "【发现】") : "随机选择";
+            string what = PrintPoolFilter(sp.CopyFrom);
+            if (choose)
+            {
+                return sp.ToZone == ZoneRef.Hand
+                    ? from + verb + count + "张" + what + "加入我方手牌。"
+                    : from + verb + count + "个" + what + "召唤到战场上。";
+            }
+            return sp.ToZone == ZoneRef.Hand
+                ? from + verb + count + "张" + what + "加入我方手牌。"
+                : from + verb + count + "个" + what + "召唤到战场上。";
+        }
+
         if (sp.SourceKind == CardSourceKind.CopyOfTarget)
         {
             string kind = sp.IsExactCopy ? "完整复制" : "复制";
@@ -547,6 +629,55 @@ public sealed class ChineseCardPrinter
         return sp.ToZone == ZoneRef.Hand
             ? "将" + count + "张《" + CardZh(sp.CardName) + "》加入我方手牌。"
             : "召唤" + count + "个《" + CardZh(sp.CardName) + "》到战场上。";
+    }
+
+    /// <summary>
+    /// 卡池检索的筛选条件描述（「费用≤3的随从」这类）。
+    /// 条件本身是通用 BoolExpr，这里只挑最常见的几类译出来；
+    /// 译不出的部分退回「卡牌」，宁可笼统也不要印出英文。
+    /// </summary>
+    private string PrintPoolFilter(TargetSpec spec)
+    {
+        if (spec == null) return "卡牌";
+
+        // 筛选条件住在通用的 Where 布尔表达式里（与目标筛选共用同一套求值器），
+        // 所以这里只从 Where 里挑最常见的几类译出来，
+        // 译不出的部分退回「卡牌」—— 宁可笼统，也不要印出英文。
+        string kind = "卡牌";
+        string cost = "";
+        string trait = "";
+
+        void Walk(BoolExpr e)
+        {
+            switch (e)
+            {
+                case AndExpr a: foreach (var x in a.Items) Walk(x); break;
+                case HasKindExpr hk:
+                    kind = hk.Kind switch
+                    {
+                        CardKind.Follower => "随从",
+                        CardKind.Spell => "法术",
+                        CardKind.Amulet => "护符",
+                        _ => "卡牌",
+                    };
+                    break;
+                case CompareExpr cmp when cmp.Left?.Op == NumOp.Property:
+                    if (cmp.Left.Stat == StatKey.Cost && cmp.Right is NumExpr r && r.Op == NumOp.Const)
+                        cost = cmp.Op switch
+                        {
+                            CompareOp.Le or CompareOp.Lt => "费用不超过" + r.Value + "的",
+                            CompareOp.Ge or CompareOp.Gt => "费用不低于" + r.Value + "的",
+                            _ => "",
+                        };
+                    break;
+                case HasTraitExpr ht:
+                    trait = TraitZh(ht.Trait.Name) ?? "";
+                    break;
+            }
+        }
+        if (spec.Where != null) Walk(spec.Where);
+
+        return cost + trait + kind;
     }
 
     /// <summary>

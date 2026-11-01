@@ -136,6 +136,167 @@ public sealed class ReshadowScriptCompiler
     /// <summary>
     /// card 910001 "御剑机甲师" (Follower, cost: 3, atk: 2, life: 3, traits: [Mecha]) { ... }
     /// </summary>
+    /// <summary>
+    /// discover(target(ally, card_pool|global_pool, ...), to: hand)
+    ///
+    /// 与 summon 的区别：summon 是「造一张指定的卡」，
+    /// discover 是「从卡池里按条件找」，条件住在 TargetSpec.Where 里。
+    /// </summary>
+    private EffectNode ParseDiscover(Cursor p)
+    {
+        // 调用方 ParseAtomStatement 已吃掉 discover 后面的 '('，
+        // 而 ParseTargetCall 自己会吃 "target" 和它后面的 '(' ——
+        // 这里**什么都不能再吃**，直接交给它。
+        //
+        // 语法：discover(target(ally, card_pool, follower), to: hand)
+        var spec = ParseTargetCall(p);
+        if (spec == null) return null;
+
+        var toZone = ZoneRef.Hand;
+        if (p.TryChar(','))
+        {
+            var key = p.PeekToken();
+            if (key == "to")
+            {
+                p.Next();
+                p.TryChar(':');
+                toZone = p.Next() switch
+                {
+                    "hand" => ZoneRef.Hand,
+                    "board" => ZoneRef.Board,
+                    "deck" => ZoneRef.Deck,
+                    "exarea" => ZoneRef.ExArea,
+                    _ => ZoneRef.Hand,
+                };
+            }
+            // 其余键交给通用解析跳过（保持向前兼容）
+        }
+        p.TryChar(')');
+
+        return new SpawnCardNode
+        {
+            SourceKind = CardSourceKind.PoolQuery,
+            CopyFrom = spec,
+            ToZone = toZone,
+            ToOwner = ZoneScope.Self,
+            Count = NumExpr.Const(1),
+        };
+    }
+
+    /// <summary>
+    /// 解析 deck_mod 声明：
+    ///   deck_mod size(+20)                  牌组张数 ±N
+    ///   deck_mod leader_life(+10)           主战者初始/最大生命 ±N
+    ///   deck_mod hand(+1)                   起手抽牌 ±N
+    ///   deck_mod ep(+1)                     初始进化点 +N
+    ///   deck_mod sep(+0)                    初始超进化点 +N
+    ///   deck_mod allow_clan(Runecraft)      允许固定职业
+    ///   deck_mod allow_clan(choose: 1)      允许任选 N 个职业
+    ///   deck_mod self_copy(3)               本卡同名上限
+    ///   deck_mod size(+20) per_copy         按投入张数叠加
+    ///   deck_mod size(+20) group:cap        互斥组
+    /// </summary>
+    /// <summary>deck_mod 的种类与参数 → 脚本文本。</summary>
+    private static string DeckModWord(DeckBuildModifier m)
+    {
+        string arg = m.Kind switch
+        {
+            DeckModKind.AllowSpecificClan => "(" + m.TargetClan + ")",
+            DeckModKind.AllowChosenClans => "(choose: " + m.Value + ")",
+            DeckModKind.ModifyStartEvolvePoints when m.Value2 != 0 => "(" + (m.Value2 >= 0 ? "+" : "") + m.Value2 + ")",
+            _ => "(" + (m.Value >= 0 ? "+" : "") + m.Value + ")",
+        };
+        string word = m.Kind switch
+        {
+            DeckModKind.ModifyDeckSize => "size",
+            DeckModKind.ModifyLeaderStartLife => "leader_life",
+            DeckModKind.ModifyStartingHandSize => "hand",
+            DeckModKind.ModifyStartEvolvePoints => m.Value2 != 0 ? "sep" : "ep",
+            DeckModKind.OverrideSelfCopyLimit => "self_copy",
+            DeckModKind.AllowSpecificClan => "allow_clan",
+            DeckModKind.AllowChosenClans => "allow_clan",
+            _ => "size",
+        };
+        var sb = new StringBuilder("deck_mod ").Append(word).Append(arg);
+        if (m.StackPerCopy) sb.Append(" per_copy");
+        if (!string.IsNullOrEmpty(m.ExclusiveGroup)) sb.Append(" group:").Append(m.ExclusiveGroup);
+        return sb.ToString();
+    }
+
+    private DeckBuildModifier ParseDeckMod(Cursor p)
+    {
+        p.Next();               // deck_mod
+        string kindWord = p.Next();
+        if (kindWord == null) { _errors.Add("deck_mod 缺少种类"); return null; }
+
+        // 括号里的参数
+        int value = 0;
+        string clan = "";
+        if (p.TryChar('('))
+        {
+            if (p.PeekToken() == "choose")
+            {
+                p.Next();
+                p.TryChar(':');
+                value = p.TryInt() ?? 1;
+                clan = "";      // choose 模式表示「任选」，不是固定职业
+            }
+            else
+            {
+                // 支持带正负号的数量：size(+20) / leader_life(-3)。
+                // tokenizer 会把 '+' 拆成独立符号，所以必须先看符号再取数。
+                int sign = 1;
+                var t0 = p.PeekToken();
+                if (t0 == "+") { p.Next(); sign = 1; }
+                else if (t0 == "-") { p.Next(); sign = -1; }
+
+                int? num = p.TryInt();
+                if (num.HasValue) value = sign * num.Value;
+                else { clan = p.Next() ?? ""; value = 1; }
+            }
+            p.TryChar(')');
+        }
+
+        bool perCopy = false;
+        string group = "";
+        while (true)
+        {
+            var t = p.PeekToken();
+            if (t == "per_copy") { p.Next(); perCopy = true; continue; }
+            if (t == "group") { p.Next(); p.TryChar(':'); group = p.Next() ?? ""; continue; }
+            break;
+        }
+
+        DeckModKind kind;
+        switch (kindWord)
+        {
+            case "size": kind = DeckModKind.ModifyDeckSize; break;
+            case "leader_life": kind = DeckModKind.ModifyLeaderStartLife; break;
+            case "hand": kind = DeckModKind.ModifyStartingHandSize; break;
+            case "ep": kind = DeckModKind.ModifyStartEvolvePoints; break;
+            case "sep": kind = DeckModKind.ModifyStartEvolvePoints; break;
+            case "self_copy": kind = DeckModKind.OverrideSelfCopyLimit; break;
+            case "allow_clan":
+                kind = string.IsNullOrEmpty(clan) ? DeckModKind.AllowChosenClans : DeckModKind.AllowSpecificClan;
+                break;
+            default:
+                _errors.Add("deck_mod 未知种类：" + kindWord);
+                return null;
+        }
+
+        // sep 用 Value2
+        int v1 = value, v2 = 0;
+        if (kindWord == "sep") { v1 = 0; v2 = value; }
+
+        return new DeckBuildModifier
+        {
+            Kind = kind, Value = v1, Value2 = v2,
+            TargetClan = clan,
+            StackPerCopy = perCopy,
+            ExclusiveGroup = group,
+        };
+    }
+
     private CardDef ParseCard(Cursor p)
     {
         p.Next();
@@ -182,6 +343,7 @@ public sealed class ReshadowScriptCompiler
         }
 
         var abilities = new List<AbilityDef>();
+        var deckMods = new List<DeckBuildModifier>();
         var keywords = new List<string>();
         CardDef crest = null, faith = null, accel = null, cryst = null;
         bool hasFuse = false;
@@ -213,6 +375,7 @@ public sealed class ReshadowScriptCompiler
             if (head == "faith") { p.Next(); faith = ParseSubBlock(p, CardKind.Faith, nameChs, 0, traits); continue; }
             if (head == "accelerate") { p.Next(); int c = ParseParenInt(p); accel = ParseSubBlock(p, CardKind.Spell, nameChs, c, traits); continue; }
             if (head == "crystallize" || head == "crystallise") { p.Next(); int c = ParseParenInt(p); cryst = ParseSubBlock(p, CardKind.Amulet, nameChs, c, traits); continue; }
+            if (head == "deck_mod") { var dm = ParseDeckMod(p); if (dm != null) deckMods.Add(dm); continue; }
             if (head == "on") { abilities.Add(ParseOnBlock(p)); continue; }
 
             _errors.Add("卡 " + id + " 里无法识别：" + head);
@@ -255,6 +418,7 @@ public sealed class ReshadowScriptCompiler
             Abilities = abilities,
             Traits = traits.Select(t => _schema.Trait(t)).ToList(),
             Clan = string.IsNullOrEmpty(clan) ? SymbolId<ClanTag>.Invalid : _schema.Clan(clan),
+            DeckModifiers = deckMods,
             HasFuse = hasFuse,
             FuseMaterialFilter = hasFuse ? fuseFilter : null,
             CrestDef = crest,
@@ -784,6 +948,7 @@ public sealed class ReshadowScriptCompiler
             "fill_counter" or "填计数" => ParseCounter(p, false, CounterOp.Fill),
             "pay_counter" or "消费计数" => ParseCounter(p, true),
             "transform" or "变身" => ParseTransform(p),
+            "discover" or "发现" => ParseDiscover(p),
             "grant_counter_ability" or "赋予计数能力" => ParseGrantCounterAbility(p),
             "reanimate" or "亡者召还" => ParseReanimate(p),
             "cost_mod" or "费用" => ParseCostMod(p, CostModOp.Add),
@@ -1361,6 +1526,9 @@ public sealed class ReshadowScriptCompiler
                 case "hand" or "手牌": zone = ZoneRef.Hand; break;
                 case "deck" or "牌组": zone = ZoneRef.Deck; break;
                 case "cemetery" or "墓场": zone = ZoneRef.Cemetery; break;
+                // 外部池：发现类效果的目标区域。
+                case "card_pool": zone = ZoneRef.CardPool; break;
+                case "global_pool": zone = ZoneRef.GlobalPool; break;
                 case "banished" or "消失区": zone = ZoneRef.Banished; break;
                 case "leader" or "主战者": zone = ZoneRef.Leader; break;
                 case "exarea" or "额外区": zone = ZoneRef.ExArea; break;
@@ -1775,6 +1943,17 @@ public sealed class ReshadowScriptCompiler
         if (traits.Count > 0) sb.Append(", traits: [").Append(string.Join(", ", traits)).Append(']');
         sb.Append(") {\n");
 
+        // 构筑期修正声明必须写出来：不写的话重新导入会全部丢失，
+        // 而卡面中文看起来一模一样（中文渲染读的是 DeckModifiers 本身）。
+        if (card.DeckModifiers != null)
+        {
+            foreach (var dm in card.DeckModifiers)
+            {
+                if (dm == null) continue;
+                sb.Append("    ").Append(DeckModWord(dm)).Append('\n');
+            }
+        }
+
         var kws = new List<string>();
         foreach (var ab in card.Abilities ?? Array.Empty<AbilityDef>())
         {
@@ -2056,6 +2235,29 @@ public sealed class ReshadowScriptCompiler
                     ReanimateHelper.TryExtractCostCap(sp, out var cap);
                     return ind + "reanimate(" + PrintNumExpr(cap) + ")\n";
                 }
+
+                // 卡池检索：discover(target(ally, card_pool|global_pool, ...), to: hand)
+                if (sp.SourceKind == CardSourceKind.PoolQuery)
+                {
+                    string zoneWord = sp.CopyFrom != null && sp.CopyFrom.Zone == ZoneRef.GlobalPool
+                        ? "global_pool" : "card_pool";
+                    string toWord = sp.ToZone switch
+                    {
+                        ZoneRef.Board => "board",
+                        ZoneRef.Deck => "deck",
+                        ZoneRef.ExArea => "exarea",
+                        _ => "hand",
+                    };
+                    var spec = new TargetSpec
+                    {
+                        SourceKind = sp.CopyFrom?.SourceKind ?? TargetSourceKind.Zone,
+                        Zone = sp.CopyFrom?.Zone ?? ZoneRef.CardPool,
+                        Mode = sp.CopyFrom?.Mode ?? SelectMode.Choose,
+                        Where = sp.CopyFrom?.Where,
+                        Count = sp.CopyFrom?.Count,
+                    };
+                    return ind + "discover(" + PrintTargetExpr(spec) + ", to: " + toWord + ")\n";
+                }
                 // 复制体：SourceKind=CopyOfTarget 时没有卡名，
                 // 落到 summon 分支会导出成 summon("", 1)，CopyFrom 与 IsExactCopy 全丢。
                 if (sp.SourceKind == CardSourceKind.CopyOfTarget)
@@ -2270,6 +2472,10 @@ public sealed class ReshadowScriptCompiler
                 ZoneRef.Leader => "leader",
                 ZoneRef.ExArea => "exarea",
                 ZoneRef.CrestArea => "crest",
+                // 外部池必须打出来：缺这两支会静默回落成 board，
+                // 「从当前卡池发现」于是变成「从战场选」，而卡面中文照旧正确。
+                ZoneRef.CardPool => "card_pool",
+                ZoneRef.GlobalPool => "global_pool",
                 _ => "board",
             },
         };
