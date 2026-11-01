@@ -748,25 +748,11 @@ public sealed class ReshadowScriptCompiler
             p.SkipLine();
             return null;
         }
-        // grant_counter_ability 的形态是 fn(name) { ... }：
-        // 括号与块体都由它自己吃，所以在通用 () 处理之前分流。
-        if (fn == "grant_counter_ability" || fn == "赋予计数能力")
-        {
-            string cname = p.Next();
-            p.TryChar(')');
-            var body = new List<EffectNode>();
-            if (p.TryChar('{')) body = ParseBlockBody(p);
-            return new GrantCounterAbilityNode
-            {
-                Counter = _schema.Counter(cname),
-                Granted = new AbilityDef
-                {
-                    Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
-                    Body = body,
-                },
-            };
-        }
-
+        // 注意：这里**不能**再写一份 grant_counter_ability 的实现。
+        // 之前这里有一份内联版，它把触发器硬编码成 PassiveAura，
+        // 而 fn switch 里的 ParseGrantCounterAbility 支持内嵌 on 触发头 ——
+        // 两份并存时内联版先命中，于是「支持触发头」的那份永远走不到。
+        // 唯一真相源：ParseGrantCounterAbility。
         EffectNode node = fn switch
         {
             "damage" or "伤害" => ParseDamage(p),
@@ -1219,17 +1205,40 @@ public sealed class ReshadowScriptCompiler
 
     private EffectNode ParseGrantCounterAbility(Cursor p)
     {
+        // 调用点已经吃掉了 '('（通用分支统一处理），这里读名字后要补吃 ')'。
         string name = p.Next();
+        p.TryChar(')');
 
         // 紧随其后的 { ... } 是被赋予的能力体。
-        var body = new List<EffectNode>();
-        if (p.TryChar('{')) body = ParseBlockBody(p);
-
-        var inner = new AbilityDef
+        // 块内若以 on 开头，就是一条带自己触发头的完整能力 ——
+        // 硬编码成 PassiveAura 会让「每当友方随从进化，打对手 1 点」永不触发。
+        AbilityDef inner;
+        if (p.TryChar('{'))
         {
-            Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
-            Body = body,
-        };
+            if (p.PeekToken() == "on")
+            {
+                inner = ParseOnBlock(p);
+                p.TryChar('}');                       // ParseOnBlock 只吃自己那层
+            }
+            else
+            {
+                // ParseBlockBody 已吃掉闭合的 }，不要再吃一次。
+                inner = new AbilityDef
+                {
+                    Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                    Body = ParseBlockBody(p),
+                };
+            }
+        }
+        else
+        {
+            inner = new AbilityDef
+            {
+                Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                Body = new List<EffectNode>(),
+            };
+        }
+
         return new GrantCounterAbilityNode
         {
             Counter = _schema.Counter(name),
@@ -2118,8 +2127,15 @@ public sealed class ReshadowScriptCompiler
                 sb2.Append(ind).Append("grant_counter_ability(").Append(gc.Counter.Name).Append(") {\n");
                 if (gc.Granted != null)
                 {
-                    foreach (var inner2 in gc.Granted.Body ?? Array.Empty<EffectNode>())
-                        sb2.Append(PrintNode(inner2, depth + 1));
+                    // 触发头不是 PassiveAura 时必须连头一起写回：
+                    // 只写 body 会让「每当友方随从进化，打对手 1 点」变成
+                    // 「常驻：打对手 1 点」，触发时机整个变了。
+                    if (gc.Granted.Trigger != null
+                        && gc.Granted.Trigger.Event != CoreEvent.PassiveAura)
+                        sb2.Append(PrintAbility(gc.Granted, depth + 1));
+                    else
+                        foreach (var inner2 in gc.Granted.Body ?? Array.Empty<EffectNode>())
+                            sb2.Append(PrintNode(inner2, depth + 1));
                 }
                 sb2.Append(ind).Append("}\n");
                 return sb2.ToString();

@@ -904,6 +904,15 @@ public static partial class Regress
              "    on play {\n" +
              "        cost_mod(target(ally, hand, count: 1), 1, dur: ThisTurn)\n" +
              "    }\n}\n"),
+            // 被授予的能力必须连触发头一起往返：硬编码成 PassiveAura 会让
+            // 「每当友方随从进化，打对手 1 点」变成「常驻打 1 点」。
+            ("grant_counter_ability",
+             "card 940004 \"信仰触发\" (Follower, cost: 2, atk: 1, life: 1) {\n" +
+             "    on play {\n" +
+             "        grant_counter_ability(mode_count) {\n" +
+             "            on evolve { damage(target(enemy, leader), 1) }\n" +
+             "        }\n" +
+             "    }\n}\n"),
         };
 
         foreach (var (name, script) in durCases)
@@ -916,6 +925,19 @@ public static partial class Regress
             string d2 = "";
             if (second.Count == 0 || !DiyWorkspace.StructurallyEqual(first[0], second[0], out d2))
             { ok = false; report.Add(name + " 往返不等价：" + (d2.Length > 0 ? d2.Replace("\n", " ") : "重解析失败")); continue; }
+
+            // 被授予/带触发头的能力：触发头不能被降级成 PassiveAura。
+            if (name == "grant_counter_ability")
+            {
+                var ga = first[0].Abilities.SelectMany(x => x.Body ?? Array.Empty<EffectNode>())
+                                          .OfType<GrantCounterAbilityNode>().FirstOrDefault();
+                if (ga?.Granted?.Trigger?.Event != CoreEvent.OnEvolve)
+                {
+                    ok = false;
+                    report.Add(name + " 触发头被降级成 " + (ga?.Granted?.Trigger?.Event.ToString() ?? "null"));
+                    continue;
+                }
+            }
 
             report.Add(name + "往返ok");
         }
