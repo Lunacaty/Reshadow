@@ -247,8 +247,11 @@ public sealed class Tokenizer
                     continue;
                 }
 
+                // 标识符允许下划线：DIY 的自定义计数器/兵种名形如 sword_intent。
+                // 只认 IsLetter 会在下划线处截断，把 sword_intent 拆成 sword 与 intent ——
+                // 于是玩家注册的计数器名永远匹配不上，而错误信息只说「解析器无法推进」。
                 int j = i;
-                while (j < text.Length && (char.IsLetter(text[j]) || text[j] == '\'' || text[j] == '’')) j++;
+                while (j < text.Length && (char.IsLetter(text[j]) || text[j] == '\'' || text[j] == '’' || text[j] == '_')) j++;
                 var word = text.Substring(i, j - i);
 
                 // Super - Evolve 合成一个词（影之诗原文把连字符当分隔符用）

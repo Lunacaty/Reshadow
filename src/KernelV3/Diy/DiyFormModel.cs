@@ -288,6 +288,29 @@ public sealed class DiyFormCompiler
         var body = new List<EffectNode>();
         foreach (var row in item.Actions ?? new List<ActionFormRow>())
         {
+            // 表单里「选 1 个敌方随从并打它」是一行（玩家理解的单位），
+            // 而 AST 里是两条节点：先 Select 存进 $selected，后续动作引用槽位。
+            // 少展开这一步，四端产物就不一致 —— 而卡面中文读起来几乎一样，
+            // 正是「看起来一样、实际不同」的典型。
+            if (row?.Target != null && row.Target.Mode == "Choose" && string.IsNullOrEmpty(row.Target.Slot))
+            {
+                body.Add(new SelectTargetNode
+                {
+                    Target = TargetOf(row.Target),
+                    OutSlot = TargetSpec.SlotSelected,
+                });
+                var row2 = new ActionFormRow
+                {
+                    Kind = row.Kind,
+                    Target = new TargetFilterForm { Slot = TargetSpec.SlotSelected },
+                    NumberSource = row.NumberSource, Number = row.Number, Name = row.Name,
+                    NumberSource2 = row.NumberSource2, Number2 = row.Number2,
+                };
+                var n2 = RowToNode(row2);
+                if (n2 != null) body.Add(n2);
+                continue;
+            }
+
             var n = RowToNode(row);
             if (n != null) body.Add(n);
         }

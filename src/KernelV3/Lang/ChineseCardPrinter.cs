@@ -1069,6 +1069,7 @@ public sealed class ChineseCardPrinter
     private string DeckNameZh(string en) => en switch
     {
         "Apocalypse Deck" => "启示录牌组",
+        "a deck of 40 cards" => "40张牌的牌组",
         "deck of 40 cards" => "40张牌的牌组",
         _ => en,
     };
