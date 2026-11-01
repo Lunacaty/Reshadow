@@ -61,6 +61,7 @@ public static class RegressBattleUi
         Check("DIYU-8 积木端增删移可编辑", CaseBlockEditable);
         Check("DIYU-9 法术卡存盘重载不蜕变", CaseSpellSurvivesSave);
         Check("DIYU-10 卡池规则 13 项键名往返", CasePoolRulesKeyRoundTrip);
+        Check("DIYU-11 规则字段中文名全覆盖", CaseRuleLabelsCoverage);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -998,5 +999,33 @@ public static class RegressBattleUi
         return (ok, "同名上限=" + r2.MaxCopiesPerCard + "(应5)"
                     + " 进化解锁=" + r2.EvolveUnlockTurnFirstPlayer + "(应3)"
                     + " 先手抽牌=" + r2.FirstPlayerDrawsOnTurn1 + "(应False)");
+    }
+
+    // ---------------------------------------------------------------- DIYU-11
+
+    /// <summary>
+    /// MatchRules 的每个字段都必须有中文显示名。
+    ///
+    /// 少了这条，卡池配置页就会露出 LeaderInitialLife 这类英文字段名 ——
+    /// 玩家根本不知道「LeaderMaxLife」和「LeaderInitialLife」差在哪。
+    /// </summary>
+    private static (bool, string) CaseRuleLabelsCoverage()
+    {
+        var props = typeof(MatchRules).GetProperties()
+            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
+            .Select(p => p.Name)
+            .ToList();
+
+        var missing = props.Where(n => !MatchRulesLabels.Has(n)).ToList();
+
+        // 双向：未登记的必须回落到英文原名，而不是返回空串
+        string fallback = MatchRulesLabels.Of("NotARealRule");
+        bool fallbackOk = fallback == "NotARealRule";
+
+        bool ok = missing.Count == 0 && fallbackOk && props.Count > 0;
+        return (ok, "字段数=" + props.Count + " 已登记=" + MatchRulesLabels.Count
+                    + " 缺失=" + missing.Count
+                    + (missing.Count > 0 ? "(" + string.Join(",", missing) + ")" : "")
+                    + " 未知字段回落=" + fallbackOk);
     }
 }

@@ -262,7 +262,14 @@ public partial class PackAndPoolManagerView : Control
                 var row = new HBoxContainer();
                 row.AddThemeConstantOverride("separation", 10);
 
-                var a = new Label { Text = prop.Name, CustomMinimumSize = new Vector2(230, 0) };
+                // 字段名显示简中；未登记时回落到英文原名而不是空白 ——
+                // 留空会让人以为「这行没有规则」。
+                var a = new Label
+                {
+                    Text = MatchRulesLabels.Of(prop.Name),
+                    CustomMinimumSize = new Vector2(230, 0),
+                    TooltipText = prop.Name,
+                };
                 a.AddThemeFontSizeOverride("font_size", 11);
                 a.AddThemeColorOverride("font_color", SvWbTheme.TextSecondary);
                 row.AddChild(a);
@@ -292,7 +299,7 @@ public partial class PackAndPoolManagerView : Control
                 count++;
             }
 
-            var foot = new Label { Text = "—— 共 " + count + " 项规则（可编辑） ——" };
+            var foot = new Label { Text = "—— 共 " + count + " 项规则（可编辑；鼠标悬停看英文字段名） ——" };
             foot.AddThemeFontSizeOverride("font_size", 10);
             foot.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
             _ruleList.AddChild(foot);
