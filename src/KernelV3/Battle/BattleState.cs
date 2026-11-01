@@ -55,6 +55,12 @@ public sealed class BattleState : IVmWorld
         Schema.CounterLimits["max_pp"] = (0, Math.Max(Rules.MaxPpCap, Rules.InitialMaxPp));
         Schema.CounterLimits["ep"] = (0, Rules.MaxEpCap);
         Schema.CounterLimits["sep"] = (0, Rules.MaxSepCap);
+
+        // 可堆叠资源规格在**构造时就注册**，不等到 RegisterBuiltinTokens。
+        // 规格描述的是「计数器怎么绑定护符」，属于规则而非卡；
+        // 放在注册卡时才做，会让只用 SpawnCard 布置的测试拿不到规格，
+        // 表现为「土之印不合并、也不受保护」。
+        RegisterCoreStackSpecs();
     }
 
     /// <summary>
@@ -265,6 +271,7 @@ public sealed class BattleState : IVmWorld
 
     public void RegisterBuiltinTokens(Lang.Lexicon lex = null)
     {
+
         void Token(int id, string name, CardKind kind, int cost, int atk, int life,
                    string[] traits, params string[] keywords)
         {
@@ -301,6 +308,26 @@ public sealed class BattleState : IVmWorld
         // 「某个衍生卡突然变成白板」，不是编译错误。
         foreach (var t in BuiltinTokenDefs)
             Token(t.id, t.name, t.kind, t.cost, t.atk, t.life, t.traits, t.keywords);
+    }
+
+    /// <summary>注册核心包的两条可堆叠护符规格（幂等）。</summary>
+    private void RegisterCoreStackSpecs()
+    {
+        if (Schema.StackableAmulets.ContainsKey("earth_sigil")) return;
+
+        Schema.StackableAmulets["earth_sigil"] = new StackableAmuletSpec(
+            CounterName: "earth_sigil",
+            DefaultTokenCardId: MagicSedimentCardId,
+            MatchTraitName: null,              // 土之印只按卡号认同类
+            MergePolicy: StackMergePolicy.AbsorbQuietly,
+            ProtectedFromAbilities: true);
+
+        Schema.StackableAmulets["clues"] = new StackableAmuletSpec(
+            CounterName: "clues",
+            DefaultTokenCardId: ClueDefaultCardId,
+            MatchTraitName: "Clue",            // 线索按兵种认同类（换过卡面也算）
+            MergePolicy: StackMergePolicy.BanishOld,
+            ProtectedFromAbilities: true);
     }
 
     public CardDef CardDefOf(int cardId)
@@ -574,13 +601,37 @@ public sealed class BattleState : IVmWorld
     public string LastCrestIdCollision { get; private set; }
 
     /// <summary>
-    /// 土之印与 Clue 护符的保护（R-6.2）：
-    /// 它们不能被能力选中，也不能被能力破坏。
+    /// 这张卡是不是某个「可堆叠资源」的护符。
+    ///
+    /// 判定依据来自 Schema.StackableAmulets —— 引擎不再写死任何具体卡号；
+    /// 核心卡包注册 earth_sigil / clues 两条规格，
+    /// DIY 卡包可以注册自己的（例如「血之契约」这种自定义资源）。
+    /// </summary>
+    public StackableAmuletSpec FindStackSpec(RuntimeEntity e)
+    {
+        if (e?.Def == null) return null;
+        foreach (var spec in Schema.StackableAmulets.Values)
+        {
+            if (e.Def.CardId == spec.DefaultTokenCardId) return spec;
+            if (!string.IsNullOrEmpty(spec.MatchTraitName))
+            {
+                var tr = Schema.Trait(spec.MatchTraitName);
+                if (e.Traits.Contains(tr) || (e.Def.Traits != null && e.Def.Traits.Contains(tr)))
+                    return spec;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 可堆叠护符的保护（R-6.2）：不能被能力选中，也不能被能力破坏。
     /// 只有层数归 0 的规则性破坏能结束它们。
     /// </summary>
     public bool IsProtectedAmulet(RuntimeEntity e)
-        => e?.Def != null
-           && (e.Def.CardId == MagicSedimentCardId || e.Def.CardId == ClueDefaultCardId);
+    {
+        var spec = FindStackSpec(e);
+        return spec != null && spec.ProtectedFromAbilities;
+    }
 
     /// <summary>取该玩家场上的 Clue 护符（最多 1 个）。</summary>
     public RuntimeEntity FindClue(int playerId)
@@ -617,7 +668,9 @@ public sealed class BattleState : IVmWorld
             BanishEntity(oldClue);
         }
 
-        var e = SpawnCard(ClueDefaultCardId, ZoneRef.Board, playerId);
+        int tokenId = Schema.StackableAmulets.TryGetValue("clues", out var clueSpec)
+            ? clueSpec.DefaultTokenCardId : ClueDefaultCardId;
+        var e = SpawnCard(tokenId, ZoneRef.Board, playerId);
         if (e != null && carried > 0)
         {
             var key = Schema.Counter("clues");
@@ -631,7 +684,11 @@ public sealed class BattleState : IVmWorld
     {
         if (playerId < 0 || playerId > 1) return null;
         foreach (var e in Players[playerId].Board)
-            if (e.Def != null && e.Def.CardId == MagicSedimentCardId) return e;
+        {
+            var spec = FindStackSpec(e);
+            if (spec != null && string.Equals(spec.CounterName, "earth_sigil", StringComparison.OrdinalIgnoreCase))
+                return e;
+        }
         return null;
     }
 
@@ -650,7 +707,9 @@ public sealed class BattleState : IVmWorld
             RemoveQuietly(oldSigil);
         }
 
-        var e = SpawnCard(MagicSedimentCardId, ZoneRef.Board, playerId);
+        int tokenId = Schema.StackableAmulets.TryGetValue("earth_sigil", out var sigSpec)
+            ? sigSpec.DefaultTokenCardId : MagicSedimentCardId;
+        var e = SpawnCard(tokenId, ZoneRef.Board, playerId);
         if (e != null && carried > 0)
         {
             var key = Schema.Counter("earth_sigil");
@@ -666,30 +725,32 @@ public sealed class BattleState : IVmWorld
     private void MergeStackableAmulet(RuntimeEntity fresh)
     {
         if (fresh?.Def == null) return;
-        bool isSigil = fresh.Def.CardId == MagicSedimentCardId;
-        // Clue 不只认默认卡号：任何带 Clue 兵种的护符都按线索护符合并，
-        // 否则换过卡面的线索护符会与默认那张同时占两个格子。
-        var clueTrait = Schema.Trait("Clue");
-        bool isClue = fresh.Def.CardId == ClueDefaultCardId
-                      || fresh.Traits.Contains(clueTrait);
-        if (!isSigil && !isClue) return;
 
-        var key = Schema.Counter(isSigil ? "earth_sigil" : "clues");
+        // 全部判定查 Schema.StackableAmulets：引擎不再认识任何具体卡号。
+        // 一个计数器对应一条规格，规格里写明「怎么认同类」与「旧护符怎么处理」。
+        var spec = FindStackSpec(fresh);
+        if (spec == null) return;
+
+        var key = Schema.Counter(spec.CounterName);
         int carried = 0;
         foreach (var old in Players[fresh.PlayerId].Board.ToList())
         {
             if (ReferenceEquals(old, fresh) || old.Def == null) continue;
-            bool sameKind = isSigil
-                ? old.Def.CardId == MagicSedimentCardId
-                : (old.Def.CardId == ClueDefaultCardId || old.Traits.Contains(clueTrait));
-            if (!sameKind) continue;
+
+            // 同类判定同样走规格：卡号相同，或兵种相同（兵种来自规格的 MatchTraitName）。
+            var oldSpec = FindStackSpec(old);
+            if (oldSpec == null
+                || !string.Equals(oldSpec.CounterName, spec.CounterName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             old.Counters.TryGetValue(key, out int cv);
             carried += cv;
-            // 土之印是安静合并（被吸收，不算离场）；
-            // 线索护符按 76-c 6.2-2 铁律走【消失】：必须发 OnBanish，
-            // 让它自己的「当这张卡被放逐时」能力照常触发。
-            if (isSigil) RemoveQuietly(old);
-            else BanishEntity(old);
+
+            // 合并方式由规格决定：
+            //   AbsorbQuietly（土之印）—— 安静吸收，不算离场；
+            //   BanishOld（线索）—— 按 76-c 6.2-2 铁律走【消失】，必须发 OnBanish。
+            if (spec.MergePolicy == StackMergePolicy.BanishOld) BanishEntity(old);
+            else RemoveQuietly(old);
         }
         if (carried > 0)
         {

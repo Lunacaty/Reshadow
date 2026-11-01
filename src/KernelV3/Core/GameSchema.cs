@@ -21,6 +21,16 @@ public sealed class GameSchema
     /// <summary>计数器名（不区分大小写） -> (下限, 上限)。上限 -1 表示不限。</summary>
     public Dictionary<string, (int min, int max)> CounterLimits { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 可堆叠护符绑定表：计数器名 → 规格。
+    ///
+    /// 由卡包在加载时注册（核心包注册 earth_sigil 与 clues）。
+    /// BattleState 读写计数器、合并护符、判断保护时都查这张表，
+    /// 于是引擎本体不再出现任何具体卡号。
+    /// </summary>
+    public Dictionary<string, StackableAmuletSpec> StackableAmulets { get; }
+        = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>把计数器值钳制到它自己的范围内。</summary>
     public int ClampCounter(SymbolId<CounterTag> ctr, int value)
     {

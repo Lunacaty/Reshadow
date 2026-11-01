@@ -100,6 +100,15 @@ public enum CardKind { Follower = 0, Spell, Amulet, Crest, Leader, Faith }
 public sealed class CardDef
 {
     public int CardId { get; init; }
+
+    /// <summary>定义这张卡的卡包 ID（空 = 引擎内置）。跨包冲突检测与来源追溯用。</summary>
+    public string PackId { get; init; } = "";
+
+    /// <summary>
+    /// true = 衍生卡（Token）：仅供召唤/变身/加手牌/替换牌组使用，
+    /// 不可放进局外构筑。
+    /// </summary>
+    public bool IsToken { get; init; }
     public string Name { get; init; } = "";
     public string NameChs { get; init; } = "";
     public CardKind Kind { get; init; }
