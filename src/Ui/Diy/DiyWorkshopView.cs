@@ -34,6 +34,17 @@ public partial class DiyWorkshopView : Control
     private OptionButton _packPicker;
     private Control _hover;
 
+    // 表单端可编辑控件（每次切到表单页签重建）
+    private LineEdit _formNameEdit;
+    private LineEdit _formNameEngEdit;
+    private SpinBox _formCostSpin;
+    private SpinBox _formAtkSpin;
+    private SpinBox _formLifeSpin;
+    private OptionButton _formKindPicker;
+    private OptionButton _formClanPicker;
+    private LineEdit _formTraitsEdit;
+    private LineEdit _formKeywordsEdit;
+
     public void Boot(GameSessionStore store)
     {
         _store = store;
@@ -263,7 +274,8 @@ public partial class DiyWorkshopView : Control
                 new Color(0.20f, 0.12f, 0.04f, 0.9f), SvWbTheme.StatusWarn, 8, 1, 2));
             var wl = new Label
             {
-                Text = "⚠ 本卡超出表单表达能力，表单端为只读：\n" + _ctrl.FormReadOnlyReason,
+                Text = "⚠ 本卡有超出表单表达能力的效果（下列基础属性仍可改，" +
+                       "但效果只能在脚本端/积木端编辑）：\n" + _ctrl.FormReadOnlyReason,
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
             };
             wl.AddThemeFontSizeOverride("font_size", 12);
@@ -272,20 +284,114 @@ public partial class DiyWorkshopView : Control
             _endpointHost.AddChild(warn);
         }
 
-        _endpointHost.AddChild(Row("卡名（中文）", DeckEditorViewModel.DisplayName(def)));
-        _endpointHost.AddChild(Row("基础费用", def.BaseCost.ToString()));
-        _endpointHost.AddChild(Row("攻击 / 生命", def.BaseAttack + " / " + def.BaseLife));
-        _endpointHost.AddChild(Row("职业",
-            def.Clan.IsValid ? SvWbTheme.ClanDisplayZh(def.Clan.Name) : "中立"));
-        _endpointHost.AddChild(Row("兵种",
-            def.Traits != null && def.Traits.Count > 0
-                ? string.Join("·", def.Traits.Select(t => t.Name)) : "无"));
-        _endpointHost.AddChild(Row("构筑修正数", (def.DeckModifiers?.Count ?? 0).ToString()));
-        _endpointHost.AddChild(Row("能力条数", (def.Abilities?.Count ?? 0).ToString()));
+        var fm = _ctrl.FormModel;
+        if (fm == null) { _endpointHost.AddChild(new Label { Text = "（表单模型为空）" }); return; }
 
-        _endpointHost.AddChild(new Label { Text = "（表单为只读投影；要改请切到脚本端或积木端）" });
+        // 可编辑：这些是表单端真正能改的字段
+        _formNameEdit = new LineEdit { Text = fm.NameChs ?? "", CustomMinimumSize = new Vector2(260, 32) };
+        _endpointHost.AddChild(EditRow("卡名（中文）", _formNameEdit));
+
+        _formNameEngEdit = new LineEdit { Text = fm.NameEng ?? "", CustomMinimumSize = new Vector2(260, 32) };
+        _endpointHost.AddChild(EditRow("卡名（英文）", _formNameEngEdit));
+
+        _formCostSpin = MakeSpin(fm.Cost, 0, 30);
+        _endpointHost.AddChild(EditRow("基础费用", _formCostSpin));
+
+        _formAtkSpin = MakeSpin(fm.Attack, 0, 99);
+        _endpointHost.AddChild(EditRow("攻击力", _formAtkSpin));
+
+        _formLifeSpin = MakeSpin(fm.Life, 0, 99);
+        _endpointHost.AddChild(EditRow("生命值", _formLifeSpin));
+
+        _formKindPicker = new OptionButton { CustomMinimumSize = new Vector2(160, 32) };
+        _formKindPicker.AddItem("随从", 0);
+        _formKindPicker.AddItem("法术", 1);
+        _formKindPicker.AddItem("护符", 2);
+        _formKindPicker.Selected = fm.Kind == "Spell" ? 1 : fm.Kind == "Amulet" ? 2 : 0;
+        SvWbTheme.StyleButton(_formKindPicker);
+        _endpointHost.AddChild(EditRow("卡种", _formKindPicker));
+
+        _formClanPicker = new OptionButton { CustomMinimumSize = new Vector2(160, 32) };
+        string[] clans = { "Neutral", "Forestcraft", "Swordcraft", "Runecraft",
+                           "Dragoncraft", "Abysscraft", "Havencraft", "Portalcraft" };
+        for (int i = 0; i < clans.Length; i++) _formClanPicker.AddItem(clans[i], i);
+        int ci = Array.IndexOf(clans, fm.Clan);
+        _formClanPicker.Selected = ci >= 0 ? ci : 0;
+        SvWbTheme.StyleButton(_formClanPicker);
+        _endpointHost.AddChild(EditRow("职业", _formClanPicker));
+
+        // 兵种 / 关键词：文本编辑，逗号分隔
+        _formTraitsEdit = new LineEdit
+        {
+            Text = string.Join(", ", fm.Traits ?? new List<string>()),
+            CustomMinimumSize = new Vector2(260, 32),
+            PlaceholderText = "逗号分隔，如 Officer, Commander",
+        };
+        _endpointHost.AddChild(EditRow("兵种", _formTraitsEdit));
+
+        _formKeywordsEdit = new LineEdit
+        {
+            Text = string.Join(", ", fm.Keywords ?? new List<string>()),
+            CustomMinimumSize = new Vector2(260, 32),
+            PlaceholderText = "逗号分隔，如 ward, storm",
+        };
+        _endpointHost.AddChild(EditRow("关键词", _formKeywordsEdit));
+
+        _endpointHost.AddChild(new Label
+        {
+            Text = "构筑修正 " + (def.DeckModifiers?.Count ?? 0) + " 条 / 能力 "
+                   + (def.Abilities?.Count ?? 0) + " 条（这两类请在脚本端编辑）",
+        });
     }
 
+    private static SpinBox MakeSpin(int value, int min, int max)
+    {
+        var s = new SpinBox { MinValue = min, MaxValue = max, Value = value,
+                             CustomMinimumSize = new Vector2(120, 32) };
+        return s;
+    }
+
+    private static Control EditRow(string label, Control editor)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 12);
+
+        var a = new Label { Text = label, CustomMinimumSize = new Vector2(120, 0) };
+        a.AddThemeFontSizeOverride("font_size", 12);
+        a.AddThemeColorOverride("font_color", SvWbTheme.TextSecondary);
+        row.AddChild(a);
+
+        row.AddChild(editor);
+        return row;
+    }
+
+    /// <summary>把表单端的编辑结果写回 FormModel，再交给控制器编译。</summary>
+    private bool ApplyFormEdits()
+    {
+        var fm = _ctrl.FormModel;
+        if (fm == null) return false;
+
+        fm.NameChs = _formNameEdit?.Text ?? fm.NameChs;
+        fm.NameEng = _formNameEngEdit?.Text ?? fm.NameEng;
+        fm.Cost = _formCostSpin != null ? (int)_formCostSpin.Value : fm.Cost;
+        fm.Attack = _formAtkSpin != null ? (int)_formAtkSpin.Value : fm.Attack;
+        fm.Life = _formLifeSpin != null ? (int)_formLifeSpin.Value : fm.Life;
+        fm.Kind = _formKindPicker?.Selected switch { 1 => "Spell", 2 => "Amulet", _ => "Follower" };
+        if (_formClanPicker != null && _formClanPicker.ItemCount > 0)
+            fm.Clan = _formClanPicker.GetItemText(_formClanPicker.Selected);
+
+        fm.Traits = SplitList(_formTraitsEdit?.Text);
+        fm.Keywords = SplitList(_formKeywordsEdit?.Text);
+
+        return _ctrl.CompileFromForm(fm);
+    }
+
+    private static List<string> SplitList(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return new List<string>();
+        return s.Split(new[] { ',', '，', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+    }
     private void BuildBlockEndpoint()
     {
         if (_ctrl.BlockModel == null)
@@ -294,11 +400,67 @@ public partial class DiyWorkshopView : Control
             return;
         }
 
+        var hint = new Label
+        {
+            Text = "五彩积木树。事件帽下可增删动作块 —— 改完点下方【立即编译并同步四端】。",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        hint.AddThemeFontSizeOverride("font_size", 11);
+        hint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+        _endpointHost.AddChild(hint);
+
         var tree = new BlockTreeEditorWidget();
-        tree.Build(_ctrl.BlockModel, _store.CardPrinter);
+        tree.Build(_ctrl.BlockModel, _store.CardPrinter, editable: true,
+                   onAddAction: hat => AddActionBlock(hat),
+                   onRemoveAction: blk => RemoveActionBlock(blk),
+                   onMoveAction: (blk, dir) => MoveActionBlock(blk, dir));
         _endpointHost.AddChild(tree);
     }
 
+    /// <summary>往某个事件帽下追加一个「抽 1 张牌」动作块（最常见、也最容易看出效果）。</summary>
+    private void AddActionBlock(Block hat)
+    {
+        if (hat == null) return;
+        hat.Stacks ??= new List<Block>();
+        hat.Stacks.Add(new Block { Opcode = "act_draw", IntA = 1 });
+        _ctrl.CompileFromBlocks(_ctrl.BlockModel);
+        RefreshAll();
+    }
+
+    private void RemoveActionBlock(Block blk)
+    {
+        var hats = _ctrl.BlockModel?.Hats;
+        if (hats == null) return;
+        foreach (var h in hats)
+        {
+            if (h.Stacks != null && h.Stacks.Remove(blk)) { RecompileBlocks(); return; }
+            if (h.ElseStacks != null && h.ElseStacks.Remove(blk)) { RecompileBlocks(); return; }
+        }
+    }
+
+    private void MoveActionBlock(Block blk, int dir)
+    {
+        var hats = _ctrl.BlockModel?.Hats;
+        if (hats == null) return;
+        foreach (var h in hats)
+        {
+            var list = h.Stacks;
+            if (list == null) continue;
+            int idx = list.IndexOf(blk);
+            if (idx < 0) continue;
+            int ni = idx + dir;
+            if (ni < 0 || ni >= list.Count) return;
+            (list[idx], list[ni]) = (list[ni], list[idx]);
+            RecompileBlocks();
+            return;
+        }
+    }
+
+    private void RecompileBlocks()
+    {
+        _ctrl.CompileFromBlocks(_ctrl.BlockModel);
+        RefreshAll();
+    }
     private void BuildEnglishEndpoint()
     {
         var spec = _ctrl.CnlSpec;
@@ -354,6 +516,9 @@ public partial class DiyWorkshopView : Control
         {
             case DiyEndpointKind.Script:
                 if (_scriptEdit != null) ok = _ctrl.CompileFromScript(_scriptEdit.Text);
+                break;
+            case DiyEndpointKind.Form:
+                ok = ApplyFormEdits();
                 break;
             default:
                 // 其余三端目前为只读投影，编译退化为「用当前 AST 重投影」

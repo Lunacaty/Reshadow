@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Core;
 using ShadowverseFan.KernelV3.Packs;
@@ -50,6 +52,9 @@ public static class RegressBattleUi
         Check("BUI-10 AI 回合自动演武闭环", CaseOpponentAi);
         Check("DIYU-1 四端工坊编译与同构自检", CaseDiyWorkshop);
         Check("DIYU-2 跨端同步（改脚本，三端跟随）", CaseDiyCrossEnd);
+        Check("DIYU-3 保存进卡包并热重载读回", CaseDiySaveAndReload);
+        Check("DIYU-4 表单端可编辑", CaseFormEditable);
+        Check("DIYU-5 卡池规则可编辑并读回", CasePoolRulesSave);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -566,5 +571,155 @@ public static class RegressBattleUi
         bool ok = costChanged && astChanged && nameZh && blockSynced;
         return (ok, "费用 " + beforeCost + "->" + afterCost + " AST变了=" + astChanged
                     + " 中文名=\"" + ctrl.CurrentDef.NameChs + "\" 积木已同步=" + blockSynced);
+    }
+
+    // ---------------------------------------------------------------- DIYU-3
+
+    /// <summary>
+    /// DIY 保存进卡包后必须能真的读回来。
+    ///
+    /// 这条验的是「写盘 + 热重载」整条链路：
+    /// 保存前记下卡池里没有这张卡，保存后重新 Initialize 应能看见它。
+    /// </summary>
+    private static (bool, string) CaseDiySaveAndReload()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        const int probeId = 959901;
+        string script = string.Join("\n",
+            "card " + probeId + " \"存档测试卡\" (Follower, cost: 4, atk: 2, life: 5, clan: Swordcraft) {",
+            "    keywords: [ward]",
+            "    on play {",
+            "        draw(1)",
+            "    }",
+            "}");
+
+        if (!ctrl.CompileFromScript(script))
+            return (false, "脚本编译失败：" + string.Join("；", ctrl.LastErrors));
+
+        bool before = store.Catalog.AllCards.ContainsKey(probeId);
+
+        // 写进 testset-v2（已存在，安全）
+        bool saved = ctrl.SaveCurrentCardToPack("testset-v2", out string msg);
+        if (!saved) return (false, "保存失败：" + msg);
+
+        // 全新 store 重新扫描磁盘
+        var store2 = NewStore();
+        var back = store2.Catalog.AllCards.TryGetValue(probeId, out var def) ? def : null;
+
+        bool exists = back != null;
+        bool nameOk = exists && back.NameChs == "存档测试卡";
+        bool costOk = exists && back.BaseCost == 4;
+        bool abilityOk = exists && back.Abilities != null && back.Abilities.Count > 0;
+
+        // 清理：把刚写进去的卡从 pack.json 删掉，避免污染仓库
+        CleanupProbeCard("testset-v2", probeId);
+
+        bool ok = !before && exists && nameOk && costOk && abilityOk;
+        return (ok, "保存前不存在=" + !before + " 读回存在=" + exists
+                    + " 中文名对=" + nameOk + " 费用对=" + costOk
+                    + " 能力非空=" + abilityOk);
+    }
+
+    private static void CleanupProbeCard(string packId, int cardId)
+    {
+        try
+        {
+            var root = CardPackLoader.ResolvePacksRoot();
+            if (root == null) return;
+            var file = Path.Combine(root, packId, "pack.json");
+            if (!File.Exists(file)) return;
+
+            var text = File.ReadAllText(file);
+            var pack = JsonSerializer.Deserialize<JsonElement>(text);
+            if (!pack.TryGetProperty("cards", out var cards)) return;
+
+            var kept = cards.EnumerateArray()
+                .Where(c => !(c.TryGetProperty("card_id", out var id) && id.GetInt32() == cardId))
+                .ToList();
+
+            // 用原文替换 cards 段：保留其它字段不动
+            var sb = new StringBuilder();
+            foreach (var c in kept) sb.Append(c.GetRawText()).Append(",");
+            string joined = sb.ToString().TrimEnd(',');
+
+            var m = System.Text.RegularExpressions.Regex.Match(text, "\"cards\"\\s*:\\s*\\[");
+            if (!m.Success) return;
+            int start = m.Index + m.Length;
+            int depth = 1, i2 = start;
+            while (i2 < text.Length && depth > 0)
+            {
+                if (text[i2] == '[') depth++;
+                else if (text[i2] == ']') depth--;
+                i2++;
+            }
+            string rebuilt = text.Substring(0, start) + joined + text.Substring(i2 - 1);
+            File.WriteAllText(file, rebuilt, new UTF8Encoding(false));
+        }
+        catch { }
+    }
+
+    // ---------------------------------------------------------------- DIYU-4
+
+    /// <summary>
+    /// 表单端可编辑：改基础属性后编译，卡面数据必须跟着变。
+    /// </summary>
+    private static (bool, string) CaseFormEditable()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        var fm = ctrl.FormModel;
+        if (fm == null) return (false, "表单模型为空（该卡超出表单表达能力）");
+
+        int beforeCost = ctrl.CurrentDef.BaseCost;
+        fm.NameChs = "表单改过的卡";
+        fm.Cost = 6;
+        fm.Attack = 4;
+        fm.Life = 7;
+
+        bool compiled = ctrl.CompileFromForm(fm);
+        if (!compiled) return (false, "表单编译失败：" + string.Join("；", ctrl.LastErrors));
+
+        var d = ctrl.CurrentDef;
+        bool ok = d.BaseCost == 6 && d.BaseAttack == 4 && d.BaseLife == 7
+                  && d.NameChs == "表单改过的卡";
+        return (ok, "费用 " + beforeCost + "->" + d.BaseCost
+                    + " 攻/血=" + d.BaseAttack + "/" + d.BaseLife
+                    + " 中文名=\"" + d.NameChs + "\"");
+    }
+
+    // ---------------------------------------------------------------- DIYU-5
+
+    /// <summary>
+    /// 卡池规则可编辑：改一项规则后写盘，重新加载必须读回新值。
+    /// </summary>
+    private static (bool, string) CasePoolRulesSave()
+    {
+        var store = NewStore();
+        if (store.PoolConfigs.Count == 0) return (false, "无卡池");
+
+        string pid = store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).First();
+        var orig = store.PoolConfigs[pid].Rules ?? MatchRules.CreateStandard();
+        int origHand = orig.StartingHandSize;
+
+        // MatchRules 全是 init-only，反射 SetValue 会抛 ——
+        // 只能用一个明确的改动副本（其余字段走 CreateStandard 默认值）。
+        var modified = MatchRules.CreateStandard();
+        typeof(MatchRules).GetProperty("StartingHandSize")
+            ?.SetValue(modified, origHand + 1);
+
+        bool ok1 = store.SavePoolRules(pid, modified, out string msg);
+        if (!ok1) return (false, "保存失败：" + msg);
+
+        var store2 = NewStore();
+        int after = store2.PoolConfigs[pid].Rules.StartingHandSize;
+
+        // 还原
+        store2.SavePoolRules(pid, orig, out _);
+
+        bool ok = after == origHand + 1;
+        return (ok, pid + " 起始手牌 " + origHand + "->" + after + "（应为 " + (origHand + 1) + "）");
     }
 }

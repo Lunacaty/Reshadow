@@ -27,8 +27,27 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         _                => new Color("475569"),
     };
 
-    public void Build(CardBlockWorkspace ws, ChineseCardPrinter printer)
+    private bool _editable;
+    private Action<Block> _onAddAction;
+    private Action<Block> _onRemoveAction;
+    private Action<Block, int> _onMoveAction;
+
+    /// <summary>
+    /// 构建积木树。
+    ///
+    /// editable=true 时每颗动作块右侧出现 [▲][▼][🗑]，事件帽下出现 [＋添加动作] ——
+    /// 积木端如果只能看不能改，那它就只是一张示意图，不是编辑器。
+    /// </summary>
+    public void Build(CardBlockWorkspace ws, ChineseCardPrinter printer,
+                      bool editable = false,
+                      Action<Block> onAddAction = null,
+                      Action<Block> onRemoveAction = null,
+                      Action<Block, int> onMoveAction = null)
     {
+        _editable = editable;
+        _onAddAction = onAddAction;
+        _onRemoveAction = onRemoveAction;
+        _onMoveAction = onMoveAction;
         foreach (var c in GetChildren()) c.QueueFree();
         AddThemeConstantOverride("separation", 6);
         if (ws == null) return;
@@ -59,7 +78,18 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             hatTitle.AddThemeFontSizeOverride("font_size", 12);
             hatTitle.AddThemeColorOverride("font_color", new Color("FBBF24"));
             AddChild(hatTitle);
-            foreach (var h in ws.Hats) AddChild(BlockLeaf(h, 0));
+            foreach (var h in ws.Hats)
+            {
+                AddChild(BlockLeaf(h, 0));
+                if (_editable && _onAddAction != null)
+                {
+                    var addBtn = new Button { Text = "＋ 添加动作块", CustomMinimumSize = new Vector2(130, 26) };
+                    SvWbTheme.StyleButton(addBtn, customAccent: new Color("2563EB"));
+                    var boundHat = h;
+                    addBtn.Pressed += () => _onAddAction(boundHat);
+                    AddChild(addBtn);
+                }
+            }
         }
 
         if (ws.AccelerateHats != null && ws.AccelerateHats.Count > 0)
@@ -84,7 +114,36 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         var wrap = new VBoxContainer();
         wrap.AddThemeConstantOverride("separation", 4);
-        wrap.AddChild(BlockBox(shape, label, null, depth));
+
+        // 动作块行：色块 + 可选的 [▲][▼][🗑]
+        var lineRow = new HBoxContainer();
+        lineRow.AddThemeConstantOverride("separation", 4);
+        wrap.AddChild(lineRow);
+
+        var box = BlockBox(shape, label, null, depth);
+        box.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        lineRow.AddChild(box);
+
+        if (_editable && _onRemoveAction != null && shape == BlockShape.Stack)
+        {
+            var up = new Button { Text = "▲", CustomMinimumSize = new Vector2(28, 28) };
+            SvWbTheme.StyleButton(up);
+            var b1 = blk;
+            up.Pressed += () => _onMoveAction?.Invoke(b1, -1);
+            lineRow.AddChild(up);
+
+            var down = new Button { Text = "▼", CustomMinimumSize = new Vector2(28, 28) };
+            SvWbTheme.StyleButton(down);
+            var b2 = blk;
+            down.Pressed += () => _onMoveAction?.Invoke(b2, 1);
+            lineRow.AddChild(down);
+
+            var del = new Button { Text = "🗑", CustomMinimumSize = new Vector2(28, 28) };
+            SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
+            var b3 = blk;
+            del.Pressed += () => _onRemoveAction(b3);
+            lineRow.AddChild(del);
+        }
 
         foreach (var inner in blk.Stacks ?? new List<Block>())
             wrap.AddChild(BlockLeaf(inner, depth + 1));

@@ -296,4 +296,75 @@ public sealed class GameSessionStore
         return "[" + string.Join(", ", items.Where(x => x != null)
                                      .Select(x => "{ \"name\": " + JsonStr(x) + " }")) + "]";
     }
+
+    /// <summary>
+    /// 把一份 MatchRules 写回 data/pools/&lt;id&gt;.pool.json 并热重载。
+    ///
+    /// 用反射序列化全部字段 —— 手写 36 项既会漏，也会在 MatchRules
+    /// 加字段时悄悄丢数据（新字段存不进去，下次读回来是默认值）。
+    /// </summary>
+    public bool SavePoolRules(string poolId, MatchRules rules, out string message)
+    {
+        message = "";
+        Initialize();
+        if (!PoolConfigs.TryGetValue(poolId, out var cfg))
+        {
+            message = "找不到卡池 " + poolId;
+            return false;
+        }
+
+        var poolsDir = Path.Combine(DataRoot, "pools");
+        Directory.CreateDirectory(poolsDir);
+        var path = Path.Combine(poolsDir, poolId + ".pool.json");
+
+        var sb = new StringBuilder();
+        sb.Append("{\n");
+        sb.Append("  \"pool_id\": ").Append(JsonStr(cfg.PoolId)).Append(",\n");
+        sb.Append("  \"name\": ").Append(JsonStr(cfg.Name ?? cfg.PoolId)).Append(",\n");
+        sb.Append("  \"enabled_packs\": ").Append(JsonArr(cfg.EnabledPackIds)).Append(",\n");
+        sb.Append("  \"rules\": {\n");
+
+        var props = typeof(MatchRules).GetProperties()
+            .Where(p => p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0)
+            .OrderBy(p => p.Name, StringComparer.Ordinal)
+            .ToList();
+
+        for (int i = 0; i < props.Count; i++)
+        {
+            var p = props[i];
+            object v;
+            try { v = p.GetValue(rules); }
+            catch { continue; }
+            if (v == null) continue;
+
+            // 字段名转 snake_case，与现有 pool.json 的写法一致
+            sb.Append("    \"").Append(ToSnake(p.Name)).Append("\": ");
+            if (v is bool b) sb.Append(b ? "true" : "false");
+            else if (v is int n) sb.Append(n);
+            else if (v is string sv) sb.Append(JsonStr(sv));
+            else sb.Append(JsonStr(v.ToString()));
+            sb.Append(i < props.Count - 1 ? ",\n" : "\n");
+        }
+
+        sb.Append("  }\n");
+        sb.Append("}\n");
+
+        File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+
+        ReloadCatalogAndPools();
+        message = "已保存卡池 [" + poolId + "] 的 " + props.Count + " 项规则并热重载";
+        return true;
+    }
+
+    private static string ToSnake(string name)
+    {
+        var sb = new StringBuilder();
+        for (int i = 0; i < name.Length; i++)
+        {
+            char c = name[i];
+            if (char.IsUpper(c) && i > 0) sb.Append('_');
+            sb.Append(char.ToLowerInvariant(c));
+        }
+        return sb.ToString();
+    }
 }
