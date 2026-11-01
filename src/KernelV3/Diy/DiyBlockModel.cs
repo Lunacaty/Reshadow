@@ -1,0 +1,1421 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using ShadowverseFan.KernelV3.Ast;
+using ShadowverseFan.KernelV3.Core;
+
+namespace ShadowverseFan.KernelV3.Diy;
+
+// ============================================================================
+// Scratch 积木式 DIY —— 积木树 <-> CardDef 双向无损
+//
+// 为什么积木需要「形状」这个强类型：
+//   拖拽界面最常见的错误不是「拼错了」，而是「把数值塞进了条件槽」。
+//   如果积木不区分形状，这种错误要到编译期才暴露，反馈太晚；
+//   而形状不匹配在拖拽瞬间就能高亮 —— 这是积木式交互的全部价值。
+//
+// 五种形状（与 UI 视觉一一对应）：
+//   Hat    事件帽：能力顶端，下面挂一串动作
+//   C      控制流：中间包一段子序列（if / loop / mode）
+//   Stack  动作：可上下拼接
+//   Pill   目标/数值胶囊：只能嵌进孔位
+//   Hex    布尔与数值表达式
+//
+// 双向无损同样是硬要求：30 张真卡必须能 Decompile → Compile 回来，
+// 否则「积木能造卡」只是能造**简单**卡，复杂卡一到就散架。
+// ============================================================================
+
+/// <summary>积木形状。槽位只接受对应形状，这是拖拽期校验的依据。</summary>
+public enum BlockShape
+{
+    Hat,
+    C,
+    Stack,
+    Pill,
+    Hex,
+}
+
+/// <summary>槽位类型：决定这个孔能插什么。</summary>
+public enum SlotKind
+{
+    None,
+    /// <summary>一串动作积木（可空）。</summary>
+    StackSeq,
+    /// <summary>一个目标胶囊。</summary>
+    Target,
+    /// <summary>一个数值表达式积木。</summary>
+    Number,
+    /// <summary>一个布尔条件积木。</summary>
+    Condition,
+    /// <summary>若干并列分支，每个分支是一串动作。</summary>
+    StackSeqList,
+}
+
+/// <summary>一颗积木。字段按 opcode 复用（积木语言天然如此）。</summary>
+public sealed class Block
+{
+    /// <summary>稳定唯一 id，用于错误提示与拖拽定位。</summary>
+    public string Id { get; init; } = Guid.NewGuid().ToString("N").Substring(0, 8);
+
+    public string Opcode { get; init; } = "";
+
+    public BlockShape Shape => DiyBlockModel.ShapeOf(Opcode);
+
+    // ---- 通用字段 ----
+    public string Text { get; set; }          // 卡名 / 关键词名 / 兵种名 / 事件名
+    public int IntA { get; set; }             // 常量 / 计数器初值 / 序号
+    public int IntB { get; set; }             // 副常量
+    public bool FlagA { get; set; }           // 各种开关（IsCrest / IsExact / manualOnly …）
+    public bool FlagB { get; set; }
+    public bool FlagC { get; set; }
+    public string EnumA { get; set; }         // 枚举字面量（Zone / Owner / Mode / Op …）
+    public string EnumB { get; set; }
+    public string CardNameA { get; set; }     // 具名卡池（card("X", …)）
+
+    // ---- 槽位 ----
+    public List<Block> Stacks { get; set; } = new();          // StackSeq
+    public List<Block> ElseStacks { get; set; } = new();      // if-else 的 else 支
+    public List<List<Block>> Branches { get; set; } = new();  // mode 的多分支
+    public Block Target { get; set; }                          // Target
+    public Block Target2 { get; set; }                         // 第二个目标（变身/赋予等）
+    public Block Number { get; set; }                          // Number
+    public Block Number2 { get; set; }                         // 第二个数值
+    public Block Condition { get; set; }                       // Condition
+
+    // ---- 代价 / 触发附加 ----
+    public List<(string kind, int amount)> Costs { get; set; } = new();
+    public string ActiveZone { get; set; }
+    public string DuringTurn { get; set; }
+
+    public bool IsEmpty => string.IsNullOrEmpty(Opcode);
+}
+
+/// <summary>一份积木文档 = 一张卡。</summary>
+public sealed class CardBlockWorkspace
+{
+    public int CardId { get; set; }
+    public string Name { get; set; } = "";
+    public string Kind { get; set; } = "Follower";
+    public int Cost { get; set; }
+    public int Attack { get; set; }
+    public int Life { get; set; }
+    public string Clan { get; set; }
+    public List<string> Traits { get; set; } = new();
+
+    /// <summary>裸关键词（Ward / Rush …），编译成 PassiveAura 上的 Grant。</summary>
+    public List<string> Keywords { get; set; } = new();
+
+    public List<Block> Hats { get; set; } = new();
+
+    public int AccelerateCost { get; set; } = -1;
+    public List<Block> AccelerateHats { get; set; } = new();
+    public int CrystallizeCost { get; set; } = -1;
+    public List<Block> CrystallizeHats { get; set; } = new();
+    public List<Block> CrestHats { get; set; } = new();
+    public List<Block> FaithHats { get; set; } = new();
+}
+/// <summary>积木形状表 + 面板目录 + 槽位校验。</summary>
+public static class DiyBlockModel
+{
+    /// <summary>opcode → 形状。新增积木必须在这里登记，否则拖拽校验会静默放行。</summary>
+    private static readonly Dictionary<string, BlockShape> Shapes = new(StringComparer.Ordinal)
+    {
+        // ---- 事件帽 ----
+        ["hat_self_event"] = BlockShape.Hat,
+        ["hat_watch_event"] = BlockShape.Hat,
+        ["hat_passive"] = BlockShape.Hat,
+
+        // ---- 控制流 ----
+        ["c_if_else"] = BlockShape.C,
+        ["c_repeat"] = BlockShape.C,
+        ["c_mode"] = BlockShape.C,
+        ["c_for_each"] = BlockShape.C,
+
+        // ---- 动作 ----
+        ["act_select"] = BlockShape.Stack,
+        ["act_damage"] = BlockShape.Stack,
+        ["act_split_damage"] = BlockShape.Stack,
+        ["act_restore"] = BlockShape.Stack,
+        ["act_full_restore"] = BlockShape.Stack,
+        ["act_draw"] = BlockShape.Stack,
+        ["act_summon"] = BlockShape.Stack,
+        ["act_add_hand"] = BlockShape.Stack,
+        ["act_copy"] = BlockShape.Stack,
+        ["act_destroy"] = BlockShape.Stack,
+        ["act_banish"] = BlockShape.Stack,
+        ["act_discard"] = BlockShape.Stack,
+        ["act_bounce"] = BlockShape.Stack,
+        ["act_return_deck"] = BlockShape.Stack,
+        ["act_move_to_board"] = BlockShape.Stack,
+        ["act_buff"] = BlockShape.Stack,
+        ["act_set_stats"] = BlockShape.Stack,
+        ["act_swap_stats"] = BlockShape.Stack,
+        ["act_mod_cost"] = BlockShape.Stack,
+        ["act_grant_kw"] = BlockShape.Stack,
+        ["act_remove_kw"] = BlockShape.Stack,
+        ["act_silence"] = BlockShape.Stack,
+        ["act_evolve"] = BlockShape.Stack,
+        ["act_super_evolve"] = BlockShape.Stack,
+        ["act_mod_counter"] = BlockShape.Stack,
+        ["act_transform"] = BlockShape.Stack,
+        ["act_reanimate"] = BlockShape.Stack,
+        ["act_gain_crest"] = BlockShape.Stack,
+        ["act_replace_deck"] = BlockShape.Stack,
+        ["act_invoke"] = BlockShape.Stack,
+        ["act_grant_ability"] = BlockShape.Stack,
+
+        // ---- 胶囊 ----
+        ["tgt_slot"] = BlockShape.Pill,
+        ["tgt_leader"] = BlockShape.Pill,
+        ["tgt_query"] = BlockShape.Pill,
+
+        // ---- 表达式 ----
+        ["bool_compare"] = BlockShape.Hex,
+        ["bool_and"] = BlockShape.Hex,
+        ["bool_or"] = BlockShape.Hex,
+        ["bool_not"] = BlockShape.Hex,
+        ["bool_has_kw"] = BlockShape.Hex,
+        ["bool_has_trait"] = BlockShape.Hex,
+        ["bool_has_state"] = BlockShape.Hex,
+        ["bool_exists"] = BlockShape.Hex,
+        ["bool_true"] = BlockShape.Hex,
+
+        ["num_const"] = BlockShape.Pill,
+        ["num_counter"] = BlockShape.Pill,
+        ["num_prop"] = BlockShape.Pill,
+        ["num_count"] = BlockShape.Pill,
+        ["num_max_group"] = BlockShape.Pill,
+        ["num_arith"] = BlockShape.Hex,
+    };
+
+    public static BlockShape ShapeOf(string opcode)
+        => Shapes.TryGetValue(opcode ?? "", out var s) ? s : BlockShape.Stack;
+
+    public static bool IsKnown(string opcode) => Shapes.ContainsKey(opcode ?? "");
+
+    /// <summary>
+    /// 积木面板目录。
+    ///
+    /// 兵种 / 计数器 / 关键词 / 职业的候选项**实时从 schema 读**，
+    /// 这样玩家用 DefineTrait 注册的新兵种会立刻出现在下拉里；
+    /// 硬编码一份名单的话，DIY 出来的词永远选不到。
+    /// </summary>
+    public static BlockPalette GetAvailableBlocks(GameSchema schema)
+    {
+        return new BlockPalette
+        {
+            Traits = Names(schema?.Traits),
+            Counters = Names(schema?.Counters),
+            Keywords = Names(schema?.Keywords),
+            Clans = Names(schema?.Clans),
+            Opcodes = Shapes.Keys.OrderBy(x => x).ToList(),
+        };
+    }
+
+    private static List<string> Names<T>(Core.SymbolRegistry<T> reg)
+        => reg == null
+           ? new List<string>()
+           : reg.All.Select(x => x.Name)
+                  .Where(x => !string.IsNullOrEmpty(x))
+                  .Distinct()
+                  .OrderBy(x => x, StringComparer.Ordinal)
+                  .ToList();
+}
+
+/// <summary>面板目录（UI 直接绑定它生成下拉项）。</summary>
+public sealed class BlockPalette
+{
+    public List<string> Traits { get; set; } = new();
+    public List<string> Counters { get; set; } = new();
+    public List<string> Keywords { get; set; } = new();
+    public List<string> Clans { get; set; } = new();
+    public List<string> Opcodes { get; set; } = new();
+}
+
+/// <summary>编译结果（错误信息精确到积木 id，便于 UI 高亮那一块）。</summary>
+public sealed class BlockCompileResult
+{
+    public CardDef Def { get; set; }
+    public List<string> Errors { get; } = new();
+    public bool Ok => Errors.Count == 0 && Def != null;
+
+    public void Fail(Block b, string msg)
+        => Errors.Add("积木[" + (b?.Id ?? "?") + " " + (b?.Opcode ?? "?") + "]：" + msg);
+}
+/// <summary>积木树 → CardDef。</summary>
+public sealed class DiyBlockCompiler
+{
+    private readonly GameSchema _schema;
+    private readonly BlockCompileResult _res = new();
+
+    public DiyBlockCompiler(GameSchema schema) { _schema = schema; }
+
+    public BlockCompileResult Compile(CardBlockWorkspace doc)
+    {
+        if (doc == null) { _res.Errors.Add("文档为空"); return _res; }
+
+        var abilities = new List<AbilityDef>();
+
+        // 裸关键词：编译成 PassiveAura 上的 Grant（与官方卡同一套编码）
+        foreach (var kw in (doc.Keywords ?? new List<string>())
+                     .Where(k => !string.IsNullOrWhiteSpace(k))
+                     .Select(k => k.Contains('(') ? k.Substring(0, k.IndexOf('(')) : k)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
+        {
+            abilities.Add(new AbilityDef
+            {
+                Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                Body = new List<EffectNode>
+                {
+                    new ModifyKeywordNode
+                    {
+                        Target = TargetSpec.Self, Op = KeywordOp.Grant, Keyword = _schema.Keyword(kw),
+                    },
+                },
+            });
+        }
+
+        foreach (var hat in doc.Hats ?? new List<Block>())
+        {
+            var ab = CompileHat(hat);
+            if (ab != null) abilities.Add(ab);
+        }
+
+        var def = new CardDef
+        {
+            CardId = doc.CardId,
+            Name = doc.Name,
+            Kind = ParseKind(doc.Kind),
+            BaseCost = doc.Cost,
+            BaseAttack = doc.Attack,
+            BaseLife = doc.Life,
+            Abilities = abilities,
+            Traits = (doc.Traits ?? new List<string>()).Select(t => _schema.Trait(t)).ToList(),
+            Clan = string.IsNullOrEmpty(doc.Clan) ? SymbolId<ClanTag>.Invalid : _schema.Clan(doc.Clan),
+            AccelerateDef = BuildSub(doc.AccelerateCost, doc.AccelerateHats, CardKind.Spell, doc),
+            CrystallizeDef = BuildSub(doc.CrystallizeCost, doc.CrystallizeHats, CardKind.Amulet, doc),
+            CrestDef = BuildSub(0, doc.CrestHats, CardKind.Crest, doc, force: true),
+            FaithDef = BuildSub(0, doc.FaithHats, CardKind.Faith, doc, force: true),
+        };
+
+        _res.Def = _res.Errors.Count == 0 ? def : null;
+        return _res;
+    }
+
+    private CardDef BuildSub(int cost, List<Block> hats, CardKind kind, CardBlockWorkspace doc, bool force = false)
+    {
+        if (!force && (hats == null || hats.Count == 0)) return null;
+        if (force && (hats == null || hats.Count == 0)) return null;
+
+        var abil = new List<AbilityDef>();
+        foreach (var h in hats)
+        {
+            var ab = CompileHat(h);
+            if (ab != null) abil.Add(ab);
+        }
+        return new CardDef
+        {
+            CardId = 0, Name = doc.Name, Kind = kind, BaseCost = Math.Max(0, cost),
+            Abilities = abil,
+            Traits = (doc.Traits ?? new List<string>()).Select(t => _schema.Trait(t)).ToList(),
+        };
+    }
+
+    private static CardKind ParseKind(string s) => s switch
+    {
+        "Spell" => CardKind.Spell,
+        "Amulet" => CardKind.Amulet,
+        "Crest" => CardKind.Crest,
+        "Faith" => CardKind.Faith,
+        _ => CardKind.Follower,
+    };
+
+    // ---------------------------------------------------------------- 帽子
+
+    private AbilityDef CompileHat(Block hat)
+    {
+        if (hat == null || hat.IsEmpty) return null;
+
+        CoreEvent ev;
+        TargetSpec subject = null;
+
+        switch (hat.Opcode)
+        {
+            case "hat_self_event":
+                ev = EventOf(hat.Text);
+                break;
+            case "hat_watch_event":
+                ev = EventOf(hat.Text);
+                subject = CompileTarget(hat.Target);
+                break;
+            case "hat_passive":
+                ev = CoreEvent.PassiveAura;
+                break;
+            default:
+                _res.Fail(hat, "不是事件帽积木");
+                return null;
+        }
+
+        var costs = new List<CostSpec>();
+        foreach (var (kind, amount) in hat.Costs ?? new List<(string, int)>())
+        {
+            costs.Add(new CostSpec
+            {
+                Kind = kind switch
+                {
+                    "necromancy" => CostKind.Necromance,
+                    "earth_rite" => CostKind.DestroyAlly,
+                    "combo" => CostKind.TurnPlayCount,
+                    "rally" => CostKind.MatchPlayCount,
+                    "countdown" => CostKind.Countdown,
+                    _ => CostKind.UsePp,
+                },
+                Amount = NumExpr.Const(amount),
+            });
+        }
+
+        var trig = new TriggerSpec
+        {
+            Event = ev,
+            SubjectFilter = subject,
+            ManualEvolveOnly = hat.FlagA,
+            ActiveZone = hat.ActiveZone switch
+            {
+                "Hand" => ActiveZoneScope.Hand,
+                "Deck" => ActiveZoneScope.Deck,
+                "ExArea" => ActiveZoneScope.ExArea,
+                _ => ActiveZoneScope.Board,
+            },
+            DuringTurn = hat.DuringTurn switch
+            {
+                "Self" => TurnOwnerScope.Self,
+                "Opponent" => TurnOwnerScope.Opponent,
+                _ => TurnOwnerScope.Any,
+            },
+        };
+
+        var body = CompileStackList(hat.Stacks);
+        var cond = CompileCond(hat.Condition);
+
+        return new AbilityDef
+        {
+            Trigger = trig,
+            Condition = cond ?? BoolExpr.True,
+            Costs = costs,
+            Body = body,
+        };
+    }
+
+    private List<EffectNode> CompileStackList(List<Block> blocks)
+    {
+        var list = new List<EffectNode>();
+        foreach (var b in blocks ?? new List<Block>())
+        {
+            var n = CompileStack(b);
+            if (n != null) list.Add(n);
+        }
+        return list;
+    }
+
+    private EffectNode CompileStack(Block b)
+    {
+        if (b == null || b.IsEmpty) return null;
+
+        switch (b.Opcode)
+        {
+            case "c_if_else":
+            {
+                var cond = CompileCond(b.Condition);
+                if (cond == null) { _res.Fail(b, "if 缺少条件"); return null; }
+                return new ConditionalNode
+                {
+                    Condition = cond,
+                    Then = CompileStackList(b.Stacks),
+                    Else = CompileStackList(b.ElseStacks),
+                };
+            }
+            case "c_repeat":
+            {
+                var n = CompileNumber(b.Number);
+                return new LoopNode
+                {
+                    Kind = LoopKind.Times,
+                    Count = n ?? NumExpr.Const(1),
+                    MaxIterations = n != null && n.Op == NumOp.Const ? Math.Max(1, n.Value) : 30,
+                    Body = CompileStackList(b.Stacks),
+                };
+            }
+            case "c_for_each":
+            {
+                var coll = CompileTarget(b.Target);
+                return new LoopNode
+                {
+                    Kind = LoopKind.ForEach,
+                    Collection = coll ?? TargetSpec.Self,
+                    Body = CompileStackList(b.Stacks),
+                    MaxIterations = 30,
+                };
+            }
+            case "c_mode":
+            {
+                var opts = new List<IReadOnlyList<EffectNode>>();
+                foreach (var br in b.Branches ?? new List<List<Block>>())
+                    opts.Add(CompileStackList(br));
+                return new BranchModeNode
+                {
+                    Kind = b.EnumA switch
+                    {
+                        "Random" => ModeDispatchKind.Random,
+                        "Sequence" => ModeDispatchKind.Sequence,
+                        _ => ModeDispatchKind.Choose,
+                    },
+                    PickCount = NumExpr.Const(Math.Max(1, b.IntA)),
+                    Options = opts,
+                };
+            }
+
+            case "act_select":
+            {
+                var t = CompileTarget(b.Target);
+                if (t == null) { _res.Fail(b, "select 缺少目标胶囊"); return null; }
+                return new SelectTargetNode { Target = t, OutSlot = b.Text ?? TargetSpec.SlotSelected };
+            }
+
+            case "act_damage":
+                return new DealDamageNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Amount = CompileNumber(b.Number) ?? NumExpr.Const(0),
+                    IsAbility = true,
+                };
+
+            case "act_split_damage":
+                return new DealDamageNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Amount = CompileNumber(b.Number) ?? NumExpr.Const(0),
+                    IsSplit = true,
+                    IsAbility = true,
+                };
+
+            case "act_restore":
+                return new RestoreLifeNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Amount = CompileNumber(b.Number) ?? NumExpr.Const(0),
+                };
+
+            case "act_full_restore":
+                return new RestoreLifeNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    FullRestore = true,
+                };
+
+            case "act_draw":
+                return new MoveZoneNode
+                {
+                    Target = new TargetSpec
+                    {
+                        SourceKind = TargetSourceKind.Zone, Owner = ZoneScope.Self, Zone = ZoneRef.Deck,
+                        Mode = SelectMode.First, Count = CompileNumber(b.Number) ?? NumExpr.Const(1),
+                    },
+                    ToZone = ZoneRef.Hand,
+                };
+
+            case "act_summon":
+            case "act_add_hand":
+            case "act_gain_crest":
+                return new SpawnCardNode
+                {
+                    CardName = b.Text ?? "",
+                    Count = CompileNumber(b.Number) ?? NumExpr.Const(1),
+                    ToZone = b.Opcode == "act_add_hand" ? ZoneRef.Hand : ZoneRef.Board,
+                    IsCrest = b.Opcode == "act_gain_crest",
+                    ToOwner = ZoneScope.Self,
+                };
+
+            case "act_destroy":
+                return MoveTo(b, ZoneRef.Cemetery, true);
+            case "act_banish":
+                return MoveTo(b, ZoneRef.Banished, false);
+            case "act_discard":
+                return MoveTo(b, ZoneRef.Cemetery, false);
+            case "act_bounce":
+                return MoveTo(b, ZoneRef.Hand, false);
+            case "act_return_deck":
+                return MoveTo(b, ZoneRef.Deck, false);
+            case "act_move_to_board":
+                return MoveTo(b, ZoneRef.Board, false);
+
+            case "act_buff":
+                return new ModifyStatsNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Op = StatModOp.Add,
+                    Attack = CompileNumber(b.Number),
+                    Life = CompileNumber(b.Number2),
+                };
+
+            case "act_set_stats":
+                return new ModifyStatsNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Op = StatModOp.Set,
+                    Attack = CompileNumber(b.Number),
+                    Life = CompileNumber(b.Number2),
+                };
+
+            case "act_swap_stats":
+                return new ModifyStatsNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Op = StatModOp.Swap,
+                };
+
+            case "act_mod_cost":
+                return new ModifyCostNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Op = b.EnumA switch
+                    {
+                        "Halve" => CostModOp.Halve,
+                        "Set" => CostModOp.Set,
+                        _ => CostModOp.Add,
+                    },
+                    Value = CompileNumber(b.Number) ?? NumExpr.Const(0),
+                };
+
+            case "act_grant_kw":
+                return new ModifyKeywordNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Op = KeywordOp.Grant,
+                    Keyword = _schema.Keyword(b.Text ?? ""),
+                    Value = CompileNumber(b.Number),
+                };
+
+            case "act_remove_kw":
+                return new ModifyKeywordNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Op = KeywordOp.Remove,
+                    Keyword = _schema.Keyword(b.Text ?? ""),
+                };
+
+            case "act_silence":
+                return new ModifyKeywordNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Op = KeywordOp.SilenceAll,
+                };
+
+            case "act_evolve":
+            case "act_super_evolve":
+                return new EvolveNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    IsSuperEvolve = b.Opcode == "act_super_evolve",
+                };
+
+            case "act_mod_counter":
+            {
+                var delta = CompileNumber(b.Number) ?? NumExpr.Const(1);
+                if (b.FlagA) delta = NumExpr.Sub(NumExpr.Const(0), delta);
+                return new ModifyCounterNode
+                {
+                    Target = b.Target != null ? CompileTarget(b.Target) : null,
+                    Owner = ZoneScope.Self,
+                    Counter = _schema.Counter(b.Text ?? ""),
+                    Op = CounterOp.Add,
+                    Delta = delta,
+                };
+            }
+
+            case "act_transform":
+                return new TransformNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    IntoCardName = b.Text ?? "",
+                };
+
+            case "act_reanimate":
+                return new SpawnCardNode
+                {
+                    AddDepartedTrait = true,
+                    Count = CompileNumber(b.Number) ?? NumExpr.Const(1),
+                    ToZone = ZoneRef.Board,
+                    CopyFrom = new TargetSpec
+                    {
+                        SourceKind = TargetSourceKind.Zone, Owner = ZoneScope.Self,
+                        Zone = ZoneRef.Cemetery, Mode = SelectMode.All,
+                    },
+                };
+
+            case "act_replace_deck":
+                return new ReplaceDeckNode { DeckName = b.Text ?? "", Owner = ZoneScope.Self };
+
+            case "act_invoke":
+                return new InvokeAbilityNode { Event = EventOf(b.Text) };
+
+            case "act_grant_ability":
+            {
+                var inner = b.Stacks != null && b.Stacks.Count > 0
+                    ? CompileStackList(b.Stacks)
+                    : new List<EffectNode>();
+                return new GrantCounterAbilityNode
+                {
+                    Counter = _schema.Counter(b.Text ?? ""),
+                    Granted = new AbilityDef
+                    {
+                        Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                        Body = inner,
+                    },
+                };
+            }
+
+            default:
+                _res.Fail(b, "未知动作积木");
+                return null;
+        }
+    }
+
+    private EffectNode MoveTo(Block b, ZoneRef zone, bool destroy)
+        => new MoveZoneNode
+        {
+            Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+            ToZone = zone,
+            IsDestroy = destroy,
+        };
+
+    // ---------------------------------------------------------------- 胶囊
+
+    private TargetSpec CompileTarget(Block b)
+    {
+        if (b == null || b.IsEmpty) return null;
+
+        switch (b.Opcode)
+        {
+            case "tgt_slot":
+                return new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = b.Text ?? TargetSpec.SlotSelf };
+
+            case "tgt_leader":
+                return new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Zone,
+                    Owner = b.EnumA switch
+                    {
+                        "Opponent" => ZoneScope.Opponent,
+                        "Any" => ZoneScope.Any,
+                        _ => ZoneScope.Self,
+                    },
+                    Zone = ZoneRef.Leader,
+                    Mode = SelectMode.All,
+                };
+
+            case "tgt_query":
+            {
+                var parts = new List<BoolExpr>();
+                var cond = CompileCond(b.Condition);
+                if (cond != null && !(cond is ConstBoolExpr cb0 && cb0.Value)) parts.Add(cond);
+
+                // 卡种、排除自己、附加条件三者是并列的，必须都能回到 Where。
+                if (!string.IsNullOrEmpty(b.Text))
+                {
+                    parts.Add(new HasKindExpr
+                    {
+                        Kind = b.Text switch
+                        {
+                            "Follower" => CardKind.Follower,
+                            "Spell" => CardKind.Spell,
+                            "Amulet" => CardKind.Amulet,
+                            _ => CardKind.Follower,
+                        },
+                        Of = TargetSpec.Item,
+                    });
+                }
+                if (b.FlagA)
+                {
+                    parts.Add(new NotSameEntityExpr
+                    {
+                        ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf,
+                        Of = TargetSpec.Item,
+                    });
+                }
+
+                BoolExpr where = parts.Count == 0 ? BoolExpr.True
+                    : parts.Count == 1 ? parts[0] : new AndExpr(parts);
+
+                var mode = b.EnumA switch
+                {
+                    "Random" => SelectMode.Random,
+                    "Choose" => SelectMode.Choose,
+                    "First" => SelectMode.First,
+                    _ => SelectMode.All,
+                };
+
+                return new TargetSpec
+                {
+                    SourceKind = string.IsNullOrEmpty(b.CardNameA) ? TargetSourceKind.Zone : TargetSourceKind.CardId,
+                    CardName = b.CardNameA ?? "",
+                    IncludeLeader = b.FlagB,
+                    DuplicatesOnly = b.FlagC,
+                    History = b.EnumB switch
+                    {
+                        "DestroyedThisMatch" => HistoryScope.DestroyedThisMatch,
+                        "DestroyedThisTurn" => HistoryScope.DestroyedThisTurn,
+                        "EnteredThisMatch" => HistoryScope.EnteredThisMatch,
+                        _ => HistoryScope.None,
+                    },
+                    Owner = (b.IntB & 1) == 1 ? ZoneScope.Opponent
+                          : (b.IntB & 2) == 2 ? ZoneScope.Any : ZoneScope.Self,
+                    Zone = b.IntA switch
+                    {
+                        1 => ZoneRef.Hand,
+                        2 => ZoneRef.Deck,
+                        3 => ZoneRef.Cemetery,
+                        4 => ZoneRef.Banished,
+                        5 => ZoneRef.Leader,
+                        6 => ZoneRef.CrestArea,
+                        7 => ZoneRef.ExArea,
+                        _ => ZoneRef.Board,
+                    },
+                    Mode = mode,
+                    Count = mode == SelectMode.All ? null : CompileNumber(b.Number),
+                    Where = where,
+                };
+            }
+
+            default:
+                _res.Fail(b, "不是目标胶囊");
+                return null;
+        }
+    }
+
+    private BoolExpr CompileCond(Block b)
+    {
+        if (b == null || b.IsEmpty) return null;
+
+        switch (b.Opcode)
+        {
+            case "bool_true": return BoolExpr.True;
+            case "bool_compare":
+                return new CompareExpr
+                {
+                    Left = CompileNumber(b.Number),
+                    Op = b.EnumA switch
+                    {
+                        "Le" => CompareOp.Le,
+                        "Eq" => CompareOp.Eq,
+                        "Gt" => CompareOp.Gt,
+                        "Lt" => CompareOp.Lt,
+                        _ => CompareOp.Ge,
+                    },
+                    Right = CompileNumber(b.Number2),
+                };
+            case "bool_and":
+            case "bool_not":
+            case "bool_or":
+            {
+                var items = new List<BoolExpr>();
+                foreach (var x in b.Stacks ?? new List<Block>())
+                {
+                    var c = CompileCond(x);
+                    if (c != null) items.Add(c);
+                }
+                if (b.Opcode == "bool_not")
+                    return items.Count > 0 ? new NotExpr(items[0]) : null;
+                if (items.Count == 0) return null;
+                return b.Opcode == "bool_and" ? new AndExpr(items) : new OrExpr(items);
+            }
+            case "bool_has_kw":
+                return new HasKeywordExpr { Keyword = _schema.Keyword(b.Text ?? ""), Of = TargetSpec.Item };
+            case "bool_has_trait":
+                return new HasTraitExpr { Trait = _schema.Trait(b.Text ?? ""), Of = TargetSpec.Item };
+            case "bool_has_state":
+                return new HasStateExpr
+                {
+                    State = b.EnumA switch
+                    {
+                        "Evolved" => Core.UnitState.Evolved,
+                        "SuperEvolved" => Core.UnitState.SuperEvolved,
+                        "Damaged" => Core.UnitState.Damaged,
+                        "HasFuse" => Core.UnitState.HasFuse,
+                        "HasLastWords" => Core.UnitState.HasLastWords,
+                        "HasOnSpellboost" => Core.UnitState.HasOnSpellboost,
+                        _ => Core.UnitState.Damaged,
+                    },
+                    Of = TargetSpec.Item,
+                };
+            case "bool_exists":
+                return new ExistsExpr
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Op = CompareOp.Ge,
+                    Count = CompileNumber(b.Number) ?? NumExpr.Const(1),
+                };
+            default:
+                _res.Fail(b, "未知条件积木");
+                return null;
+        }
+    }
+
+    private NumExpr CompileNumber(Block b)
+    {
+        if (b == null || b.IsEmpty) return null;
+
+        switch (b.Opcode)
+        {
+            case "num_const": return NumExpr.Const(b.IntA);
+            case "num_counter": return NumExpr.Ctr(_schema.Counter(b.Text ?? ""));
+            case "num_prop":
+                return NumExpr.Prop(b.EnumA switch
+                {
+                    "Life" => StatKey.Life,
+                    "MaxLife" => StatKey.MaxLife,
+                    "Cost" => StatKey.Cost,
+                    _ => StatKey.Attack,
+                }, TargetSpec.Item);
+            case "num_count":
+                return NumExpr.CountOf(CompileTarget(b.Target) ?? TargetSpec.Self);
+            case "num_max_group":
+                return new NumExpr { Op = NumOp.MaxGroupSize, Of = CompileTarget(b.Target) ?? TargetSpec.Self };
+            case "num_arith":
+            {
+                var l = CompileNumber(b.Number);
+                var r = CompileNumber(b.Number2);
+                if (l == null) return r;
+                if (r == null) return l;
+                return b.EnumA switch
+                {
+                    "Sub" => NumExpr.Sub(l, r),
+                    "Mul" => NumExpr.Mul(l, r),
+                    "Div" => NumExpr.Div(l, r),
+                    _ => NumExpr.Add(l, r),
+                };
+            }
+            default:
+                _res.Fail(b, "不是数值积木");
+                return null;
+        }
+    }
+
+    private static CoreEvent EventOf(string s) => s switch
+    {
+        "OnPlay" => CoreEvent.OnPlay,
+        "OnEnterField" => CoreEvent.OnEnterField,
+        "OnLeaveField" => CoreEvent.OnLeaveField,
+        "OnDestroy" => CoreEvent.OnDestroy,
+        "OnBanish" => CoreEvent.OnBanish,
+        "OnDiscard" => CoreEvent.OnDiscard,
+        "OnSummon" => CoreEvent.OnSummon,
+        "OnEvolve" => CoreEvent.OnEvolve,
+        "OnSuperEvolve" => CoreEvent.OnSuperEvolve,
+        "OnAttack" => CoreEvent.OnAttack,
+        "OnClash" => CoreEvent.OnClash,
+        "OnDamaged" => CoreEvent.OnDamaged,
+        "OnHealed" => CoreEvent.OnHealed,
+        "OnEngage" => CoreEvent.OnEngage,
+        "OnFuse" => CoreEvent.OnFuse,
+        "OnSpellboost" => CoreEvent.OnSpellboost,
+        "OnDraw" => CoreEvent.OnDraw,
+        "OnReturnToHand" => CoreEvent.OnReturnToHand,
+        "OnAddToHand" => CoreEvent.OnAddToHand,
+        "OnTransform" => CoreEvent.OnTransform,
+        "OnEarthRite" => CoreEvent.OnEarthRite,
+        "OnSelectMode" => CoreEvent.OnSelectMode,
+        "OnCountdownExpire" => CoreEvent.OnCountdownExpire,
+        "PassiveAura" => CoreEvent.PassiveAura,
+        "BattleStart" => CoreEvent.BattleStart,
+        "TurnStart" => CoreEvent.TurnStart,
+        "TurnEnd" => CoreEvent.TurnEnd,
+        _ => CoreEvent.OnPlay,
+    };
+}
+/// <summary>
+/// CardDef → 积木树。
+///
+/// 必须覆盖全部节点：30 张真卡里既有模式分支、历史池统计，也有纹章与信仰子块。
+/// 遇到不认识的节点**必须报错**，不能静默丢 —— 静默丢会让「积木能造这张卡」
+/// 变成一句谎话，而玩家打开编辑器只会看到一张缺了效果的空卡。
+/// </summary>
+public sealed class DiyBlockDecompiler
+{
+    private readonly GameSchema _schema;
+    public List<string> Errors { get; } = new();
+
+    public DiyBlockDecompiler(GameSchema schema) { _schema = schema; }
+
+    public CardBlockWorkspace Decompile(CardDef def)
+    {
+        Errors.Clear();
+        if (def == null) { Errors.Add("CardDef 为空"); return null; }
+
+        var ws = new CardBlockWorkspace
+        {
+            CardId = def.CardId,
+            Name = def.Name ?? "",
+            Kind = def.Kind.ToString(),
+            Cost = def.BaseCost,
+            Attack = def.BaseAttack,
+            Life = def.BaseLife,
+            Clan = def.Clan.IsValid ? def.Clan.Name : null,
+            Traits = (def.Traits ?? Array.Empty<SymbolId<TraitTag>>()).Select(t => t.Name).ToList(),
+        };
+
+        foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())
+        {
+            if (IsBareKeyword(ab))
+            {
+                var mk = (ModifyKeywordNode)ab.Body[0];
+                ws.Keywords.Add(mk.Value != null && mk.Value.Op == NumOp.Const
+                    ? mk.Keyword.Name + "(" + mk.Value.Value + ")"
+                    : mk.Keyword.Name);
+                continue;
+            }
+            var hat = Hat(ab);
+            if (hat != null) ws.Hats.Add(hat);
+        }
+
+        if (def.AccelerateDef != null)
+        {
+            ws.AccelerateCost = def.AccelerateDef.BaseCost;
+            ws.AccelerateHats = Hats(def.AccelerateDef.Abilities);
+        }
+        if (def.CrystallizeDef != null)
+        {
+            ws.CrystallizeCost = def.CrystallizeDef.BaseCost;
+            ws.CrystallizeHats = Hats(def.CrystallizeDef.Abilities);
+        }
+        if (def.CrestDef != null) ws.CrestHats = Hats(def.CrestDef.Abilities);
+        if (def.FaithDef != null) ws.FaithHats = Hats(def.FaithDef.Abilities);
+
+        return ws;
+    }
+
+    private static bool IsBareKeyword(AbilityDef ab)
+        => ab?.Trigger?.Event == CoreEvent.PassiveAura
+           && (ab.Costs == null || ab.Costs.Count == 0)
+           && ab.Condition is null or ConstBoolExpr
+           && ab.Body != null && ab.Body.Count == 1
+           && ab.Body[0] is ModifyKeywordNode mk && mk.Op == KeywordOp.Grant;
+
+    private List<Block> Hats(IReadOnlyList<AbilityDef> abilities)
+    {
+        var list = new List<Block>();
+        foreach (var ab in abilities ?? Array.Empty<AbilityDef>())
+        {
+            if (IsBareKeyword(ab)) continue;
+            var h = Hat(ab);
+            if (h != null) list.Add(h);
+        }
+        return list;
+    }
+
+    private Block Hat(AbilityDef ab)
+    {
+        if (ab?.Trigger == null) return null;
+
+        string opcode = ab.Trigger.SubjectFilter != null ? "hat_watch_event"
+                      : ab.Trigger.Event == CoreEvent.PassiveAura ? "hat_passive"
+                      : "hat_self_event";
+
+        var hat = new Block
+        {
+            Opcode = opcode,
+            Text = ab.Trigger.Event.ToString(),
+            FlagA = ab.Trigger.ManualEvolveOnly,
+            ActiveZone = ab.Trigger.ActiveZone == ActiveZoneScope.Board ? null : ab.Trigger.ActiveZone.ToString(),
+            DuringTurn = ab.Trigger.DuringTurn == TurnOwnerScope.Any ? null : ab.Trigger.DuringTurn.ToString(),
+            Target = opcode == "hat_watch_event" ? Target(ab.Trigger.SubjectFilter) : null,
+            Condition = Cond(ab.Condition),
+        };
+
+        foreach (var c in ab.Costs ?? Array.Empty<CostSpec>())
+        {
+            string kind = c.Kind switch
+            {
+                CostKind.Necromance => "necromancy",
+                CostKind.DestroyAlly => "earth_rite",
+                CostKind.TurnPlayCount => "combo",
+                CostKind.MatchPlayCount => "rally",
+                CostKind.Countdown => "countdown",
+                _ => "pp",
+            };
+            int amt = c.Amount != null && c.Amount.Op == NumOp.Const ? c.Amount.Value : 1;
+            hat.Costs.Add((kind, amt));
+        }
+
+        hat.Stacks = Stacks(ab.Body);
+        return hat;
+    }
+
+    private List<Block> Stacks(IReadOnlyList<EffectNode> nodes)
+    {
+        var list = new List<Block>();
+        foreach (var n in nodes ?? Array.Empty<EffectNode>())
+        {
+            var b = Stack(n);
+            if (b != null) list.Add(b);
+        }
+        return list;
+    }
+
+    private Block Stack(EffectNode n)
+    {
+        switch (n)
+        {
+            case SelectTargetNode st:
+                return new Block { Opcode = "act_select", Text = st.OutSlot, Target = Target(st.Target) };
+
+            case DealDamageNode d:
+                return new Block
+                {
+                    Opcode = d.IsSplit ? "act_split_damage" : "act_damage",
+                    Target = Target(d.Target), Number = Num(d.Amount),
+                };
+
+            case RestoreLifeNode r:
+                return r.FullRestore
+                    ? new Block { Opcode = "act_full_restore", Target = Target(r.Target) }
+                    : new Block { Opcode = "act_restore", Target = Target(r.Target), Number = Num(r.Amount) };
+
+            case MoveZoneNode m:
+            {
+                if (m.ToZone == ZoneRef.Hand && m.Target?.Zone == ZoneRef.Deck && m.Target.Mode == SelectMode.First)
+                    return new Block { Opcode = "act_draw", Number = Num(m.Target.Count) };
+
+                string op = m.ToZone switch
+                {
+                    ZoneRef.Cemetery => m.IsDestroy ? "act_destroy" : "act_discard",
+                    ZoneRef.Banished => "act_banish",
+                    ZoneRef.Hand => "act_bounce",
+                    ZoneRef.Deck => "act_return_deck",
+                    ZoneRef.Board => "act_move_to_board",
+                    _ => null,
+                };
+                if (op == null) { Errors.Add("不支持的移区：" + m.ToZone); return null; }
+                return new Block { Opcode = op, Target = Target(m.Target) };
+            }
+
+            case SpawnCardNode sp:
+            {
+                if (sp.AddDepartedTrait)
+                    return new Block { Opcode = "act_reanimate", Number = Num(sp.Count) };
+                string op = sp.IsCrest ? "act_gain_crest"
+                          : sp.ToZone == ZoneRef.Hand ? "act_add_hand" : "act_summon";
+                return new Block { Opcode = op, Text = sp.CardName, Number = Num(sp.Count) };
+            }
+
+            case ModifyStatsNode ms:
+            {
+                string op = ms.Op switch
+                {
+                    StatModOp.Set => "act_set_stats",
+                    StatModOp.Swap => "act_swap_stats",
+                    _ => "act_buff",
+                };
+                return new Block
+                {
+                    Opcode = op, Target = Target(ms.Target),
+                    Number = Num(ms.Attack), Number2 = Num(ms.Life),
+                };
+            }
+
+            case ModifyCostNode mc:
+                return new Block
+                {
+                    Opcode = "act_mod_cost", Target = Target(mc.Target),
+                    EnumA = mc.Op.ToString(), Number = Num(mc.Value),
+                };
+
+            case ModifyKeywordNode mk:
+            {
+                if (mk.Op == KeywordOp.SilenceAll)
+                    return new Block { Opcode = "act_silence", Target = Target(mk.Target) };
+                return new Block
+                {
+                    Opcode = mk.Op == KeywordOp.Remove ? "act_remove_kw" : "act_grant_kw",
+                    Target = Target(mk.Target), Text = mk.Keyword.Name, Number = Num(mk.Value),
+                };
+            }
+
+            case EvolveNode e:
+                return new Block
+                {
+                    Opcode = e.IsSuperEvolve ? "act_super_evolve" : "act_evolve",
+                    Target = Target(e.Target),
+                };
+
+            case ModifyCounterNode c:
+            {
+                bool neg = c.Delta != null && c.Delta.Op == NumOp.Arith
+                           && c.Delta.Arith == ArithOp.Sub && c.Delta.Args.Count > 1
+                           && c.Delta.Args[0].Op == NumOp.Const && c.Delta.Args[0].Value == 0;
+                var delta = neg ? c.Delta.Args[1] : c.Delta;
+                return new Block
+                {
+                    Opcode = "act_mod_counter", Text = c.Counter.Name,
+                    Target = c.Target != null ? Target(c.Target) : null,
+                    Number = Num(delta), FlagA = neg,
+                };
+            }
+
+            case TransformNode t:
+                return new Block { Opcode = "act_transform", Target = Target(t.Target), Text = t.IntoCardName };
+
+            case ConditionalNode cd:
+                return new Block
+                {
+                    Opcode = "c_if_else",
+                    Condition = Cond(cd.Condition),
+                    Stacks = Stacks(cd.Then),
+                    ElseStacks = Stacks(cd.Else),
+                };
+
+            case LoopNode lp:
+                if (lp.Kind == LoopKind.ForEach)
+                    return new Block { Opcode = "c_for_each", Target = Target(lp.Collection), Stacks = Stacks(lp.Body) };
+                return new Block { Opcode = "c_repeat", Number = Num(lp.Count), Stacks = Stacks(lp.Body) };
+
+            case BranchModeNode bm:
+            {
+                var blk = new Block
+                {
+                    Opcode = "c_mode",
+                    EnumA = bm.Kind.ToString(),
+                    IntA = bm.PickCount != null && bm.PickCount.Op == NumOp.Const ? bm.PickCount.Value : 1,
+                };
+                foreach (var opt in bm.Options ?? Array.Empty<IReadOnlyList<EffectNode>>())
+                    blk.Branches.Add(Stacks(opt));
+                return blk;
+            }
+
+            case ReplaceDeckNode rd:
+                return new Block { Opcode = "act_replace_deck", Text = rd.DeckName };
+
+            case InvokeAbilityNode ia:
+                return new Block { Opcode = "act_invoke", Text = ia.Event.ToString() };
+
+            case GrantCounterAbilityNode gc:
+            {
+                var blk = new Block { Opcode = "act_grant_ability", Text = gc.Counter.Name };
+                blk.Stacks = Stacks(gc.Granted?.Body);
+                return blk;
+            }
+
+            default:
+                Errors.Add("积木不支持节点：" + n.GetType().Name);
+                return null;
+        }
+    }
+
+    private Block Target(TargetSpec t)
+    {
+        if (t == null) return null;
+
+        if (t.SourceKind == TargetSourceKind.Slot)
+            return new Block { Opcode = "tgt_slot", Text = t.Slot };
+
+        // 具名卡池（card("X", … history=…)）不能走特例：
+        // 特例只带三个字段，会丢掉 CardName 与 History，
+        // 于是「本局已进入战场的同名卡」反编译成「当前场上的所有卡」。
+        if (t.Zone == ZoneRef.Leader && t.SourceKind == TargetSourceKind.Zone)
+            return new Block { Opcode = "tgt_leader", EnumA = t.Owner.ToString() };
+
+        // 卡种 / 排除自己 / 历史池 / 具名卡——这些都必须单独承载。
+        // 之前一律塞进 Condition，结果 Condition 只认布尔积木，
+        // 「is Follower」「other than itself」「history=Entered」全部被判为不支持而丢弃，
+        // 于是「所有敌方随从」反编译成「所有敌方卡」，效果范围被悄悄放大。
+        var (kindText, restWhere) = SplitKind(t.Where);
+        bool excludeSelf = HasNotSame(restWhere, out var restWhere2);
+
+        return new Block
+        {
+            Opcode = "tgt_query",
+            IntA = ZoneCode(t.Zone),
+            IntB = OwnerCode(t.Owner),
+            EnumA = t.Mode.ToString(),
+            Text = kindText,
+            FlagA = excludeSelf,
+            FlagB = t.IncludeLeader,
+            FlagC = t.DuplicatesOnly,
+            EnumB = t.History == HistoryScope.None ? null : t.History.ToString(),
+            CardNameA = t.CardName,
+            Number = t.Mode == SelectMode.All ? null : Num(t.Count),
+            Condition = Cond(restWhere2),
+        };
+    }
+
+    /// <summary>从 Where 里抽出「卡种」文字，返回剩余条件。</summary>
+    private static (string kind, BoolExpr rest) SplitKind(BoolExpr w)
+    {
+        if (w == null) return (null, null);
+        if (w is HasKindExpr hk)
+            return (hk.Kind switch
+            {
+                CardKind.Follower => "Follower",
+                CardKind.Spell => "Spell",
+                CardKind.Amulet => "Amulet",
+                _ => null,
+            }, null);
+
+        if (w is AndExpr a)
+        {
+            string kind = null;
+            var kept = new List<BoolExpr>();
+            foreach (var x in a.Items)
+            {
+                if (x is HasKindExpr k2 && kind == null)
+                {
+                    kind = k2.Kind switch
+                    {
+                        CardKind.Follower => "Follower",
+                        CardKind.Spell => "Spell",
+                        CardKind.Amulet => "Amulet",
+                        _ => null,
+                    };
+                    continue;
+                }
+                kept.Add(x);
+            }
+            if (kept.Count == 0) return (kind, null);
+            if (kept.Count == 1) return (kind, kept[0]);
+            return (kind, new AndExpr(kept));
+        }
+        return (null, w);
+    }
+
+    /// <summary>从条件里检出并剥掉「排除自己」，返回是否命中。</summary>
+    private static bool HasNotSame(BoolExpr w, out BoolExpr rest)
+    {
+        rest = w;
+        if (w is NotSameEntityExpr) { rest = null; return true; }
+        if (w is AndExpr a)
+        {
+            bool hit = false;
+            var kept = new List<BoolExpr>();
+            foreach (var x in a.Items)
+            {
+                if (x is NotSameEntityExpr) { hit = true; continue; }
+                kept.Add(x);
+            }
+            if (!hit) return false;
+            rest = kept.Count == 0 ? null : kept.Count == 1 ? kept[0] : new AndExpr(kept);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>把 has kind X 从条件里抽出来（tgt_query 的卡种由 Text 承载）。</summary>
+    private BoolExpr StripKind(BoolExpr w)
+    {
+        if (w is AndExpr a)
+        {
+            var kept = a.Items.Where(x => x is not HasKindExpr).ToList();
+            if (kept.Count == 0) return null;
+            if (kept.Count == 1) return kept[0];
+            return new AndExpr(kept);
+        }
+        return w is HasKindExpr ? null : w;
+    }
+
+    private static int ZoneCode(ZoneRef z) => z switch
+    {
+        ZoneRef.Hand => 1, ZoneRef.Deck => 2, ZoneRef.Cemetery => 3,
+        ZoneRef.Banished => 4, ZoneRef.Leader => 5, ZoneRef.CrestArea => 6,
+        ZoneRef.ExArea => 7, _ => 0,
+    };
+
+    private static int OwnerCode(ZoneScope o) => o switch
+    {
+        ZoneScope.Opponent => 1, ZoneScope.Any => 2, _ => 0,
+    };
+
+    private Block Cond(BoolExpr e)
+    {
+        if (e == null) return null;
+        if (e is ConstBoolExpr cb) return cb.Value ? null : new Block { Opcode = "bool_true", FlagA = false };
+
+        switch (e)
+        {
+            case CompareExpr c:
+                return new Block
+                {
+                    Opcode = "bool_compare", Number = Num(c.Left), Number2 = Num(c.Right),
+                    EnumA = c.Op.ToString(),
+                };
+            case AndExpr a:
+            {
+                var b = new Block { Opcode = "bool_and" };
+                foreach (var x in a.Items)
+                {
+                    var cb2 = Cond(x);
+                    if (cb2 != null) b.Stacks.Add(cb2);
+                }
+                return b.Stacks.Count == 0 ? null : b;
+            }
+            case OrExpr o:
+            {
+                var b = new Block { Opcode = "bool_or" };
+                foreach (var x in o.Items)
+                {
+                    var cb2 = Cond(x);
+                    if (cb2 != null) b.Stacks.Add(cb2);
+                }
+                return b.Stacks.Count == 0 ? null : b;
+            }
+            case NotExpr nt:
+            {
+                var b = new Block { Opcode = "bool_not" };
+                var inner = Cond(nt.Inner);
+                if (inner != null) b.Stacks.Add(inner);
+                return b;
+            }
+            case HasKeywordExpr hk:
+                return new Block { Opcode = "bool_has_kw", Text = hk.Keyword.Name };
+            case HasTraitExpr ht:
+                return new Block { Opcode = "bool_has_trait", Text = ht.Trait.Name };
+            case HasStateExpr hs:
+                return new Block { Opcode = "bool_has_state", EnumA = hs.State.ToString() };
+            case ExistsExpr ex:
+                return new Block
+                {
+                    Opcode = "bool_exists", Target = Target(ex.Target), Number = Num(ex.Count),
+                };
+            default:
+                Errors.Add("积木不支持条件：" + e.GetType().Name);
+                return null;
+        }
+    }
+
+    private Block Num(NumExpr e)
+    {
+        if (e == null) return null;
+        switch (e.Op)
+        {
+            case NumOp.Const: return new Block { Opcode = "num_const", IntA = e.Value };
+            case NumOp.Counter: return new Block { Opcode = "num_counter", Text = e.Counter.Name };
+            case NumOp.Property:
+                return new Block { Opcode = "num_prop", EnumA = e.Stat.ToString() };
+            case NumOp.Count:
+                return new Block { Opcode = "num_count", Target = Target(e.Of) };
+            case NumOp.MaxGroupSize:
+                return new Block { Opcode = "num_max_group", Target = Target(e.Of) };
+            case NumOp.Arith:
+            {
+                if (e.Args.Count < 2) return Num(e.Args.FirstOrDefault());
+                return new Block
+                {
+                    Opcode = "num_arith", EnumA = e.Arith.ToString(),
+                    Number = Num(e.Args[0]), Number2 = Num(e.Args[1]),
+                };
+            }
+            default:
+                Errors.Add("积木不支持数值：" + e.Op);
+                return null;
+        }
+    }
+}

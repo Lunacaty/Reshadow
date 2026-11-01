@@ -309,8 +309,13 @@ public sealed class DiyWorkspace
         if (e == null) return null;
         if (e is AndExpr a)
         {
+            // And 是集合语义：项目顺序不影响含义，归一化时排序，
+            // 否则「is Follower and attack<=3」与「attack<=3 and is Follower」
+            // 会被判成两张不同的卡，门禁产生假红。
             var kept = a.Items.Where(x => !(x is ConstBoolExpr c && c.Value))
-                             .Select(NormalizeBoolDeep).ToList();
+                             .Select(NormalizeBoolDeep)
+                             .OrderBy(x => x.GetType().Name, StringComparer.Ordinal)
+                             .ToList();
             if (kept.Count == 0) return BoolExpr.True;
             if (kept.Count == 1) return kept[0];
             return new AndExpr(kept);
