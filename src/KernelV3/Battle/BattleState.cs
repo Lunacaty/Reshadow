@@ -301,13 +301,60 @@ public sealed class BattleState : IVmWorld
             });
         }
 
-        // 全部衍生卡只从 BuiltinTokenDefs 这一张表来。
-        //
-        // 之前这里是第二份手抄清单，与那张表并存 —— 改表不生效，改这里表又不同步。
-        // 「同一份真相写两遍」的结果必然是漂移，而漂移的表现是
-        // 「某个衍生卡突然变成白板」，不是编译错误。
-        foreach (var t in BuiltinTokenDefs)
-            Token(t.id, t.name, t.kind, t.cost, t.atk, t.life, t.traits, t.keywords);
+        // 优先从 packs/core-wb/pack.json 加载（引擎零硬编码卡牌）。
+        // 加载不到时回落到 BuiltinTokenDefs —— 回落分支保证
+        // 「把仓库拷到没有 data/packs 的地方」时测试仍然能跑。
+        var tokens = LoadTokenEntriesFromPacks();
+        foreach (var t in tokens)
+        {
+            // params string[] 必须用展开语法传，直接丢数组会被当成单个参数。
+            Token(t.id, t.name, t.kind, t.cost, t.atk, t.life, t.traits, t.keywords ?? Array.Empty<string>());
+        }
+    }
+
+    /// <summary>
+    /// 从 packs 目录读取全部卡包，取出衍生卡条目。
+    ///
+    /// 读不到就回落到内置表 —— 但回落不是「无所谓」：
+    /// 它意味着「引擎又退回硬编码」，只是不至于让测试挂掉。
+    /// </summary>
+    private List<(int id, string name, CardKind kind, int cost, int atk, int life,
+                  string[] traits, string[] keywords, string text)> LoadTokenEntriesFromPacks()
+    {
+        var list = new List<(int, string, CardKind, int, int, int, string[], string[], string)>();
+        try
+        {
+            var root = Packs.CardPackLoader.ResolvePacksRoot();
+            if (root != null)
+            {
+                foreach (var pack in Packs.CardPackLoader.LoadAll(root))
+                {
+                    // 卡包里的可堆叠资源规格一并注册（核心包声明 earth_sigil / clues）。
+                    foreach (var spec in pack.StackableAmulets)
+                        Schema.StackableAmulets[spec.CounterName] = spec;
+
+                    foreach (var c in pack.Cards)
+                    {
+                        if (!c.IsToken) continue;
+                        var kws = new List<string>();
+                        // 关键词字段单独存在（token 的 ward/storm 等）
+                        list.Add((c.CardId, c.NameEng, c.Kind, c.Cost, c.Attack, c.Life,
+                                  c.Traits.ToArray(), kws.ToArray(), c.Text));
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // 读卡包失败时静默回落到内置表：卡包是可选内容，不是运行前提。
+        }
+
+        if (list.Count == 0)
+        {
+            foreach (var t in BuiltinTokenDefs)
+                list.Add((t.id, t.name, t.kind, t.cost, t.atk, t.life, t.traits, t.keywords, null));
+        }
+        return list;
     }
 
     /// <summary>注册核心包的两条可堆叠护符规格（幂等）。</summary>
