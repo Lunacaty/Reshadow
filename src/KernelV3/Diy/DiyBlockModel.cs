@@ -106,6 +106,12 @@ public sealed class CardBlockWorkspace
     /// <summary>裸关键词（Ward / Rush …），编译成 PassiveAura 上的 Grant。</summary>
     public List<string> Keywords { get; set; } = new();
 
+    /// <summary>是否声明了融合（Fuse: …）。丢了它 Sinciro / Striker / Gear 全都不能融合。</summary>
+    public bool HasFuse { get; set; }
+
+    /// <summary>融合材料筛选（可空 = 任意卡）。</summary>
+    public Block FuseFilter { get; set; }
+
     public List<Block> Hats { get; set; } = new();
 
     public int AccelerateCost { get; set; } = -1;
@@ -247,13 +253,41 @@ public sealed class BlockCompileResult
 public sealed class DiyBlockCompiler
 {
     private readonly GameSchema _schema;
+    private readonly Lang.Lexicon _lex;
     private readonly BlockCompileResult _res = new();
 
-    public DiyBlockCompiler(GameSchema schema) { _schema = schema; }
+    /// <summary>本次编译出的子卡，供「获得纹章」节点在构造时内嵌。</summary>
+    private CardDef _pendingCrest;
+    private CardDef _pendingFaith;
+
+    public DiyBlockCompiler(GameSchema schema, Lang.Lexicon lexicon = null)
+    {
+        _schema = schema;
+        _lex = lexicon;
+    }
+
+    /// <summary>
+    /// 卡名 → 卡号。
+    ///
+    /// 这一条是**运行期能否生效**的关键：DoSpawn 只认 n.CardId，
+    /// DoTransform 只认 n.IntoCardId。只写 CardName 时卡面中文完全正确、
+    /// 编译零错误，但打出去会召唤一个 CardId=0 的白板空壳。
+    /// </summary>
+    private int CardIdOf(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || _lex == null) return 0;
+        return _lex.TryGetCardId(name.Trim(), out var id) ? id : 0;
+    }
 
     public BlockCompileResult Compile(CardBlockWorkspace doc)
     {
         if (doc == null) { _res.Errors.Add("文档为空"); return _res; }
+
+        // 先编纹章/信仰子卡：本体的「获得纹章」节点需要在构造时就把 CrestDef 填进去。
+        // SpawnCardNode.CrestDef 是 init-only，构造后补不了 —— 而缺了它，
+        // 运行期 GainCrest 建出的是一个没有任何能力的同名声望壳。
+        _pendingCrest = BuildSub(0, doc.CrestHats, CardKind.Crest, doc, force: true);
+        _pendingFaith = BuildSub(0, doc.FaithHats, CardKind.Faith, doc, force: true);
 
         var abilities = new List<AbilityDef>();
 
@@ -294,10 +328,12 @@ public sealed class DiyBlockCompiler
             Abilities = abilities,
             Traits = (doc.Traits ?? new List<string>()).Select(t => _schema.Trait(t)).ToList(),
             Clan = string.IsNullOrEmpty(doc.Clan) ? SymbolId<ClanTag>.Invalid : _schema.Clan(doc.Clan),
+            HasFuse = doc.HasFuse,
+            FuseMaterialFilter = doc.HasFuse ? CompileTarget(doc.FuseFilter) : null,
             AccelerateDef = BuildSub(doc.AccelerateCost, doc.AccelerateHats, CardKind.Spell, doc),
             CrystallizeDef = BuildSub(doc.CrystallizeCost, doc.CrystallizeHats, CardKind.Amulet, doc),
-            CrestDef = BuildSub(0, doc.CrestHats, CardKind.Crest, doc, force: true),
-            FaithDef = BuildSub(0, doc.FaithHats, CardKind.Faith, doc, force: true),
+            CrestDef = _pendingCrest,
+            FaithDef = _pendingFaith,
         };
 
         _res.Def = _res.Errors.Count == 0 ? def : null;
@@ -528,14 +564,35 @@ public sealed class DiyBlockCompiler
             case "act_summon":
             case "act_add_hand":
             case "act_gain_crest":
+            {
+                bool isCrest = b.Opcode == "act_gain_crest";
+                // ToOwner 必须来自积木：Slaus 的「给**对手**贴纹章」写成固定 Self，
+                // 往返后就成了「给自己贴纹章」，而卡面中文一模一样。
+                var owner = b.EnumA switch
+                {
+                    "Opponent" => ZoneScope.Opponent,
+                    "Any" => ZoneScope.Any,
+                    _ => ZoneScope.Self,
+                };
                 return new SpawnCardNode
                 {
+                    // 纹章/信仰是**独立实体**，不继承主人卡的卡号：
+                    // 给了主人卡号，运行期会按那个卡号去建实体，拿到的却是主人卡本身。
+                    CardId = isCrest ? 0 : (b.IntB != 0 ? b.IntB : CardIdOf(b.Text)),
                     CardName = b.Text ?? "",
                     Count = CompileNumber(b.Number) ?? NumExpr.Const(1),
-                    ToZone = b.Opcode == "act_add_hand" ? ZoneRef.Hand : ZoneRef.Board,
-                    IsCrest = b.Opcode == "act_gain_crest",
-                    ToOwner = ZoneScope.Self,
+                    // 纹章落在纹章区，不是战场。写成 Board 会让它在战场上占一个格子，
+                    // 而且同名唯一/区域上限这些纹章规则全部失效。
+                    ToZone = isCrest ? ZoneRef.CrestArea
+                           : b.Opcode == "act_add_hand" ? ZoneRef.Hand : ZoneRef.Board,
+                    IsCrest = isCrest,
+                    ToOwner = owner,
+                    // 纹章节点内嵌子卡定义，否则运行期建出的纹章没有能力。
+                    CrestDef = isCrest
+                        ? (b.Text == (_pendingFaith?.Name ?? "") ? _pendingFaith : _pendingCrest)
+                        : null,
                 };
+            }
 
             case "act_destroy":
                 return MoveTo(b, ZoneRef.Cemetery, true);
@@ -629,36 +686,42 @@ public sealed class DiyBlockCompiler
                     Target = b.Target != null ? CompileTarget(b.Target) : null,
                     Owner = ZoneScope.Self,
                     Counter = _schema.Counter(b.Text ?? ""),
-                    Op = CounterOp.Add,
+                    // Op 必须保留：「信仰初始值为 0」是 Set，「+1」是 Add。
+                    // 把 Set 统一写成 Add，初值语义就变了（Set 0 表示清空，Add 0 什么都不做）。
+                    Op = b.EnumA switch
+                    {
+                        "Set" => CounterOp.Set,
+                        "Fill" => CounterOp.Fill,
+                        _ => CounterOp.Add,
+                    },
                     Delta = delta,
                 };
             }
 
             case "act_transform":
+                // DoTransform 只认 IntoCardId：没有它，变身是彻底的空操作。
                 return new TransformNode
                 {
                     Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    IntoCardId = b.IntB != 0 ? b.IntB : CardIdOf(b.Text),
                     IntoCardName = b.Text ?? "",
                 };
 
             case "act_reanimate":
-                return new SpawnCardNode
-                {
-                    AddDepartedTrait = true,
-                    Count = CompileNumber(b.Number) ?? NumExpr.Const(1),
-                    ToZone = ZoneRef.Board,
-                    CopyFrom = new TargetSpec
-                    {
-                        SourceKind = TargetSourceKind.Zone, Owner = ZoneScope.Self,
-                        Zone = ZoneRef.Cemetery, Mode = SelectMode.All,
-                    },
-                };
+                // 用唯一标准构造：手写这条节点会漏掉 9 个字段里的某几个，
+                // 而漏掉的后果是召唤出一个 CardId=0 的白壳。
+                return ReanimateHelper.Build(CompileNumber(b.Number) ?? NumExpr.Const(0));
 
             case "act_replace_deck":
                 return new ReplaceDeckNode { DeckName = b.Text ?? "", Owner = ZoneScope.Self };
 
             case "act_invoke":
-                return new InvokeAbilityNode { Event = EventOf(b.Text) };
+                // Target 缺了就是空操作：DoInvoke 第一行 Resolve(n.Target)。
+                return new InvokeAbilityNode
+                {
+                    Event = EventOf(b.Text),
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                };
 
             case "act_grant_ability":
             {
@@ -831,9 +894,17 @@ public sealed class DiyBlockCompiler
                 return b.Opcode == "bool_and" ? new AndExpr(items) : new OrExpr(items);
             }
             case "bool_has_kw":
-                return new HasKeywordExpr { Keyword = _schema.Keyword(b.Text ?? ""), Of = TargetSpec.Item };
+                return new HasKeywordExpr
+                {
+                    Keyword = _schema.Keyword(b.Text ?? ""),
+                    Of = CompileTarget(b.Target) ?? TargetSpec.Item,
+                };
             case "bool_has_trait":
-                return new HasTraitExpr { Trait = _schema.Trait(b.Text ?? ""), Of = TargetSpec.Item };
+                return new HasTraitExpr
+                {
+                    Trait = _schema.Trait(b.Text ?? ""),
+                    Of = CompileTarget(b.Target) ?? TargetSpec.Item,
+                };
             case "bool_has_state":
                 return new HasStateExpr
                 {
@@ -847,7 +918,10 @@ public sealed class DiyBlockCompiler
                         "HasOnSpellboost" => Core.UnitState.HasOnSpellboost,
                         _ => Core.UnitState.Damaged,
                     },
-                    Of = TargetSpec.Item,
+                    // Of 必须还原：能力级条件判的是 $self，where 里判的是 $item。
+                    // 一律写 $item，会让「本卡是否已进化」在触发时恒为 false ——
+                    // 因为触发那一刻作用域里只有 $self，$item 是空的。
+                    Of = CompileTarget(b.Target) ?? TargetSpec.Item,
                 };
             case "bool_exists":
                 return new ExistsExpr
@@ -963,6 +1037,8 @@ public sealed class DiyBlockDecompiler
             Life = def.BaseLife,
             Clan = def.Clan.IsValid ? def.Clan.Name : null,
             Traits = (def.Traits ?? Array.Empty<SymbolId<TraitTag>>()).Select(t => t.Name).ToList(),
+            HasFuse = def.HasFuse,
+            FuseFilter = def.HasFuse ? Target(def.FuseMaterialFilter) : null,
         };
 
         foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())
@@ -1007,6 +1083,11 @@ public sealed class DiyBlockDecompiler
         var list = new List<Block>();
         foreach (var ab in abilities ?? Array.Empty<AbilityDef>())
         {
+            // 只跳「裸关键词」，不能把 PassiveAura 整体跳过。
+            // 子卡（结晶/纹章/信仰）的常驻项正是 PassiveAura：
+            //   · 初始吟唱 Countdown (3)
+            //   · 信仰的「初始值为 0」
+            // 跳过它们，结晶护符进场后永远不会自己消失，信仰也没初值。
             if (IsBareKeyword(ab)) continue;
             var h = Hat(ab);
             if (h != null) list.Add(h);
@@ -1018,6 +1099,8 @@ public sealed class DiyBlockDecompiler
     {
         if (ab?.Trigger == null) return null;
 
+        // PassiveAura + 有代价（吟唱）或有效果体（计数器初值）时，必须当作常驻帽保留，
+        // 否则子卡最关键的「吟唱 N」「初始值为 N」直接人间蒸发。
         string opcode = ab.Trigger.SubjectFilter != null ? "hat_watch_event"
                       : ab.Trigger.Event == CoreEvent.PassiveAura ? "hat_passive"
                       : "hat_self_event";
@@ -1102,11 +1185,21 @@ public sealed class DiyBlockDecompiler
 
             case SpawnCardNode sp:
             {
-                if (sp.AddDepartedTrait)
-                    return new Block { Opcode = "act_reanimate", Number = Num(sp.Count) };
+                // 亡者召还：费用上限在 CopyFrom.Where 里，不在 Count。
+                // Count 恒为 1（「召一个」），拿它当上限会让 Reanimate(8) 变成 Reanimate(1)。
+                if (ReanimateHelper.IsReanimate(sp))
+                {
+                    ReanimateHelper.TryExtractCostCap(sp, out var cap);
+                    return new Block { Opcode = "act_reanimate", Number = Num(cap) };
+                }
                 string op = sp.IsCrest ? "act_gain_crest"
                           : sp.ToZone == ZoneRef.Hand ? "act_add_hand" : "act_summon";
-                return new Block { Opcode = op, Text = sp.CardName, Number = Num(sp.Count) };
+                // IntB 存真实卡号：卡名可能重名或被改名，卡号不会。
+                return new Block
+                {
+                    Opcode = op, Text = sp.CardName, Number = Num(sp.Count),
+                    IntB = sp.CardId, EnumA = sp.ToOwner.ToString(),
+                };
             }
 
             case ModifyStatsNode ms:
@@ -1160,11 +1253,12 @@ public sealed class DiyBlockDecompiler
                     Opcode = "act_mod_counter", Text = c.Counter.Name,
                     Target = c.Target != null ? Target(c.Target) : null,
                     Number = Num(delta), FlagA = neg,
+                    EnumA = c.Op.ToString(),
                 };
             }
 
             case TransformNode t:
-                return new Block { Opcode = "act_transform", Target = Target(t.Target), Text = t.IntoCardName };
+                return new Block { Opcode = "act_transform", Target = Target(t.Target), Text = t.IntoCardName, IntB = t.IntoCardId };
 
             case ConditionalNode cd:
                 return new Block
@@ -1197,7 +1291,7 @@ public sealed class DiyBlockDecompiler
                 return new Block { Opcode = "act_replace_deck", Text = rd.DeckName };
 
             case InvokeAbilityNode ia:
-                return new Block { Opcode = "act_invoke", Text = ia.Event.ToString() };
+                return new Block { Opcode = "act_invoke", Text = ia.Event.ToString(), Target = Target(ia.Target ?? TargetSpec.Self) };
 
             case GrantCounterAbilityNode gc:
             {
@@ -1375,11 +1469,12 @@ public sealed class DiyBlockDecompiler
                 return b;
             }
             case HasKeywordExpr hk:
-                return new Block { Opcode = "bool_has_kw", Text = hk.Keyword.Name };
+                return new Block { Opcode = "bool_has_kw", Text = hk.Keyword.Name, Target = Target(hk.Of) };
             case HasTraitExpr ht:
-                return new Block { Opcode = "bool_has_trait", Text = ht.Trait.Name };
+                return new Block { Opcode = "bool_has_trait", Text = ht.Trait.Name, Target = Target(ht.Of) };
             case HasStateExpr hs:
-                return new Block { Opcode = "bool_has_state", EnumA = hs.State.ToString() };
+                // Of 必须存下来：它区分「本卡是否已进化」与「被筛的那张是否已进化」。
+                return new Block { Opcode = "bool_has_state", EnumA = hs.State.ToString(), Target = Target(hs.Of) };
             case ExistsExpr ex:
                 return new Block
                 {

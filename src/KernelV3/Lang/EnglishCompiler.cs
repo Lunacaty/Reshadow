@@ -99,6 +99,14 @@ public sealed class EnglishCompiler
         _actions.CrestDefResolver = () => pre.CrestDef;
 
         _sawFuseDecl = false;
+        // 融合材料筛选必须随「本次编译」一起复位。
+        //
+        // EnglishCompiler 是可复用的：TestsetLoader 就是用一个实例连编 30 张卡。
+        // 只复位 _sawFuseDecl 而不复位 _fuseMaterialFilter，会让
+        // 「上一张卡的融合筛选」粘到下一张卡上 —— 于是一张根本不能融合的卡，
+        // 其 Def.FuseMaterialFilter 却挂着别人的 has trait Artifact，
+        // 而 HasFuse 是 false：两个字段自相矛盾，卡面却完全正常。
+        _fuseMaterialFilter = null;
         var r = CompileCore(text);
         r.CrestDef = pre.CrestDef ?? r.CrestDef;
         r.FaithDef = pre.FaithDef ?? r.FaithDef;

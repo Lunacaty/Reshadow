@@ -580,6 +580,16 @@ public sealed class DiyFormCompiler
         reason = "";
         if (def == null) { reason = "CardDef 为空"; return false; }
 
+        // 含激奏/结晶/纹章/信仰/融合的卡超出表单表达能力。
+        // 静默丢弃这些子结构还返回 true，会让玩家在表单里存一次就
+        // 把整条融合链/结晶效果删掉，而界面上看不出任何异常。
+        if (def.AccelerateDef != null || def.CrystallizeDef != null
+            || def.CrestDef != null || def.FaithDef != null || def.HasFuse)
+        {
+            reason = "该卡含激奏/结晶/纹章/信仰/融合，超出表单表达能力（请改用积木或脚本模式）";
+            return false;
+        }
+
         var f = new CardFormModel
         {
             CardId = def.CardId,
@@ -673,8 +683,29 @@ public sealed class DiyFormCompiler
             }
         }
 
-        foreach (var n in ab.Body ?? Array.Empty<EffectNode>())
+        // 表单把「选 1 个敌方随从并打它」看成一行，而 AST 是两条节点
+        // （Select 存进 $selected + 后续动作引用槽位）。
+        // 反填时必须把这对合并回一行，否则表单永远认不出自己造的卡 ——
+        // 「四端同构」就成了「三端能升级、表单不能」。
+        var bodyList = ab.Body ?? Array.Empty<EffectNode>();
+        for (int i = 0; i < bodyList.Count; i++)
         {
+            var n = bodyList[i];
+
+            if (n is SelectTargetNode st && i + 1 < bodyList.Count
+                && TargetUsesSlot(bodyList[i + 1], st.OutSlot))
+            {
+                var merged = NodeToRow(bodyList[i + 1], out var why2);
+                if (merged == null) { reason = why2; return null; }
+                merged.Target = Filter(st.Target);
+                // 选法要保留原始 Mode（Choose / Random / All），
+                // 否则「选 1 个」会被表单默认成「所有」。
+                if (merged.Target != null) merged.Target.Mode = st.Target?.Mode.ToString() ?? "Choose";
+                item.Actions.Add(merged);
+                i++;                                  // 跳过被合并掉的那条
+                continue;
+            }
+
             var row = NodeToRow(n, out var why);
             if (row == null) { reason = why; return null; }
             item.Actions.Add(row);
@@ -721,8 +752,8 @@ public sealed class DiyFormCompiler
                 if (m.ToZone == ZoneRef.Hand && m.Target?.Zone == ZoneRef.Deck && m.Target.Mode == SelectMode.First)
                 {
                     var row = new ActionFormRow { Kind = FormActionKind.Draw };
-                    if (!SrcOf(m.Target.Count, out var s, out var v, out reason)) return null;
-                    row.NumberSource = s; row.Number = v;
+                    if (!SrcOf(m.Target.Count, out var s, out var v, out var cn, out reason)) return null;
+                    row.NumberSource = s; row.Number = v; if (cn != null) row.Name = cn;
                     return row;
                 }
                 var k = m.ToZone switch
@@ -746,8 +777,8 @@ public sealed class DiyFormCompiler
                          : sp.ToZone == ZoneRef.Hand ? FormActionKind.AddToHand : FormActionKind.Summon,
                     Name = sp.CardName,
                 };
-                if (!SrcOf(sp.Count, out var s, out var v, out reason)) return null;
-                row.NumberSource = s; row.Number = v;
+                if (!SrcOf(sp.Count, out var s, out var v, out var cn, out reason)) return null;
+                row.NumberSource = s; row.Number = v; if (cn != null) row.Name = cn;
                 return row;
             }
 
@@ -762,13 +793,13 @@ public sealed class DiyFormCompiler
                 var row = new ActionFormRow { Kind = k, Target = Filter(ms.Target) };
                 if (ms.Attack != null)
                 {
-                    if (!SrcOf(ms.Attack, out var s1, out var v1, out reason)) return null;
-                    row.NumberSource = s1; row.Number = v1;
+                    if (!SrcOf(ms.Attack, out var s1, out var v1, out var cn1, out reason)) return null;
+                    row.NumberSource = s1; row.Number = v1; if (cn1 != null) row.Name = cn1;
                 }
                 if (ms.Life != null)
                 {
-                    if (!SrcOf(ms.Life, out var s2, out var v2, out reason)) return null;
-                    row.NumberSource2 = s2; row.Number2 = v2;
+                    if (!SrcOf(ms.Life, out var s2, out var v2, out var cn2, out reason)) return null;
+                    row.NumberSource2 = s2; row.Number2 = v2; if (cn2 != null) row.Name = cn2;
                 }
                 return row;
             }
@@ -800,8 +831,8 @@ public sealed class DiyFormCompiler
                     Target = mc.Target != null ? Filter(mc.Target) : null,
                     Name = mc.Counter.Name,
                 };
-                if (!SrcOf(mc.Delta, out var s, out var v, out reason)) return null;
-                row.NumberSource = s; row.Number = v;
+                if (!SrcOf(mc.Delta, out var s, out var v, out var cn, out reason)) return null;
+                row.NumberSource = s; row.Number = v; if (cn != null) row.Name = cn;
                 return row;
             }
 
@@ -823,17 +854,25 @@ public sealed class DiyFormCompiler
         var row = new ActionFormRow { Kind = kind, Target = Filter(t), Name = name };
         if (num != null)
         {
-            if (!SrcOf(num, out var s, out var v, out reason)) return null;
-            row.NumberSource = s; row.Number = v;
+            if (!SrcOf(num, out var s, out var v, out var cn, out reason)) return null;
+            row.NumberSource = s; row.Number = v; if (cn != null) row.Name = cn;
         }
         return row;
     }
 
     /// <summary>数值表达式 → 表单的「数值来源」。</summary>
-    private bool SrcOf(NumExpr e, out FormNumberSource src, out int val, out string reason)
+    /// <summary>
+    /// 数值表达式 → 表单的「数值来源」。
+    ///
+    /// counterName 必须回传：表单里「数值来源 = 自定义计数器」时，
+    /// 具体是哪个计数器由 Name 承载。不回传就会退化成 mode_count，
+    /// 于是玩家造的卡读的是别人的计数器。
+    /// </summary>
+    private bool SrcOf(NumExpr e, out FormNumberSource src, out int val, out string counterName, out string reason)
     {
         src = FormNumberSource.Const;
         val = 0;
+        counterName = null;
         reason = "";
         if (e == null) return true;
 
@@ -842,6 +881,7 @@ public sealed class DiyFormCompiler
         {
             if (e.Counter.Name == "combo") { src = FormNumberSource.ComboCount; return true; }
             src = FormNumberSource.CounterValue;
+            counterName = e.Counter.Name;
             return true;
         }
         if (e.Op == NumOp.Property)
@@ -862,6 +902,23 @@ public sealed class DiyFormCompiler
 
         reason = "该数值来源超出表单表达能力（请改用积木或脚本模式）";
         return false;
+    }
+
+    /// <summary>该节点的主目标是否引用了指定槽位。</summary>
+    private static bool TargetUsesSlot(EffectNode n, string slot)
+    {
+        var t = n switch
+        {
+            DealDamageNode d => d.Target,
+            RestoreLifeNode r => r.Target,
+            MoveZoneNode m => m.Target,
+            ModifyStatsNode ms => ms.Target,
+            ModifyKeywordNode mk => mk.Target,
+            EvolveNode e => e.Target,
+            TransformNode tn => tn.Target,
+            _ => null,
+        };
+        return t != null && t.SourceKind == TargetSourceKind.Slot && t.Slot == slot;
     }
 
     private TargetFilterForm Filter(TargetSpec t)

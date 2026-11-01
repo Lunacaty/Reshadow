@@ -60,7 +60,7 @@ public sealed class ChineseCardPrinter
             sb.Append("\n----------\n");
         }
 
-        // ③ 本体：先合并裸关键词，再逐条能力
+        // ③ 本体：先合并裸关键词与常驻项，再逐条能力
         var plain = card.Abilities?.Where(a => a?.Trigger?.Event == CoreEvent.PassiveAura).ToList()
                     ?? new List<AbilityDef>();
         var actives = card.Abilities?.Where(a => a?.Trigger?.Event != CoreEvent.PassiveAura).ToList()
@@ -68,9 +68,13 @@ public sealed class ChineseCardPrinter
 
         var keywords = new List<string>();
         foreach (var ab in plain)
-            foreach (var n in ab.Body ?? Array.Empty<EffectNode>())
-                if (n is ModifyKeywordNode mk && mk.Op == KeywordOp.Grant)
-                    keywords.Add(PrintKeyword(mk));
+        {
+            // 常驻的「初始吟唱」与「计数器初值」也住在这里。
+            // 只提关键词会让护符变成一张永远不会自己消失的牌 ——
+            // 卡面上根本没有【吟唱】，玩家看不出异常，但规则已经错了。
+            string passive = PrintPassiveLine(ab);
+            if (passive.Length > 0) keywords.Add(passive);
+        }
 
         var innate = (card.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
             .Select(k => "【" + KeywordZh(k.Name) + "】");
@@ -104,7 +108,13 @@ public sealed class ChineseCardPrinter
         var sb = new StringBuilder();
         foreach (var ab in abilities)
         {
-            if (ab?.Trigger?.Event == CoreEvent.PassiveAura) continue;   // 裸关键词已单独成行
+            // 常驻项（吟唱 / 计数器初值 / 关键词）写在子卡里时也要输出。
+            if (ab?.Trigger?.Event == CoreEvent.PassiveAura)
+            {
+                var pl = PrintPassiveLine(ab);
+                if (pl.Length > 0) sb.Append(pl).Append('\n');
+                continue;
+            }
             var line = PrintAbility(ab);
             if (!string.IsNullOrEmpty(line)) sb.Append(line).Append('\n');
         }
@@ -112,6 +122,36 @@ public sealed class ChineseCardPrinter
     }
 
     /// <summary>一条能力：[触发头] 可选代价 条件，动作串。</summary>
+    /// <summary>
+    /// 渲染一条常驻（PassiveAura）项：初始吟唱 / 计数器初值 / 裸关键词。
+    ///
+    /// 这三类都写在 PassiveAura 上。过去只提关键词，于是
+    /// 「【吟唱】3」「初始【信仰】值为 0」在卡面上人间蒸发 ——
+    /// 护符变成一张永远不会自己消失的牌，而玩家看不出任何异常。
+    /// </summary>
+    private string PrintPassiveLine(AbilityDef ab)
+    {
+        if (ab == null) return "";
+        var parts = new List<string>();
+
+        foreach (var c in ab.Costs ?? Array.Empty<CostSpec>())
+        {
+            if (c.Kind != CostKind.Countdown) continue;
+            string amt = c.Amount != null ? PrintNum(c.Amount) : "1";
+            parts.Add("【吟唱" + amt + "】");
+        }
+
+        foreach (var n in ab.Body ?? Array.Empty<EffectNode>())
+        {
+            if (n is ModifyKeywordNode mk && mk.Op == KeywordOp.Grant)
+                parts.Add(PrintKeyword(mk));
+            else if (n is ModifyCounterNode mc && mc.Op == CounterOp.Set)
+                parts.Add("初始【" + CounterZh(mc.Counter.Name) + "】值为" + PrintNum(mc.Delta) + "。");
+        }
+
+        return string.Join("", parts);
+    }
+
     public string PrintAbility(AbilityDef ab)
     {
         if (ab == null) return "";
@@ -141,6 +181,36 @@ public sealed class ChineseCardPrinter
     private string TriggerHeader(TriggerSpec trig)
     {
         if (trig == null) return "";
+
+        // 旁观型触发必须写出「谁」触发的。
+        // 只写事件会让卡面变成「【进入战场时】给予该卡牌【疾驰】效果」这种无头苍蝇 ——
+        // 读者完全不知道是哪张卡进入了战场。
+        if (trig.SubjectFilter != null && trig.SubjectFilter.SourceKind != TargetSourceKind.Slot)
+        {
+            string who = PrintTarget(trig.SubjectFilter);
+            string verb = EventVerbZh(trig.Event, trig.SecondaryEvent);
+
+            // 及物动词（打出 / 融合 / 舍弃 / 抽牌…）必须放在宾语**前面**：
+            // 「每当我方打出或融合战利品兵种的卡牌时」
+            // 而不是「每当我方战场的1个战利品兵种的打出或融合时」。
+            // 不及物动词（进入战场 / 离场 / 被破坏）则跟在主语后面。
+            if (IsTransitiveVerb(trig.Event))
+            {
+                string subject = trig.SubjectFilter.Owner == ZoneScope.Opponent ? "敌方" : "我方";
+                string obj = TargetNounOnly(trig.SubjectFilter);
+                return "每当" + subject + verb + obj + "时，";
+            }
+
+            return "每当" + who + verb + "时，";
+        }
+
+        // 「你做了某件事」类（融合 / 魔力增幅 / 选模式）：主体是玩家，不是某张卡。
+        if (trig.SubjectFilter == null && trig.Event is CoreEvent.OnFuse or CoreEvent.OnSpellboost
+            or CoreEvent.OnSelectMode or CoreEvent.OnEarthRite)
+        {
+            string verb = EventVerbZh(trig.Event, trig.SecondaryEvent);
+            return "每当我方进行" + verb + "时，";
+        }
         string head = trig.Event switch
         {
             CoreEvent.OnPlay => "【入场曲】",
@@ -187,6 +257,62 @@ public sealed class ChineseCardPrinter
             head = head.Replace("】", "或" + EventNameZh(trig.SecondaryEvent.Value) + "】");
 
         return head;
+    }
+
+    /// <summary>及物动词：它们要放在宾语前面。</summary>
+    private static bool IsTransitiveVerb(CoreEvent ev) => ev is
+        CoreEvent.OnPlay or CoreEvent.OnFuse or CoreEvent.OnDiscard
+        or CoreEvent.OnDraw or CoreEvent.OnSummon or CoreEvent.OnAddToHand
+        or CoreEvent.OnSpellboost;
+
+    /// <summary>只取「定语 + 核心名词」，不含数量与区域（放在动词后面用）。</summary>
+    private string TargetNounOnly(TargetSpec t)
+    {
+        var parts = new List<string>();
+        CollectWhere(t?.Where, parts);
+        string noun = CoreNoun(t, parts.Count > 0);
+        // 只有兵种/属性定语、没有卡种时，补一个「卡牌」收尾：
+        // 「战利品兵种的时」这种半截句子比不写还难读。
+        if (string.IsNullOrEmpty(noun)) noun = "卡牌";
+        return string.Concat(parts) + noun;
+    }
+
+    /// <summary>事件动词短语（含并列事件）。</summary>
+    private static string EventVerbZh(CoreEvent ev, CoreEvent? secondary)
+    {
+        string a = ev switch
+        {
+            CoreEvent.OnPlay => "打出",
+            CoreEvent.OnEnterField => "进入战场",
+            CoreEvent.OnLeaveField => "离场",
+            CoreEvent.OnDestroy => "被破坏",
+            CoreEvent.OnBanish => "被放逐",
+            CoreEvent.OnDiscard => "被舍弃",
+            CoreEvent.OnSummon => "被召唤",
+            CoreEvent.OnEvolve => "进化",
+            CoreEvent.OnSuperEvolve => "超进化",
+            CoreEvent.OnAttack => "攻击",
+            CoreEvent.OnClash => "交战",
+            CoreEvent.OnDamaged => "受到伤害",
+            CoreEvent.OnHealed => "回复",
+            CoreEvent.OnFuse => "融合",
+            CoreEvent.OnSpellboost => "魔力增幅",
+            CoreEvent.OnDraw => "抽牌",
+            CoreEvent.OnSelectMode => "选择模式",
+            CoreEvent.OnEarthRite => "发动土之秘术",
+            CoreEvent.OnAddToHand => "加入手牌",
+            CoreEvent.OnReturnToHand => "返回手牌",
+            _ => "触发",
+        };
+        if (secondary == null) return a;
+        string b = secondary.Value switch
+        {
+            CoreEvent.OnFuse => "融合",
+            CoreEvent.OnPlay => "打出",
+            CoreEvent.OnDestroy => "被破坏",
+            _ => secondary.Value.ToString(),
+        };
+        return a + "或" + b;
     }
 
     private static string EventNameZh(CoreEvent ev) => ev switch
@@ -443,8 +569,8 @@ public sealed class ChineseCardPrinter
         switch (name)
         {
             case "countdown":
-                if (c.Delta != null && c.Delta.Op == NumOp.Const && c.Delta.Value < 0)
-                    return "使" + tgt + "的【吟唱】推进" + (-c.Delta.Value) + "回合。";
+                if (TryGetNegativeAmount(c.Delta, out var adv))
+                    return "使" + tgt + "的【吟唱】推进" + PrintNum(adv) + "回合。";
                 return "使" + tgt + "的【吟唱】延长" + PrintNum(c.Delta) + "回合。";
 
             case "spellboost":
@@ -459,10 +585,10 @@ public sealed class ChineseCardPrinter
                 return "获得" + PrintNum(c.Delta) + "层【土之印】。";
 
             case "faith":
+                if (TryGetNegativeAmount(c.Delta, out var use))
+                    return "消费" + PrintNum(use) + "点【信仰】值。";
                 if (c.Delta != null && c.Delta.Op == NumOp.Const)
-                    return c.Delta.Value < 0
-                        ? "消费" + (-c.Delta.Value) + "点【信仰】值。"
-                        : "使【信仰】值+" + c.Delta.Value + "。";
+                    return "使【信仰】值+" + c.Delta.Value + "。";
                 return "使【信仰】值" + Signed(c.Delta) + "。";
 
             case "mode_count":
@@ -485,8 +611,8 @@ public sealed class ChineseCardPrinter
             && c.Then != null && c.Then.Count >= 1
             && c.Then[0] is ModifyCounterNode pay
             && pay.Counter.Id == cmp.Left.Counter.Id
-            && pay.Delta != null && pay.Delta.Op == NumOp.Const
-            && pay.Delta.Value == -cmp.Right.Value)
+            && TryGetNegativeAmount(pay.Delta, out var payMag)
+            && payMag.Op == NumOp.Const && payMag.Value == cmp.Right.Value)
         {
             int amt = cmp.Right.Value;
             string zh = CounterZh(cmp.Left.Counter.Name);
@@ -558,8 +684,31 @@ public sealed class ChineseCardPrinter
             }
         }
 
+        // 具名卡池不能提前返回：它还带着 History（本局已进入战场的）与 Where（其他的）。
+        // 提前返回会把这些定语全部丢掉，
+        // 于是「本局对战中已进入战场的其他《痴迷的试验体》」退化成「《痴迷的试验体》」。
         if (t.SourceKind == TargetSourceKind.CardId)
-            return string.IsNullOrEmpty(t.CardName) ? "该卡牌" : "《" + CardZh(t.CardName) + "》";
+        {
+            var pre = new List<string>();
+            if (t.History == HistoryScope.EnteredThisMatch) pre.Add("（本局对战中已进入战场的）");
+            else if (t.History == HistoryScope.DestroyedThisMatch) pre.Add("（本局对战中已被破坏的）");
+            else if (t.History == HistoryScope.DestroyedThisTurn) pre.Add("（本回合已被破坏的）");
+
+            string ownerZh = t.Owner switch
+            {
+                ZoneScope.Self => "我方的",
+                ZoneScope.Opponent => "敌方的",
+                _ => "",
+            };
+
+            var w = new List<string>();
+            CollectWhere(t.Where, w);
+            if (t.DuplicatesOnly) w.Insert(0, "重复的");
+
+            string noun = string.IsNullOrEmpty(t.CardName) ? "该卡牌" : "《" + CardZh(t.CardName) + "》";
+            string qty = t.Mode == SelectMode.All ? "所有" : (t.Count != null ? PrintNum(t.Count) + "个" : "1个");
+            return string.Concat(pre) + ownerZh + qty + string.Concat(w) + noun;
+        }
 
         // 主战者特例
         if (t.Zone == ZoneRef.Leader)
@@ -622,8 +771,7 @@ public sealed class ChineseCardPrinter
         string where = PrintTargetWhere(t.Where, t, skipExclusion: excluded);
         if (where.Length > 0) sb.Append(where);
 
-        // ⑥ 核心名词：Where 已经把「随从 / 护符 / 有某兵种」说出来了，
-        // 再补一个「卡牌」就成了「随从卡牌」这种叠词。
+        // ⑥ 核心名词由 Where 的卡种决定（随从 / 法术 / 护符），最后由它收尾。
         sb.Append(CoreNoun(t, where.Length > 0));
 
         // ⑦ 历史池限定
@@ -641,7 +789,24 @@ public sealed class ChineseCardPrinter
 
     private string CoreNoun(TargetSpec t, bool whereAlreadySaysNoun)
     {
-        if (t.Zone == ZoneRef.CrestArea) return "纹章";
+        if (t?.Zone == ZoneRef.CrestArea) return "纹章";
+
+        // 卡种来自 Where 里的 HasKindExpr：它是核心名词，必须放在最后。
+        var items = t?.Where is AndExpr a ? a.Items
+                    : t?.Where == null ? Array.Empty<BoolExpr>()
+                    : new[] { t.Where };
+        foreach (var x in items)
+        {
+            if (x is HasKindExpr hk)
+                return hk.Kind switch
+                {
+                    CardKind.Follower => "随从",
+                    CardKind.Spell => "法术",
+                    CardKind.Amulet => "护符",
+                    _ => "卡牌",
+                };
+        }
+
         if (whereAlreadySaysNoun) return "";
         return "卡牌";
     }
@@ -663,14 +828,10 @@ public sealed class ChineseCardPrinter
             case AndExpr a:
                 foreach (var x in a.Items) CollectWhere(x, parts, skipExclusion);
                 break;
-            case HasKindExpr hk:
-                parts.Add(hk.Kind switch
-                {
-                    CardKind.Follower => "随从",
-                    CardKind.Spell => "法术",
-                    CardKind.Amulet => "护符",
-                    _ => "卡牌",
-                });
+            case HasKindExpr:
+                // 卡种是**核心名词**，不是定语。
+                // 放进定语列表会产出「所有随从攻击力至多3的」这种病句；
+                // 正确做法是让 CoreNoun 最后统一输出「随从」。
                 break;
             case HasTraitExpr ht:
                 parts.Add(TraitZh(ht.Trait.Name) + "兵种的");
@@ -867,6 +1028,35 @@ public sealed class ChineseCardPrinter
     // ---------------------------------------------------------------- 词表
 
     private static bool IsTrue(BoolExpr e) => e == null || (e is ConstBoolExpr cb && cb.Value);
+
+    /// <summary>
+    /// 识别「负增量」的两种编码：
+    ///   · Const(-N)
+    ///   · Arith.Sub(Const(0), N)  ← 英文编译器实际产出的形态
+    ///
+    /// 只认第一种会让所有「减少 N」打印成「增加 -N」，
+    /// 于是一张「推进 1 回合」的吟唱卡被渲染成「延长 -1 回合」。
+    /// </summary>
+    private static bool TryGetNegativeAmount(NumExpr e, out NumExpr positiveMagnitude)
+    {
+        positiveMagnitude = null;
+        if (e == null) return false;
+
+        if (e.Op == NumOp.Const)
+        {
+            if (e.Value >= 0) return false;
+            positiveMagnitude = NumExpr.Const(-e.Value);
+            return true;
+        }
+
+        if (e.Op == NumOp.Arith && e.Arith == ArithOp.Sub && e.Args.Count > 1
+            && e.Args[0].Op == NumOp.Const && e.Args[0].Value == 0)
+        {
+            positiveMagnitude = e.Args[1];
+            return true;
+        }
+        return false;
+    }
 
     private string Duration(DurationKind d) => d switch
     {

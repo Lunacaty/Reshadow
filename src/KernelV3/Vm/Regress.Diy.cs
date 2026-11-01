@@ -46,6 +46,7 @@ public static partial class Regress
         Check("DIY-2 30 张真卡积木往返无损", GateBlockRoundTrip);
         Check("DIY-3 自定义词条 + 四端同构等价", GateFourWayEquivalence);
         Check("DIY-4 DIY 卡真机对战效用", GateLiveBattle);
+        Check("DIY-5 往返后真卡仍能实战生效", GateRoundTripLiveBattle);
 
         log.AppendLine();
         log.AppendLine("=== DIY 门禁 " + pass + "/" + total + " ===");
@@ -101,8 +102,38 @@ public static partial class Regress
             // 触发头有二十多种，只列几个已知的会让正确渲染被判成失败。
             bool anyLabel = System.Text.RegularExpressions.Regex.IsMatch(
                 zh, "【[^】]*(曲|时|启动|融合|结晶|激奏|纹章|信仰|场|牌|回合|阶段)[^】]*】");
-            if (anyLabel) labelled++;
+            // 「每当…时，」也是合法的触发头（旁观型与玩家级事件的官方写法），
+            // 只认【】会让这类正确渲染被判成没标签。
+            if (anyLabel || zh.Contains("每当")) labelled++;
         }
+
+        // ---- 定点断言：这几处是「渲染器盲区」的高发地带，必须逐条盯住 ----
+        var zhById = cards.ToDictionary(c => c.CardId, c => ws.Printer.PrintCard(c.Def));
+
+        // ① 护符/结晶的初始吟唱必须在卡面上
+        foreach (var need in new[] { 81000001, 81000004, 81000032, 81000034 })
+        {
+            if (!zhById[need].Contains("【吟唱"))
+                bad.Add(need + " 卡面缺【吟唱】");
+        }
+
+        // ② 卡种必须在定语之后（「攻击力至多3的随从」而不是「随从攻击力至多3的」）
+        if (!zhById[81000002].Contains("攻击力至多3的随从"))
+            bad.Add("81000002 语序错：应为「攻击力至多3的随从」，实际=" + zhById[81000002]);
+
+        // ③ 负增量要识别成「推进」而不是「延长-1」
+        if (!zhById[81000032].Contains("推进1回合"))
+            bad.Add("81000032 未渲染成「推进1回合」，实际=" + zhById[81000032]);
+        if (zhById[81000032].Contains("延长-"))
+            bad.Add("81000032 出现「延长-」，负数未识别");
+
+        // ④ 扣资源要折叠成「消费N点」而不是「若…则…-N」
+        if (!zhById[81000007].Contains("消费10点【信仰】值"))
+            bad.Add("81000007 未折叠成「消费10点【信仰】值」，实际=" + zhById[81000007]);
+
+        // ⑤ 旁观触发的卡面必须写清「谁」触发的
+        if (zhById[81000006].Contains("【进入战场时】给予"))
+            bad.Add("81000006 纹章触发缺主语（【进入战场时】之前应有「每当…」）");
 
         if (bad.Count > 0) return (false, string.Join(" | ", bad.Take(4)) + "（共 " + bad.Count + " 处）");
         // 判据不是「含某几个固定标签」，而是「含任意一个中文能力标签」：
@@ -142,7 +173,32 @@ public static partial class Regress
         }
 
         if (bad.Count > 0) return (false, string.Join(" | ", bad.Take(3)) + "（共 " + bad.Count + " 张）");
-        return (true, ok + "/30 反编译→重编译全部等价");
+
+        // ---- 脚本往返：与积木同样必须 30/30 ----
+        // 只验积木不验脚本，等于默许另一条路静默丢数据。
+        var comp = new ReshadowScriptCompiler(ws);
+        int sok = 0;
+        var sbad = new List<string>();
+        foreach (var c in cards)
+        {
+            var printed = comp.Print(c.Def);
+            var perrs = comp.Errors.ToList();
+            if (perrs.Count > 0) { sbad.Add(c.CardId + " 导出失败：" + perrs[0]); continue; }
+
+            var back = comp.Compile(printed);
+            if (back.Count == 0) { sbad.Add(c.CardId + " 重新解析失败：" + comp.Errors.FirstOrDefault()); continue; }
+
+            string sd = "";
+            if (!DiyWorkspace.StructurallyEqual(c.Def, back[0], out sd))
+            {
+                sbad.Add(c.CardId + " 不等价：" + sd.Replace("\n", " "));
+                continue;
+            }
+            sok++;
+        }
+        if (sbad.Count > 0) return (false, "脚本往返 " + sok + "/30：" + string.Join(" | ", sbad.Take(3)));
+
+        return (true, "积木 " + ok + "/30、脚本 " + sok + "/30 双向无损（含融合/子卡/CardId 判等）");
     }
     // ---------------------------------------------------------------- 门禁 3
 
@@ -319,7 +375,22 @@ public static partial class Regress
         }
 
         if (bad.Count > 0) return (false, string.Join(" | ", bad.Take(2)));
-        return (true, "四端产物在两种渲染下逐字相同；中文=" + zh0.Replace("\n", " / "));
+
+        // ---- 表单自身闭环：表单造出的卡必须能被表单读回去 ----
+        // 只验「四端产出相同」不够：那四条路各造一次就完了。
+        // 真正要的是「玩家能在四种模式之间来回切换而不丢效果」，
+        // 而表单读不回自己造的卡，就是这条升级路径断在表单这一端。
+        var formDef = made.First(m => m.way == "Form").def;
+        var fc2 = new DiyFormCompiler(ws.Schema);
+        if (!fc2.TryCardDefToForm(formDef, out var formBack, out var why))
+            return (false, "表单读不回自己造的卡：" + why);
+
+        var reDef = fc2.FormToCardDef(formBack);
+        string fd = "";
+        if (!DiyWorkspace.StructurallyEqual(formDef, reDef, out fd))
+            return (false, "表单 造→读→再造 不等价：" + fd.Replace("\n", " "));
+
+        return (true, "四端产物在两种渲染下逐字相同，且表单自身闭环；中文=" + zh0.Replace("\n", " / "));
     }
     // ---------------------------------------------------------------- 门禁 4
 
@@ -433,4 +504,186 @@ public static partial class Regress
                      + " Mecha联动抽牌=" + supportFired + "（手牌 " + handBefore + "->" + handAfter + "）";
         return (ok, detail);
     }
+
+    // ---------------------------------------------------------------- 门禁 5
+
+    /// <summary>
+    /// 往返后真机效用：把经「积木往返」与「脚本往返」重编译的真卡放进真实对局，
+    /// 断言它们的核心机制仍然生效。
+    ///
+    /// 这一道是前四道的最后一块拼图：
+    ///   门禁 2 只验「AST 字符串相等」，而 AST 打印器本身可能没打印某些字段
+    ///   （CardId / IntoCardId / CrestDef / Duration …）。于是「字符串相等」
+    ///   与「运行时行为相同」之间有一条缝 —— 门禁 5 就是去补这条缝：
+    ///   真跑一遍，看召唤出的东西有没有卡面、变身有没有发生、纹章有没有挂上。
+    /// </summary>
+    private static (bool, string) GateRoundTripLiveBattle()
+    {
+        var ws = DiyCtx(seed: 23);
+        var cards = TestsetLoader.LoadInto(ws.Context);
+        var byId = cards.ToDictionary(c => c.CardId);
+
+        // 经积木往返与原卡，各跑一遍，逐项对比行为。
+        var blocks = new DiyBlockDecompiler(ws.Schema).Decompile(byId[81000006].Def);
+        var ariaRound = new DiyBlockCompiler(ws.Schema, ws.Lexicon).Compile(blocks);
+        if (!ariaRound.Ok) return (false, "Aria 积木往返失败：" + ariaRound.Errors.FirstOrDefault());
+
+        var scripted = new ReshadowScriptCompiler(ws);
+        var strikerBack = scripted.Compile(scripted.Print(byId[81000022].Def));
+        if (strikerBack.Count == 0) return (false, "Striker 脚本往返失败");
+        var slausBack = scripted.Compile(scripted.Print(byId[81000023].Def));
+        if (slausBack.Count == 0) return (false, "Slaus 脚本往返失败");
+        var sinciroBack = scripted.Compile(scripted.Print(byId[81000021].Def));
+        if (sinciroBack.Count == 0) return (false, "Sinciro 脚本往返失败");
+
+        var report = new List<string>();
+        bool ok = true;
+
+        // ---- ① Aria（积木往返）：进化召唤 3 个妖精，且纹章给它们疾驰 ----
+        {
+            var (st, tr, vm) = DiyBoard(ws);
+            st.RegisterCard(ariaRound.Def);
+            var c = st.SpawnCard(ariaRound.Def.CardId, ZoneRef.Hand, 0);
+            vm.DropPendingTriggers();
+            tr.PlayCard(0, c, vm);
+            vm.StepUntilBlocked();
+
+            bool crest = st.EnumerateZone(ZoneRef.CrestArea, 0).Any(x => x.Def?.Kind == CardKind.Crest);
+            st.WriteCounter(0, st.Schema.Counter("ep"), 2);
+            vm.DropPendingTriggers();
+            tr.Evolve(0, c, false, vm);
+            vm.StepUntilBlocked();
+
+            int fairies = st.EnumerateZone(ZoneRef.Board, 0).Count(x => x.Def?.CardId == 90001110);
+            int stormed = st.EnumerateZone(ZoneRef.Board, 0)
+                .Count(x => x.Def?.CardId == 90001110 && x.Keywords.Contains(st.Schema.Keyword("storm")));
+
+            bool pass = crest && fairies == 3 && stormed == 3 && st.UnresolvedSpawnCount == 0;
+            ok &= pass;
+            report.Add("Aria(积木往返) 纹章=" + crest + " 妖精=" + fairies + " 疾驰=" + stormed
+                       + " 空壳=" + st.UnresolvedSpawnCount);
+        }
+
+        // ---- ② Striker Artifact（脚本往返）：融合 Artifact 护符后变身 ----
+        {
+            var (st, tr, vm) = DiyBoard(ws);
+            st.RegisterCard(strikerBack[0]);
+            var b = st.SpawnCard(81000022, ZoneRef.Hand, 0);
+
+            st.RegisterCard(new CardDef
+            {
+                CardId = 950001, Name = "ArtMat", Kind = CardKind.Amulet, BaseCost = 1,
+                Traits = new List<SymbolId<TraitTag>> { st.Schema.Trait("Artifact") },
+            });
+            var m = st.SpawnCard(950001, ZoneRef.Hand, 0);
+            vm.DropPendingTriggers();
+            bool fused = tr.FuseCards(0, b, new[] { m }, vm);
+            vm.StepUntilBlocked();
+
+            bool transformed = b.Def != null && b.Def.CardId != 81000022
+                               && b.Def.Name != null && b.Def.Name.Contains("Artifact");
+            bool pass = fused && transformed && st.UnresolvedSpawnCount == 0;
+            ok &= pass;
+            report.Add("Striker(脚本往返) 融合=" + fused + " 变身→" + (b.Def?.Name ?? "null")
+                       + " 空壳=" + st.UnresolvedSpawnCount);
+        }
+
+        // ---- ③ Slaus（脚本往返）：回合末给**对手**贴纹章 ----
+        {
+            var (st, tr, vm) = DiyBoard(ws);
+            st.RegisterCard(slausBack[0]);
+            var c = st.SpawnCard(81000023, ZoneRef.Board, 0);
+            c.IsEvolved = true;
+            vm.DropPendingTriggers();
+            int foeCrest0 = st.EnumerateZone(ZoneRef.CrestArea, 1).Count();
+            int myCrest0 = st.EnumerateZone(ZoneRef.CrestArea, 0).Count();
+
+            tr.EndTurn(0, vm);
+            vm.StepUntilBlocked();
+
+            int foeCrest1 = st.EnumerateZone(ZoneRef.CrestArea, 1).Count();
+            int myCrest1 = st.EnumerateZone(ZoneRef.CrestArea, 0).Count();
+
+            // 关键：纹章必须挂到**对手**身上，而且落点是纹章区（不占战场）。
+            // 纹章必须挂到**对手**身上，且我方不能凭空多一个。
+            // 我方计数可能非 0（Slaus 自己带纹章定义），所以判「没有新增」而不是「等于 0」。
+            bool pass = foeCrest1 == foeCrest0 + 1 && myCrest1 == myCrest0;
+            ok &= pass;
+            report.Add("Slaus(脚本往返) 对手纹章 " + foeCrest0 + "→" + foeCrest1
+                       + " 我方 " + myCrest0 + "→" + myCrest1);
+        }
+
+        // ---- ④ Sinciro（脚本往返）：超进化复刻入场曲 ----
+        {
+            var (st, tr, vm) = DiyBoard(ws);
+            st.RegisterCard(sinciroBack[0]);
+            var foe = st.SpawnCard(940001, ZoneRef.Board, 1);
+            var c = st.SpawnCard(81000021, ZoneRef.Board, 0);
+            c.IsEvolved = true;
+            c.IsSuperEvolved = true;
+            st.WriteCounter(0, st.Schema.Counter("sep"), 2);
+            // fuse_kinds 是融合材料种类数，由真实融合产生；这里直接置值模拟。
+            st.WriteCounter(0, st.Schema.Counter("fuse_kinds"), 2);
+            int foeLife0 = foe.Life;
+            int leaderLife0 = st.Players[1].Leader.Life;
+
+            vm.DropPendingTriggers();
+            vm.EnqueueEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnSuperEvolve,
+                Subject = EntityRef.From(c),
+                IsManualEvolve = true,
+            });
+            vm.StepUntilBlocked();
+
+            // 复刻的是入场曲「对敌方全体打 X（=融合种类数）」，目标必须是 $self 的能力持有者。
+            // 复刻的是入场曲「对敌方全体随从与主战者打 X（= 融合材料种类数）」。
+            // 两个落点都要掉血才算真的复刻成功：只看随从会漏掉 IncludeLeader 是否还原。
+            bool fired = foe.Life == foeLife0 - 2 && st.Players[1].Leader.Life == leaderLife0 - 2;
+            ok &= fired;
+            report.Add("Sinciro(脚本往返) 超进化复刻 敌方随从 " + foeLife0 + "→" + foe.Life
+                       + " 主战者 " + leaderLife0 + "→" + st.Players[1].Leader.Life + " 触发=" + fired);
+        }
+
+        return (ok, string.Join("；", report));
+    }
+
+    /// <summary>门禁 5 用的最小对局台。</summary>
+    private static (BattleState st, TurnRunner tr, CardVm vm) DiyBoard(DiyWorkspace ws)
+    {
+        // 每个用例必须用**全新的** BattleState：
+        // 复用同一个会让前面用例残留的实体/计数器影响后面 ——
+        // 例如「敌方随从 9→9」可能只是因为它被上一个用例改成过 9。
+        var st = ws.ResetState();
+        if (st.CardDefOf(99) == null)
+            st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 0; st.TurnNumber = 8;
+        st.WriteCounter(0, st.Schema.Counter("pp"), 20);
+        st.WriteCounter(1, st.Schema.Counter("pp"), 20);
+
+        if (st.CardDefOf(940001) == null)
+            st.RegisterCard(new CardDef
+            {
+                CardId = 940001, Name = "Dummy", Kind = CardKind.Follower,
+                BaseAttack = 1, BaseLife = 9, BaseCost = 1,
+            });
+        for (int i = 0; i < 8; i++)
+        {
+            int id = 960000 + i;
+            if (st.CardDefOf(id) == null)
+                st.RegisterCard(new CardDef
+                {
+                    CardId = id, Name = "Fill" + i, Kind = CardKind.Follower,
+                    BaseAttack = 1, BaseLife = 1, BaseCost = 1,
+                });
+            st.SpawnCard(id, ZoneRef.Deck, 0);
+        }
+
+        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+        return (st, new TurnRunner(st, st.Schema), vm);
+    }
+
 }

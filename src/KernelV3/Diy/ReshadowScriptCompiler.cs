@@ -28,12 +28,32 @@ public sealed class ReshadowScriptCompiler
 
     private readonly DiyWorkspace _ws;
     private readonly GameSchema _schema;
+    private readonly Lang.Lexicon _lex;
     private readonly List<string> _errors = new();
 
     public ReshadowScriptCompiler(DiyWorkspace workspace)
     {
         _ws = workspace;
         _schema = workspace.Schema;
+        _lex = workspace.Lexicon;
+    }
+
+    /// <summary>
+    /// 卡名 → 卡号。DoSpawn 只认 CardId、DoTransform 只认 IntoCardId，
+    /// 缺了它们生成的是一张「卡面正确、运行时空操作」的卡。
+    /// </summary>
+    /// <summary>
+    /// 解析表达式时「省略 Of」的缺省作用对象。
+    ///
+    /// 能力级条件里缺省是 $self（判本卡自己）；where 里缺省是 $item（判被筛的那个）。
+    /// 这个差别不能靠猜：拿错的一侧，条件会在运行期恒假，而卡面文字完全一样。
+    /// </summary>
+    private TargetSpec DefaultContextSelf = TargetSpec.Self;
+
+    private int CardIdOf(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || _lex == null) return 0;
+        return _lex.TryGetCardId(name.Trim(), out var id) ? id : 0;
     }
 
     public IReadOnlyList<string> Errors => _errors;
@@ -164,6 +184,8 @@ public sealed class ReshadowScriptCompiler
         var abilities = new List<AbilityDef>();
         var keywords = new List<string>();
         CardDef crest = null, faith = null, accel = null, cryst = null;
+        bool hasFuse = false;
+        TargetSpec fuseFilter = null;
 
         if (!p.TryChar('{'))
         {
@@ -177,6 +199,16 @@ public sealed class ReshadowScriptCompiler
             if (head == null) break;
 
             if (head == "keywords") { p.Next(); p.TryChar(':'); ParseKeywordList(p, keywords); continue; }
+            if (head == "fuse")
+            {
+                // fuse: target(...) —— 融合材料筛选。
+                // 少了这一行，Sinciro / Striker / Gear 往返后直接不能融合。
+                p.Next();
+                p.TryChar(':');
+                hasFuse = true;
+                fuseFilter = ParseTargetOrExpr(p);
+                continue;
+            }
             if (head == "crest") { p.Next(); crest = ParseSubBlock(p, CardKind.Crest, nameChs, 0, traits); continue; }
             if (head == "faith") { p.Next(); faith = ParseSubBlock(p, CardKind.Faith, nameChs, 0, traits); continue; }
             if (head == "accelerate") { p.Next(); int c = ParseParenInt(p); accel = ParseSubBlock(p, CardKind.Spell, nameChs, c, traits); continue; }
@@ -212,7 +244,7 @@ public sealed class ReshadowScriptCompiler
             });
         }
 
-        return new CardDef
+        var built = new CardDef
         {
             CardId = id,
             Name = nameChs,
@@ -223,11 +255,101 @@ public sealed class ReshadowScriptCompiler
             Abilities = abilities,
             Traits = traits.Select(t => _schema.Trait(t)).ToList(),
             Clan = string.IsNullOrEmpty(clan) ? SymbolId<ClanTag>.Invalid : _schema.Clan(clan),
+            HasFuse = hasFuse,
+            FuseMaterialFilter = hasFuse ? fuseFilter : null,
             CrestDef = crest,
             FaithDef = faith,
             AccelerateDef = accel,
             CrystallizeDef = cryst,
         };
+
+        // 纹章/信仰节点必须内嵌子卡定义：运行期 GainCrest 直接拿它成立实体，
+        // 缺了它，纹章是一个没有任何能力的同名声望壳（卡面却写得像正常）。
+        built = EmbedSubDefs(built);
+        return built;
+    }
+
+    /// <summary>把 CrestDef / FaithDef 回填到「获得纹章 / 信仰」节点上。</summary>
+    private static CardDef EmbedSubDefs(CardDef def)
+    {
+        if (def == null || (def.CrestDef == null && def.FaithDef == null)) return def;
+
+        var newAbilities = new List<AbilityDef>();
+        foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())
+        {
+            newAbilities.Add(new AbilityDef
+            {
+                Trigger = ab.Trigger,
+                Condition = ab.Condition,
+                Costs = ab.Costs,
+                HasFuse = ab.HasFuse,
+                Body = Rewrite(def.FaithDef, def.CrestDef, ab.Body),
+            });
+        }
+
+        return new CardDef
+        {
+            CardId = def.CardId, Name = def.Name, Kind = def.Kind,
+            BaseCost = def.BaseCost, BaseAttack = def.BaseAttack, BaseLife = def.BaseLife,
+            Abilities = newAbilities, Traits = def.Traits, Clan = def.Clan,
+            HasFuse = def.HasFuse, FuseMaterialFilter = def.FuseMaterialFilter,
+            CrestDef = def.CrestDef, FaithDef = def.FaithDef,
+            AccelerateDef = def.AccelerateDef, CrystallizeDef = def.CrystallizeDef,
+            SourceText = def.SourceText,
+        };
+    }
+
+    private static IReadOnlyList<EffectNode> Rewrite(CardDef faith, CardDef crest, IReadOnlyList<EffectNode> body)
+    {
+        if (body == null) return Array.Empty<EffectNode>();
+        var list = new List<EffectNode>();
+        foreach (var n in body)
+        {
+            switch (n)
+            {
+                case SpawnCardNode sp when sp.IsCrest:
+                {
+                    var match = sp.CardName == (faith?.Name ?? "") ? faith : crest ?? faith;
+                    list.Add(new SpawnCardNode
+                    {
+                        SourceKind = sp.SourceKind, CardId = sp.CardId, CardName = sp.CardName,
+                        Count = sp.Count, ToZone = sp.ToZone, ToOwner = sp.ToOwner,
+                        IsCrest = sp.IsCrest, IsExactCopy = sp.IsExactCopy,
+                        AddDepartedTrait = sp.AddDepartedTrait, CopyFrom = sp.CopyFrom,
+                        CrestDef = match,
+                    });
+                    break;
+                }
+                case ConditionalNode cd:
+                    list.Add(new ConditionalNode
+                    {
+                        Condition = cd.Condition,
+                        Then = Rewrite(faith, crest, cd.Then),
+                        Else = Rewrite(faith, crest, cd.Else),
+                    });
+                    break;
+                case LoopNode lp:
+                    list.Add(new LoopNode
+                    {
+                        Kind = lp.Kind, Count = lp.Count, Collection = lp.Collection,
+                        Until = lp.Until, Body = Rewrite(faith, crest, lp.Body),
+                        MaxIterations = lp.MaxIterations,
+                    });
+                    break;
+                case BranchModeNode bm:
+                    list.Add(new BranchModeNode
+                    {
+                        Kind = bm.Kind, PickCount = bm.PickCount,
+                        Options = (bm.Options ?? Array.Empty<IReadOnlyList<EffectNode>>())
+                            .Select(o => Rewrite(faith, crest, o)).ToList(),
+                    });
+                    break;
+                default:
+                    list.Add(n);
+                    break;
+            }
+        }
+        return list;
     }
 
     private static bool IsKindWord(string s) => s switch
@@ -390,7 +512,11 @@ public sealed class ReshadowScriptCompiler
         {
             p.Next();
             p.TryChar('(');
+            // 能力级条件省略 Of 时判的是本卡自己（$self）。
+            var saved = DefaultContextSelf;
+            DefaultContextSelf = TargetSpec.Self;
             cond = ParseBoolExpr(p);
+            DefaultContextSelf = saved;
             p.TryChar(')');
         }
 
@@ -657,6 +783,8 @@ public sealed class ReshadowScriptCompiler
             "evolve" or "进化" => ParseEvolve(p, false),
             "super_evolve" or "超进化" => ParseEvolve(p, true),
             "gain_counter" or "获得计数" => ParseCounter(p, false),
+            "set_counter" or "设计数" => ParseCounter(p, false, CounterOp.Set),
+            "fill_counter" or "填计数" => ParseCounter(p, false, CounterOp.Fill),
             "pay_counter" or "消费计数" => ParseCounter(p, true),
             "transform" or "变身" => ParseTransform(p),
             "grant_counter_ability" or "赋予计数能力" => ParseGrantCounterAbility(p),
@@ -735,22 +863,47 @@ public sealed class ReshadowScriptCompiler
     {
         string name = p.TryString() ?? p.Next();
         p.TryChar(',');
-        int n = p.TryInt() ?? 1;
-        return new SpawnCardNode { CardName = name, Count = NumExpr.Const(n), ToZone = ZoneRef.Board };
+        var n = ParseNumExpr(p);
+        return new SpawnCardNode
+        {
+            CardId = CardIdOf(name), CardName = name, Count = n, ToZone = ZoneRef.Board,
+        };
     }
 
     private EffectNode ParseCrestGain(Cursor p)
     {
         string name = p.TryString() ?? p.Next();
-        return new SpawnCardNode { IsCrest = true, CardName = name, ToOwner = ZoneScope.Self };
+        // 可选第二个参数：给谁贴（self / opponent）。Slaus 是「给对手贴纹章」。
+        var owner = ZoneScope.Self;
+        if (p.TryChar(','))
+        {
+            var o = p.Next();
+            owner = o switch
+            {
+                "opponent" or "enemy" or "敌方" => ZoneScope.Opponent,
+                "any" or "任意" => ZoneScope.Any,
+                _ => ZoneScope.Self,
+            };
+        }
+        return new SpawnCardNode
+        {
+            IsCrest = true,
+            // 纹章是独立实体，不带主人卡号：带了会按主人卡号建出主人卡本身。
+            CardId = 0, CardName = name,
+            // 纹章落在纹章区，不是战场。
+            ToZone = ZoneRef.CrestArea, ToOwner = owner,
+        };
     }
 
     private EffectNode ParseAddHand(Cursor p)
     {
         string name = p.TryString() ?? p.Next();
         p.TryChar(',');
-        int n = p.TryInt() ?? 1;
-        return new SpawnCardNode { CardName = name, Count = NumExpr.Const(n), ToZone = ZoneRef.Hand };
+        var n = ParseNumExpr(p);
+        return new SpawnCardNode
+        {
+            CardId = CardIdOf(name), CardName = name, Count = n, ToZone = ZoneRef.Hand,
+        };
     }
 
     // 这四个都必须接受 $slot 简写：打印器导出时会把「本卡的槽位」写成 $self / $trigger，
@@ -834,16 +987,22 @@ public sealed class ReshadowScriptCompiler
             if (p.TryChar('('))
             {
                 var nm = p.Next();
-                p.TryChar(')');
                 var key = nm switch
                 {
                     "attack" => StatKey.Attack,
                     "life" or "defense" => StatKey.Life,
                     "maxlife" => StatKey.MaxLife,
                     "cost" => StatKey.Cost,
+                    "basecost" => StatKey.BaseCost,
+                    "baseattack" => StatKey.BaseAttack,
+                    "baselife" => StatKey.BaseLife,
                     _ => StatKey.Attack,
                 };
-                return ParseArithNoDiv(p, NumExpr.Prop(key, TargetSpec.Item));
+                // 与 ParseNumExpr 保持一致：Of 必须读，缺省是 $item（set_stats 里筛的是被改的那个）。
+                TargetSpec of = TargetSpec.Item;
+                if (p.TryChar(',')) of = ParseTargetOrExpr(p);
+                p.TryChar(')');
+                return ParseArithNoDiv(p, NumExpr.Prop(key, of));
             }
             return NumExpr.Const(0);
         }
@@ -905,7 +1064,7 @@ public sealed class ReshadowScriptCompiler
         return new EvolveNode { Target = tgt, IsSuperEvolve = super };
     }
 
-    private EffectNode ParseCounter(Cursor p, bool negative)
+    private EffectNode ParseCounter(Cursor p, bool negative, CounterOp op = CounterOp.Add)
     {
         string name = p.Next();
         p.TryChar(',');
@@ -928,7 +1087,7 @@ public sealed class ReshadowScriptCompiler
             Target = of,
             Owner = ZoneScope.Self,
             Counter = _schema.Counter(name),
-            Op = CounterOp.Add,
+            Op = op,
             Delta = amt,
         };
     }
@@ -938,7 +1097,7 @@ public sealed class ReshadowScriptCompiler
         var tgt = ParseTargetOrExpr(p);
         p.TryChar(',');
         string name = p.TryString() ?? p.Next();
-        return new TransformNode { Target = tgt, IntoCardName = name };
+        return new TransformNode { Target = tgt, IntoCardId = CardIdOf(name), IntoCardName = name };
     }
 
     private EffectNode ParseGrantCounterAbility(Cursor p)
@@ -972,7 +1131,9 @@ public sealed class ReshadowScriptCompiler
     private EffectNode ParseInvoke(Cursor p)
     {
         var ev = EventOf(p.Next());
-        return new InvokeAbilityNode { Event = ev };
+        TargetSpec tgt = TargetSpec.Self;
+        if (p.TryChar(',')) tgt = ParseTargetOrExpr(p);
+        return new InvokeAbilityNode { Event = ev, Target = tgt };
     }
 
     private EffectNode ParseReplaceDeck(Cursor p)
@@ -982,28 +1143,8 @@ public sealed class ReshadowScriptCompiler
     }
 
     private EffectNode ParseReanimate(Cursor p)
-    {
-        int n = p.TryInt() ?? 1;
-        p.TryChar(',');
-        int cap = p.TryInt() ?? 99;
-        return new SpawnCardNode
-        {
-            AddDepartedTrait = true,
-            Count = NumExpr.Const(n),
-            ToZone = ZoneRef.Board,
-            CopyFrom = new TargetSpec
-            {
-                SourceKind = TargetSourceKind.Zone, Owner = ZoneScope.Self,
-                Zone = ZoneRef.Cemetery, Mode = SelectMode.All,
-                Where = new CompareExpr
-                {
-                    Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
-                    Op = CompareOp.Le,
-                    Right = NumExpr.Const(cap),
-                },
-            },
-        };
-    }
+        // 唯一标准构造：手写会漏字段，漏了就是召出 CardId=0 的白壳。
+        => ReanimateHelper.Build(ParseNumExpr(p));
     // ---------------------------------------------------------------- target(...)
 
     /// <summary>
@@ -1121,6 +1262,9 @@ public sealed class ReshadowScriptCompiler
 
                 case "where":
                 {
+                    // where 里省略 Of 时判的是「被筛的那一个」（$item）。
+                    var savedCtx = DefaultContextSelf;
+                    DefaultContextSelf = TargetSpec.Item;
                     p.TryChar(':');
                     var le = ParseNumExpr(p);
                     var opTok = p.PeekToken();
@@ -1140,6 +1284,7 @@ public sealed class ReshadowScriptCompiler
                             Right = re,
                         });
                     }
+                    DefaultContextSelf = savedCtx;
                     break;
                 }
 
@@ -1296,17 +1441,21 @@ public sealed class ReshadowScriptCompiler
             if (p.TryChar('('))
             {
                 string nm = p.Next();
-                p.TryChar(')');
                 var key = nm switch
                 {
                     "attack" => StatKey.Attack,
                     "life" or "defense" => StatKey.Life,
                     "maxlife" => StatKey.MaxLife,
                     "cost" => StatKey.Cost,
+                    "basecost" => StatKey.BaseCost,
+                    "baseattack" => StatKey.BaseAttack,
+                    "baselife" => StatKey.BaseLife,
                     _ => StatKey.Attack,
                 };
-                var propExpr = NumExpr.Prop(key, TargetSpec.Item);
-                return ParseArithTail(p, propExpr);
+                TargetSpec of = DefaultContextSelf;
+                if (p.TryChar(',')) of = ParseTargetOrExpr(p);
+                p.TryChar(')');
+                return ParseArithTail(p, NumExpr.Prop(key, of));
             }
             return NumExpr.Const(0);
         }
@@ -1395,9 +1544,12 @@ public sealed class ReshadowScriptCompiler
             if (p.TryChar('('))
             {
                 var stName = p.Next();
-                p.TryChar(')');
                 var st = Enum.TryParse<UnitState>(stName, true, out var parsed) ? parsed : UnitState.Damaged;
-                return new HasStateExpr { State = st, Of = TargetSpec.Item };
+                // 第二个参数是可选的 Of；省略时按上下文取缺省（能力级 = $self）。
+                TargetSpec of = DefaultContextSelf;
+                if (p.TryChar(',')) of = ParseTargetOrExpr(p);
+                p.TryChar(')');
+                return new HasStateExpr { State = st, Of = of };
             }
             return BoolExpr.True;
         }
@@ -1454,6 +1606,15 @@ public sealed class ReshadowScriptCompiler
                 ? mk.Keyword.Name + "(" + mk.Value.Value + ")"
                 : mk.Keyword.Name);
         }
+        if (card.HasFuse)
+        {
+            sb.Append("    fuse: ");
+            sb.Append(card.FuseMaterialFilter == null
+                ? "target(ally, board, all)"
+                : "target(" + PrintTargetInParens(card.FuseMaterialFilter) + ")");
+            sb.Append('\n');
+        }
+
         if (kws.Count > 0)
             sb.Append("    keywords: [")
               .Append(string.Join(", ", kws.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)))
@@ -1473,7 +1634,11 @@ public sealed class ReshadowScriptCompiler
             sb.Append("    accelerate(").Append(card.AccelerateDef.BaseCost).Append(") {\n");
             foreach (var ab in card.AccelerateDef.Abilities)
             {
-                if (ab?.Trigger?.Event == CoreEvent.PassiveAura) continue;
+                // 不能跳过 PassiveAura：子卡的常驻项正是它 ——
+                //   · 结晶的初始吟唱 Countdown (3)
+                //   · 信仰的「初始值为 0」
+                // 跳过它们，结晶护符进场后永不消失，信仰也没有初值。
+                if (IsBareKeywordAbility(ab)) continue;
                 sb.Append(PrintAbility(ab, 2));
             }
             sb.Append("    }\n");
@@ -1483,7 +1648,11 @@ public sealed class ReshadowScriptCompiler
             sb.Append("    crystallize(").Append(card.CrystallizeDef.BaseCost).Append(") {\n");
             foreach (var ab in card.CrystallizeDef.Abilities)
             {
-                if (ab?.Trigger?.Event == CoreEvent.PassiveAura) continue;
+                // 不能跳过 PassiveAura：子卡的常驻项正是它 ——
+                //   · 结晶的初始吟唱 Countdown (3)
+                //   · 信仰的「初始值为 0」
+                // 跳过它们，结晶护符进场后永不消失，信仰也没有初值。
+                if (IsBareKeywordAbility(ab)) continue;
                 sb.Append(PrintAbility(ab, 2));
             }
             sb.Append("    }\n");
@@ -1493,7 +1662,11 @@ public sealed class ReshadowScriptCompiler
             sb.Append("    crest {\n");
             foreach (var ab in card.CrestDef.Abilities)
             {
-                if (ab?.Trigger?.Event == CoreEvent.PassiveAura) continue;
+                // 不能跳过 PassiveAura：子卡的常驻项正是它 ——
+                //   · 结晶的初始吟唱 Countdown (3)
+                //   · 信仰的「初始值为 0」
+                // 跳过它们，结晶护符进场后永不消失，信仰也没有初值。
+                if (IsBareKeywordAbility(ab)) continue;
                 sb.Append(PrintAbility(ab, 2));
             }
             sb.Append("    }\n");
@@ -1503,7 +1676,11 @@ public sealed class ReshadowScriptCompiler
             sb.Append("    faith {\n");
             foreach (var ab in card.FaithDef.Abilities)
             {
-                if (ab?.Trigger?.Event == CoreEvent.PassiveAura) continue;
+                // 不能跳过 PassiveAura：子卡的常驻项正是它 ——
+                //   · 结晶的初始吟唱 Countdown (3)
+                //   · 信仰的「初始值为 0」
+                // 跳过它们，结晶护符进场后永不消失，信仰也没有初值。
+                if (IsBareKeywordAbility(ab)) continue;
                 sb.Append(PrintAbility(ab, 2));
             }
             sb.Append("    }\n");
@@ -1683,12 +1860,24 @@ public sealed class ReshadowScriptCompiler
 
             case SpawnCardNode sp:
             {
-                if (sp.AddDepartedTrait) return ind + "reanimate(" + EvalInt(sp.Count, 1) + ")\n";
-                // 纹章与召唤是两种完全不同的节点语义（同名唯一 / 不占战场），
-                // 都写成 summon 会让「获得纹章」在往返后变成「召唤一个随从」。
-                if (sp.IsCrest) return ind + "crest_gain(\"" + sp.CardName + "\")\n";
+                // 费用上限在 CopyFrom.Where 里；Count 恒为 1，拿它当上限会把
+                // Reanimate(8) 导成 Reanimate(1)。
+                if (ReanimateHelper.IsReanimate(sp))
+                {
+                    ReanimateHelper.TryExtractCostCap(sp, out var cap);
+                    return ind + "reanimate(" + PrintNumExpr(cap) + ")\n";
+                }
+                // 纹章与召唤是两种完全不同的节点语义（同名唯一 / 不占战场 / 落纹章区），
+                // 都写成 summon 会让「获得纹章」在往返后变成「在战场上召唤一个随从」。
+                if (sp.IsCrest)
+                {
+                    // 给谁贴必须写出来：Slaus 是「给对手贴纹章」。
+                    string ownerArg = sp.ToOwner == ZoneScope.Self
+                        ? "" : ", " + (sp.ToOwner == ZoneScope.Opponent ? "opponent" : "any");
+                    return ind + "crest_gain(\"" + sp.CardName + "\"" + ownerArg + ")\n";
+                }
                 string fn = sp.ToZone == ZoneRef.Hand ? "add_hand" : "summon";
-                return ind + fn + "(\"" + sp.CardName + "\", " + EvalInt(sp.Count, 1) + ")\n";
+                return ind + fn + "(\"" + sp.CardName + "\", " + PrintNumExpr(sp.Count) + ")\n";
             }
 
             case EvolveNode e:
@@ -1701,7 +1890,15 @@ public sealed class ReshadowScriptCompiler
                 // Target 非 null 表示「改的是这张卡自己的计数器」（吟唱 / 魔力增幅）。
                 // 丢了它，吟唱就会被打成「改玩家计数器」，效果完全落空。
                 string ofArg = c.Target != null ? ", of: " + PrintTargetExpr(c.Target) : "";
-                return ind + (neg ? "pay_counter(" : "gain_counter(")
+                // Op 要还原：Set 是「把值设为 N」（如信仰初始值为 0），
+                // 打成 Add 就成了「加 0」—— 两者语义完全不同，卡面文字却几乎一样。
+                string fnCtr = c.Op switch
+                {
+                    CounterOp.Set => "set_counter",
+                    CounterOp.Fill => "fill_counter",
+                    _ => neg ? "pay_counter" : "gain_counter",
+                };
+                return ind + fnCtr + "("
                        + c.Counter.Name + ", " + PrintNumExpr(AbsDelta(c.Delta)) + ofArg + ")\n";
             }
 
@@ -1717,7 +1914,10 @@ public sealed class ReshadowScriptCompiler
             }
 
             case InvokeAbilityNode ia:
-                return ind + "invoke(" + EventWord(ia.Event) + ")\n";
+                // Target 必须写回：DoInvoke 第一行就是 Resolve(n.Target)，
+                // 丢了它 → Resolve(null) 返回空列表 → 整条「复刻能力」是空操作。
+                return ind + "invoke(" + EventWord(ia.Event) + ", "
+                       + PrintTargetExpr(ia.Target ?? TargetSpec.Self) + ")\n";
 
             case ReplaceDeckNode rd:
                 return ind + "replace_deck(\"" + rd.DeckName + "\")\n";
@@ -1916,14 +2116,22 @@ public sealed class ReshadowScriptCompiler
             case NumOp.Count: return "count(" + PrintTargetInParens(e.Of) + ")";
             case NumOp.MaxGroupSize: return "maxgroup(" + PrintTargetInParens(e.Of) + ")";
             case NumOp.Property:
-                return "prop(" + (e.Stat switch
+            {
+                // Of 必须打印：`prop(attack)` 缺省是 $item（筛选上下文），
+                // 而「X = 本卡攻击力」用的是 $self。混淆会让属性读取恒为 0。
+                string stat = e.Stat switch
                 {
                     StatKey.Attack => "attack",
                     StatKey.Life => "life",
                     StatKey.MaxLife => "maxlife",
                     StatKey.Cost => "cost",
+                    StatKey.BaseCost => "basecost",
+                    StatKey.BaseAttack => "baseattack",
+                    StatKey.BaseLife => "baselife",
                     _ => "attack",
-                }) + ")";
+                };
+                return "prop(" + stat + ", " + PrintTargetExpr(e.Of ?? DefaultContextSelf) + ")";
+            }
             case NumOp.Arith:
             {
                 if (e.Args.Count < 2) return PrintNumExpr(e.Args.FirstOrDefault());
@@ -1998,7 +2206,11 @@ public sealed class ReshadowScriptCompiler
         // 状态条件（is Evolved / is SuperEvolved / has Fuse …）必须原样写回：
         // 它们是卡面语义的一部分（<ev> 段的「已进化」域条件），
         // 当成恒真剥掉，往返后这张卡的进化能力就会对未进化状态也生效。
-        if (e is HasStateExpr hs) return "has_state(" + hs.State + ")";
+        // Of 必须打印出来：能力级条件里的 `is Evolved` 判断的是 $self，
+        // 而 where 里的 `is Evolved` 判断的是 $item。
+        // 一律硬编码成 $item，会让「本卡是否已进化」在触发时恒为 false ——
+        // 因为触发那一刻作用域里只有 $self，$item 是空的。
+        if (e is HasStateExpr hs) return "has_state(" + hs.State + ", " + PrintTargetExpr(hs.Of ?? TargetSpec.Self) + ")";
 
         if (e is CompareExpr c)
         {

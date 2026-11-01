@@ -49,6 +49,28 @@ public sealed class DiyWorkspace
         return new DiyWorkspace(ctx, glossary);
     }
 
+    /// <summary>
+    /// 换一个全新的 BattleState，并把已登记的卡定义重新灌进去。
+    ///
+    /// 测试里每个用例都该从干净状态开始：复用同一个 State 会让上一个用例
+    /// 留下的实体、计数器、纹章全部渗进来，把失败伪装成通过（或反过来），
+    /// 而报错文字看起来完全正常。
+    /// </summary>
+    public BattleState ResetState()
+    {
+        var fresh = new BattleState(seed: 31);
+        // 内置衍生卡（Fairy / Ominous Artifact 等）必须一起灌：
+        // 少了它们，召唤出来的是 CardId 未注册的空壳 —— UnresolvedSpawnCount++，
+        // 而现象只是「召唤了 0 个妖精」，看起来像效果没实现。
+        fresh.RegisterBuiltinTokens(Lexicon);
+        // 卡定义属于「工作区」，不属于某一局：重建 State 后要灌回去。
+        foreach (var kv in _diyCards) fresh.RegisterCard(kv.Value);
+        foreach (var def in _registered) fresh.RegisterCard(def);
+        return fresh;
+    }
+
+    private readonly List<CardDef> _registered = new();
+
     /// <summary>接管一个已存在的上下文（共享它已有的词条与卡池）。</summary>
     public static DiyWorkspace For(CompileContext ctx, Glossary glossary = null)
         => new(ctx, glossary);
@@ -198,6 +220,7 @@ public sealed class DiyWorkspace
     {
         if (def == null || def.CardId <= 0) return;
         _diyCards[def.CardId] = def;
+        _registered.Add(def);
         State.RegisterCard(def);
         DefineCardName(def.Name, def.CardId);
     }
@@ -357,6 +380,26 @@ public sealed class DiyWorkspace
         };
     }
 
+    /// <summary>两张子卡（激奏/结晶/纹章/信仰）是否等价。</summary>
+    private static bool SubEqual(CardDef x, CardDef y, string label, out string diff)
+    {
+        diff = "";
+        if (x == null && y == null) return true;
+        if (x == null || y == null) { diff = label + " 子卡一方为 null"; return false; }
+        if (x.BaseCost != y.BaseCost) { diff = label + " 费用不同：" + x.BaseCost + " vs " + y.BaseCost; return false; }
+
+        var (kx, rx) = SplitKeywords(x.Abilities);
+        var (ky, ry) = SplitKeywords(y.Abilities);
+        string skx = string.Join(",", kx.OrderBy(z => z, StringComparer.Ordinal));
+        string sky = string.Join(",", ky.OrderBy(z => z, StringComparer.Ordinal));
+        if (skx != sky) { diff = label + " 关键词不同：A=[" + skx + "] B=[" + sky + "]"; return false; }
+
+        string sx = AstEnglishPrinter.PrintCard(rx);
+        string sy = AstEnglishPrinter.PrintCard(ry);
+        if (sx != sy) { diff = label + " 能力不同：\n  A=" + sx + "\n  B=" + sy; return false; }
+        return true;
+    }
+
     private static (List<string> keywords, List<AbilityDef> rest) SplitKeywords(
         IReadOnlyList<AbilityDef> abilities)
     {
@@ -407,6 +450,24 @@ public sealed class DiyWorkspace
             diff = "能力不同：\n  A=" + sa + "\n  B=" + sb;
             return false;
         }
+
+        // 卡牌顶层的融合声明与四个子卡必须纳入判等。
+        // 不判它们，「Fuse: Loot cards」往返后变成「不能融合」也会被判成等价 ——
+        // 而这正是「打印出来一样、实战完全不同」的盲区。
+        if (a.HasFuse != b.HasFuse) { diff = "HasFuse 不同"; return false; }
+
+        // All 模式的 Count 是等价字段（null 与 Const(1) 都表示「所有」），
+        // 比对前先归一，否则会把同一份筛选判成两份。
+        string fa = AstEnglishPrinter.PrintTarget(
+            a.FuseMaterialFilter == null ? null : NormalizeTarget(a.FuseMaterialFilter));
+        string fb = AstEnglishPrinter.PrintTarget(
+            b.FuseMaterialFilter == null ? null : NormalizeTarget(b.FuseMaterialFilter));
+        if (fa != fb) { diff = "融合材料过滤不同：A=" + fa + " B=" + fb; return false; }
+
+        if (!SubEqual(a.AccelerateDef, b.AccelerateDef, "激奏", out diff)) return false;
+        if (!SubEqual(a.CrystallizeDef, b.CrystallizeDef, "结晶", out diff)) return false;
+        if (!SubEqual(a.CrestDef, b.CrestDef, "纹章", out diff)) return false;
+        if (!SubEqual(a.FaithDef, b.FaithDef, "信仰", out diff)) return false;
 
         string ta = string.Join(",", (a.Traits ?? Array.Empty<SymbolId<TraitTag>>()).Select(x => x.Name).OrderBy(x => x));
         string tb = string.Join(",", (b.Traits ?? Array.Empty<SymbolId<TraitTag>>()).Select(x => x.Name).OrderBy(x => x));
