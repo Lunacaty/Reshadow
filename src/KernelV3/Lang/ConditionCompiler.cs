@@ -921,9 +921,9 @@ public static class ConditionCompiler
 
         // ---- overflow 由规则决定阈值，不来自卡面数字 ----
         if (c.MatchPhrase("are", "in", "overflow") || c.MatchPhrase("is", "in", "overflow"))
-            return BothSidesCounter(lex.Counter("max_pp"), CompareOp.Ge, OverflowMaxPp);
+            return BothSidesCounter(lex.Counter("max_pp"), CompareOp.Ge, OverflowMaxPp(lex));
         if (c.MatchPhrase("have", "overflow") || c.MatchPhrase("are", "overflow"))
-            return BothSidesCounter(lex.Counter("max_pp"), CompareOp.Ge, OverflowMaxPp);
+            return BothSidesCounter(lex.Counter("max_pp"), CompareOp.Ge, OverflowMaxPp(lex));
         c.Seek(start);
 
         // ---- "have" / "has" 可写可不写：官方两种写法都有 ----
@@ -970,7 +970,8 @@ public static class ConditionCompiler
     }
 
     /// <summary>Overflow 的规则阈值：最大能量点 7（与 EngineCompiler 的 overflow 分支一致）。</summary>
-    private const int OverflowMaxPp = 7;
+    // 阈值改为读 Schema.Rules —— 不同卡池的觉醒线可以不同。
+    private static int OverflowMaxPp(Lexicon lex) => lex?.Schema?.Rules?.OverflowThreshold ?? 7;
 
     /// <summary>把游标剩余部分拼回人类可读的条件文本，用于报错信息。</summary>
     private static string RestText(TokenCursor c)

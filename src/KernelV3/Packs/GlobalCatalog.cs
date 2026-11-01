@@ -39,6 +39,14 @@ public sealed class GlobalCatalog
 
     public GlobalCatalog() { Lexicon = new Lexicon(Schema); }
 
+    /// <summary>把已编译好的卡放进总表（工具/测试与卡池运行时都要用）。</summary>
+    public void RegisterCompiledCard(CardDef def)
+    {
+        if (def == null) return;
+        _allCards[def.CardId] = def;
+        if (!string.IsNullOrWhiteSpace(def.Name)) _cardsByName[def.Name.Trim()] = def;
+    }
+
     public CardDef TryGetCard(int cardId)
         => _allCards.TryGetValue(cardId, out var d) ? d : null;
 
@@ -151,8 +159,10 @@ public sealed class GlobalCatalog
             return new CardDef
             {
                 CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
+                DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
                 BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
                 Traits = traits, Clan = clan,
+                InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k)).ToList(),
                 PackId = pack.PackId, IsToken = c.IsToken, SourceText = "",
             };
         }
@@ -164,8 +174,10 @@ public sealed class GlobalCatalog
         return new CardDef
         {
             CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
+                DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
             BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
             Abilities = r.Abilities, Traits = traits, Clan = clan,
+            InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k)).ToList(),
             HasFuse = r.HasFuse, FuseMaterialFilter = r.FuseMaterialFilter,
             CrestDef = r.CrestDef, FaithDef = r.FaithDef,
             AccelerateDef = r.AccelerateDef, CrystallizeDef = r.CrystallizeDef,

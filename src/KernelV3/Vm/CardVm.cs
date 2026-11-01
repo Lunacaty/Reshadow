@@ -370,7 +370,10 @@ public sealed partial class CardVm
             frame.Scope.Chosen = madeRefs.Count > 0 ? madeRefs[0] : null;
             if (made != null) frame.Scope.LastSpawnedCardId = chosenId;
 
-            frame.ResolvedChoiceIp = frame.Ip;
+            // 卡已经在这里造好了，不需要重跑 DoSpawn（重跑会再造一张）。
+            // 必须显式前进指令指针，与 SelectMode 分支的步进契约一致：
+            // 只清 Pending 不推 Ip，下一次 StepUntilBlocked 会再执行一遍本条指令。
+            frame.Ip++;
             Pending = null;
             Status = VmStatus.Running;
             return;

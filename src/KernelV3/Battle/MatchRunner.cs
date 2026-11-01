@@ -117,8 +117,19 @@ public sealed class MatchRunner
         var rules = _state.Rules;
         _state.WriteCounter(playerId, schema.Counter("pp"), 0);
         _state.WriteCounter(playerId, schema.Counter("max_pp"), rules.InitialMaxPp);
-        _state.WriteCounter(playerId, schema.Counter("ep"), rules.InitialEp(playerId) + prof.InitialEpBonus);
-        _state.WriteCounter(playerId, schema.Counter("sep"), rules.InitialSep(playerId) + prof.InitialSepBonus);
+        int targetEp = Math.Max(0, rules.InitialEp(playerId) + prof.InitialEpBonus);
+        int targetSep = Math.Max(0, rules.InitialSep(playerId) + prof.InitialSepBonus);
+
+        // 先拓宽上限再写：WriteCounter 会按 CounterLimits 钳制，
+        // 而 BattleState 构造时把 ep/sep 上限设成了 MaxEpCap(=2)。
+        // 不拓宽的话 deck_mod ep(+1) 写进去当场被钳回 2 —— 构筑卡 100% 失效。
+        if (schema.CounterLimits.TryGetValue("ep", out var epLim) && targetEp > epLim.max)
+            schema.CounterLimits["ep"] = (epLim.min, targetEp);
+        if (schema.CounterLimits.TryGetValue("sep", out var sepLim) && targetSep > sepLim.max)
+            schema.CounterLimits["sep"] = (sepLim.min, targetSep);
+
+        _state.WriteCounter(playerId, schema.Counter("ep"), targetEp);
+        _state.WriteCounter(playerId, schema.Counter("sep"), targetSep);
         _state.WriteCounter(playerId, schema.Counter("shadow"), 0);
         _state.WriteCounter(playerId, schema.Counter("combo"), 0);
         _state.WriteCounter(playerId, schema.Counter("rally"), 0);
@@ -164,8 +175,9 @@ public sealed class MatchRunner
 
         // 主战者初始生命：显式传入的 leaderLife 优先，否则用规则里的值。
         int life = leaderLife > 0 ? leaderLife : _state.Rules.LeaderInitialLife;
-        CreateLeader(0, life);
-        CreateLeader(1, life);
+        int maxLife = Math.Max(life, _state.Rules.LeaderMaxLife);
+        CreateLeader(0, life, maxLife);
+        CreateLeader(1, life, maxLife);
 
         InitCounters(0);
         InitCounters(1);
@@ -212,7 +224,8 @@ public sealed class MatchRunner
         }
         var e = _state.CreateEntity(cardId, ZoneRef.Leader, playerId);
         e.Life = life;
-        e.MaxLife = life;
+        // 上限必须取 maxLife：只写 life 会把「初始 20、上限 30」的自定义规则压成 20。
+        e.MaxLife = Math.Max(life, maxLife);
         _state.Players[playerId].Leader = e;
     }
 

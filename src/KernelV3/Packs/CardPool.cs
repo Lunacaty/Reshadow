@@ -42,6 +42,9 @@ public sealed class CardPoolRuntime
     /// <summary>PackId:LocalId ↔ 局内 int CardId 的双向映射（跨作者撞号消歧的依据）。</summary>
     public Core.PoolCardIndex CardIndex { get; init; } = new();
 
+    /// <summary>本卡池启用的卡包 ID（发现与组牌要按它过滤）。</summary>
+    public HashSet<string> EnabledPackIds { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly Dictionary<int, CardDef> _cardsById = new();
     private readonly Dictionary<string, CardDef> _cardsByName = new(StringComparer.OrdinalIgnoreCase);
 
@@ -63,6 +66,21 @@ public sealed class CardPoolRuntime
     public BattleState CreateBattleState(int seed = 0)
     {
         var state = new BattleState(Schema, seed, Rules);
+
+        // 必须把卡池视图挂上去。
+        // 不挂的话 state.Pool == null，EnumerateDiscoverPool 恒返回空集合 ——
+        // 表现为「发现类效果什么都没发生」，而卡面中文完全正常。
+        var catalog = new GlobalCatalog();
+        foreach (var card in _cardsById.Values) catalog.RegisterCompiledCard(card);
+        state.Pool = new CardPool
+        {
+            PoolId = PoolId,
+            Name = PoolId,
+            Catalog = catalog,
+            BaseRules = Rules,
+            EnabledPackIds = new HashSet<string>(EnabledPackIds, StringComparer.OrdinalIgnoreCase),
+        };
+
         foreach (var card in _cardsById.Values) state.RegisterCard(card);
         return state;
     }
@@ -251,6 +269,7 @@ public static class CardPoolBuilder
             Lexicon = lexicon,
             Glossary = glossary,
             DeckDefs = deckDefs,
+            EnabledPackIds = new HashSet<string>(config.EnabledPackIds, StringComparer.OrdinalIgnoreCase),
         };
 
         // 全卡包的卡定义（含未启用包）—— 依赖校验要靠它说清「缺的那张在哪个包」。
@@ -315,10 +334,37 @@ public static class CardPoolBuilder
             return new CardDef
             {
                 CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
+                DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
                 BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
                 Traits = traits, Clan = clan,
                 PackId = pack.PackId, IsToken = c.IsToken,
                 SourceText = "",
+            };
+        }
+
+        // 卡包可以声明 source_format: "reshadow_script"，
+        // 让 DIY 作者用脚本语言（含 deck_mod / discover）写卡。
+        // 不分支的话这类卡会无脑丢给 EnglishCompiler，当场编译报错。
+        if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
+        {
+            var ws = Diy.DiyWorkspace.Create(c.CardId);
+            var sc = new Diy.ReshadowScriptCompiler(ws);
+            var made = sc.Compile(c.Text);
+            if (made.Count == 0)
+            {
+                foreach (var e in sc.Errors)
+                    errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》脚本编译失败：" + e);
+                return null;
+            }
+            var d = made[0];
+            return new CardDef
+            {
+                CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = d.Kind,
+                BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
+                Abilities = d.Abilities, Traits = traits, Clan = clan,
+                InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k)).ToList(),
+                DeckModifiers = d.DeckModifiers ?? c.DeckModifiers ?? new List<DeckBuildModifier>(),
+                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text,
             };
         }
 
@@ -330,9 +376,11 @@ public static class CardPoolBuilder
         return new CardDef
         {
             CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
+                DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
             BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
             Abilities = result.Abilities,
             Traits = traits, Clan = clan,
+            InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k)).ToList(),
             HasFuse = result.HasFuse, FuseMaterialFilter = result.FuseMaterialFilter,
             CrestDef = result.CrestDef, FaithDef = result.FaithDef,
             AccelerateDef = result.AccelerateDef, CrystallizeDef = result.CrystallizeDef,

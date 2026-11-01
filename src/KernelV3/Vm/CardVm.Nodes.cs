@@ -704,7 +704,12 @@ public sealed partial class CardVm
                 //   CardPool   → 当前对局所属卡池（标准发现）
                 //   GlobalPool → GlobalCatalog 全量已安装卡包（混沌发现）
                 e = SpawnFromPool(n, scope, created);
-                // 挂起或已创建都没有第二张可做了：发现是一次性的。
+                // 挂起时必须立刻返回 true ——
+                // 返回 false 会让 StepUntilBlocked 执行 frame.Ip++，
+                // 玩家还在选项里，指令指针已经走到了下一条（甚至把能力跑完）。
+                // 同时绝不能执行下面的 scope.Bind(n.OutSlot, created)：
+                // 那会用空的 created 覆盖掉本来要接住选择的槽位。
+                if (Pending != null) return true;
                 break;
             }
             else if (n.IsCrest)
@@ -759,10 +764,15 @@ public sealed partial class CardVm
             // 进化加成与手动进化完全一致（TurnRunner.Evolve）：
             // 普通 +2/+2、超进化 +3/+3，Attack / Life / MaxLife 三者同步。
             // 之前这里只翻标志不加属性 —— 卡面写着 Evolve 却还是 2/2。
-            int delta = n.IsSuperEvolve ? 3 : 2;
-            t.Attack += delta;
-            t.Life += delta;
-            t.MaxLife += delta;
+            // 自动进化与手动进化必须用同一套加成 ——
+            // 但加成值本身要能从卡池规则读，不能写死 3/2。
+            var rules = (_world as Battle.BattleState)?.Rules ?? MatchRules.CreateStandard();
+            int deltaAtk = n.IsSuperEvolve ? rules.SuperEvolveBonusAttack : rules.EvolveBonusAttack;
+            int deltaLife = n.IsSuperEvolve ? rules.SuperEvolveBonusLife : rules.EvolveBonusLife;
+            int delta = deltaAtk;
+            t.Attack += deltaAtk;
+            t.Life += deltaLife;
+            t.MaxLife += deltaLife;
 
             if (n.IsSuperEvolve) { t.IsSuperEvolved = true; t.IsEvolved = true; } else t.IsEvolved = true;
 
@@ -1044,31 +1054,59 @@ public sealed partial class CardVm
         var owner = scope.ResolvePlayer(n.ToOwner);
 
         var candidates = new List<CardDef>();
-        foreach (var def in _world.Schema != null && _world is Battle.BattleState bst
-                     ? bst.EnumerateDiscoverPool(chaos, includeTokens: true)
-                     : Enumerable.Empty<CardDef>())
+        if (_world is Battle.BattleState bst)
         {
-            // 即使包含 Token 也要排除纹章/信仰这类非卡牌实体。
-            if (def == null) continue;
-            if (def.Kind is not (CardKind.Follower or CardKind.Spell or CardKind.Amulet)) continue;
-            candidates.Add(def);
+            // includeTokens: false —— 标准/混沌发现都不该抽出《妖精》《魔力残渣》
+            // 这类不可收藏的衍生卡，玩家在「三选一」里看到它们只会困惑。
+            foreach (var def in bst.EnumerateDiscoverPool(chaos, includeTokens: false))
+            {
+                if (def == null) continue;
+                if (def.Kind is not (CardKind.Follower or CardKind.Spell or CardKind.Amulet)) continue;
+                candidates.Add(def);
+            }
         }
 
-        // 条件过滤：把候选卡造成探针实体，交给现成的 EvalBool。
-        if (n.CopyFrom?.Where != null && candidates.Count > 0)
+        // ---- 条件过滤 ----
+        //
+        // 三个必须同时成立的点：
+        //   ① 真的按 pass 决定去留（早先写完 pass 却无条件 Add，过滤 100% 失效）
+        //   ② 把候选卡绑到 $item（Where 里的 HasKind / HasTrait / 费用比较
+        //      求值对象都是 $item，不绑就恒假）
+        //   ③ 探针**绝不进世界**（SpawnCard 会把实体永久塞进 _all 并推高
+        //      UnresolvedSpawnCount；全局池里的卡甚至还没注册，直接造出空壳）
+        if (n.CopyFrom?.Where != null
+            && !(n.CopyFrom.Where is ConstBoolExpr cbTrue && cbTrue.Value)
+            && candidates.Count > 0)
         {
             var filtered = new List<CardDef>();
             foreach (var def in candidates)
             {
-                var probe = _world.SpawnCard(def.CardId, ZoneRef.None, owner);
-                if (probe != null)
+                var probe = new RuntimeEntity
                 {
-                    bool pass = _eval.EvalBool(n.CopyFrom.Where, scope.Derive());
-                    filtered.Add(def);
-                }
+                    EntityId = -1,
+                    EntrySerial = 1,
+                    Def = def,
+                    PlayerId = owner,
+                    Zone = ZoneRef.None,
+                    Attack = def.BaseAttack,
+                    Life = def.BaseLife,
+                    MaxLife = def.BaseLife,
+                    Cost = def.BaseCost,
+                };
+                foreach (var t in def.Traits ?? Array.Empty<SymbolId<TraitTag>>()) probe.Traits.Add(t);
+
+                // $item 与 $self 都要绑到探针上：
+                //   HasKindExpr / HasTraitExpr 的默认 Of 是 Self，
+                //   CompareExpr(Property) 的默认对象也是 Self，
+                //   只有少数写法显式用 $item。
+                // 只绑一个的话，另一类条件全部判假 —— 表现为「候选永远为空」。
+                var sub = scope.Derive();
+                var probeRef = new[] { EntityRef.From(probe) };
+                sub.BindRefs(TargetSpec.SlotItem, probeRef);
+                sub.BindRefs(TargetSpec.SlotSelf, probeRef);
+                if (_eval.EvalBool(n.CopyFrom.Where, sub)) filtered.Add(def);
             }
-            if (filtered.Count > 0) candidates = filtered;
-            else return null;
+            candidates = filtered;
         }
 
         if (candidates.Count == 0) return null;
@@ -1076,7 +1114,6 @@ public sealed partial class CardVm
         bool chooseMode = n.CopyFrom != null && n.CopyFrom.Mode == SelectMode.Choose;
         if (!chooseMode)
         {
-            // 随机抽一张
             var pick = candidates[_world.Rng.Next(candidates.Count)];
             var made = _world.SpawnCard(pick.CardId, n.ToZone, owner);
             if (made != null)
@@ -1092,12 +1129,12 @@ public sealed partial class CardVm
         var shuffled = candidates.OrderBy(_ => _world.Rng.Next()).Take(want).ToList();
         var ids = shuffled.Select(c => c.CardId).ToList();
 
-        var slot = string.IsNullOrEmpty(n.OutSlot) ? TargetSpec.SlotSelected : n.OutSlot;
-        // PendingChoice 没有 ToZone/Owner 字段，把它们编进 Prompt：
-        // 恢复时按这个格式解回来。格式固定为 "discover|<zone>|<owner>"。
+        var slot = string.IsNullOrEmpty(n.OutSlot) ? TargetSpec.SlotCreated : n.OutSlot;
         var pending = new PendingChoice
         {
             Kind = ChoiceKind.DiscoverCard,
+            // Player 必须填：UI 靠它决定在谁的界面上弹选择框。
+            Player = scope.Owner,
             Candidates = ids,
             MinSelect = 1,
             MaxSelect = 1,

@@ -291,8 +291,11 @@ public sealed class CombatResolver
     /// </summary>
     private void OverflowDamage(RuntimeEntity attacker, RuntimeEntity defender, CardVm vm)
     {
+        // 飞脸伤害走规则：DIY 卡池可以设成 0（不飞脸）或 3。
+        int dmg = _state.Rules.SuperEvolveOverflowDamage;
+        if (dmg <= 0) return;
         var foe = _state.Players[defender.PlayerId].Leader;
-        if (foe != null) ApplyDamage(foe, 1, attacker.PlayerId, vm);
+        if (foe != null) ApplyDamage(foe, dmg, attacker.PlayerId, vm);
     }
 
     /// <summary>

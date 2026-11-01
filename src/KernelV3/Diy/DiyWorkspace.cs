@@ -412,7 +412,17 @@ public sealed class DiyWorkspace
     }
 
     /// <summary>两张子卡（激奏/结晶/纹章/信仰）是否等价。</summary>
-    private static bool SubEqual(CardDef x, CardDef y, string label, out string diff)
+        /// <summary>把构筑期修正打成一行的稳定文本，用于判等。</summary>
+    private static string PrintDeckMods(IReadOnlyList<DeckBuildModifier> mods)
+    {
+        if (mods == null || mods.Count == 0) return "";
+        return string.Join(";", mods
+            .Where(m => m != null)
+            .Select(m => m.Kind + "/" + m.Value + "/" + m.Value2 + "/" + (m.TargetClan ?? "")
+                         + "/" + m.StackPerCopy + "/" + (m.ExclusiveGroup ?? "")));
+    }
+
+private static bool SubEqual(CardDef x, CardDef y, string label, out string diff)
     {
         diff = "";
         if (x == null && y == null) return true;
@@ -503,6 +513,24 @@ public sealed class DiyWorkspace
         string ta = string.Join(",", (a.Traits ?? Array.Empty<SymbolId<TraitTag>>()).Select(x => x.Name).OrderBy(x => x));
         string tb = string.Join(",", (b.Traits ?? Array.Empty<SymbolId<TraitTag>>()).Select(x => x.Name).OrderBy(x => x));
         if (ta != tb) { diff = "兵种不同：A=[" + ta + "] B=[" + tb + "]"; return false; }
+
+        // 构筑期修正也必须纳入判等。
+        // 不判它，「deck_mod size(+20)」往返后丢失会被判成等价 ——
+        // 而卡面中文读起来完全一样，只有组牌时才会发现牌组上限没变。
+        string da = PrintDeckMods(a.DeckModifiers);
+        string db = PrintDeckMods(b.DeckModifiers);
+        if (da != db) { diff = "构筑期修正不同：A=[" + da + "] B=[" + db + "]"; return false; }
+
+        // 卡包归属与 Token 标记同样影响「能否进构筑」，一并纳入。
+        if (!string.Equals(a.PackId ?? "", b.PackId ?? "", StringComparison.OrdinalIgnoreCase))
+        { diff = "PackId 不同：A=" + a.PackId + " B=" + b.PackId; return false; }
+        if (a.IsToken != b.IsToken) { diff = "IsToken 不同"; return false; }
+
+        // 卡面自带关键词（InnateKeywords）也参与判等：
+        // 它决定「守护魔像有没有守护」，而卡面中文只在 Abilities 里体现。
+        string ika = string.Join(",", (a.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>()).Select(x => x.Name).OrderBy(x => x));
+        string ikb = string.Join(",", (b.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>()).Select(x => x.Name).OrderBy(x => x));
+        if (ika != ikb) { diff = "自带关键词不同：A=[" + ika + "] B=[" + ikb + "]"; return false; }
 
         return true;
     }

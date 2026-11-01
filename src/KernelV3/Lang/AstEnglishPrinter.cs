@@ -162,6 +162,12 @@ public static class AstEnglishPrinter
                 // 直接拼 CardName 会得到空串，看起来像卡名丢了。
                 var what = sp.SourceKind switch
                 {
+                    // 卡池检索必须打出来：缺这一支会退化成「召唤一张空名卡」，
+                    // 而四端判等会以为两边一样（都不打名字）。
+                    CardSourceKind.PoolQuery =>
+                        (sp.CopyFrom != null && sp.CopyFrom.Zone == ZoneRef.GlobalPool
+                            ? "chaos discover of " : "discover of ")
+                        + PrintTarget(sp.CopyFrom),
                     // exact copy 继承当前攻防/关键词，普通 copy 只取印刷白板 ——
                     // 两者语义天差地别，不打出来会被判成等价。
                     CardSourceKind.CopyOfTarget => (sp.IsExactCopy ? "exact copy of " : "copy of ")

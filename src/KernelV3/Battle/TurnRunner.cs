@@ -234,7 +234,7 @@ public sealed class TurnRunner
         { reason = "这张卡不能打出"; return false; }
 
         bool folOrAmu = card.Def.Kind == Ast.CardKind.Follower || card.Def.Kind == Ast.CardKind.Amulet;
-        bool full = pp0.Board.Count >= PlayerState.MaxBoard;
+        bool full = pp0.Board.Count >= _state.Rules.MaxBoardSize;
 
         var k = _schema.Counter("pp");
         int pp = _state.ReadCounter(playerId, k);
@@ -307,7 +307,7 @@ public sealed class TurnRunner
         // 所以这里只记下事实，真正的拦截放到确认走本体路径之后再判。
         bool isFollowerOrAmulet = card.Def.Kind == Ast.CardKind.Follower
                                   || card.Def.Kind == Ast.CardKind.Amulet;
-        bool boardFull = p.Board.Count >= PlayerState.MaxBoard;
+        bool boardFull = p.Board.Count >= _state.Rules.MaxBoardSize;
 
         var ppKey = _schema.Counter("pp");
         int pp = _state.ReadCounter(playerId, ppKey);
@@ -901,11 +901,12 @@ public sealed class TurnRunner
     /// <summary>现在能不能按额外能量点。纯查询，与 UseExtraPp 的前置判定对齐。</summary>
     public bool CanUseExtraPp(int playerId)
     {
+        if (!_state.Rules.EnableExtraPpForSecondPlayer) return false;
         if (playerId != 1) return false;                       // 只有后手有
         if (playerId != _state.ActivePlayer) return false;      // 只能在自己回合
         var pl = _state.Players[playerId];
         if (pl.UsedExtraPpThisTurn) return false;
-        bool earlyTurn = _state.TurnNumber <= 5;
+        bool earlyTurn = _state.TurnNumber <= _state.Rules.ExtraPpEarlyPhaseLastTurn;
         return earlyTurn ? !pl.UsedEarlyExtraPp : !pl.UsedLateExtraPp;
     }
 

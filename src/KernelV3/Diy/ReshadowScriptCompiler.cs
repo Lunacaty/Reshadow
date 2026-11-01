@@ -460,6 +460,13 @@ public sealed class ReshadowScriptCompiler
             CrestDef = def.CrestDef, FaithDef = def.FaithDef,
             AccelerateDef = def.AccelerateDef, CrystallizeDef = def.CrystallizeDef,
             SourceText = def.SourceText,
+            // 这几项漏拷会让一张「既有纹章又有构筑修正」的卡在重写时
+            // 静默丢掉 deck_mod / 中文名 / Token 标记。
+            DeckModifiers = def.DeckModifiers,
+            PackId = def.PackId,
+            IsToken = def.IsToken,
+            NameChs = def.NameChs,
+            InnateKeywords = def.InnateKeywords,
         };
     }
 

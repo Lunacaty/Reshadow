@@ -28,6 +28,15 @@ public sealed class GameSchema
     /// BattleState 读写计数器、合并护符、判断保护时都查这张表，
     /// 于是引擎本体不再出现任何具体卡号。
     /// </summary>
+    /// <summary>
+    /// 本 Schema 所属对局的规则。
+    ///
+    /// 放在 Schema 上是因为**编译器**也要读阈值（觉醒 7 / 奥义 10/15），
+    /// 而编译器只拿得到 Lexicon → Schema，拿不到 BattleState。
+    /// 不这样做的话，这些阈值只能写死在编译器里。
+    /// </summary>
+    public MatchRules Rules { get; set; } = MatchRules.CreateStandard();
+
     public Dictionary<string, StackableAmuletSpec> StackableAmulets { get; }
         = new(StringComparer.OrdinalIgnoreCase);
 

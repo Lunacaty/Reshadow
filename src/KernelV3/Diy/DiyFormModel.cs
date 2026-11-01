@@ -45,6 +45,10 @@ public enum FormActionKind
     GainCounter,
     GainCrest,
     Transform,
+    /// <summary>从当前卡池发现（三选一）。</summary>
+    Discover,
+    /// <summary>从全量宇宙总表混沌发现（三选一）。</summary>
+    ChaosDiscover,
     Reanimate,
 }
 
@@ -456,6 +460,69 @@ public sealed class DiyFormCompiler
     private static CostSpec Cost(CostKind k, int amt, string label)
         => new CostSpec { Kind = k, Amount = NumExpr.Const(Math.Max(0, amt)), Label = label };
 
+    /// <summary>把发现的 Where 表达式反译回表单的筛选行。</summary>
+    private static TargetFilterForm DiscoverWhereToFilter(BoolExpr where)
+    {
+        var f = new TargetFilterForm();
+        void Walk(BoolExpr e)
+        {
+            switch (e)
+            {
+                case AndExpr a: foreach (var x in a.Items) Walk(x); break;
+                case HasKindExpr hk:
+                    f.Kind = hk.Kind switch
+                    {
+                        CardKind.Follower => "Follower",
+                        CardKind.Spell => "Spell",
+                        CardKind.Amulet => "Amulet",
+                        _ => f.Kind,
+                    };
+                    break;
+                case HasTraitExpr ht: f.Trait = ht.Trait.Name; break;
+                case CompareExpr cmp when cmp.Left?.Op == NumOp.Property
+                                          && cmp.Left.Stat == StatKey.Cost
+                                          && cmp.Right is NumExpr r0 && r0.Op == NumOp.Const
+                                          && (cmp.Op == CompareOp.Le || cmp.Op == CompareOp.Lt):
+                    f.MaxCost = r0.Value;
+                    break;
+            }
+        }
+        Walk(where);
+        return f;
+    }
+
+    /// <summary>把表单的目标筛选转成发现的 Where 布尔表达式。</summary>
+    private BoolExpr BuildDiscoverWhere(TargetFilterForm f)
+    {
+        var items = new List<BoolExpr>();
+        if (f == null) return BoolExpr.And(items.ToArray());
+        if (!string.IsNullOrEmpty(f.Kind))
+        {
+            items.Add(new HasKindExpr
+            {
+                Kind = f.Kind switch
+                {
+                    "Follower" => CardKind.Follower,
+                    "Spell" => CardKind.Spell,
+                    "Amulet" => CardKind.Amulet,
+                    _ => CardKind.Follower,
+                },
+            });
+        }
+        if (!string.IsNullOrEmpty(f.Trait))
+            items.Add(new HasTraitExpr { Trait = _schema.Trait(f.Trait) });
+        if (f.MaxCost > 0)
+        {
+            items.Add(new CompareExpr
+            {
+                Left = new NumExpr { Op = NumOp.Property, Stat = StatKey.Cost },
+                Op = CompareOp.Le,
+                Right = NumExpr.Const(f.MaxCost),
+            });
+        }
+        return BoolExpr.And(items.ToArray());
+    }
+
     private EffectNode RowToNode(ActionFormRow row)
     {
         if (row == null) return null;
@@ -559,6 +626,30 @@ public sealed class DiyFormCompiler
                     Target = tgt,
                     IntoCardId = CardIdOf(row.Name), IntoCardName = row.Name ?? "",
                 };
+
+            case FormActionKind.Discover:
+            case FormActionKind.ChaosDiscover:
+            {
+                // 发现：筛选条件复用表单现成的 TargetFilterForm（卡种/兵种/费用）。
+                bool chaos = row.Kind == FormActionKind.ChaosDiscover;
+                var spec = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Zone,
+                    Zone = chaos ? ZoneRef.GlobalPool : ZoneRef.CardPool,
+                    Mode = SelectMode.Choose,
+                    Owner = ZoneScope.Self,
+                    Where = BuildDiscoverWhere(row.Target),
+                };
+                return new SpawnCardNode
+                {
+                    SourceKind = CardSourceKind.PoolQuery,
+                    CopyFrom = spec,
+                    ToZone = ZoneRef.Hand,
+                    ToOwner = ZoneScope.Self,
+                    Count = NumExpr.Const(1),
+                };
+            }
+
             case FormActionKind.Reanimate:
                 // 用唯一标准构造：手写会漏掉 SourceKind=CopyOfTarget 与 BaseCost 上限，
                 // 漏了就是召出一个 CardId=0 的白壳，且费用筛选完全失效。
@@ -948,6 +1039,19 @@ public sealed class DiyFormCompiler
                     }
                     return reRow;
                 }
+
+                // 卡池检索 → 发现 / 混沌发现
+                if (sp.SourceKind == CardSourceKind.PoolQuery)
+                {
+                    bool chaos = sp.CopyFrom != null && sp.CopyFrom.Zone == ZoneRef.GlobalPool;
+                    var dRow = new ActionFormRow
+                    {
+                        Kind = chaos ? FormActionKind.ChaosDiscover : FormActionKind.Discover,
+                    };
+                    if (sp.CopyFrom?.Where != null) dRow.Target = DiscoverWhereToFilter(sp.CopyFrom.Where);
+                    return dRow;
+                }
+
                 var row = new ActionFormRow
                 {
                     Kind = sp.IsCrest ? FormActionKind.GainCrest

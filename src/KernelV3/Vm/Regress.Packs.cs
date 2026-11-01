@@ -45,6 +45,9 @@ public static class RegressPacks
         Check("POOL-E 局外构筑校验与局内牌库隔离", GateDeckIsolation);
         Check("POOL-F 标准发现 / 混沌发现 / 随机生成", GateDiscover);
         Check("POOL-G 构筑期修正与两阶段计算 / 非对称开局", GateDeckModifiers);
+        Check("POOL-H 发现条件真过滤（含干扰项）", GateDiscoverFilter);
+        Check("POOL-I 卡包关键词与脚本格式", GatePackKeywords);
+        Check("POOL-J 自定义规则接进执行层", GateRuleEnforcement);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -719,5 +722,182 @@ public static class RegressPacks
         return (ok, "扩容到60=" + sizeExpanded + " 互斥只1次=" + exclusiveOnce
                     + " 生命+10=" + lifeBonus + " 反向拦截=" + reverseBlocked
                     + " 非对称开局=" + life0 + "vs" + life1);
+    }
+
+    // ---------------------------------------------------------------- 门禁 H
+
+    /// <summary>
+    /// 发现的条件必须**真的生效**：放 3 张符合条件的卡和 10 张干扰项，
+    /// 三选一里绝不能混进任何一张干扰项。
+    ///
+    /// 这条专门针对那种「算出 pass 却不判断」的假过滤 ——
+    /// 只测「能发现出一张卡」时，假过滤也是绿的。
+    /// </summary>
+    private static (bool, string) GateDiscoverFilter()
+    {
+        var entries = new List<CardRawEntry>();
+        for (int i = 0; i < 3; i++)
+            entries.Add(new CardRawEntry
+            {
+                CardId = 880100 + i, NameEng = "Mech" + i, Kind = CardKind.Follower,
+                Cost = 2, Attack = 1, Life = 1, Traits = new List<string> { "Mecha" },
+            });
+        for (int i = 0; i < 10; i++)
+            entries.Add(new CardRawEntry
+            {
+                CardId = 880200 + i, NameEng = "Decoy" + i, Kind = CardKind.Follower,
+                Cost = 8, Attack = 1, Life = 1,
+            });
+
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["f"] = new CardPackDef
+            {
+                PackId = "f", NativePoolId = "fp", Cards = entries,
+                Traits = new List<SymbolRawEntry>
+                {
+                    new SymbolRawEntry { Name = "Mecha", NameChs = "机甲" },
+                },
+            },
+        };
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "fp", EnabledPackIds = new List<string> { "f" },
+        }, packs);
+        if (!built.Ok) return (false, "建池失败：" + string.Join("|", built.Errors.Take(2)));
+
+        var st = built.Pool.CreateBattleState(seed: 81);
+        var mecha = st.Schema.Trait("Mecha");
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 0; st.TurnNumber = 3;
+
+        var where = new AndExpr(new List<BoolExpr>
+        {
+            new HasKindExpr { Kind = CardKind.Follower },
+            new HasTraitExpr { Trait = mecha },
+            new CompareExpr
+            {
+                Left = new NumExpr { Op = NumOp.Property, Stat = StatKey.Cost },
+                Op = CompareOp.Le, Right = NumExpr.Const(3),
+            },
+        });
+        var node = new SpawnCardNode
+        {
+            SourceKind = CardSourceKind.PoolQuery,
+            CopyFrom = new TargetSpec { Zone = ZoneRef.CardPool, Mode = SelectMode.Choose, Where = where },
+            ToZone = ZoneRef.Hand, ToOwner = ZoneScope.Self, Count = NumExpr.Const(1),
+        };
+
+        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+        var src = st.SpawnCard(880100, ZoneRef.Hand, 0);
+        var sco = new VmScope { Owner = ZoneScope.Self, Controller = 0, Source = EntityRef.From(src) };
+        vm.PushBody(new List<EffectNode> { node }, sco);
+        vm.StepUntilBlocked();
+
+        bool waiting = vm.Status == VmStatus.WaitingForInput
+                       && vm.Pending?.Kind == ChoiceKind.DiscoverCard;
+        if (!waiting) return (false, "未挂起，状态=" + vm.Status);
+
+        var cands = vm.Pending.Candidates;
+        bool allMech = cands.All(id => id >= 880100 && id < 880103);
+        bool noDecoy = !cands.Any(id => id >= 880200 && id < 880210);
+        int unresolved = st.UnresolvedSpawnCount;
+
+        int hand0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+        int pick = cands[0];
+        vm.SubmitChoice(vm.Pending.ChoiceId, new[] { pick });
+        vm.StepUntilBlocked();
+        bool got = st.EnumerateZone(ZoneRef.Hand, 0).Any(e => e.Def != null && e.Def.CardId == pick);
+
+        bool ok = allMech && noDecoy && unresolved == 0 && got;
+        return (ok, "挂起=" + waiting + " 候选=" + cands.Count
+                    + " 全机械=" + allMech + " 无干扰项=" + noDecoy
+                    + " Unresolved=" + unresolved + " 入手=" + got);
+    }
+
+    // ---------------------------------------------------------------- 门禁 I
+
+    /// <summary>
+    /// 外置卡包的关键词必须真的读出来：
+    /// 《守护魔像》有守护、《寂静骑士》有疾驰，上场实体也带这些关键词。
+    /// </summary>
+    private static (bool, string) GatePackKeywords()
+    {
+        var root = CardPackLoader.ResolvePacksRoot();
+        if (root == null) return (false, "找不到 data/packs");
+
+        var cat = GlobalCatalog.LoadAll(root);
+        var golem = cat.TryGetCard(90031120);
+        var rider = cat.TryGetCard(90004110);
+        if (golem == null || rider == null) return (false, "卡包里缺 Guardian Golem / Silent Rider");
+
+        bool golemWard = golem.InnateKeywords.Any(k => k.Name == "ward");
+        bool riderStorm = rider.InnateKeywords.Any(k => k.Name == "storm");
+
+        var st = new BattleState(seed: 82);
+        st.RegisterBuiltinTokens();
+        var ent = st.SpawnCard(90031120, ZoneRef.Board, 0);
+        bool onBoard = ent != null && ent.Keywords.Any(k => k.Name == "ward");
+
+        bool ok = golemWard && riderStorm && onBoard;
+        return (ok, "守护魔像 ward=" + golemWard + " 寂静骑士 storm=" + riderStorm
+                    + " 上场带守护=" + onBoard);
+    }
+
+    // ---------------------------------------------------------------- 门禁 J
+
+    /// <summary>
+    /// 自定义规则必须真的接进执行层：
+    /// MaxBoardSize=3 时第 4 个随从进不来、后手加 PP 关掉后 CanUseExtraPp 为假。
+    /// </summary>
+    private static (bool, string) GateRuleEnforcement()
+    {
+        var rules = new MatchRules
+        {
+            MaxBoardSize = 3,
+            EnableExtraPpForSecondPlayer = false,
+        };
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["r"] = new CardPackDef
+            {
+                PackId = "r", NativePoolId = "rp",
+                Cards = new List<CardRawEntry>
+                {
+                    new CardRawEntry { CardId = 890001, NameEng = "Unit", Kind = CardKind.Follower,
+                                       Cost = 1, Attack = 1, Life = 1 },
+                },
+            },
+        };
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "rp", Rules = rules, EnabledPackIds = new List<string> { "r" },
+        }, packs);
+        if (!built.Ok) return (false, "建池失败：" + string.Join("|", built.Errors.Take(2)));
+
+        var st = built.Pool.CreateBattleState(seed: 83);
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 1; st.TurnNumber = 2;
+        st.WriteCounter(1, st.Schema.Counter("pp"), 5);
+        st.WriteCounter(1, st.Schema.Counter("max_pp"), 5);
+
+        // 场上塞满 3 个后，第 4 个不该进来
+        for (int i = 0; i < 3; i++) st.SpawnCard(890001, ZoneRef.Board, 0);
+        int before = st.Players[0].Board.Count;
+        st.SpawnCard(890001, ZoneRef.Board, 0);
+        int after = st.Players[0].Board.Count;
+        bool boardCapped = before == 3 && after == 3;
+
+        // 后手加 PP 被关掉
+        var tr = new TurnRunner(st, st.Schema);
+        bool extraPpBlocked = !tr.CanUseExtraPp(1);
+
+        bool ok = boardCapped && extraPpBlocked;
+        return (ok, "场上限3生效=" + boardCapped + "(" + before + "→" + after + ")"
+                    + " 后手加PP被禁=" + extraPpBlocked);
     }
 }

@@ -419,7 +419,9 @@ public sealed class PrefixParser
             // 之前这里只是占位 (CoreEvent)(-1)，运行时完全不认，能力永不触发。
             if (condFlag == "skybound_art" || condFlag == "super_skybound_art")
             {
-                int need = condFlag == "skybound_art" ? 10 : 15;
+                var rr = _lex?.Schema?.Rules ?? MatchRules.CreateStandard();
+                int need = condFlag == "skybound_art"
+                    ? rr.SkyboundArtThreshold : rr.SuperSkyboundArtThreshold;
                 b.Event = CoreEvent.OnPlay;
                 b.EventExplicit = true;
                 b.Condition = BoolExpr.And(b.Condition, new CompareExpr

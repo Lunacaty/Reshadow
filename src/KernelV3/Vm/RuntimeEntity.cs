@@ -39,6 +39,15 @@ public sealed class EntitySnapshot
     /// </summary>
     public Ast.CardKind Kind { get; init; }
 
+    /// <summary>
+    /// 快照时的卡定义。
+    ///
+    /// 存在的理由：纯内存探针（发现的候选筛选）不在 _world 里，
+    /// 靠 EntityId 回查拿不到 Def，于是职业/兵种/关键词条件全部失效。
+    /// 把定义直接挂进快照，探针不碰世界也能跑完整的条件求值。
+    /// </summary>
+    public Ast.CardDef Def { get; init; }
+
     public ZoneRef Zone { get; init; }
     /// <summary>绝对玩家编号（0 = 先手，1 = 后手）。AST 的 ZoneScope 是相对视角，绝不能混用。</summary>
     public int PlayerId { get; init; }

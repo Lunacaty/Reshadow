@@ -468,7 +468,9 @@ public sealed class VmEval
         ZoneRef.Board, ZoneRef.ExArea, ZoneRef.CrestArea, ZoneRef.Leader,
     };
 
-    private CardDef RefDef(EntityRef r) => RefCarrier(r)?.Def;
+    // 回退到快照：纯内存探针（发现的候选筛选）不在 _world 里，
+    // 只查世界会拿到 null，职业/兵种/关键词条件于是全部判假。
+    private CardDef RefDef(EntityRef r) => RefCarrier(r)?.Def ?? r.Snapshot?.Def;
 
     private int RefStat(EntityRef r, StatKey k)
     {

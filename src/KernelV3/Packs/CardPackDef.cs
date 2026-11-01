@@ -43,6 +43,18 @@ public sealed class CardRawEntry
 
     public string Text { get; init; } = "";
 
+    /// <summary>
+    /// 卡面自带的关键词（ward / storm / rush …）。
+    ///
+    /// 之前这里没有这个字段，loader 也不读 JSON 的 "keywords"，
+    /// 结果从 pack.json 加载的《守护魔像》没了【守护】、《寂静骑士》没了【疾驰】 ——
+    /// 而卡面中文完全正常，肉眼查不出来。
+    /// </summary>
+    public List<string> Keywords { get; init; } = new();
+
+    /// <summary>构筑期修正词条（对局中不生效）。</summary>
+    public List<DeckBuildModifier> DeckModifiers { get; init; } = new();
+
     public List<AltModeRawEntry> AltModes { get; init; } = new();
 }
 

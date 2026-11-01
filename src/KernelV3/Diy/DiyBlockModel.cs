@@ -1004,6 +1004,9 @@ public sealed class DiyBlockCompiler
                         5 => ZoneRef.Leader,
                         6 => ZoneRef.CrestArea,
                         7 => ZoneRef.ExArea,
+                        // 外部池：缺这两支会静默回落成 Board。
+                        8 => ZoneRef.CardPool,
+                        9 => ZoneRef.GlobalPool,
                         _ => ZoneRef.Board,
                     },
                     Mode = mode,
@@ -1686,7 +1689,11 @@ public sealed class DiyBlockDecompiler
     {
         ZoneRef.Hand => 1, ZoneRef.Deck => 2, ZoneRef.Cemetery => 3,
         ZoneRef.Banished => 4, ZoneRef.Leader => 5, ZoneRef.CrestArea => 6,
-        ZoneRef.ExArea => 7, _ => 0,
+        ZoneRef.ExArea => 7,
+        // 外部池必须有自己的编码：缺这两支会静默回落成 0(=战场)，
+        // 「从当前卡池发现」于是变成「从战场选」。
+        ZoneRef.CardPool => 8, ZoneRef.GlobalPool => 9,
+        _ => 0,
     };
 
     private static int OwnerCode(ZoneScope o) => o switch

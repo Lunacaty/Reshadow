@@ -138,6 +138,8 @@ public static class CardPackLoader
                     Life = Int(c, "life", 0),
                     SourceFormat = Str(c, "source_format") is { Length: > 0 } sf ? sf : "eng_cnl",
                     Text = Str(c, "text"),
+                    Keywords = ParseStringList(c, "keywords"),
+                    DeckModifiers = ParseDeckMods(c),
                     AltModes = alt,
                 });
             }
@@ -208,6 +210,43 @@ public static class CardPackLoader
         if (e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array)
             foreach (var x in v.EnumerateArray())
                 if (x.ValueKind == JsonValueKind.String) list.Add(x.GetString() ?? "");
+        return list;
+    }
+
+    /// <summary>读卡包里的构筑期修正数组。</summary>
+    private static List<DeckBuildModifier> ParseDeckMods(JsonElement e)
+    {
+        var list = new List<DeckBuildModifier>();
+        if (!e.TryGetProperty("deck_modifiers", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return list;
+
+        foreach (var x in arr.EnumerateArray())
+        {
+            var kindStr = Str(x, "kind");
+            DeckModKind kind = kindStr switch
+            {
+                "size" => DeckModKind.ModifyDeckSize,
+                "leader_life" => DeckModKind.ModifyLeaderStartLife,
+                "hand" => DeckModKind.ModifyStartingHandSize,
+                "ep" => DeckModKind.ModifyStartEvolvePoints,
+                "sep" => DeckModKind.ModifyStartEvolvePoints,
+                "self_copy" => DeckModKind.OverrideSelfCopyLimit,
+                "allow_clan_fixed" => DeckModKind.AllowSpecificClan,
+                "allow_clan_choose" => DeckModKind.AllowChosenClans,
+                _ => DeckModKind.ModifyDeckSize,
+            };
+            bool isSep = kindStr == "sep";
+            int v = Int(x, "value", 0);
+            list.Add(new DeckBuildModifier
+            {
+                Kind = kind,
+                Value = isSep ? 0 : v,
+                Value2 = isSep ? v : Int(x, "value2", 0),
+                TargetClan = Str(x, "clan"),
+                StackPerCopy = Bool(x, "stack_per_copy", false),
+                ExclusiveGroup = Str(x, "exclusive_group"),
+            });
+        }
         return list;
     }
 

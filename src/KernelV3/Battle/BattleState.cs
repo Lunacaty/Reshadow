@@ -45,6 +45,8 @@ public sealed class BattleState : IVmWorld
         Schema = schema ?? GameSchema.CreateDefault();
         // 默认标准规则：所有现有测试不传 rules，行为与改造前完全一致。
         Rules = rules ?? MatchRules.CreateStandard();
+        // 编译器要读阈值，而它只拿得到 Schema —— 这里把规则同步过去。
+        Schema.Rules = Rules;
         Rng = seed == 0 ? new Random() : new Random(seed);
         Players[0] = new PlayerState { PlayerId = 0 };
         Players[1] = new PlayerState { PlayerId = 1 };
@@ -129,6 +131,20 @@ public sealed class BattleState : IVmWorld
     public Packs.CardPool Pool { get; set; }
 
     /// <summary>本局可发现的候选卡（标准发现查 Pool，混沌发现查 Catalog）。</summary>
+    /// <summary>
+    /// 某区域的容量上限。
+    ///
+    /// 之前到处直接调静态的 PlayerState.Capacity(zone)/MaxBoard/MaxHand，
+    /// 那些是写死的 5/9/5 —— MatchRules 里改了参数毫无作用。
+    /// </summary>
+    public int CapacityOf(ZoneRef z) => z switch
+    {
+        ZoneRef.Board => Rules.MaxBoardSize,
+        ZoneRef.Hand => Rules.MaxHandSize,
+        ZoneRef.CrestArea => Rules.MaxCrestSize,
+        _ => PlayerState.Capacity(z),
+    };
+
     public IEnumerable<Ast.CardDef> EnumerateDiscoverPool(bool chaos, bool includeTokens = false)
     {
         if (chaos)
@@ -405,10 +421,11 @@ public sealed class BattleState : IVmWorld
                     foreach (var c in pack.Cards)
                     {
                         if (!c.IsToken) continue;
-                        var kws = new List<string>();
-                        // 关键词字段单独存在（token 的 ward/storm 等）
+                        // 关键词必须从卡包读出来。之前这里是一个空列表 + 一句
+                        // 「关键词字段单独存在」的注释，结果守护魔像丢了【守护】、
+                        // 寂静骑士丢了【疾驰】—— 卡面中文完全正常，查不出来。
                         list.Add((c.CardId, c.NameEng, c.Kind, c.Cost, c.Attack, c.Life,
-                                  c.Traits.ToArray(), kws.ToArray(), c.Text));
+                                  c.Traits.ToArray(), c.Keywords.ToArray(), c.Text));
                     }
                 }
             }
@@ -1093,7 +1110,7 @@ public sealed class BattleState : IVmWorld
             if (exists) { e.Zone = ZoneRef.None; _all.Remove(e); return; }
         }
 
-        int cap = PlayerState.Capacity(zone);
+        int cap = CapacityOf(zone);
         if (cap >= 0 && list.Count >= cap)
         {
             // 两条溢出铁律完全不同，不能合并处理：
@@ -1276,7 +1293,7 @@ public sealed class BattleState : IVmWorld
     private bool RejectBoardMoveIfFull(RuntimeEntity e, int toPlayerId)
     {
         var board = Players[toPlayerId].Board;
-        if (board.Count < PlayerState.MaxBoard) return false;
+        if (board.Count < Rules.MaxBoardSize) return false;
 
         // 从牌库来的：不移动，原地不动（保留自己的区域与流水号）。
         if (e.Zone == ZoneRef.Deck) return true;
@@ -1789,7 +1806,7 @@ public sealed class BattleState : IVmWorld
 
             // 爆牌判定必须在移动之前取：手牌已满 9 张时，
             // MoveEntity 会把这张牌按容量铁律直接送进墓地 + shadow+1。
-            bool handFull = p.Hand.Count >= PlayerState.MaxHand;
+            bool handFull = p.Hand.Count >= Rules.MaxHandSize;
             var card = p.Deck[0];
             MoveEntity(card, ZoneRef.Hand, playerId);
 
