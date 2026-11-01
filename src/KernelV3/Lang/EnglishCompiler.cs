@@ -1492,7 +1492,7 @@ public sealed class EnglishCompiler
             {
                 Left = NumExpr.Ctr(_lex.Counter("max_pp")),
                 Op = CompareOp.Ge,
-                Right = NumExpr.Const(7),
+                Right = NumExpr.Const(_lex?.Schema?.Rules?.OverflowThreshold ?? 7),
             };
 
         if (joined.Contains("evolved"))

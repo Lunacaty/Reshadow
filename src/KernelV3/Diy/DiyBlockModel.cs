@@ -1426,7 +1426,26 @@ public sealed class DiyBlockDecompiler
                 // 复制体与召唤是两种节点：SourceKind=CopyOfTarget 时没有 CardId，
                 // 落到下面的 act_summon 分支会导出成「召唤一张空名卡」，
                 // CopyFrom 与 IsExactCopy 全部丢失。
-                if (sp.SourceKind == CardSourceKind.CopyOfTarget)
+                // 卡池检索：漏这一支会让带 discover 的卡掉进 act_add_hand，
+            // 变成「把一张空名卡加入手牌」，条件与区域全丢。
+            if (sp.SourceKind == CardSourceKind.PoolQuery)
+            {
+                return new Block
+                {
+                    Opcode = "act_discover",
+                    Target = Target(sp.CopyFrom),
+                    IntA = sp.Count != null && sp.Count.Op == NumOp.Const ? sp.Count.Value : 1,
+                    EnumA = sp.ToZone switch
+                    {
+                        ZoneRef.Board => "board",
+                        ZoneRef.Deck => "deck",
+                        ZoneRef.ExArea => "exarea",
+                        _ => "hand",
+                    },
+                };
+            }
+
+            if (sp.SourceKind == CardSourceKind.CopyOfTarget)
                 {
                     return new Block
                     {

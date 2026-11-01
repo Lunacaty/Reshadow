@@ -150,6 +150,9 @@ public static class CardPoolBuilder
 
         // ================= 第 2 步：Pass 1 =================
         var schema = GameSchema.CreateDefault();
+        // 必须把规则同步给 Schema：ConditionCompiler / PrefixParser 读阈值时
+        // 只拿得到 Schema，读不到 BattleState。漏这一行，编译期用的永远是默认规则。
+        schema.Rules = config.Rules;
         var lexicon = new Lexicon(schema);
         var glossary = Glossary.CreateDefault();
         var deckDefs = new DeckDefTable();
@@ -357,6 +360,9 @@ public static class CardPoolBuilder
                 DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
                 BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
                 Traits = traits, Clan = clan,
+                // 无文本分支也必须带关键词：《守护魔像》《寂静骑士》的 text 是空串，
+                // 关键词只写在 "keywords" 里。漏了这一行，它们上场就是白板。
+                InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k)).ToList(),
                 PackId = pack.PackId, IsToken = c.IsToken,
                 SourceText = "",
             };

@@ -306,6 +306,20 @@ public sealed class DiyWorkspace
 
             // 被授予的能力内部同样有条件与目标，也必须归一化：
             // 否则「(true and is Evolved)」与「is Evolved」会被判成两张不同的卡。
+            // SpawnCardNode 的 CopyFrom.Where 也要归一化：
+            // 不归一的话，脚本端产出的 [HasKind, Compare] 与表单端产出的
+            // [Compare, HasKind] 会被判成两个不同的卡。
+            case SpawnCardNode sp:
+                return new SpawnCardNode
+                {
+                    SourceKind = sp.SourceKind, CardId = sp.CardId, CardName = sp.CardName,
+                    IsCrest = sp.IsCrest, CrestDef = sp.CrestDef, IsExactCopy = sp.IsExactCopy,
+                    AddDepartedTrait = sp.AddDepartedTrait,
+                    CopyFrom = NormalizeTarget(sp.CopyFrom),
+                    ToOwner = sp.ToOwner, ToZone = sp.ToZone,
+                    Count = NormalizeNum(sp.Count), OutSlot = sp.OutSlot,
+                };
+
             case GrantAbilityNode ga:
                 return new GrantAbilityNode
                 {
@@ -366,12 +380,23 @@ public sealed class DiyWorkspace
             // And 是集合语义：项目顺序不影响含义，归一化时排序，
             // 否则「is Follower and attack<=3」与「attack<=3 and is Follower」
             // 会被判成两张不同的卡，门禁产生假红。
-            var kept = a.Items.Where(x => !(x is ConstBoolExpr c && c.Value))
-                             .Select(NormalizeBoolDeep)
-                             .OrderBy(x => x.GetType().Name, StringComparer.Ordinal)
-                             .ToList();
+            //
+            // 还必须**扁平化嵌套 And**：积木端会把 where 拆成
+            // (trait and cost) and kind，脚本端产出扁平的 (trait and cost and kind)，
+            // 只排顶层不拍平的话两者结构仍然不同 —— 表现为积木往返判等失败。
+            var kept = new List<BoolExpr>();
+            void Flatten(BoolExpr x)
+            {
+                if (x is ConstBoolExpr cb) { if (cb.Value) kept.Add(BoolExpr.True); return; }
+                var nx = NormalizeBoolDeep(x);
+                if (nx is AndExpr na) { foreach (var y in na.Items) kept.Add(y); return; }
+                kept.Add(nx);
+            }
+            foreach (var x in a.Items) Flatten(x);
+            kept = kept.Where(x => !(x is ConstBoolExpr c2 && c2.Value)).ToList();
             if (kept.Count == 0) return BoolExpr.True;
             if (kept.Count == 1) return kept[0];
+            kept = kept.OrderBy(x => x.GetType().Name, StringComparer.Ordinal).ToList();
             return new AndExpr(kept);
         }
         if (e is CompareExpr cmp)

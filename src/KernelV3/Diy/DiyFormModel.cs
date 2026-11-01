@@ -378,7 +378,7 @@ public sealed class DiyFormCompiler
             {
                 Left = NumExpr.Ctr(_schema.Counter("max_pp")),
                 Op = CompareOp.Ge,
-                Right = NumExpr.Const(7),
+                Right = NumExpr.Const(_schema.Rules.OverflowThreshold),
             };
         }
 
@@ -495,8 +495,8 @@ public sealed class DiyFormCompiler
     private BoolExpr BuildDiscoverWhere(TargetFilterForm f)
     {
         var items = new List<BoolExpr>();
-        if (f == null) return BoolExpr.And(items.ToArray());
-        if (!string.IsNullOrEmpty(f.Kind))
+        if (f == null) return BoolExpr.True;
+        if (!string.IsNullOrEmpty(f.Kind) && f.Kind != "Any")
         {
             items.Add(new HasKindExpr
             {
@@ -507,20 +507,26 @@ public sealed class DiyFormCompiler
                     "Amulet" => CardKind.Amulet,
                     _ => CardKind.Follower,
                 },
+                // Of 必须显式给 $item：脚本端与积木端产出的都是 slot:$item，
+                // 留 null 会让 AstEnglishPrinter 打出 prop:Cost<=3（无 slot），
+                // 与另两端打出的 prop:Cost(slot:$item)<=3 判等失败。
+                Of = TargetSpec.Item,
             });
         }
         if (!string.IsNullOrEmpty(f.Trait))
-            items.Add(new HasTraitExpr { Trait = _schema.Trait(f.Trait) });
+            items.Add(new HasTraitExpr { Trait = _schema.Trait(f.Trait), Of = TargetSpec.Item });
         if (f.MaxCost > 0)
         {
             items.Add(new CompareExpr
             {
-                Left = new NumExpr { Op = NumOp.Property, Stat = StatKey.Cost },
+                Left = new NumExpr { Op = NumOp.Property, Stat = StatKey.Cost, Of = TargetSpec.Item },
                 Op = CompareOp.Le,
                 Right = NumExpr.Const(f.MaxCost),
             });
         }
-        return BoolExpr.And(items.ToArray());
+        return items.Count == 0 ? BoolExpr.True
+             : items.Count == 1 ? items[0]
+             : (BoolExpr)new AndExpr(items);
     }
 
     private EffectNode RowToNode(ActionFormRow row)

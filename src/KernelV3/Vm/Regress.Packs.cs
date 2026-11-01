@@ -5,6 +5,8 @@ using System.Text;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Battle;
 using ShadowverseFan.KernelV3.Core;
+using ShadowverseFan.KernelV3.Diy;
+using ShadowverseFan.KernelV3.Lang;
 using ShadowverseFan.KernelV3.Packs;
 
 namespace ShadowverseFan.KernelV3.Vm;
@@ -49,6 +51,7 @@ public static class RegressPacks
         Check("POOL-I 卡包关键词与脚本格式", GatePackKeywords);
         Check("POOL-J 自定义规则接进执行层", GateRuleEnforcement);
         Check("POOL-K local_id 分配与跨包召唤无空壳", GateCardIndexAndCrossPack);
+        Check("POOL-L 含 discover+deck_mod 的四端同构往返", GateFourWayDiscover);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -975,4 +978,67 @@ public static class RegressPacks
                     + " 身材=" + (made?.Attack ?? -1) + "/" + (made?.Life ?? -1)
                     + " Unresolved=" + unresolved);
     }
+
+    // ---------------------------------------------------------------- 门禁 L
+
+    /// <summary>
+    /// 一张**同时带 deck_mod 与 discover** 的卡，必须在四端之间真正同构往返：
+    ///   脚本 → 积木 → 脚本
+    ///   脚本 → 表单 → 脚本
+    ///   脚本 → 脚本（打印再解析）
+    ///
+    /// 这条专治「改了编译器忘改反编译器」：
+    /// 积木反编译缺 PoolQuery 会让 discover 掉进 act_add_hand，
+    /// 表单 BuildDiscoverWhere 缺 Of=$item 会让判等失败。
+    /// </summary>
+    private static (bool, string) GateFourWayDiscover()
+    {
+        var ws = Diy.DiyWorkspace.Create(1);
+        ws.Context.Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier");
+
+        const string src = @"
+card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
+    deck_mod size(+20)
+    deck_mod leader_life(+10)
+    on play {
+        discover(target(ally, global_pool, follower, trait: Pixie, max_cost: 3, count: 1), to: hand)
+    }
+}
+";
+        var comp = new ReshadowScriptCompiler(ws);
+        var defs = comp.Compile(src);
+        if (defs.Count == 0) return (false, "脚本编译失败：" + string.Join("|", comp.Errors.Take(2)));
+        var def0 = defs[0];
+
+        // ① 脚本 → 积木 → 脚本
+        var dec = new DiyBlockDecompiler(ws.Schema);
+        var doc = dec.Decompile(def0);
+        var blockRes = new DiyBlockCompiler(ws.Schema, ws.Lexicon).Compile(doc);
+        bool blockOk = blockRes.Ok;
+        string dBlock = "";
+        bool blockEq = blockOk && DiyWorkspace.StructurallyEqual(def0, blockRes.Def, out dBlock);
+
+        // ② 脚本 → 表单 → 脚本
+        var fc = new DiyFormCompiler(ws.Schema, ws.Lexicon);
+        bool formConverted = fc.TryCardDefToForm(def0, out var form, out _);
+        var defForm = formConverted ? fc.FormToCardDef(form) : null;
+        string dForm = "";
+        bool formEq = defForm != null && DiyWorkspace.StructurallyEqual(def0, defForm, out dForm);
+
+        // ③ 脚本 → 脚本（打印再解析）
+        var printed = comp.Print(def0);
+        var re = comp.Compile(printed);
+        string dScript = "";
+        bool scriptEq = re.Count > 0 && DiyWorkspace.StructurallyEqual(def0, re[0], out dScript);
+
+        bool ok = blockEq && formEq && scriptEq;
+        return (ok,
+            "积木=" + (blockOk ? blockEq.ToString() : "编译失败")
+            + " 表单=" + (formConverted ? formEq.ToString() : "转换失败")
+            + " 脚本=" + scriptEq
+            + (ok ? "" : " | K:" + Short(dBlock) + " F:" + Short(dForm) + " S:" + Short(dScript)));
+    }
+
+    private static string Short(string s)
+        => string.IsNullOrEmpty(s) ? "-" : s.Replace("\n", " ").Substring(0, Math.Min(120, s.Length));
 }

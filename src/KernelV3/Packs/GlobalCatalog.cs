@@ -29,6 +29,10 @@ public sealed class GlobalCatalog
     private readonly Dictionary<int, CardDef> _allCards = new();
     private readonly Dictionary<string, CardDef> _cardsByName = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<CardPackDef> _pending = new();
+    private readonly Dictionary<CardRawEntry, int> _idOf = new();
+
+    /// <summary>PackId:LocalId ↔ int CardId。只写 local_id 的卡由它分配卡号。</summary>
+    public Core.PoolCardIndex CardIndex { get; } = new();
 
     public IReadOnlyDictionary<string, CardPackDef> Packs => _packs;
     public IReadOnlyDictionary<int, CardDef> AllCards => _allCards;
@@ -116,7 +120,17 @@ public sealed class GlobalCatalog
             foreach (var sa in pack.StackableAmulets)
                 Schema.StackableAmulets[sa.CounterName] = sa;
 
-            foreach (var c in pack.Cards) Lexicon.AddCard(c.NameEng, c.CardId);
+            // 只写 local_id 的卡在这里分配卡号；否则它们全是 CardId=0 并在 _allCards[0] 上互相覆盖。
+            foreach (var c in pack.Cards)
+            {
+                int eid = c.CardId;
+                if (eid <= 0 && !string.IsNullOrEmpty(c.LocalId))
+                    eid = CardIndex.Assign(pack.PackId, c.LocalId);
+                else if (eid > 0)
+                    CardIndex.RegisterExplicit(pack.PackId, c.LocalId, eid);
+                _idOf[c] = eid;
+                if (eid > 0) Lexicon.AddCard(c.NameEng, eid);
+            }
         }
         Lexicon.Build();
 
@@ -125,7 +139,8 @@ public sealed class GlobalCatalog
         {
             foreach (var c in pack.Cards)
             {
-                var def = CompileCard(pack, c, comp);
+                var def = CompileCard(pack, c, comp,
+                                      _idOf.TryGetValue(c, out var eid2) ? eid2 : c.CardId);
                 if (def == null) continue;
                 _allCards[def.CardId] = def;
                 if (!string.IsNullOrWhiteSpace(def.Name)) _cardsByName[def.Name.Trim()] = def;
@@ -148,7 +163,7 @@ public sealed class GlobalCatalog
         }
     }
 
-    private CardDef CompileCard(CardPackDef pack, CardRawEntry c, EnglishCompiler comp)
+    private CardDef CompileCard(CardPackDef pack, CardRawEntry c, EnglishCompiler comp, int cardId)
     {
         var traits = new List<SymbolId<TraitTag>>();
         foreach (var t in c.Traits) traits.Add(Schema.Trait(t));
@@ -158,7 +173,7 @@ public sealed class GlobalCatalog
         {
             return new CardDef
             {
-                CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
+                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
                 DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
                 BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
                 Traits = traits, Clan = clan,
@@ -182,7 +197,7 @@ public sealed class GlobalCatalog
             var sd = made[0];
             return new CardDef
             {
-                CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = sd.Kind,
+                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = sd.Kind,
                 BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
                 Abilities = sd.Abilities, Traits = traits, Clan = clan,
                 InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k)).ToList(),
@@ -197,7 +212,7 @@ public sealed class GlobalCatalog
 
         return new CardDef
         {
-            CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
+            CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
                 DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
             BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
             Abilities = r.Abilities, Traits = traits, Clan = clan,

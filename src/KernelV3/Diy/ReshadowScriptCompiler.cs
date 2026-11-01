@@ -2258,6 +2258,9 @@ public sealed class ReshadowScriptCompiler
                     var spec = new TargetSpec
                     {
                         SourceKind = sp.CopyFrom?.SourceKind ?? TargetSourceKind.Zone,
+                        // Owner 必须打出来：TargetSpec.Owner 默认是 Any，
+                        // 不写就会把 ally 篡改成 any，四端判等当场失败。
+                        Owner = sp.CopyFrom?.Owner ?? ZoneScope.Self,
                         Zone = sp.CopyFrom?.Zone ?? ZoneRef.CardPool,
                         Mode = sp.CopyFrom?.Mode ?? SelectMode.Choose,
                         Where = sp.CopyFrom?.Where,

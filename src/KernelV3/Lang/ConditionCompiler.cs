@@ -285,7 +285,7 @@ public static class ConditionCompiler
             {
                 Left = NumExpr.Ctr(lex.Counter("max_pp")),
                 Op = CompareOp.Ge,
-                Right = NumExpr.Const(7),
+                Right = NumExpr.Const(lex.Schema.Rules.OverflowThreshold),
             };
 
         if (c.MatchPhrase("you've", "unlocked") || c.MatchPhrase("you", "have", "unlocked"))

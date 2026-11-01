@@ -912,12 +912,12 @@ public sealed class TurnRunner
 
     public bool UseExtraPp(int playerId)
     {
-        if (playerId != 1) return false;                       // 只有后手有
-        if (playerId != _state.ActivePlayer) return false;      // 只能在自己回合
+        // 直接复用 CanUseExtraPp：两份判定各写一遍必然漂移 ——
+        // 早先 CanUseExtraPp 读了规则，UseExtraPp 却写死 5 且不检查开关，
+        // 于是关掉 EnableExtraPpForSecondPlayer 后仍能直接调用加成。
+        if (!CanUseExtraPp(playerId)) return false;
         var p = _state.Players[playerId];
-        if (p.UsedExtraPpThisTurn) return false;                // 每回合最多一次
-
-        bool early = _state.TurnNumber <= 5;
+        bool early = _state.TurnNumber <= _state.Rules.ExtraPpEarlyPhaseLastTurn;
         if (early && p.UsedEarlyExtraPp) return false;
         if (!early && p.UsedLateExtraPp) return false;
 

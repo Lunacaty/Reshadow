@@ -710,7 +710,10 @@ public sealed partial class CardVm
                 // 同时绝不能执行下面的 scope.Bind(n.OutSlot, created)：
                 // 那会用空的 created 覆盖掉本来要接住选择的槽位。
                 if (Pending != null) return true;
-                break;
+                // 不能 break：Count > 1 的随机生成要走完整个循环。
+                // 随机模式下 SpawnFromPool 只 return made，不自己 Add ——
+                // 统一由下面那句 if (e != null) created.Add(e); 收口。
+
             }
             else if (n.IsCrest)
             {
@@ -1121,11 +1124,7 @@ public sealed partial class CardVm
         {
             var pick = candidates[_world.Rng.Next(candidates.Count)];
             var made = _world.SpawnCard(pick.CardId, n.ToZone, owner);
-            if (made != null)
-            {
-                created.Add(made);
-                scope.LastSpawnedCardId = pick.CardId;
-            }
+            if (made != null) scope.LastSpawnedCardId = pick.CardId;
             return made;
         }
 

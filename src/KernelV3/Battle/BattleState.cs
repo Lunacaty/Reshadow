@@ -1024,7 +1024,9 @@ public sealed class BattleState : IVmWorld
     {
         if (playerId is < 0 or > 1) throw new ArgumentException("playerId 必须是 0 或 1");
 
-        _cardPool.TryGetValue(cardId, out var def);
+        // 走 CardDefOf 而不是直接查字典：换牌库 / 复制 / 变身都会经过这里，
+        // 跨包卡只查本局的 _cardPool 会拿到 null，造出白板空壳。
+        var def = CardDefOf(cardId);
 
 
         var e = new RuntimeEntity
@@ -1710,7 +1712,8 @@ public sealed class BattleState : IVmWorld
     public void TransformEntity(RuntimeEntity e, int intoCardId)
     {
         if (e == null) return;
-        if (!_cardPool.TryGetValue(intoCardId, out var d)) return;
+        var d = CardDefOf(intoCardId);
+        if (d == null) return;
 
         e.Def = d;
         e.Attack = d.BaseAttack;

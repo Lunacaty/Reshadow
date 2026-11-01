@@ -56,6 +56,16 @@ public static class PoolConfigLoader
                 MaxCopiesPerCard = I(ru, "max_copies", rules.MaxCopiesPerCard),
                 AllowCrossCraft = B(ru, "allow_cross_craft", rules.AllowCrossCraft),
                 AllowTokensInConstructedDeck = B(ru, "allow_tokens_in_deck", rules.AllowTokensInConstructedDeck),
+                // 这 9 项漏读会让 .pool.json 里写的规则被静默忽略（回落到默认值）。
+                InitialEpFirstPlayer = I(ru, "initial_ep_p0", rules.InitialEpFirstPlayer),
+                InitialEpSecondPlayer = I(ru, "initial_ep_p1", rules.InitialEpSecondPlayer),
+                MaxEpCap = I(ru, "max_ep_cap", rules.MaxEpCap),
+                InitialSepFirstPlayer = I(ru, "initial_sep_p0", rules.InitialSepFirstPlayer),
+                InitialSepSecondPlayer = I(ru, "initial_sep_p1", rules.InitialSepSecondPlayer),
+                MaxSepCap = I(ru, "max_sep_cap", rules.MaxSepCap),
+                SuperEvolveOverflowDamage = I(ru, "super_evolve_overflow_damage", rules.SuperEvolveOverflowDamage),
+                SkyboundArtThreshold = I(ru, "skybound_art_threshold", rules.SkyboundArtThreshold),
+                SuperSkyboundArtThreshold = I(ru, "super_skybound_art_threshold", rules.SuperSkyboundArtThreshold),
             };
         }
 
