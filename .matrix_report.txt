@@ -1,0 +1,4 @@
+=== AST 支持矩阵：126 项检查，3 处不合规 ===
+  [缺字段] script::ParseBuff 里没有 TryParseDur —— buff 要读 Duration
+  [缺字段] script::ParseSetStats 里没有 TryParseDur —— set_stats 要读 Duration
+  [缺字段] script::ParseGrantKw 里没有 TryParseDur —— grant_kw 要读 Duration

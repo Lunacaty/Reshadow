@@ -1130,10 +1130,14 @@ public sealed class ReshadowScriptCompiler
         string kw = p.Next();
         p.TryChar(',');
         int? val = p.TryInt();
+        // Duration 必须读：限时关键词与永久关键词在 AST 上只差这一个字段，
+        // 不读就会把「直到回合结束」变成永久，而卡面中文完全一样。
+        var dur = TryParseDur(p);
         return new ModifyKeywordNode
         {
             Target = tgt, Op = KeywordOp.Grant, Keyword = _schema.Keyword(kw),
             Value = val.HasValue ? NumExpr.Const(val.Value) : null,
+            Duration = dur,
         };
     }
 
