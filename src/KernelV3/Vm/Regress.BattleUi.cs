@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Core;
+using ShadowverseFan.KernelV3.Diy;
 using ShadowverseFan.KernelV3.Packs;
 using ShadowverseFan.KernelV3.Vm;
 using ShadowverseFan.Ui.Bridge;
@@ -57,6 +58,7 @@ public static class RegressBattleUi
         Check("DIYU-5 卡池规则可编辑并读回", CasePoolRulesSave);
         Check("DIYU-6 英文端可编辑", CaseEnglishEditable);
         Check("DIYU-7 自定义词条注册即可用", CaseDefineCustomEntry);
+        Check("DIYU-8 积木端增删移可编辑", CaseBlockEditable);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -813,5 +815,68 @@ public static class RegressBattleUi
         bool ok = traitOk && counterOk && clanOk && compiled && usedTrait && usedClan;
         return (ok, "兵种=" + traitOk + " 计数器=" + counterOk + " 职业=" + clanOk
                     + " 可用于卡=" + usedTrait + "/" + usedClan);
+    }
+
+    // ---------------------------------------------------------------- DIYU-8
+
+    /// <summary>
+    /// 积木端可编辑：加块 / 删块 / 上下移，且每次都必须真的重新编译。
+    ///
+    /// 双向断言：加上去要能在 AST 里看见，删回来要能消失 ——
+    /// 只测「加了不报错」的话，一个把改动丢进黑洞的实现也能全过。
+    /// </summary>
+    private static (bool, string) CaseBlockEditable()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        var hats = ctrl.BlockModel?.Hats;
+        if (hats == null || hats.Count == 0) return (false, "示例卡无事件帽");
+
+        int before = ctrl.ActionCountOfHat(0);
+        string astBefore = ctrl.GetCanonicalAstText();
+
+        // ① 加一个 draw(3)（用 3 而不是 1，便于从 AST 里认出来）
+        bool added = ctrl.AddActionBlock(0, "act_draw", 3);
+        int afterAdd = ctrl.ActionCountOfHat(0);
+        string astAdded = ctrl.GetCanonicalAstText();
+        bool addVisible = added && afterAdd == before + 1
+                          && !string.Equals(astBefore, astAdded, StringComparison.Ordinal);
+
+        // ② 删掉刚加的那一块
+        bool removed = ctrl.RemoveActionAt(0, ctrl.BlockModel.Hats[0].Stacks.Count - 1);
+        int afterDel = ctrl.ActionCountOfHat(0);
+        bool delVisible = removed && afterDel == before;
+
+        // ③ 移动：加两块 IntA 不同的块，上移后顺序应互换。
+        //
+        // 注意：每次 CompileFromBlocks 都会**重建整个 BlockModel**，
+        // 所以不能拿旧 Block 对象去 IndexOf —— 它已经是上一代的实例了。
+        // 这里按 IntA 值判断顺序，才不会被对象身份骗过去。
+        ctrl.AddActionBlock(0, "act_draw", 77);
+        ctrl.AddActionBlock(0, "act_draw", 88);
+        // 数值挂在 Number 子积木上，不在块自身的 IntA。
+        int Amt(Block b) => b?.Number?.IntA ?? -1;
+
+        var st0 = ctrl.BlockModel.Hats[0].Stacks;
+        int i77 = st0.FindIndex(x => Amt(x) == 77);
+        int i88 = st0.FindIndex(x => Amt(x) == 88);
+        bool before88After77 = i77 >= 0 && i88 == i77 + 1;
+
+        bool moved = ctrl.MoveActionBlock(0, st0.Count - 1, -1);
+
+        var st1 = ctrl.BlockModel.Hats[0].Stacks;
+        int j77 = st1.FindIndex(x => Amt(x) == 77);
+        int j88 = st1.FindIndex(x => Amt(x) == 88);
+        // 上移一格后，88 应在 77 之前（两者相邻）
+        bool orderOk = moved && before88After77 && j88 >= 0 && j88 + 1 == j77;
+
+        // ④ 边界：越界移动应返回 false 而不是抛异常
+        bool edge = !ctrl.MoveActionBlock(0, 0, -1);
+
+        bool ok = addVisible && delVisible && orderOk && edge;
+        return (ok, "加块可见=" + addVisible + "(" + before + "->" + afterAdd + ")"
+                    + " 删块可见=" + delVisible + "(" + afterDel + ")"
+                    + " 上移生效=" + orderOk + " 越界返回false=" + edge);
     }
 }

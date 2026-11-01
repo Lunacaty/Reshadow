@@ -427,49 +427,43 @@ public partial class DiyWorkshopView : Control
         _endpointHost.AddChild(tree);
     }
 
-    /// <summary>往某个事件帽下追加一个「抽 1 张牌」动作块（最常见、也最容易看出效果）。</summary>
+    /// <summary>
+    /// 积木编辑统一走控制器 —— 逻辑在 DiyWorkshopController 里才能被门禁覆盖。
+    /// 视图只负责把「第几顶帽子」翻译成索引传过去。
+    /// </summary>
     private void AddActionBlock(Block hat)
     {
-        if (hat == null) return;
-        hat.Stacks ??= new List<Block>();
-        hat.Stacks.Add(new Block { Opcode = "act_draw", IntA = 1 });
-        _ctrl.CompileFromBlocks(_ctrl.BlockModel);
+        int idx = _ctrl.BlockModel?.Hats?.IndexOf(hat) ?? -1;
+        if (idx < 0) return;
+        _ctrl.AddActionBlock(idx);
         RefreshAll();
     }
 
     private void RemoveActionBlock(Block blk)
     {
-        var hats = _ctrl.BlockModel?.Hats;
-        if (hats == null) return;
-        foreach (var h in hats)
-        {
-            if (h.Stacks != null && h.Stacks.Remove(blk)) { RecompileBlocks(); return; }
-            if (h.ElseStacks != null && h.ElseStacks.Remove(blk)) { RecompileBlocks(); return; }
-        }
+        // 按索引定位：CompileFromBlocks 会重建模型，旧对象找不到
+        if (TryLocate(blk, out int hi, out int si)) _ctrl.RemoveActionAt(hi, si);
+        RefreshAll();
     }
 
     private void MoveActionBlock(Block blk, int dir)
     {
-        var hats = _ctrl.BlockModel?.Hats;
-        if (hats == null) return;
-        foreach (var h in hats)
-        {
-            var list = h.Stacks;
-            if (list == null) continue;
-            int idx = list.IndexOf(blk);
-            if (idx < 0) continue;
-            int ni = idx + dir;
-            if (ni < 0 || ni >= list.Count) return;
-            (list[idx], list[ni]) = (list[ni], list[idx]);
-            RecompileBlocks();
-            return;
-        }
+        if (TryLocate(blk, out int hi, out int si)) _ctrl.MoveActionBlock(hi, si, dir);
+        RefreshAll();
     }
 
-    private void RecompileBlocks()
+    private bool TryLocate(Block blk, out int hatIndex, out int slotIndex)
     {
-        _ctrl.CompileFromBlocks(_ctrl.BlockModel);
-        RefreshAll();
+        hatIndex = -1; slotIndex = -1;
+        var hats = _ctrl.BlockModel?.Hats;
+        if (hats == null || blk == null) return false;
+
+        for (int h = 0; h < hats.Count; h++)
+        {
+            int si = hats[h].Stacks?.IndexOf(blk) ?? -1;
+            if (si >= 0) { hatIndex = h; slotIndex = si; return true; }
+        }
+        return false;
     }
     private void BuildEnglishEndpoint()
     {

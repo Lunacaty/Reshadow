@@ -324,4 +324,93 @@ public sealed class DiyWorkshopController
             SourceText = d.SourceText,
         };
     }
+
+    // ---------------------------------------------------------------- 积木编辑
+
+    /// <summary>
+    /// 往某个事件帽下追加一个动作块。
+    ///
+    /// 下沉到控制器而不是留在视图里：视图是 Control 子类，
+    /// 无头工程里根本 new 不出来 —— 逻辑留在这里才能被门禁覆盖。
+    /// </summary>
+    public bool AddActionBlock(int hatIndex, string opcode = "act_draw", int amount = 1)
+    {
+        var hats = BlockModel?.Hats;
+        if (hats == null || hatIndex < 0 || hatIndex >= hats.Count) return false;
+
+        var hat = hats[hatIndex];
+        hat.Stacks ??= new List<Block>();
+
+        // act_draw / act_damage 这类动作块的数值挂在 **Number** 上，
+        // 而 Number 本身又是一颗积木（数值块），不是 IntA、也不是 NumExpr。
+        // 早先按 IntA 塞值，反编译回来时数量整个丢失（全变成 0）。
+        hat.Stacks.Add(new Block
+        {
+            Opcode = opcode,
+            Number = new Block { Opcode = "num_const", IntA = amount },
+        });
+
+        return CompileFromBlocks(BlockModel);
+    }
+
+    /// <summary>删掉某个动作块（在任一事件帽的 Stacks / ElseStacks 里查找）。</summary>
+    public bool RemoveActionBlock(Block blk)
+    {
+        var hats = BlockModel?.Hats;
+        if (hats == null || blk == null) return false;
+
+        foreach (var h in hats)
+        {
+            if (h.Stacks != null && h.Stacks.Remove(blk)) return CompileFromBlocks(BlockModel);
+            if (h.ElseStacks != null && h.ElseStacks.Remove(blk)) return CompileFromBlocks(BlockModel);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 在同一事件帽内上移/下移一个动作块（dir = -1 上移，+1 下移）。
+    ///
+    /// 用**索引**而不是 Block 对象定位。原因：
+    /// 每次 CompileFromBlocks 都重建整个 BlockModel，
+    /// UI 手里那个 Block 是上一代的实例，IndexOf 必然找不到 ——
+    /// 早先按对象身份找，导致「上移/下移」在真实交互里永远静默失败。
+    /// </summary>
+    public bool MoveActionBlock(int hatIndex, int slotIndex, int dir)
+    {
+        var hats = BlockModel?.Hats;
+        if (hats == null || hatIndex < 0 || hatIndex >= hats.Count) return false;
+
+        var list = hats[hatIndex].Stacks;
+        if (list == null || slotIndex < 0 || slotIndex >= list.Count) return false;
+
+        int ni = slotIndex + dir;
+        if (ni < 0 || ni >= list.Count) return false;
+
+        (list[slotIndex], list[ni]) = (list[ni], list[slotIndex]);
+        return CompileFromBlocks(BlockModel);
+    }
+
+    /// <summary>
+    /// 按对象删除（会在各帽子的 Stacks 里找同一实例）。
+    /// 因为 CompileFromBlocks 会重建模型，调用方应尽量用 RemoveActionAt(hat, idx)。
+    /// </summary>
+    public bool RemoveActionAt(int hatIndex, int slotIndex)
+    {
+        var hats = BlockModel?.Hats;
+        if (hats == null || hatIndex < 0 || hatIndex >= hats.Count) return false;
+
+        var list = hats[hatIndex].Stacks;
+        if (list == null || slotIndex < 0 || slotIndex >= list.Count) return false;
+
+        list.RemoveAt(slotIndex);
+        return CompileFromBlocks(BlockModel);
+    }
+
+    /// <summary>当前第一顶事件帽下的动作块条数（供 UI 与门禁查询）。</summary>
+    public int ActionCountOfHat(int hatIndex)
+    {
+        var hats = BlockModel?.Hats;
+        if (hats == null || hatIndex < 0 || hatIndex >= hats.Count) return 0;
+        return hats[hatIndex].Stacks?.Count ?? 0;
+    }
 }
