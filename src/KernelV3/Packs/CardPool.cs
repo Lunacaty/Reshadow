@@ -186,11 +186,27 @@ public static class CardPoolBuilder
                 }
                 cardOwnerPack[c.CardId] = pack.PackId;
 
+                // 同名消歧（文档「破局 1」的三级优先）：
+                //   本包优先 → 显式依赖包优先 → 卡池全局唯一匹配
+                //
+                // 前两级在**单包内**已经由「名字只在本包的卡里出现」自然满足；
+                // 真正要拦的是第三级失败的情况：两个互不相关的包都定义了同名卡，
+                // 谁赢都是错的 —— 因为引用方没有表达偏好，引擎也不该替它猜。
                 if (nameOwnerPack.TryGetValue(c.NameEng, out var prevName) && prevName.cardId != c.CardId)
                 {
-                    res.Errors.Add("卡名冲突：卡包 [" + pack.PackId + "] 与 [" + prevName.packId
-                                   + "] 定义了同名但不同号的卡片 '" + c.NameEng + "'！");
-                    continue;
+                    bool sameOwnerChain = IsDependencyRelated(pack.PackId, prevName.packId, packs)
+                                          || IsDependencyRelated(prevName.packId, pack.PackId, packs);
+                    if (!sameOwnerChain)
+                    {
+                        res.Errors.Add("同名歧义冲突：卡包 [" + pack.PackId + "] 与 [" + prevName.packId
+                                       + "] 都定义了同名卡 '" + c.NameEng + "'（id=" + c.CardId
+                                       + " 与 id=" + prevName.cardId + "），且两包之间没有依赖关系 —— "
+                                       + "模糊引用无法消歧，拒绝启动该卡池！");
+                        continue;
+                    }
+                    // 有依赖关系时，被依赖的一方胜出（依赖方知道自己引用的是谁）。
+                    bool prevWins = IsDependencyRelated(pack.PackId, prevName.packId, packs);
+                    if (prevWins) continue;
                 }
                 nameOwnerPack[c.NameEng] = (pack.PackId, c.CardId);
                 lexicon.AddCard(c.NameEng, c.CardId);
@@ -269,6 +285,19 @@ public static class CardPoolBuilder
 
         // ================= 第 5 步 =================
         return res.With(pool);
+    }
+
+    /// <summary>A 是否直接或间接依赖 B（含 A == B）。</summary>
+    private static bool IsDependencyRelated(
+        string a, string b, List<CardPackDef> packs, int depth = 0)
+    {
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return true;
+        if (depth > 8) return false;      // 防御环状依赖
+        var pa = packs.FirstOrDefault(x => string.Equals(x.PackId, a, StringComparison.OrdinalIgnoreCase));
+        if (pa?.Dependencies == null) return false;
+        foreach (var dep in pa.Dependencies)
+            if (IsDependencyRelated(dep, b, packs, depth + 1)) return true;
+        return false;
     }
 
     private static CardDef CompileCard(

@@ -63,7 +63,9 @@ public sealed class Block
     public BlockShape Shape => DiyBlockModel.ShapeOf(Opcode);
 
     // ---- 通用字段 ----
-    public string Text { get; set; }          // 卡名 / 关键词名 / 兵种名 / 事件名
+    public string Text { get; set; }
+    /// <summary>次要文本（构筑期修正的互斥组名等）。</summary>
+    public string Text2 { get; set; }          // 卡名 / 关键词名 / 兵种名 / 事件名
     public int IntA { get; set; }             // 常量 / 计数器初值 / 序号
     public int IntB { get; set; }             // 副常量
     public bool FlagA { get; set; }           // 各种开关（IsCrest / IsExact / manualOnly …）
@@ -98,6 +100,8 @@ public sealed class Block
 /// <summary>一份积木文档 = 一张卡。</summary>
 public sealed class CardBlockWorkspace
 {
+    /// <summary>构筑期修正积木（不是能力，不挂在任何事件帽下）。</summary>
+    public List<Block> DeckModBlocks { get; set; } = new();
     public int CardId { get; set; }
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "Follower";
@@ -175,6 +179,9 @@ public static class DiyBlockModel
         ["act_invoke"] = BlockShape.Stack,
         ["act_grant_ability"] = BlockShape.Stack,
         ["act_grant_entity_ability"] = BlockShape.Stack,
+        // 构筑期修正与卡池检索：需要参数但没有子动作，用胶囊形。
+        ["act_deck_mod"] = BlockShape.Pill,
+        ["act_discover"] = BlockShape.Stack,
 
         // ---- 胶囊 ----
         ["tgt_slot"] = BlockShape.Pill,
@@ -249,6 +256,15 @@ public sealed class BlockCompileResult
 {
     public CardDef Def { get; set; }
     public List<string> Errors { get; } = new();
+
+    /// <summary>
+    /// 构筑期修正积木收集到的词条。
+    ///
+    /// 它们不对应任何 EffectNode（对局中不生效），
+    /// 所以不能混进能力体，必须由这里单独回传给 CardDef.DeckModifiers。
+    /// </summary>
+    public List<DeckBuildModifier> DeckModsOut { get; } = new();
+
     public bool Ok => Errors.Count == 0 && Def != null;
 
     public void Fail(Block b, string msg)
@@ -293,6 +309,13 @@ public sealed class DiyBlockCompiler
         // 运行期 GainCrest 建出的是一个没有任何能力的同名声望壳。
         _pendingCrest = BuildSub(0, doc.CrestHats, CardKind.Crest, doc, force: true);
         _pendingFaith = BuildSub(0, doc.FaithHats, CardKind.Faith, doc, force: true);
+
+        // 构筑期修正块先处理：它们不是能力，只往 DeckModsOut 收集。
+        foreach (var blk in doc.DeckModBlocks ?? new List<Block>())
+        {
+            if (blk?.Opcode != "act_deck_mod") continue;
+            CompileDeckMod(blk);
+        }
 
         var abilities = new List<AbilityDef>();
 
@@ -339,6 +362,8 @@ public sealed class DiyBlockCompiler
             CrystallizeDef = BuildSub(doc.CrystallizeCost, doc.CrystallizeHats, CardKind.Amulet, doc),
             CrestDef = _pendingCrest,
             FaithDef = _pendingFaith,
+            // 构筑期修正词条：编译期由 act_deck_mod 收集，不在能力体里。
+            DeckModifiers = new List<DeckBuildModifier>(_res.DeckModsOut),
         };
 
         _res.Def = _res.Errors.Count == 0 ? def : null;
@@ -362,6 +387,34 @@ public sealed class DiyBlockCompiler
             Abilities = abil,
             Traits = (doc.Traits ?? new List<string>()).Select(t => _schema.Trait(t)).ToList(),
         };
+    }
+
+    /// <summary>把一块 act_deck_mod 积木转成 DeckBuildModifier 并收集。</summary>
+    private void CompileDeckMod(Block b)
+    {
+        var kind = b.Text switch
+        {
+            "size" => DeckModKind.ModifyDeckSize,
+            "leader_life" => DeckModKind.ModifyLeaderStartLife,
+            "hand" => DeckModKind.ModifyStartingHandSize,
+            "ep" => DeckModKind.ModifyStartEvolvePoints,
+            "sep" => DeckModKind.ModifyStartEvolvePoints,
+            "self_copy" => DeckModKind.OverrideSelfCopyLimit,
+            "allow_clan_fixed" => DeckModKind.AllowSpecificClan,
+            "allow_clan_choose" => DeckModKind.AllowChosenClans,
+            _ => DeckModKind.ModifyDeckSize,
+        };
+
+        bool isSep = b.Text == "sep";
+        _res.DeckModsOut.Add(new DeckBuildModifier
+        {
+            Kind = kind,
+            Value = isSep ? 0 : b.IntA,
+            Value2 = isSep ? b.IntA : 0,
+            TargetClan = b.CardNameA ?? "",
+            StackPerCopy = b.FlagA,
+            ExclusiveGroup = b.Text2 ?? "",
+        });
     }
 
     private static CardKind ParseKind(string s) => s switch
@@ -762,6 +815,27 @@ public sealed class DiyBlockCompiler
                     ToOwner = ZoneScope.Self,
                 };
 
+            case "act_discover":
+            {
+                return new SpawnCardNode
+                {
+                    SourceKind = CardSourceKind.PoolQuery,
+                    CopyFrom = CompileTarget(b.Target) ?? new TargetSpec
+                    {
+                        Zone = ZoneRef.CardPool, Mode = SelectMode.Choose,
+                    },
+                    ToZone = b.EnumA switch
+                    {
+                        "board" => ZoneRef.Board,
+                        "deck" => ZoneRef.Deck,
+                        "exarea" => ZoneRef.ExArea,
+                        _ => ZoneRef.Hand,
+                    },
+                    ToOwner = ZoneScope.Self,
+                    Count = NumExpr.Const(b.IntA > 0 ? b.IntA : 1),
+                };
+            }
+
             case "act_grant_entity_ability":
             {
                 // 给**实体**授予能力（不是给计数器）。
@@ -1111,6 +1185,44 @@ public sealed class DiyBlockDecompiler
 
     public DiyBlockDecompiler(GameSchema schema) { _schema = schema; }
 
+    /// <summary>
+    /// 把构筑期修正还原成积木块。
+    ///
+    /// 它们不是能力，不能混进任何事件帽的能力体，
+    /// 所以单独成块并挂在文档上，由 Compile 端收集回 DeckModsOut。
+    /// </summary>
+    private List<Block> DeckModBlocks(CardDef card)
+    {
+        var list = new List<Block>();
+        if (card?.DeckModifiers == null) return list;
+        foreach (var m in card.DeckModifiers)
+        {
+            if (m == null) continue;
+            string word = m.Kind switch
+            {
+                DeckModKind.ModifyDeckSize => "size",
+                DeckModKind.ModifyLeaderStartLife => "leader_life",
+                DeckModKind.ModifyStartingHandSize => "hand",
+                DeckModKind.ModifyStartEvolvePoints => m.Value2 != 0 ? "sep" : "ep",
+                DeckModKind.OverrideSelfCopyLimit => "self_copy",
+                DeckModKind.AllowSpecificClan => "allow_clan_fixed",
+                DeckModKind.AllowChosenClans => "allow_clan_choose",
+                _ => "size",
+            };
+            int num = m.Kind == DeckModKind.ModifyStartEvolvePoints && m.Value2 != 0 ? m.Value2 : m.Value;
+            list.Add(new Block
+            {
+                Opcode = "act_deck_mod",
+                Text = word,
+                Text2 = m.ExclusiveGroup ?? "",
+                CardNameA = m.TargetClan ?? "",
+                IntA = num,
+                FlagA = m.StackPerCopy,
+            });
+        }
+        return list;
+    }
+
     public CardBlockWorkspace Decompile(CardDef def)
     {
         Errors.Clear();
@@ -1128,6 +1240,9 @@ public sealed class DiyBlockDecompiler
             Traits = (def.Traits ?? Array.Empty<SymbolId<TraitTag>>()).Select(t => t.Name).ToList(),
             HasFuse = def.HasFuse,
             FuseFilter = def.HasFuse ? Target(def.FuseMaterialFilter) : null,
+            // 构筑期修正必须单独装：它们不是能力，混进事件帽会让
+            // 对局中跑出「牌组张数 +20」这种根本不该发生的动作。
+            DeckModBlocks = DeckModBlocks(def),
         };
 
         foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())

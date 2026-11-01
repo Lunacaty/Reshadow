@@ -114,8 +114,25 @@ public sealed class AbilityFormItem
 }
 
 /// <summary>整张卡的表单。</summary>
+/// <summary>表单里的一行构筑期修正。</summary>
+public sealed class DeckModRow
+{
+    /// <summary>size / leader_life / hand / ep / sep / self_copy / allow_clan_fixed / allow_clan_choose</summary>
+    public string Kind { get; set; } = "size";
+    public int Value { get; set; }
+    /// <summary>allow_clan_fixed 时的职业名；其余种类可留空。</summary>
+    public string Arg { get; set; } = "";
+    /// <summary>互斥组：同组只生效一次。</summary>
+    public string ExclusiveGroup { get; set; } = "";
+    public bool StackPerCopy { get; set; }
+}
+
 public sealed class CardFormModel
 {
+    /// <summary>
+    /// 构筑期修正（对局中不生效）。表单三行：种类 / 数值 / 备注（互斥组或职业）。
+    /// </summary>
+    public List<DeckModRow> DeckModRows { get; set; } = new();
     public int CardId { get; set; }
     public string NameChs { get; set; } = "";
     public string NameEng { get; set; } = "";
@@ -258,6 +275,67 @@ public sealed class DiyFormCompiler
             Abilities = abilities,
             Traits = (form.Traits ?? new List<string>()).Select(t => _schema.Trait(t)).ToList(),
             Clan = string.IsNullOrEmpty(form.Clan) ? SymbolId<ClanTag>.Invalid : _schema.Clan(form.Clan),
+            // 构筑期修正：对局中不生效，单独成一组，不进 Abilities。
+            DeckModifiers = (form.DeckModRows ?? new List<DeckModRow>())
+                .Where(r => r != null)
+                .Select(RowToDeckMod)
+                .Where(m => m != null)
+                .ToList(),
+        };
+    }
+
+    /// <summary>表单一行 → DeckBuildModifier。种类写错时返回 null 并报错。</summary>
+    private DeckBuildModifier RowToDeckMod(DeckModRow r)
+    {
+        DeckModKind kind;
+        switch (r.Kind)
+        {
+            case "size": kind = DeckModKind.ModifyDeckSize; break;
+            case "leader_life": kind = DeckModKind.ModifyLeaderStartLife; break;
+            case "hand": kind = DeckModKind.ModifyStartingHandSize; break;
+            case "ep": kind = DeckModKind.ModifyStartEvolvePoints; break;
+            case "sep": kind = DeckModKind.ModifyStartEvolvePoints; break;
+            case "self_copy": kind = DeckModKind.OverrideSelfCopyLimit; break;
+            case "allow_clan_fixed": kind = DeckModKind.AllowSpecificClan; break;
+            case "allow_clan_choose": kind = DeckModKind.AllowChosenClans; break;
+            default:
+                Errors.Add("构筑期修正的种类无法识别：" + r.Kind);
+                return null;
+        }
+        bool isSep = r.Kind == "sep";
+        return new DeckBuildModifier
+        {
+            Kind = kind,
+            Value = isSep ? 0 : r.Value,
+            Value2 = isSep ? r.Value : 0,
+            TargetClan = r.Arg ?? "",
+            StackPerCopy = r.StackPerCopy,
+            ExclusiveGroup = r.ExclusiveGroup ?? "",
+        };
+    }
+
+    /// <summary>DeckBuildModifier → 表单一行。</summary>
+    private static DeckModRow DeckModToRow(DeckBuildModifier m)
+    {
+        string kind = m.Kind switch
+        {
+            DeckModKind.ModifyDeckSize => "size",
+            DeckModKind.ModifyLeaderStartLife => "leader_life",
+            DeckModKind.ModifyStartingHandSize => "hand",
+            DeckModKind.ModifyStartEvolvePoints => m.Value2 != 0 ? "sep" : "ep",
+            DeckModKind.OverrideSelfCopyLimit => "self_copy",
+            DeckModKind.AllowSpecificClan => "allow_clan_fixed",
+            DeckModKind.AllowChosenClans => "allow_clan_choose",
+            _ => "size",
+        };
+        int val = m.Kind == DeckModKind.ModifyStartEvolvePoints && m.Value2 != 0 ? m.Value2 : m.Value;
+        return new DeckModRow
+        {
+            Kind = kind,
+            Value = val,
+            Arg = m.TargetClan ?? "",
+            ExclusiveGroup = m.ExclusiveGroup ?? "",
+            StackPerCopy = m.StackPerCopy,
         };
     }
 
@@ -653,6 +731,13 @@ public sealed class DiyFormCompiler
             Cost = def.BaseCost,
             Attack = def.BaseAttack,
             Life = def.BaseLife,
+            // 构筑期修正反译成表单行。不处理的话，一张带扩容的卡
+            // 用表单读回再存，扩容效果就悄悄没了 —— 而卡面中文看不出区别。
+            DeckModRows = (def.DeckModifiers ?? new List<DeckBuildModifier>())
+                .Where(m => m != null)
+                .Select(DeckModToRow)
+                .Where(r => r != null)
+                .ToList(),
         };
 
         foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())

@@ -187,7 +187,9 @@ public static class RegressPacks
         {
             PoolId = "p1", EnabledPackIds = new List<string> { "a", "b" },
         }, nameClash);
-        bool c1 = !r1.Ok && r1.Errors.Any(e => e.Contains("卡名冲突"));
+        // 两个无依赖关系的包定义同名卡 → 报「同名歧义冲突」。
+        // 有依赖关系时是允许的（被依赖方胜出），所以这里刻意不声明依赖。
+        bool c1 = !r1.Ok && r1.Errors.Any(e => e.Contains("同名歧义冲突") || e.Contains("卡名冲突"));
 
         // C2：同号不同卡
         var idClash = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
