@@ -57,6 +57,7 @@ public static class RegressPacks
         Check("POOL-O 指向性法术可打出 + 点选主战者不死循环", GateSpellTargeting);
         Check("POOL-P 发现的多维组合筛选（卡包+职业+区间+兵种）", GateDiscoverMultiFilter);
         Check("POOL-Q 无头双 Bot 完整对局模拟", GateHeadlessFullMatch);
+        Check("POOL-R 多维发现的四端同构与中文渲染", GateMultiDimFourEnds);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -1491,5 +1492,78 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
                     + " 胜者=" + (winner?.ToString() ?? "null")
                     + " 状态未腐坏=" + noCorruption
                     + " 未注册卡=" + st.UnresolvedSpawnCount);
+    }
+
+    // ---------------------------------------------------------------- 门禁 R
+
+    /// <summary>
+    /// 多维发现（卡包 + 职业 + 费用区间 + 兵种）必须在四端同构，
+    /// 且中文渲染必须把每个维度都印出来。
+    ///
+    /// 三件事各自都会独立出错：
+    ///   · 积木端缺 bool_has_pack/bool_has_clan → 往返丢条件
+    ///   · tokenizer 把 core-wb 的 '-' 拆开 → 卡包名被截成 core
+    ///   · 中文用一个 string 存费用 → 下限被上限覆盖，「2~4」印成「不超过4」
+    /// </summary>
+    private static (bool, string) GateMultiDimFourEnds()
+    {
+        var ws = Diy.DiyWorkspace.Create(1);
+        ws.Context.Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier");
+        var comp = new ReshadowScriptCompiler(ws);
+
+        const string src = @"
+card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
+    on play {
+        discover(target(ally, global_pool, follower, pack: core-wb, clan: Runecraft, trait: Mecha, min_cost: 2, max_cost: 4, count: 1), to: hand)
+    }
+}
+";
+        var defs = comp.Compile(src);
+        if (defs.Count == 0) return (false, "脚本编译失败：" + string.Join("|", comp.Errors.Take(2)));
+        var def0 = defs[0];
+
+        var sp = def0.Abilities[0].Body.OfType<SpawnCardNode>().FirstOrDefault();
+        if (sp == null) return (false, "没有产出生 SpawnCardNode");
+
+        // ① 卡包 ID 完整（不被 '-' 截断）
+        bool packOk = def0.Abilities[0].Body.OfType<SpawnCardNode>()
+            .Any(x => WalkAny(x.CopyFrom?.Where, e => e is HasPackExpr hp && hp.PackId == "core-wb"));
+        // ② 职业条件存在
+        bool clanOk = WalkAny(sp.CopyFrom?.Where, e => e is HasClanExpr);
+        // ③ 费用上下限都存在
+        bool costOk = WalkCount(sp.CopyFrom?.Where, e =>
+            e is CompareExpr c && c.Left?.Op == NumOp.Property && c.Left.Stat == StatKey.Cost) >= 2;
+
+        // ④ 积木往返
+        var dec = new DiyBlockDecompiler(ws.Schema);
+        var doc = dec.Decompile(def0);
+        var res = new DiyBlockCompiler(ws.Schema, ws.Lexicon).Compile(doc);
+        string dBlock = "";
+        bool blockEq = res.Ok && DiyWorkspace.StructurallyEqual(def0, res.Def, out dBlock);
+
+        // ⑤ 中文渲染包含全部维度
+        var cn = ws.Printer.PrintCard(def0);
+        bool cnPack = cn.Contains("core-wb");
+        bool cnClan = cn.Contains("巫师") || cn.Contains("Runecraft");
+        bool cnRange = cn.Contains("2~4");
+
+        bool ok = packOk && clanOk && costOk && blockEq && cnPack && cnClan && cnRange;
+        return (ok, "卡包完整=" + packOk + " 职业=" + clanOk + " 双费用=" + costOk
+                    + " 积木往返=" + blockEq
+                    + " 中文[包]=" + cnPack + " [职业]=" + cnClan + " [区间]=" + cnRange
+                    + (blockEq ? "" : " | " + dBlock.Replace("\n", " ")));
+    }
+
+    private static bool WalkAny(BoolExpr e, Func<BoolExpr, bool> pred)
+        => WalkCount(e, pred) > 0;
+
+    private static int WalkCount(BoolExpr e, Func<BoolExpr, bool> pred)
+    {
+        if (e == null) return 0;
+        int n = pred(e) ? 1 : 0;
+        if (e is AndExpr a) foreach (var x in a.Items) n += WalkCount(x, pred);
+        else if (e is OrExpr o) foreach (var x in o.Items) n += WalkCount(x, pred);
+        else if (e is NotExpr nt) n += WalkCount(nt.Inner, pred);
+        return n;
     }
 }

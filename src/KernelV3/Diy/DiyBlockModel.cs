@@ -1069,6 +1069,20 @@ public sealed class DiyBlockCompiler
                     Trait = _schema.Trait(b.Text ?? ""),
                     Of = CompileTarget(b.Target) ?? TargetSpec.Item,
                 };
+            // 发现的卡包/职业筛选。缺这两支会让积木端造不出
+            // 「只从某卡包/某职业发现」的卡 —— 而脚本端与表单端都能造。
+            case "bool_has_pack":
+                return new HasPackExpr
+                {
+                    PackId = b.Text ?? "",
+                    Of = CompileTarget(b.Target) ?? TargetSpec.Item,
+                };
+            case "bool_has_clan":
+                return new HasClanExpr
+                {
+                    Clan = _schema.Clan(b.Text ?? ""),
+                    Of = CompileTarget(b.Target) ?? TargetSpec.Item,
+                };
             case "bool_has_state":
                 return new HasStateExpr
                 {
@@ -1764,6 +1778,10 @@ public sealed class DiyBlockDecompiler
                 return new Block { Opcode = "bool_has_kw", Text = hk.Keyword.Name, Target = Target(hk.Of) };
             case HasTraitExpr ht:
                 return new Block { Opcode = "bool_has_trait", Text = ht.Trait.Name, Target = Target(ht.Of) };
+            case HasPackExpr hp:
+                return new Block { Opcode = "bool_has_pack", Text = hp.PackId, Target = Target(hp.Of) };
+            case HasClanExpr hcl:
+                return new Block { Opcode = "bool_has_clan", Text = hcl.Clan.Name, Target = Target(hcl.Of) };
             case HasStateExpr hs:
                 // Of 必须存下来：它区分「本卡是否已进化」与「被筛的那张是否已进化」。
                 return new Block { Opcode = "bool_has_state", EnumA = hs.State.ToString(), Target = Target(hs.Of) };

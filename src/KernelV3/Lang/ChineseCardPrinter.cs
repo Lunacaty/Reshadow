@@ -644,8 +644,11 @@ public sealed class ChineseCardPrinter
         // 所以这里只从 Where 里挑最常见的几类译出来，
         // 译不出的部分退回「卡牌」—— 宁可笼统，也不要印出英文。
         string kind = "卡牌";
-        string cost = "";
+        int? costMin = null;
+        int? costMax = null;
         string trait = "";
+        string pack = "";
+        string clan = "";
 
         void Walk(BoolExpr e)
         {
@@ -661,26 +664,47 @@ public sealed class ChineseCardPrinter
                         _ => "卡牌",
                     };
                     break;
+                // 费用上下限要分别记下来再合并渲染。
+                // 早先用一个 string 变量，后写的分支覆盖先写的 ——
+                // 于是「2~4 费」被印成「不超过 4 费」，下限整个消失。
                 case CompareExpr cmp when cmp.Left?.Op == NumOp.Property:
                     if (cmp.Left.Stat == StatKey.Cost && cmp.Right is NumExpr r && r.Op == NumOp.Const)
-                        cost = cmp.Op switch
+                    {
+                        switch (cmp.Op)
                         {
-                            CompareOp.Le or CompareOp.Lt => "费用不超过" + r.Value + "的",
-                            CompareOp.Ge or CompareOp.Gt => "费用不低于" + r.Value + "的",
-                            // 等于号此前不渲染，卡面会印成「发现1张卡牌」——
-                            // 玩家看不出它是「费用恰好为 3」的筛选。
-                            CompareOp.Eq => "费用为" + r.Value + "的",
-                            _ => "",
-                        };
+                            case CompareOp.Le:
+                            case CompareOp.Lt: costMax = r.Value; break;
+                            case CompareOp.Ge:
+                            case CompareOp.Gt: costMin = r.Value; break;
+                            case CompareOp.Eq: costMin = costMax = r.Value; break;
+                        }
+                    }
                     break;
                 case HasTraitExpr ht:
                     trait = TraitZh(ht.Trait.Name) ?? "";
+                    break;
+                // 卡包与职业筛选也必须渲染出来：
+                // 少了它们，卡面会印成「发现1张随从」，
+                // 玩家完全看不出它限定在某个卡包或某个职业里。
+                case HasPackExpr hp:
+                    pack = "来自【" + hp.PackId + "】卡包的";
+                    break;
+                case HasClanExpr hcl:
+                    clan = ClanZh(hcl.Clan.Name) + "职业的";
                     break;
             }
         }
         if (spec.Where != null) Walk(spec.Where);
 
-        return cost + trait + kind;
+        string cost;
+        if (costMin.HasValue && costMax.HasValue)
+            cost = costMin == costMax ? "费用为" + costMin.Value + "的"
+                                      : "费用为" + costMin.Value + "~" + costMax.Value + "的";
+        else if (costMax.HasValue) cost = "费用不超过" + costMax.Value + "的";
+        else if (costMin.HasValue) cost = "费用不低于" + costMin.Value + "的";
+        else cost = "";
+
+        return pack + clan + cost + trait + kind;
     }
 
     /// <summary>

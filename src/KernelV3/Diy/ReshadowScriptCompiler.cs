@@ -142,6 +142,23 @@ public sealed class ReshadowScriptCompiler
     /// 与 summon 的区别：summon 是「造一张指定的卡」，
     /// discover 是「从卡池里按条件找」，条件住在 TargetSpec.Where 里。
     /// </summary>
+    /// <summary>
+    /// 读一个可能带连字符的标识符（core-wb / my-pack-2）。
+    /// tokenizer 把 '-' 当成独立 token，逐 token 拼接才能还原原样。
+    /// </summary>
+    private static string ReadDashedId(Cursor p)
+    {
+        var sb = new StringBuilder(p.Next() ?? "");
+        while (p.PeekToken() == "-")
+        {
+            p.Next();
+            var seg = p.Next();
+            if (seg == null) break;
+            sb.Append('-').Append(seg);
+        }
+        return sb.ToString();
+    }
+
     private EffectNode ParseDiscover(Cursor p)
     {
         // 调用方 ParseAtomStatement 已吃掉 discover 后面的 '('，
@@ -1669,7 +1686,9 @@ public sealed class ReshadowScriptCompiler
                 // 卡包筛选：只从某个特定卡包发现（区别于 card_pool / global_pool 的范围）。
                 case "pack":
                     p.TryChar(':');
-                    wheres.Add(new HasPackExpr { PackId = p.Next() ?? "", Of = TargetSpec.Item });
+                    // 卡包 ID 常带连字符（core-wb），而 tokenizer 会把 '-' 切成独立 token。
+                    // 只读一个 token 会得到 "core"，把 "-wb" 留在流里。
+                    wheres.Add(new HasPackExpr { PackId = ReadDashedId(p), Of = TargetSpec.Item });
                     break;
 
                 default: break;
