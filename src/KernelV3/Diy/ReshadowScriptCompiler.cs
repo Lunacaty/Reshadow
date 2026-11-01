@@ -1645,6 +1645,33 @@ public sealed class ReshadowScriptCompiler
                     });
                     break;
 
+                // 最小费用：与 max_cost 合起来就是任意区间。
+                case "min_cost":
+                    p.TryChar(':');
+                    wheres.Add(new CompareExpr
+                    {
+                        Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
+                        Op = CompareOp.Ge,
+                        Right = NumExpr.Const(p.TryInt() ?? 0),
+                    });
+                    break;
+
+                // 职业筛选：只从某个职业的卡里发现。
+                case "clan":
+                    p.TryChar(':');
+                    wheres.Add(new HasClanExpr
+                    {
+                        Clan = _schema.Clan(p.Next() ?? ""),
+                        Of = TargetSpec.Item,
+                    });
+                    break;
+
+                // 卡包筛选：只从某个特定卡包发现（区别于 card_pool / global_pool 的范围）。
+                case "pack":
+                    p.TryChar(':');
+                    wheres.Add(new HasPackExpr { PackId = p.Next() ?? "", Of = TargetSpec.Item });
+                    break;
+
                 default: break;
             }
         }
@@ -2506,10 +2533,18 @@ public sealed class ReshadowScriptCompiler
                     });
                     break;
                 case HasTraitExpr ht: parts.Add("trait: " + ht.Trait.Name); break;
+                case HasClanExpr hcl: parts.Add("clan: " + hcl.Clan.Name); break;
+                case HasPackExpr hpk: parts.Add("pack: " + hpk.PackId); break;
                 case NotSameEntityExpr: parts.Add("other"); break;
                 case ConstBoolExpr cb0 when cb0.Value: break;
                 // 任意属性比较都要写出来：攻击力≤3 这类筛选条件
                 // 丢了就变成「所有随从」，卡面文字看不出差别但效果放大。
+                case CompareExpr cmp when cmp.Op == CompareOp.Ge
+                                          && cmp.Left?.Op == NumOp.Property
+                                          && cmp.Left.Stat == StatKey.Cost
+                                          && cmp.Right is NumExpr rge && rge.Op == NumOp.Const:
+                    parts.Add("min_cost: " + rge.Value);
+                    break;
                 case CompareExpr cmp:
                     parts.Add("where: " + PrintNumExpr(cmp.Left) + " "
                         + (cmp.Op switch

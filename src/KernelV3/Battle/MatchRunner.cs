@@ -104,6 +104,7 @@ public sealed class MatchRunner
         _state.DrawCards(1, Math.Max(0, prof1.StartingHandSize));
 
         _state.ActivePlayer = firstPlayer;
+        _state.FirstPlayer = firstPlayer;
         _state.TurnNumber = 0;
         Phase = MatchPhase.Mulligan;
 
@@ -200,6 +201,7 @@ public sealed class MatchRunner
         _state.DrawCards(1, _state.Rules.StartingHandSize);
 
         _state.ActivePlayer = firstPlayer;
+        _state.FirstPlayer = firstPlayer;
         _state.TurnNumber = 0;
         Phase = MatchPhase.Mulligan;
 
@@ -397,7 +399,7 @@ public sealed class MatchRunner
 
     public bool PlayCard(RuntimeEntity card)
     {
-        if (IsWaitingForInput) return false;
+        if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
         bool ok = _turns.PlayCard(_state.ActivePlayer, card, _vm);
         DrainVm();
         return ok;
@@ -405,7 +407,7 @@ public sealed class MatchRunner
 
     public bool Evolve(RuntimeEntity e, bool super)
     {
-        if (IsWaitingForInput) return false;
+        if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
         bool ok = _turns.Evolve(_state.ActivePlayer, e, super, _vm);
         DrainVm();
         return ok;
@@ -413,7 +415,7 @@ public sealed class MatchRunner
 
     public bool EngageAmulet(RuntimeEntity a, int cost)
     {
-        if (IsWaitingForInput) return false;
+        if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
         bool ok = _turns.EngageAmulet(_state.ActivePlayer, a, cost, _vm);
         DrainVm();
         return ok;
@@ -430,7 +432,7 @@ public sealed class MatchRunner
 
     public bool FuseCards(RuntimeEntity b, IReadOnlyList<RuntimeEntity> m)
     {
-        if (IsWaitingForInput) return false;
+        if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
         bool ok = _turns.FuseCards(_state.ActivePlayer, b, m, _vm);
         DrainVm();
         return ok;
@@ -438,7 +440,7 @@ public sealed class MatchRunner
 
     public bool UseExtraPp()
     {
-        if (IsWaitingForInput) return false;
+        if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
         bool ok = _turns.UseExtraPp(_state.ActivePlayer);
         DrainVm();
         return ok;
@@ -446,7 +448,7 @@ public sealed class MatchRunner
 
     public void Attack(RuntimeEntity attacker, RuntimeEntity defender)
     {
-        if (IsWaitingForInput) return;
+        if (Phase != MatchPhase.Playing || IsWaitingForInput) return;
         _combat.ExecuteCombat(attacker, defender, _vm);
         DrainVm();
     }

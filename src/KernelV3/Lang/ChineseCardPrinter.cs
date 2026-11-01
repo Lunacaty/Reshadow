@@ -667,6 +667,9 @@ public sealed class ChineseCardPrinter
                         {
                             CompareOp.Le or CompareOp.Lt => "费用不超过" + r.Value + "的",
                             CompareOp.Ge or CompareOp.Gt => "费用不低于" + r.Value + "的",
+                            // 等于号此前不渲染，卡面会印成「发现1张卡牌」——
+                            // 玩家看不出它是「费用恰好为 3」的筛选。
+                            CompareOp.Eq => "费用为" + r.Value + "的",
                             _ => "",
                         };
                     break;
@@ -999,6 +1002,10 @@ public sealed class ChineseCardPrinter
             case HasTraitExpr ht:
                 parts.Add(TraitZh(ht.Trait.Name) + "兵种的");
                 break;
+            case HasPackExpr hp:
+                parts.Add("来自【" + hp.PackId + "】卡包的");
+                break;
+
             case HasClanExpr hc:
                 parts.Add(ClanZh(hc.Clan.Name) + "职业的");
                 break;

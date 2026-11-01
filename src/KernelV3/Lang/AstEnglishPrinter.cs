@@ -370,6 +370,7 @@ public static class AstEnglishPrinter
             HasKindExpr hk => "is " + hk.Kind + OfSuffix(hk.Of),
             HasKeywordExpr hk => "has " + hk.Keyword.Name,
             HasTraitExpr ht => "has trait " + ht.Trait.Name,
+            HasPackExpr hp => "in pack " + hp.PackId,
             HasClanExpr hc => "has clan " + hc.Clan.Name,
             NotSameEntityExpr => "other than itself",
             IsPreviousExpr ip => "is selected",

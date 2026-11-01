@@ -123,6 +123,13 @@ public sealed class BattleState : IVmWorld
     public MatchRules Rules { get; }
 
     /// <summary>
+    /// 本局的先手玩家（0/1）。
+    /// TurnNumber 的递增靠它判断「这是不是本局第一个回合」——
+    /// 写死 playerId == 0 会让「玩家 1 先手」的开局把 TurnNumber 卡在 0。
+    /// </summary>
+    public int FirstPlayer { get; set; } = 0;
+
+    /// <summary>
     /// 本局所属的卡池视图（发现与随机生成要查它）。
     ///
     /// 可以为 null —— 那时发现类效果会直接报「本局未绑定卡池」，

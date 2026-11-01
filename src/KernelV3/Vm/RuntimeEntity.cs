@@ -172,6 +172,7 @@ public sealed class RuntimeEntity
         EntityId = EntityId,
         EntrySerial = EntrySerial,
         CardId = Def?.CardId ?? 0,
+        Def = Def,
         Name = Def?.Name ?? "",
         Kind = Def?.Kind ?? Ast.CardKind.Follower,
         Zone = Zone,

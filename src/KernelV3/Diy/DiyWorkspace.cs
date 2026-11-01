@@ -405,6 +405,10 @@ public sealed class DiyWorkspace
             return new HasKindExpr { Kind = hk.Kind, Of = NormalizeTarget(hk.Of) };
         if (e is HasTraitExpr ht)
             return new HasTraitExpr { Trait = ht.Trait, Of = NormalizeTarget(ht.Of) };
+        if (e is HasClanExpr hcl)
+            return new HasClanExpr { Clan = hcl.Clan, Of = NormalizeTarget(hcl.Of) };
+        if (e is HasPackExpr hpk)
+            return new HasPackExpr { PackId = hpk.PackId, Of = NormalizeTarget(hpk.Of) };
         if (e is NotSameEntityExpr ne)
             return new NotSameEntityExpr { ExcludeSlot = ne.ExcludeSlot, Of = NormalizeTarget(ne.Of) };
         return e;

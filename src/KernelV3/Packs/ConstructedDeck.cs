@@ -67,64 +67,6 @@ public static class DeckValidator
         return prof.Errors;
     }
 
-    private static List<string> ValidateLegacy(ConstructedDeck deck, CardPoolRuntime pool)
-    {
-        var errors = new List<string>();
-        if (deck == null) { errors.Add("构筑为空"); return errors; }
-        if (pool == null) { errors.Add("卡池为空"); return errors; }
-
-        // 构筑必须绑定它校验时用的那个卡池：串池会让「这张卡能不能用」变成两套答案。
-        if (!string.IsNullOrEmpty(deck.PoolId)
-            && !string.Equals(deck.PoolId, pool.PoolId, StringComparison.OrdinalIgnoreCase))
-        {
-            errors.Add("构筑绑定的卡池是 [" + deck.PoolId + "]，与校验用的 [" + pool.PoolId + "] 不一致。");
-        }
-
-        var rules = pool.Rules;
-        int totalCards = deck.Cards.Sum(x => x.count);
-
-        if (totalCards < rules.MinDeckSize || totalCards > rules.MaxDeckSize)
-        {
-            errors.Add("构筑张数不合法：当前 " + totalCards + " 张，本卡池要求 "
-                       + rules.MinDeckSize + "~" + rules.MaxDeckSize + " 张。");
-        }
-
-        foreach (var (cardId, count) in deck.Cards)
-        {
-            if (count <= 0)
-            {
-                errors.Add("卡片 " + cardId + " 的投入数量必须大于 0。");
-                continue;
-            }
-            if (!pool.AllCards.TryGetValue(cardId, out var def))
-            {
-                errors.Add("卡片 id=" + cardId + " 不存在于卡池 [" + pool.PoolId
-                           + "] 中（可能所属卡包已被移除）。");
-                continue;
-            }
-            if (def.IsToken && !rules.AllowTokensInConstructedDeck)
-            {
-                errors.Add("《" + def.Name + "》是衍生卡（Token），不能直接投入局外构筑！");
-            }
-            if (count > rules.MaxCopiesPerCard)
-            {
-                errors.Add("《" + def.Name + "》投入了 " + count + " 张，超过本卡池同名卡上限（"
-                           + rules.MaxCopiesPerCard + " 张）！");
-            }
-            if (!rules.AllowCrossCraft && def.Clan.IsValid)
-            {
-                bool isNeutral = string.Equals(def.Clan.Name, "Neutral", StringComparison.OrdinalIgnoreCase);
-                bool isMyClan = string.Equals(def.Clan.Name, deck.LeaderClan, StringComparison.OrdinalIgnoreCase);
-                if (!isNeutral && !isMyClan)
-                {
-                    errors.Add("《" + def.Name + "》属于 [" + def.Clan.Name + "] 职业，不能投入 ["
-                               + deck.LeaderClan + "] 职业的构筑中！");
-                }
-            }
-        }
-
-        return errors;
-    }
 
     /// <summary>展开成局内发牌序列（校验通过后才调）。</summary>
     public static List<int> Expand(ConstructedDeck deck) => deck?.ExpandToCardIds() ?? new List<int>();

@@ -54,6 +54,12 @@ public sealed class PendingChoice
 {
     public int ChoiceId { get; init; }
     public ZoneScope Player { get; init; }
+
+    /// <summary>
+    /// 绝对玩家编号（0/1）。
+    /// Player 是相对视角（Self/Opponent），UI 双人对战时必须知道该弹给谁。
+    /// </summary>
+    public int PlayerId { get; init; }
     public ChoiceKind Kind { get; init; }
 
     /// <summary>合法候选实体 id。</summary>

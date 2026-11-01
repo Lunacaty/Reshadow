@@ -41,7 +41,8 @@ public sealed class TurnRunner
             throw new ArgumentOutOfRangeException(nameof(playerId), "回合玩家必须是 0 或 1");
 
         _state.ActivePlayer = playerId;
-        if (playerId == 0) _state.TurnNumber++;
+        // 用 FirstPlayer 而不是写死 0：玩家 1 先手时，他的第 1 回合也该让 TurnNumber 前进。
+        if (_state.TurnNumber == 0 || playerId == _state.FirstPlayer) _state.TurnNumber++;
 
         vm?.CurrentTurnOwner = playerId;
         vm?.ResetTriggerCounts();
@@ -258,14 +259,10 @@ public sealed class TurnRunner
                 if (accLegal) return true;
             }
 
+            // 结晶打出后是**护符**，按 76-c 2.3-A-2：护符没合法手选目标也能拍上场。
+            // 套用法术的目标预检会让结晶卡在敌方空场时打不出去。
             if (card.Def.CrystallizeDef != null && pp >= card.Def.CrystallizeDef.BaseCost && !full)
-            {
-                var cryProbe = card.Def;
-                card.Def = card.Def.CrystallizeDef;
-                bool cryLegal = HasLegalTargetForSpell(card);
-                card.Def = cryProbe;
-                if (cryLegal) return true;
-            }
+                return true;
 
             reason = "费用不足"; return false;
         }
@@ -547,11 +544,21 @@ public sealed class TurnRunner
             {
                 var spec = GetChooseTarget(node);
                 if (spec == null || spec.Mode != SelectMode.Choose) continue;
+
+                // 引用 $selected 槽位的目标由**前面那条 Select 指令**填，
+                // 出牌前槽位必然是空的 —— 对它预检等于要求「先有结果再执行」，
+                // 会把所有「先选再打」的复合效果卡死。
+                if (spec.SourceKind == Ast.TargetSourceKind.Slot) continue;
+
                 sawChoose = true;
                 if (CountLegalTargets(spec, card) <= 0) return false;
             }
         }
-        return !sawChoose;
+        // 走到这里说明「所有 Choose 目标都至少有一个合法候选」。
+        // 这里必须返回 true ——
+        // 早先写的是 return !sawChoose，于是只要卡带手选目标就恒返回 false，
+        // 全游戏的点杀/指定法术一张都打不出去（而单卡测试只测 Choose 不合法的那一面，测不出来）。
+        return true;
     }
 
     /// <summary>

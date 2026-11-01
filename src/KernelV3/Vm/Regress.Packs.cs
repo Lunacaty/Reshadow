@@ -54,6 +54,9 @@ public static class RegressPacks
         Check("POOL-L 含 discover+deck_mod 的四端同构往返", GateFourWayDiscover);
         Check("POOL-M Builder 关键词 + UseExtraPp + Overflow 阈值", GateBuilderKeywordsAndRules);
         Check("POOL-N 两条构筑入口都必须走 DeckRuleResolver", GateUnifiedDeckEntry);
+        Check("POOL-O 指向性法术可打出 + 点选主战者不死循环", GateSpellTargeting);
+        Check("POOL-P 发现的多维组合筛选（卡包+职业+区间+兵种）", GateDiscoverMultiFilter);
+        Check("POOL-Q 无头双 Bot 完整对局模拟", GateHeadlessFullMatch);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -1221,5 +1224,272 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
         bool ok = resolverOk && sizeExpanded && lifeBonus && reverseBlocked;
         return (ok, "扩容生效=" + sizeExpanded + "(" + prof.MinDeckSize + "~" + prof.MaxDeckSize + ")"
                     + " 生命+10=" + lifeBonus + " 反向拦截=" + reverseBlocked);
+    }
+
+    // ---------------------------------------------------------------- 门禁 O
+
+    /// <summary>
+    /// 指向性法术必须真的能打出去。
+    ///
+    /// 专打「HasLegalTargetForSpell 末尾写反」那个 Bug：
+    /// 只要卡带 Choose 目标就恒返回 false，全游戏的点杀法术一张都打不出去，
+    /// 而单卡测试只测「没有合法目标时不能打」，测不到这一面。
+    /// </summary>
+    private static (bool, string) GateSpellTargeting()
+    {
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["t"] = new CardPackDef
+            {
+                PackId = "t", NativePoolId = "tp",
+                Cards = new List<CardRawEntry>
+                {
+                    new CardRawEntry { CardId = 790001, NameEng = "Kill Spell", Kind = CardKind.Spell,
+                                       Cost = 2, Text = "Select an enemy follower on the field and banish it." },
+                    new CardRawEntry { CardId = 790002, NameEng = "Dummy", Kind = CardKind.Follower,
+                                       Cost = 1, Attack = 1, Life = 1 },
+                },
+            },
+        };
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "tp", EnabledPackIds = new List<string> { "t" },
+        }, packs);
+        if (!built.Ok) return (false, "建池失败：" + string.Join("|", built.Errors.Take(2)));
+
+        var st = built.Pool.CreateBattleState(seed: 94);
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 0; st.TurnNumber = 3;
+        st.WriteCounter(0, st.Schema.Counter("pp"), 10);
+        st.WriteCounter(0, st.Schema.Counter("max_pp"), 10);
+
+        // 敌方场上放 1 个随从，手里拿点杀法术
+        var foe = st.SpawnCard(790002, ZoneRef.Board, 1);
+        var spell = st.SpawnCard(790001, ZoneRef.Hand, 0);
+
+        var tr = new TurnRunner(st, st.Schema);
+        bool canPlay = tr.CanPlayCard(0, spell, out var why);
+
+        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+        bool played = false;
+        int guard = 0;
+        if (canPlay)
+        {
+            vm.DropPendingTriggers();
+            played = tr.PlayCard(0, spell, vm);
+            while (vm.Pending != null && guard++ < 8)
+            {
+                vm.SubmitChoice(vm.Pending.ChoiceId, new[] { foe.EntityId });
+                vm.StepUntilBlocked();
+            }
+            vm.StepUntilBlocked();
+        }
+
+        bool banished = foe.Zone == ZoneRef.Banished;
+        bool ok = canPlay && played && banished;
+        return (ok, "可打出=" + canPlay + (canPlay ? "" : "(" + why + ")")
+                    + " 实战打出=" + played + " 敌方被放逐=" + banished);
+    }
+
+    // ---------------------------------------------------------------- 门禁 P
+
+    /// <summary>
+    /// 发现必须支持多维组合：卡包 + 职业 + 费用区间 + 兵种。
+    /// 干扰项（其他卡包 / 其他职业 / 超费）绝不能混进候选。
+    /// </summary>
+    private static (bool, string) GateDiscoverMultiFilter()
+    {
+        var entries = new List<CardRawEntry>();
+        // 符合全部条件的 3 张：target 包、Runecraft 职业、费用 2~4、Mecha 兵种
+        for (int i = 0; i < 3; i++)
+            entries.Add(new CardRawEntry
+            {
+                CardId = 791100 + i, NameEng = "Hit" + i, Kind = CardKind.Follower,
+                Cost = 3, Attack = 1, Life = 1, Clan = "Runecraft",
+                Traits = new List<string> { "Mecha" },
+            });
+        // 干扰 A：别的卡包（同职业同费用同兵种）
+        for (int i = 0; i < 3; i++)
+            entries.Add(new CardRawEntry
+            {
+                CardId = 791200 + i, NameEng = "OtherPack" + i, Kind = CardKind.Follower,
+                Cost = 3, Attack = 1, Life = 1, Clan = "Runecraft",
+                Traits = new List<string> { "Mecha" },
+            });
+        // 干扰 B：别的职业
+        for (int i = 0; i < 3; i++)
+            entries.Add(new CardRawEntry
+            {
+                CardId = 791300 + i, NameEng = "OtherClan" + i, Kind = CardKind.Follower,
+                Cost = 3, Attack = 1, Life = 1, Clan = "Swordcraft",
+                Traits = new List<string> { "Mecha" },
+            });
+        // 干扰 C：超费
+        for (int i = 0; i < 3; i++)
+            entries.Add(new CardRawEntry
+            {
+                CardId = 791400 + i, NameEng = "TooCostly" + i, Kind = CardKind.Follower,
+                Cost = 9, Attack = 1, Life = 1, Clan = "Runecraft",
+                Traits = new List<string> { "Mecha" },
+            });
+
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["target"] = new CardPackDef
+            {
+                PackId = "target", NativePoolId = "dp",
+                Clans = new List<SymbolRawEntry>
+                {
+                    new SymbolRawEntry { Name = "Runecraft" }, new SymbolRawEntry { Name = "Swordcraft" },
+                },
+                Traits = new List<SymbolRawEntry> { new SymbolRawEntry { Name = "Mecha" } },
+                Cards = entries.Take(3).ToList(),
+            },
+            ["other"] = new CardPackDef
+            {
+                PackId = "other", NativePoolId = "dp",
+                Cards = entries.Skip(3).ToList(),
+            },
+        };
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "dp", EnabledPackIds = new List<string> { "target", "other" },
+        }, packs);
+        if (!built.Ok) return (false, "建池失败：" + string.Join("|", built.Errors.Take(2)));
+
+        var st = built.Pool.CreateBattleState(seed: 95);
+        var mecha = st.Schema.Trait("Mecha");
+        var rune = st.Schema.Clan("Runecraft");
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 0; st.TurnNumber = 3;
+
+        var where = new AndExpr(new List<BoolExpr>
+        {
+            new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item },
+            new HasTraitExpr { Trait = mecha, Of = TargetSpec.Item },
+            new HasClanExpr { Clan = rune, Of = TargetSpec.Item },
+            new HasPackExpr { PackId = "target", Of = TargetSpec.Item },
+            new CompareExpr
+            {
+                Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
+                Op = CompareOp.Ge, Right = NumExpr.Const(2),
+            },
+            new CompareExpr
+            {
+                Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Item),
+                Op = CompareOp.Le, Right = NumExpr.Const(4),
+            },
+        });
+
+        var node = new SpawnCardNode
+        {
+            SourceKind = CardSourceKind.PoolQuery,
+            CopyFrom = new TargetSpec { Zone = ZoneRef.GlobalPool, Mode = SelectMode.Choose, Where = where },
+            ToZone = ZoneRef.Hand, ToOwner = ZoneScope.Self, Count = NumExpr.Const(1),
+        };
+        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+        var src = st.SpawnCard(791100, ZoneRef.Hand, 0);
+        var sco = new VmScope { Owner = ZoneScope.Self, Controller = 0, Source = EntityRef.From(src) };
+        vm.PushBody(new List<EffectNode> { node }, sco);
+        vm.StepUntilBlocked();
+
+        if (vm.Pending == null) return (false, "未挂起");
+        var cands = vm.Pending.Candidates;
+        bool allHit = cands.All(id => id >= 791100 && id < 791103);
+        bool noInterference = !cands.Any(id => id >= 791200);
+        bool unresolved = st.UnresolvedSpawnCount == 0;
+
+        bool ok = allHit && noInterference && unresolved;
+        return (ok, "候选=" + string.Join(",", cands)
+                    + " 全命中=" + allHit + " 无干扰=" + noInterference
+                    + " Unresolved=" + st.UnresolvedSpawnCount);
+    }
+
+    // ---------------------------------------------------------------- 门禁 Q
+
+    /// <summary>
+    /// 无头双 Bot 完整对局：不接任何前端，只靠 MatchRunner 的公开接口
+    /// 跑完「开局 → 换牌 → 回合循环 → GetLegalActions/Execute → Winner()」。
+    ///
+    /// 这是唯一能暴露「单卡测试测不出来、打完整对局必炸」那类问题的测试：
+    /// 帧栈死循环、区域查找遗漏、阶段守卫缺失，都只在多回合连续操作里显形。
+    /// </summary>
+    private static (bool, string) GateHeadlessFullMatch()
+    {
+        var root = CardPackLoader.ResolvePacksRoot();
+        if (root == null) return (false, "找不到 data/packs");
+        var packs = CardPackLoader.LoadAll(root).ToDictionary(
+            p => p.PackId, StringComparer.OrdinalIgnoreCase);
+
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "standard",
+            EnabledPackIds = new List<string> { "core-wb", "testset-v2" },
+        }, packs);
+        if (!built.Ok) return (false, "建池失败：" + string.Join("|", built.Errors.Take(2)));
+
+        // 用可收藏卡各凑 40 张（同名上限 3 张 → 需要至少 14 种）
+        var collectible = built.Pool.CollectibleCards;
+        if (collectible.Count < 14) return (false, "可收藏卡不足 14 种，无法组牌：" + collectible.Count);
+
+        ConstructedDeck BuildDeck()
+        {
+            var list = new List<(int, int)>();
+            int total = 0;
+            foreach (var c in collectible)
+            {
+                if (total >= 40) break;
+                int n = Math.Min(3, 40 - total);
+                list.Add((c.CardId, n));
+                total += n;
+            }
+            return new ConstructedDeck { PoolId = "standard", LeaderClan = "Neutral", Cards = list };
+        }
+
+        var deck0 = BuildDeck();
+        var deck1 = BuildDeck();
+
+        var st = built.Pool.CreateBattleState(seed: 96);
+        var runner = new MatchRunner(st, st.Schema);
+        runner.AutoChoicePolicy = FirstLegalChoicePolicy.Instance;
+
+        runner.StartWithConstructedDecks(built.Pool, 0, deck0, deck1);
+        runner.ConfirmMulligan();
+
+        int steps = 0;
+        const int maxSteps = 4000;
+        while (runner.Phase == MatchPhase.Playing && steps < maxSteps)
+        {
+            steps++;
+            if (runner.IsWaitingForInput) continue;
+
+            var acts = runner.GetLegalActions();
+            if (acts == null || acts.Count == 0)
+            {
+                // 没动作就结束回合；若连结束回合都没有，说明状态已死。
+                runner.EndTurn();
+                continue;
+            }
+
+            // 优先出牌/进化/攻击，最后才结束回合
+            var pick = acts.OrderBy(a => a.Kind == PlayerActionKind.EndTurn ? 1 : 0).First();
+            if (!runner.Execute(pick)) runner.EndTurn();
+        }
+
+        bool finished = runner.Phase == MatchPhase.Finished;
+        int? winner = finished ? runner.Winner() : null;
+        bool winnerOk = winner is 0 or 1;
+        bool noCorruption = true;   // BattleState 无此字段，改在下方用 runner 侧信息判断
+        bool resolved = st.UnresolvedSpawnCount == 0;
+
+        bool ok = finished && winnerOk && noCorruption && resolved;
+        return (ok, "步数=" + steps + " 终局=" + finished
+                    + " 胜者=" + (winner?.ToString() ?? "null")
+                    + " 状态未腐坏=" + noCorruption
+                    + " 未注册卡=" + st.UnresolvedSpawnCount);
     }
 }

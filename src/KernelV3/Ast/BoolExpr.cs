@@ -127,3 +127,10 @@ public sealed class IsPreviousExpr : BoolExpr
 {
     public string Slot { get; init; } = "$selected";
 }
+
+/// <summary>实体所属卡包匹配指定 PackId（用于「只从某个卡包发现卡片」）。</summary>
+public sealed class HasPackExpr : BoolExpr
+{
+    public string PackId { get; init; } = "";
+    public TargetSpec Of { get; init; }
+}

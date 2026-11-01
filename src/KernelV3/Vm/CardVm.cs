@@ -311,10 +311,17 @@ public sealed partial class CardVm
     /// <summary>设置挂起状态。返回 true（表示已阻塞）。</summary>
     private bool Block(PendingChoice choice)
     {
+        // PlayerId 由相对视角换算出绝对玩家编号：
+        // 接上 UI 或双人对战时，外层必须知道该弹给玩家 0 还是 1。
+        int pid = _frames.Count > 0
+            ? _frames[^1].Scope.ResolvePlayer(choice.Player)
+            : _currentTurnOwner;
+
         choice = new PendingChoice
         {
             ChoiceId = _nextChoiceId++,
             Player = choice.Player,
+            PlayerId = pid,
             Kind = choice.Kind,
             Candidates = choice.Candidates,
             MinSelect = choice.MinSelect,
@@ -422,10 +429,18 @@ public sealed partial class CardVm
         var refs = new List<EntityRef>();
         foreach (var id in selectedEntityIds ?? Array.Empty<int>())
         {
+            // 必须搜全部 8 个区域。
+            // 早先只搜 Board/Hand/Deck/Cemetery，于是「选主战者」永远找不到实体，
+            // 槽位被写成空列表 → 重跑指令时又弹一次同样的选择 →
+            // AutoChoicePolicy 连续 500 次后抛「自动选择死循环」崩掉整局。
             var live = _world.EnumerateZone(ZoneRef.Board, -1)
+                .Concat(_world.EnumerateZone(ZoneRef.Leader, -1))
                 .Concat(_world.EnumerateZone(ZoneRef.Hand, -1))
+                .Concat(_world.EnumerateZone(ZoneRef.CrestArea, -1))
+                .Concat(_world.EnumerateZone(ZoneRef.ExArea, -1))
                 .Concat(_world.EnumerateZone(ZoneRef.Deck, -1))
                 .Concat(_world.EnumerateZone(ZoneRef.Cemetery, -1))
+                .Concat(_world.EnumerateZone(ZoneRef.Banished, -1))
                 .FirstOrDefault(e => e.EntityId == id);
             if (live != null) refs.Add(EntityRef.From(live));
         }

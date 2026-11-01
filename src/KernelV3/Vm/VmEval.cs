@@ -210,6 +210,13 @@ public sealed class VmEval
                 return ResolveRef(t, scope).Any(r => RefHasTrait(r, ht.Trait));
             }
 
+            case HasPackExpr hp:
+            {
+                var t = hp.Of ?? TargetSpec.Self;
+                return ResolveRef(t, scope).Any(r =>
+                    string.Equals(RefDef(r)?.PackId, hp.PackId, StringComparison.OrdinalIgnoreCase));
+            }
+
             case HasClanExpr hc:
             {
                 var t = hc.Of ?? TargetSpec.Self;

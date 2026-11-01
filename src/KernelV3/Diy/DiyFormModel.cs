@@ -68,6 +68,12 @@ public enum FormNumberSource
 /// <summary>目标筛选（扁平版 tgt_query）。</summary>
 public sealed class TargetFilterForm
 {
+    /// <summary>最小费用（0 = 不限）。</summary>
+    public int MinCost { get; set; }
+    /// <summary>职业筛选（空 = 不限）。</summary>
+    public string Clan { get; set; } = "";
+    /// <summary>卡包筛选（空 = 不限）。</summary>
+    public string PackId { get; set; } = "";
     public string Owner { get; set; } = "Self";     // Self / Opponent / Any
     public string Zone { get; set; } = "Board";     // Board / Hand / Deck / Cemetery
     public string Kind { get; set; } = "Any";       // Any / Follower / Spell / Amulet
@@ -479,6 +485,14 @@ public sealed class DiyFormCompiler
                     };
                     break;
                 case HasTraitExpr ht: f.Trait = ht.Trait.Name; break;
+                case HasClanExpr hcl: f.Clan = hcl.Clan.Name; break;
+                case HasPackExpr hpk: f.PackId = hpk.PackId; break;
+                case CompareExpr cmpGe when cmpGe.Op == CompareOp.Ge
+                                           && cmpGe.Left?.Op == NumOp.Property
+                                           && cmpGe.Left.Stat == StatKey.Cost
+                                           && cmpGe.Right is NumExpr rge2 && rge2.Op == NumOp.Const:
+                    f.MinCost = rge2.Value;
+                    break;
                 case CompareExpr cmp when cmp.Left?.Op == NumOp.Property
                                           && cmp.Left.Stat == StatKey.Cost
                                           && cmp.Right is NumExpr r0 && r0.Op == NumOp.Const
@@ -524,6 +538,19 @@ public sealed class DiyFormCompiler
                 Right = NumExpr.Const(f.MaxCost),
             });
         }
+        if (f.MinCost > 0)
+        {
+            items.Add(new CompareExpr
+            {
+                Left = new NumExpr { Op = NumOp.Property, Stat = StatKey.Cost, Of = TargetSpec.Item },
+                Op = CompareOp.Ge,
+                Right = NumExpr.Const(f.MinCost),
+            });
+        }
+        if (!string.IsNullOrEmpty(f.Clan) && !string.Equals(f.Clan, "Any", StringComparison.OrdinalIgnoreCase))
+            items.Add(new HasClanExpr { Clan = _schema.Clan(f.Clan), Of = TargetSpec.Item });
+        if (!string.IsNullOrEmpty(f.PackId))
+            items.Add(new HasPackExpr { PackId = f.PackId, Of = TargetSpec.Item });
         return items.Count == 0 ? BoolExpr.True
              : items.Count == 1 ? items[0]
              : (BoolExpr)new AndExpr(items);

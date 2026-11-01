@@ -54,6 +54,15 @@ public static class DeckRuleResolver
             return profile;
         }
 
+        // 卡池绑定一致性：构筑必须用它校验时的那一个卡池。
+        // 串池会让「这张卡能不能用」出现两套答案。
+        if (!string.IsNullOrEmpty(deck.PoolId)
+            && !string.Equals(deck.PoolId, pool.PoolId, StringComparison.OrdinalIgnoreCase))
+        {
+            profile.Errors.Add("构筑绑定的卡池是 [" + deck.PoolId + "]，与校验用的 ["
+                               + pool.PoolId + "] 不一致。");
+        }
+
         var baseRules = pool.BaseRules;
         profile.MinDeckSize = baseRules.MinDeckSize;
         profile.MaxDeckSize = baseRules.MaxDeckSize;
