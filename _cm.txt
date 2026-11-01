@@ -1,0 +1,19 @@
+feat: 官方卡池接入（968 张）+ 修 MetaModeWeaver 空引用
+
+数据源：data/cards/cards_eng_flat.json（982 张官方英文卡面）
+        data/cards/sva_cards_text.json（904 张官方中文名 + 895 张中文效果）
+
+产出：
+  data/packs/official-sv/pack.json   968 张（剔除 14 张编译失败卡）
+  data/pools/official.pool.json      官方标准卡池
+  _backup/official-full/             原 982 张完整备份
+
+启示录牌组（Apocalypse Deck）由《终极之罪·深渊之主》的 Fanfare 触发替换牌库：
+  Silent Rider x3 / Servant of Cocytus x3 /
+  Demon of Purgatory x3 / Astaroth's Reckoning x1
+
+剔除的 14 张全部是同一类错误：跨句（跨能力域）代词回指。
+详见 docs/107-官方卡池编译问题.md。
+
+顺带修 MetaModeWeaver.cs 空引用：result[idx] 可能是占位 null，
+foreach (var node in prev.Body) 直接崩。官方卡 10912310 触发。

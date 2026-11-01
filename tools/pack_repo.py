@@ -185,7 +185,10 @@ def main():
     ap.add_argument('--title', default=None, help='文档标题')
     ap.add_argument('--no-tree', action='store_true', help='不输出目录树')
     ap.add_argument('--attach', action='append', default=[], metavar='PATH',
-                    help='追加一个仓库外的文档（如设计原文）到文末，可重复')
+                    help='追加一个仓库外的文档（如设计原文）到文末，可重复。不存在则静默忽略')
+    ap.add_argument('--attach-dir', action='append', default=[], metavar='DIR',
+                    help='把一个目录下的全部文件作为附件追加到文末，按文件名排序。'
+                         '改名 / 增删附件都不必改构建脚本')
     ap.add_argument('--attach-title', default='附件：设计原文与对话资料',
                     help='--attach 引入文档的章节标题')
     ap.add_argument('--quiet', action='store_true')
@@ -260,20 +263,39 @@ def main():
         out.write("```" + lang + "\n" + body + "\n```\n\n")
 
     # 追加仓库外文档（设计原文 / 对话资料）
+    # 附录是**自由调整**的：作者随时会改名、增删附件。
+    # 因此「附件不存在」既不是错误、也不该写进文档 ——
+    # 往正文塞一张「| 文件 | 附件不存在 |」的表只是在浪费阅读者的 token。
+    # 这里只把**实际读到**的附件写进附录。
     attached = []
+
+    attach_files = []
+    for d in args.attach_dir:
+        dp = d if os.path.isabs(d) else os.path.join(root, d)
+        if not os.path.isdir(dp):
+            continue
+        for name in sorted(os.listdir(dp)):
+            p2 = os.path.join(dp, name)
+            if os.path.isfile(p2):
+                attach_files.append(p2)
     for ap_ in args.attach:
-        fp = ap_ if os.path.isabs(ap_) else os.path.join(root, ap_)
-        if not os.path.isfile(fp):
-            skipped.append((ap_, '附件不存在'))
+        attach_files.append(ap_ if os.path.isabs(ap_) else os.path.join(root, ap_))
+
+    seen_attach = set()
+    for fp in attach_files:
+        real = os.path.abspath(fp)
+        if real in seen_attach:
+            continue
+        seen_attach.add(real)
+        if not os.path.isfile(real):
             continue
         try:
-            body = io.open(fp, encoding='utf-8', errors='replace').read()
+            body = io.open(real, encoding='utf-8', errors='replace').read()
         except OSError:
-            skipped.append((ap_, '附件读取失败'))
             continue
         if body.endswith('\n'):
             body = body[:-1]
-        attached.append((ap_, os.path.basename(fp), body, os.path.getsize(fp)))
+        attached.append((fp, os.path.basename(real), body, os.path.getsize(real)))
 
     if attached:
         out.write("---\n\n## " + args.attach_title + "\n\n")

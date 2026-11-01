@@ -94,6 +94,18 @@ public static class MetaModeWeaver
             }
 
             var prev = result[idx];
+
+            // result[idx] 可能是上面第 85 行补的 null 占位：
+            // 「activate all of them instead」出现在 1./2. 选项**之前**时，
+            // 会先补 null 占位撑着，等后面那轮循环再来填。
+            // 这里若不判空就会直接 NullReferenceException ——
+            // 官方卡 《Verdant Ring Kindred》(10912310) 正是这个形态。
+            if (prev == null)
+            {
+                result.Add(cur);
+                continue;
+            }
+
             var cond = BuildMetaCondition(cur, lex);
             if (cond == null)
             {
@@ -102,7 +114,7 @@ public static class MetaModeWeaver
             }
 
             var widened = new List<EffectNode>();
-            foreach (var node in prev.Body)
+            foreach (var node in prev.Body ?? new List<EffectNode>())
             {
                 if (node is BranchModeNode bm)
                 {
