@@ -19,6 +19,7 @@ public partial class DevShot : Node
     private bool _openBattle;
     private bool _battleExpanded;
     private bool _battleBadges;
+    private bool _battleMulligan;
 
     public override void _Ready()
     {
@@ -32,6 +33,7 @@ public partial class DevShot : Node
             if (a == "--battle") _openBattle = true;
             if (a == "--battle-expanded") { _openBattle = true; _battleExpanded = true; }
             if (a == "--battle-badges") { _openBattle = true; _battleBadges = true; }
+            if (a == "--mulligan") { _openBattle = true; _battleMulligan = true; }
         }
         if (_frames <= 0) _frames = 30;
         SetProcess(true);

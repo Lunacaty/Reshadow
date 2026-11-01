@@ -30,7 +30,8 @@ public sealed class BattleSessionController
     public int MyPlayerId { get; }
 
     public BattleSessionController(GameSessionStore store, ConstructedDeck myDeck,
-                                   ConstructedDeck foeDeck, int seed = 0)
+                                   ConstructedDeck foeDeck, int seed = 0,
+                                   bool startInMulligan = false)
     {
         Store = store ?? throw new ArgumentNullException(nameof(store));
         Store.Initialize();
@@ -38,14 +39,117 @@ public sealed class BattleSessionController
         var pool = Store.GetPoolRuntime(myDeck.PoolId)
                    ?? throw new InvalidOperationException("找不到卡池：" + myDeck.PoolId);
 
+        MyPlayerId = 0;
+
         State = pool.CreateBattleState(seed);
         Runner = new MatchRunner(State, State.Schema);
-        Runner.AutoChoicePolicy = FirstLegalChoicePolicy.Instance;
+
+        // 关键：**不设** AutoChoicePolicy。
+        // 之前为了让第二轮先跑起来，设成 FirstLegalChoicePolicy 让 VM 替玩家
+        // 自动乱选第 1 个目标 —— 那样 SelectTarget / SelectMode / Discover
+        // 永远不会挂起，第三轮的交互层就无从谈起。
+        // 现在玩家自己的选择真正挂起，由 PendingChoiceOverlay 接管；
+        // 只有 AI 对手的选择才走 ResolveAiPendingIfAny 自动消解。
+        Runner.AutoChoicePolicy = null;
 
         Runner.StartWithConstructedDecks(pool, 0, myDeck, foeDeck ?? myDeck);
-        Runner.ConfirmMulligan();
 
-        MyPlayerId = 0;
+        if (startInMulligan)
+            ResolveAiPendingIfAny();
+        else
+            ConfirmPlayerMulligan(Array.Empty<RuntimeEntity>());
+    }
+
+    // ---------------------------------------------------------------- 换牌
+
+    public bool IsInMulligan => Runner.Phase == MatchPhase.Mulligan;
+
+    /// <summary>
+    /// 确认我方起手换牌，同时替 AI 对手换掉高费牌，然后正式进入第 1 回合。
+    /// </summary>
+    public void ConfirmPlayerMulligan(IReadOnlyList<RuntimeEntity> myReturningCards)
+    {
+        if (Runner.Phase != MatchPhase.Mulligan) return;
+
+        if (myReturningCards != null && myReturningCards.Count > 0)
+            Runner.Mulligan(MyPlayerId, myReturningCards);
+
+        // AI 的简单策略：换掉费用 >= 5 的卡。
+        int foeId = 1 - MyPlayerId;
+        var foeReturn = Hand(foeId).Where(c => c.Cost >= 5).ToList();
+        if (foeReturn.Count > 0)
+            Runner.Mulligan(foeId, foeReturn);
+
+        Runner.ConfirmMulligan();
+        ResolveAiPendingIfAny();
+    }
+
+    /// <summary>
+    /// 若当前挂起的选择属于 AI 对手，自动替它完成；
+    /// 属于我方则**保持挂起**，交给 UI。
+    /// </summary>
+    public void ResolveAiPendingIfAny()
+    {
+        int guard = 0;
+        while (Runner.IsWaitingForInput && Runner.PendingChoice != null)
+        {
+            if (Runner.PendingChoice.PlayerId == MyPlayerId) return;
+            if (++guard > 200) break;
+
+            var chosen = FirstLegalChoicePolicy.Instance.Select(State, Runner.PendingChoice);
+            Runner.SubmitChoice(Runner.PendingChoice.ChoiceId, chosen);
+        }
+    }
+
+    /// <summary>当前挂起的 BranchModeNode（供 SelectMode 弹窗渲染每个选项的中文描述）。</summary>
+    public BranchModeNode GetPendingBranchModeNode()
+    {
+        if (Runner.PendingChoice?.Kind != ChoiceKind.SelectMode) return null;
+        var frames = Runner.Vm?.Frames;
+        if (frames == null || frames.Count == 0) return null;
+        var top = frames[^1];
+        return top.Ip < top.Code.Count ? top.Code[top.Ip] as BranchModeNode : null;
+    }
+
+    /// <summary>当前挂起选择的来源实体（弹窗左侧展示「是哪张卡发起的」）。</summary>
+    public RuntimeEntity GetPendingSourceEntity()
+    {
+        var frames = Runner.Vm?.Frames;
+        if (frames == null || frames.Count == 0) return null;
+        var srcRef = frames[^1].Scope?.Source;
+        if (srcRef == null) return null;
+        return State.GetLive(srcRef.Value.EntityId, srcRef.Value.EntrySerial);
+    }
+
+    /// <summary>
+    /// 推进 AI 对手回合一步（UI 定时器每 0.35s 调一次，让玩家看清对手在做什么）。
+    /// 返回 true = 执行了一个动作；false = 已回到我方回合或对局结束。
+    /// </summary>
+    public bool StepOpponentTurn()
+    {
+        ResolveAiPendingIfAny();
+        if (IsFinished || IsMyTurn || IsWaitingForInput) return false;
+
+        var actions = Runner.GetLegalActions();
+        if (actions.Count == 0)
+        {
+            Runner.EndTurn();
+            ResolveAiPendingIfAny();
+            return false;
+        }
+
+        // 优先级：额外PP → 出牌 → 进化 → 启动护符 → 攻击 → 结束回合
+        var pick = actions.FirstOrDefault(a => a.Kind == PlayerActionKind.UseExtraPp)
+                ?? actions.FirstOrDefault(a => a.Kind == PlayerActionKind.PlayCard)
+                ?? actions.FirstOrDefault(a => a.Kind is PlayerActionKind.Evolve or PlayerActionKind.SuperEvolve)
+                ?? actions.FirstOrDefault(a => a.Kind == PlayerActionKind.EngageAmulet)
+                ?? actions.FirstOrDefault(a => a.Kind == PlayerActionKind.Attack)
+                ?? actions.FirstOrDefault(a => a.Kind == PlayerActionKind.EndTurn);
+
+        if (pick == null) return false;
+        Runner.Execute(pick);
+        ResolveAiPendingIfAny();
+        return true;
     }
 
     // ---------------------------------------------------------------- 回合状态
@@ -93,6 +197,7 @@ public sealed class BattleSessionController
             reason = "无法打出（费用不足、时机不对或该卡不可用）";
             return false;
         }
+        ResolveAiPendingIfAny();
         return true;
     }
 
@@ -167,7 +272,9 @@ public sealed class BattleSessionController
     public bool TryEvolve(RuntimeEntity e, bool super)
     {
         if (e == null) return false;
-        return Runner.Evolve(e, super);
+        bool ok = Runner.Evolve(e, super);
+        if (ok) ResolveAiPendingIfAny();
+        return ok;
     }
 
     // ---------------------------------------------------------------- 启动 / 融合
@@ -180,7 +287,13 @@ public sealed class BattleSessionController
             a.Kind == PlayerActionKind.EngageAmulet && a.Subject?.EntityId == e.EntityId);
     }
 
-    public bool TryEngage(RuntimeEntity e) => e != null && Runner.EngageAmulet(e);
+    public bool TryEngage(RuntimeEntity e)
+    {
+        if (e == null) return false;
+        bool ok = Runner.EngageAmulet(e);
+        if (ok) ResolveAiPendingIfAny();
+        return ok;
+    }
 
     public bool CanStartFuse(RuntimeEntity card)
     {
@@ -215,7 +328,7 @@ public sealed class BattleSessionController
     {
         if (!IsInFuseMode || FuseBaseCard == null) return false;
         bool ok = Runner.FuseCards(FuseBaseCard, SelectedFuseMaterials.ToList());
-        if (ok) CancelFuseMode();
+        if (ok) { CancelFuseMode(); ResolveAiPendingIfAny(); }
         return ok;
     }
 
@@ -232,12 +345,18 @@ public sealed class BattleSessionController
     {
         if (IsWaitingForInput) return;
         Runner.EndTurn();
+        ResolveAiPendingIfAny();
     }
 
     public bool CanUseExtraPp()
         => Runner.GetLegalActions().Any(a => a.Kind == PlayerActionKind.UseExtraPp);
 
-    public bool TryUseExtraPp() => Runner.UseExtraPp();
+    public bool TryUseExtraPp()
+    {
+        bool ok = Runner.UseExtraPp();
+        if (ok) ResolveAiPendingIfAny();
+        return ok;
+    }
 
     // ---------------------------------------------------------------- Extra PP
 
@@ -306,7 +425,12 @@ public sealed class BattleSessionController
     public bool HasPendingChoice => Runner.IsWaitingForInput;
 
     public void SubmitChoice(int choiceId, params int[] selected)
-        => Runner.SubmitChoice(choiceId, selected);
+    {
+        Runner.SubmitChoice(choiceId, selected);
+        // 玩家做完选择后，若接下来轮到 AI 的选择就替它消解；
+        // 若又轮到我方则保持挂起继续等 UI。
+        ResolveAiPendingIfAny();
+    }
 }
 
 /// <summary>卡面上的能力类型标记（由「红色书页 / 绿色旗子 / 空」三态驱动）。</summary>

@@ -36,6 +36,10 @@ public partial class BattleScreenRoot : Control
     private Button _pageBtn;
     private Button _menuBtn;
     private BattleVfxDirector _vfx;
+    private MulliganOverlay _mulligan;
+    private PendingChoiceOverlay _pending;
+    private MatchResultOverlay _result;
+    private double _aiTimer;
     private int _lastEventIdx;
     private readonly Dictionary<long, Vector2> _unitCenters = new();
 
@@ -49,7 +53,9 @@ public partial class BattleScreenRoot : Control
     public void Boot(GameSessionStore store, ConstructedDeck mine, ConstructedDeck foe)
     {
         _store = store;
-        _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101);
+        // startInMulligan: true —— 先停在换牌阶段，由 MulliganOverlay 接管。
+        _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
+                                            startInMulligan: true);
         BoardUnitWidget.CurrentController = _ctrl;
 
         // 开局前先把游标推到日志末尾。
@@ -59,6 +65,57 @@ public partial class BattleScreenRoot : Control
 
         BuildUi();
         Rebuild();
+        RefreshOverlays();
+    }
+
+    /// <summary>
+    /// 按当前状态挂载/卸载三块交互层。
+    ///
+    /// 顺序即 Z 序：换牌层(75) &lt; 挂起层(70) &lt; 结算层(85)，
+    /// 所以结算永远盖在最上面，换牌阶段不会被挂起弹窗抢焦点。
+    /// </summary>
+    private void RefreshOverlays()
+    {
+        if (_ctrl == null) return;
+
+        // ① 换牌
+        if (_ctrl.IsInMulligan)
+        {
+            if (_mulligan == null || !IsInstanceValid(_mulligan))
+            {
+                _mulligan = new MulliganOverlay();
+                AddChild(_mulligan);
+                _mulligan.Setup(_ctrl);
+                _mulligan.OnMulliganConfirmed += () => { _mulligan = null; Rebuild(); };
+            }
+            return;
+        }
+
+        // ② 终局
+        if (_ctrl.IsFinished)
+        {
+            if (_result == null || !IsInstanceValid(_result))
+            {
+                int winner = _ctrl.Winner;
+                bool victory = winner == _ctrl.MyPlayerId;
+                _result = new MatchResultOverlay();
+                AddChild(_result);
+                _result.Setup(victory, _ctrl.State.TurnNumber);
+                _result.OnRematch += () => OnExitToDecks?.Invoke();
+                _result.OnBackToDecks += () => OnExitToDecks?.Invoke();
+            }
+            return;
+        }
+
+        // ③ VM 挂起
+        if (_pending == null || !IsInstanceValid(_pending))
+        {
+            _pending = new PendingChoiceOverlay();
+            AddChild(_pending);
+            _pending.Setup(_ctrl);
+            _pending.OnChoiceSubmitted += Rebuild;
+        }
+        _pending.RefreshState();
     }
 
     private void BuildUi()
@@ -79,7 +136,13 @@ public partial class BattleScreenRoot : Control
         //
         // 之前错写成 -FlatEdgeY(-112)，把整个框推出屏幕，只剩半个立绘。
         _foeLeader.Position = new Vector2(475, -LeaderMedallionWidget.DomeTopY);
-        _foeLeader.OnLeaderClicked += () => _actionPanel.ShowForEntity(_ctrl.Leader(1));
+        _foeLeader.OnLeaderClicked += () =>
+        {
+            var ldr = _ctrl.Leader(1);
+            if (_pending != null && IsInstanceValid(_pending)
+                && _pending.TryPickBoardOrHandEntity(ldr.EntityId)) return;
+            _actionPanel.ShowForEntity(ldr);
+        };
         AddChild(_foeLeader);
 
         _allyLeader = new LeaderMedallionWidget();
@@ -88,7 +151,13 @@ public partial class BattleScreenRoot : Control
         // 放到 Y = 720 - FlatEdgeY，平直边正好压在屏幕底沿。
         _allyLeader.Position = new Vector2(
             475, GetViewportRect().Size.Y - LeaderMedallionWidget.FlatEdgeY);
-        _allyLeader.OnLeaderClicked += () => _actionPanel.ShowForEntity(_ctrl.Leader(0));
+        _allyLeader.OnLeaderClicked += () =>
+        {
+            var ldr = _ctrl.Leader(0);
+            if (_pending != null && IsInstanceValid(_pending)
+                && _pending.TryPickBoardOrHandEntity(ldr.EntityId)) return;
+            _actionPanel.ShowForEntity(ldr);
+        };
 
         // EP / SEP 球可直接点击进化 —— 原版就是把进化球镶在主战者拱框上，
         // 玩家会自然去点它。之前事件定义了却没人订阅，点了毫无反应。
@@ -170,6 +239,28 @@ public partial class BattleScreenRoot : Control
             _field.IsDraggingPlayCard = mp.Y < 500f;
             _field.QueueRedraw();
         }
+
+        StepOpponentIfNeeded(delta);
+    }
+
+    /// <summary>
+    /// 对手回合的「慢放」推进：每 0.35s 走一步。
+    ///
+    /// 不这么做的后果是 AI 一帧之内把整个回合打完 —— 玩家只看到
+    /// 场面瞬间变样，完全看不出对手出了什么牌、打了谁。
+    /// </summary>
+    private void StepOpponentIfNeeded(double delta)
+    {
+        if (_ctrl == null || _ctrl.IsFinished) return;
+        if (_ctrl.IsInMulligan) return;
+        if (_ctrl.IsMyTurn || _ctrl.IsWaitingForInput) { _aiTimer = 0; return; }
+
+        _aiTimer += delta;
+        if (_aiTimer < 0.35) return;
+        _aiTimer = 0;
+
+        if (_ctrl.StepOpponentTurn()) Rebuild();
+        else Rebuild();
     }
 
     // ---------------------------------------------------------------- 重建
@@ -183,6 +274,8 @@ public partial class BattleScreenRoot : Control
         _foeLeader.QueueRedraw();
         _rightCol.QueueRedraw();
         _field.QueueRedraw();
+
+        RefreshOverlays();
     }
 
     private void RebuildBoards()
@@ -210,6 +303,12 @@ public partial class BattleScreenRoot : Control
 
             w.OnClicked += ent =>
             {
+                // 若正在等玩家点选目标，这一次点击就直接当选择提交，
+                // 不要再弹详情窗把交互带偏。
+                if (_pending != null && IsInstanceValid(_pending)
+                    && _pending.TryPickBoardOrHandEntity(ent.EntityId))
+                    return;
+
                 // 只弹左上详情，**绝不在这里 Rebuild()**。
                 // OnClicked 是鼠标「按下」瞬间触发的，此刻这个 widget 正准备
                 // 进入拖拽攻击（OnDragAttackStarted 紧随其后）。

@@ -45,6 +45,9 @@ public static class RegressBattleUi
         Check("BUI-5 拖拽攻击命中判定", CaseDragAttackHit);
         Check("BUI-6 仅入场曲/守护不得亮绿旗", CaseBadgeFalsePositive);
         Check("BUI-7 后手 ExtraPP 黄灰双态", CaseExtraPpPhase);
+        Check("BUI-8 起手换牌流程", CaseMulligan);
+        Check("BUI-9 玩家选择真正挂起并解析", CasePendingSurfaces);
+        Check("BUI-10 AI 回合自动演武闭环", CaseOpponentAi);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -368,5 +371,131 @@ public static class RegressBattleUi
         bool ok = foeIsSecond && allyIsFirst && before && firstNever;
         return (ok, "后手=" + foeIsSecond + " 先手=" + allyIsFirst
                     + " 后手初始可用=" + before + " 先手恒不可用=" + firstNever);
+    }
+
+    // ---------------------------------------------------------------- BUI-8
+
+    /// <summary>
+    /// 起手换牌：startInMulligan 启动后应停在 Mulligan 阶段，
+    /// 确认换牌后进入 Playing 且手牌数正确。
+    /// </summary>
+    private static (bool, string) CaseMulligan()
+    {
+        var store = NewStore();
+        var deck = SampleDeck(store, out string e0);
+        if (deck == null) return (false, e0);
+
+        var ctrl = new BattleSessionController(store, deck, deck, seed: 555, startInMulligan: true);
+
+        bool inMulligan = ctrl.IsInMulligan;
+        int myHand0 = ctrl.Hand(0).Count;
+        int foeHand0 = ctrl.Hand(1).Count;
+
+        // 换掉前 2 张
+        var returning = ctrl.Hand(0).Take(2).ToList();
+        ctrl.ConfirmPlayerMulligan(returning);
+
+        bool playing = !ctrl.IsInMulligan;
+        int myHand1 = ctrl.Hand(0).Count;
+
+        // 手牌数会变：换牌抽回等量后，第 1 回合的回合开始抽牌会再 +1。
+        // 所以断言「进入 Playing 且手牌不为空」，不锁死具体张数。
+        bool ok = inMulligan && myHand0 > 0 && foeHand0 > 0 && playing && myHand1 > 0;
+        return (ok, "初始Mulligan=" + inMulligan + " 我方起手=" + myHand0
+                    + " 敌方起手=" + foeHand0 + " 换后进入Playing=" + playing
+                    + " 手牌数 " + myHand0 + "->" + myHand1 + "（换牌抽回 + 回合开始抽牌）");
+    }
+
+    // ---------------------------------------------------------------- BUI-9
+
+    /// <summary>
+    /// 玩家自己的选择必须真正挂起（不被 AutoChoicePolicy 吞掉），
+    /// 且 SubmitChoice 之后能正确消解。
+    ///
+    /// 这是第三轮的核心断言：第二轮把 AutoChoicePolicy 设成 FirstLegal 时，
+    /// HasPendingChoice 永远瞬间为 false，交互层根本没有存在的余地。
+    /// </summary>
+    private static (bool, string) CasePendingSurfaces()
+    {
+        var store = NewStore();
+        var deck = SampleDeck(store, out string e0);
+        if (deck == null) return (false, e0);
+
+        var ctrl = new BattleSessionController(store, deck, deck, seed: 2024);
+
+        // 找一张带 Mode 抉择的卡（璀璨黄金 81000033 是「选择1个模式发动」）
+        var modeCard = ctrl.Hand(0).FirstOrDefault(c => c.Def != null && c.Def.CardId == 81000033);
+        if (modeCard == null)
+        {
+            // 手牌里没有就找一个带 BranchModeNode 的定义并塞进手牌
+            var pool = store.GetPoolView("all-clans");
+            var def = pool.EnumerateCollectibleCards().FirstOrDefault(c => c.CardId == 81000033);
+            if (def == null) return (false, "找不到测试卡 81000033");
+            modeCard = ctrl.State.SpawnCard(81000033, ZoneRef.Hand, 0);
+            if (modeCard == null) return (false, "无法生成测试卡");
+        }
+
+        // 给它足够费用
+        var ppKey = ctrl.Schema.Counter("pp");
+        var maxPpKey = ctrl.Schema.Counter("max_pp");
+        ctrl.State.Players[0].Counters[ppKey.Id] = 10;
+        ctrl.State.Players[0].Counters[maxPpKey.Id] = 10;
+
+        bool played = ctrl.TryPlayCard(modeCard, out string why);
+        bool hasPending = ctrl.HasPendingChoice;
+        var kind = ctrl.Runner.PendingChoice?.Kind;
+        int candCount = ctrl.Runner.PendingChoice?.Candidates?.Count ?? 0;
+
+        bool branched = false;
+        int branchOpts = 0;
+        if (hasPending && kind == ChoiceKind.SelectMode)
+        {
+            var branch = ctrl.GetPendingBranchModeNode();
+            branchOpts = branch?.Options?.Count ?? 0;
+            branched = branch != null;
+
+            // 选第 2 项（index 1）
+            ctrl.SubmitChoice(ctrl.Runner.PendingChoice.ChoiceId, 1);
+        }
+
+        bool resolved = !ctrl.HasPendingChoice;
+
+        bool ok = played && hasPending && kind == ChoiceKind.SelectMode && branched && resolved;
+        return (ok, "出牌=" + played + (played ? "" : "(" + why + ")")
+                    + " 挂起=" + hasPending + " 类型=" + kind
+                    + " 候选=" + candCount + " 模式数=" + branchOpts
+                    + " 提交后解除=" + resolved);
+    }
+
+    // ---------------------------------------------------------------- BUI-10
+
+    /// <summary>
+    /// AI 回合自动演武：我方结束回合后，StepOpponentTurn 应能推进动作，
+    /// 并最终把回合交回我方或结束对局。
+    /// </summary>
+    private static (bool, string) CaseOpponentAi()
+    {
+        var store = NewStore();
+        var deck = SampleDeck(store, out string e0);
+        if (deck == null) return (false, e0);
+
+        var ctrl = new BattleSessionController(store, deck, deck, seed: 777);
+
+        ctrl.EndTurn();
+        bool wasOpponentTurn = !ctrl.IsMyTurn;
+
+        int steps = 0;
+        bool acted = false;
+        const int cap = 400;
+        while (steps < cap && !ctrl.IsFinished && !ctrl.IsMyTurn)
+        {
+            if (ctrl.StepOpponentTurn()) acted = true;
+            steps++;
+        }
+
+        bool backToMe = ctrl.IsMyTurn || ctrl.IsFinished;
+        bool ok = wasOpponentTurn && acted && backToMe;
+        return (ok, "交给对手=" + wasOpponentTurn + " AI执行过动作=" + acted
+                    + " 步数=" + steps + " 回合回到我方或终局=" + backToMe);
     }
 }
