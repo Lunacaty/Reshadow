@@ -429,6 +429,7 @@ public sealed class ReshadowScriptCompiler
         var activeZone = ActiveZoneScope.Board;
         var duringTurn = TurnOwnerScope.Any;
         CoreEvent? secondary = null;
+        int maxTrig = 0;
         Ast.TargetSpec subject = null;
 
         while (!p.AtEnd)
@@ -480,6 +481,12 @@ public sealed class ReshadowScriptCompiler
                         _ => ActiveZoneScope.Board,
                     };
                     break;
+                case "max":
+                    // 每回合次数上限。不写出来就变成每次触发。
+                    p.TryChar(':');
+                    maxTrig = p.TryInt() ?? 0;
+                    break;
+
                 case "turn":
                     p.TryChar(':');
                     var tu = p.Next();
@@ -504,6 +511,7 @@ public sealed class ReshadowScriptCompiler
             ActiveZone = activeZone,
             DuringTurn = duringTurn,
             SecondaryEvent = secondary,
+            MaxTriggersPerTurn = maxTrig,
             SubjectFilter = subject,
         };
 
@@ -1830,6 +1838,8 @@ public sealed class ReshadowScriptCompiler
                 sb.Append(" turn: ").Append(ab.Trigger.DuringTurn);
             if (ab.Trigger.SecondaryEvent != null)
                 sb.Append(" or ").Append(EventWord(ab.Trigger.SecondaryEvent.Value));
+            if (ab.Trigger.MaxTriggersPerTurn > 0)
+                sb.Append(" max: ").Append(ab.Trigger.MaxTriggersPerTurn);
         }
 
         // <ev>/<sev> 段自动附带的「已进化 / 已超进化」域条件由触发头表达，
