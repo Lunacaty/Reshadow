@@ -62,6 +62,26 @@ public sealed class CardPoolRuntime
         if (!string.IsNullOrWhiteSpace(def.Name)) _cardsByName[def.Name.Trim()] = def;
     }
 
+    /// <summary>
+    /// 转成轻量的 CardPool 视图（GlobalCatalog + 启用包集合）。
+    ///
+    /// DeckRuleResolver 与发现机制都吃 CardPool，而组牌/开局侧拿到的是
+    /// CardPoolRuntime —— 没有这条转换，两边就会各用一套校验。
+    /// </summary>
+    public CardPool ToCardPoolView()
+    {
+        var catalog = new GlobalCatalog();
+        foreach (var card in _cardsById.Values) catalog.RegisterCompiledCard(card);
+        return new CardPool
+        {
+            PoolId = PoolId,
+            Name = PoolId,
+            Catalog = catalog,
+            BaseRules = Rules,
+            EnabledPackIds = new HashSet<string>(EnabledPackIds, StringComparer.OrdinalIgnoreCase),
+        };
+    }
+
     /// <summary>用本卡池的完整环境建一个全新对局状态。</summary>
     public BattleState CreateBattleState(int seed = 0)
     {

@@ -185,7 +185,17 @@ public sealed class GlobalCatalog
         // 脚本格式的卡不能丢给 EnglishCompiler —— 当场会编译报错。
         if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
         {
-            var ws = Diy.DiyWorkspace.Create(c.CardId);
+            // 与 CardPool.CompileCard 保持完全一致：
+            // 复用本总表的 Schema / Lexicon / Glossary，绝不新造一套 ——
+            // DiyWorkspace.Create 会生成本地 Schema，SymbolId 与本仓串号，
+            // 且空 Lexicon 认不出其他卡名，summon("Fairy") 会解析成 0。
+            var probe = new Battle.BattleState(Schema, 0, Schema.Rules);
+            var ctx = Lang.CompileContext.For(probe);
+            foreach (var kv in _cardsByName)
+                if (kv.Value != null) ctx.Lexicon.AddCard(kv.Key, kv.Value.CardId);
+            ctx.Lexicon.Build();
+
+            var ws = Diy.DiyWorkspace.For(ctx, Glossary);
             var sc = new Diy.ReshadowScriptCompiler(ws);
             var made = sc.Compile(c.Text);
             if (made.Count == 0)
@@ -195,13 +205,31 @@ public sealed class GlobalCatalog
                 return null;
             }
             var sd = made[0];
+
+            // 合并而不是 ??：sd.DeckModifiers 是空列表（非 null）时，
+            // ?? 左边永远非空，JSON 上写的 deck_modifiers 会被整个吞掉。
+            var mergedMods = (sd.DeckModifiers != null && sd.DeckModifiers.Count > 0)
+                ? sd.DeckModifiers
+                : (c.DeckModifiers ?? new List<DeckBuildModifier>());
+            var mergedKws = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k))
+                .Concat(sd.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+                .Distinct().ToList();
+
             return new CardDef
             {
                 CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = sd.Kind,
-                BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
-                Abilities = sd.Abilities, Traits = traits, Clan = clan,
-                InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k)).ToList(),
-                DeckModifiers = sd.DeckModifiers ?? c.DeckModifiers ?? new List<DeckBuildModifier>(),
+                BaseCost = c.Cost > 0 ? c.Cost : sd.BaseCost,
+                BaseAttack = c.Attack > 0 ? c.Attack : sd.BaseAttack,
+                BaseLife = c.Life > 0 ? c.Life : sd.BaseLife,
+                Abilities = sd.Abilities,
+                Traits = traits.Count > 0 ? traits : sd.Traits,
+                Clan = clan.IsValid ? clan : sd.Clan,
+                InnateKeywords = mergedKws,
+                DeckModifiers = mergedMods,
+                // 这六个字段漏拷会让「脚本写的纹章/融合/激奏卡」变成白板。
+                HasFuse = sd.HasFuse, FuseMaterialFilter = sd.FuseMaterialFilter,
+                CrestDef = sd.CrestDef, FaithDef = sd.FaithDef,
+                AccelerateDef = sd.AccelerateDef, CrystallizeDef = sd.CrystallizeDef,
                 PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text,
             };
         }

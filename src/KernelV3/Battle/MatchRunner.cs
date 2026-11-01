@@ -149,18 +149,24 @@ public sealed class MatchRunner
     {
         if (pool == null) throw new ArgumentNullException(nameof(pool));
 
-        var err0 = Packs.DeckValidator.Validate(deck0, pool);
-        var err1 = Packs.DeckValidator.Validate(deck1, pool);
-        if (err0.Count > 0 || err1.Count > 0)
+        // 必须走 DeckRuleResolver 算出各自的生效规则 ——
+        // 直接用 pool.Rules 会忽略牌组里的 DeckBuildModifier，
+        // 「扩容 +20」「主战者生命 +10」「额外职业」全部不生效。
+        var view = pool.ToCardPoolView();
+        var prof0 = Packs.DeckRuleResolver.ResolveAndValidate(deck0, view);
+        var prof1 = Packs.DeckRuleResolver.ResolveAndValidate(deck1, view);
+
+        if (!prof0.IsValid || !prof1.IsValid)
         {
-            var all = new List<string>(err0);
-            all.AddRange(err1);
+            var all = new List<string>(prof0.Errors);
+            all.AddRange(prof1.Errors);
             throw new InvalidOperationException("构筑不合法：" + string.Join("; ", all));
         }
 
         // 本卡池的具名牌组表必须挂上，否则「替换为启示录牌组」会找不到定义。
         CardVm.DeckDefs = pool.DeckDefs;
-        Start(firstPlayer, deck0.ExpandToCardIds(), deck1.ExpandToCardIds(), pool.Rules.LeaderInitialLife);
+        // 转发给 StartWithProfiles：两个入口共用同一条开局路径才不会漂移。
+        StartWithProfiles(firstPlayer, deck0, prof0, deck1, prof1);
     }
 
     public void Start(int firstPlayer, IReadOnlyList<int> deck0, IReadOnlyList<int> deck1,

@@ -53,6 +53,7 @@ public static class RegressPacks
         Check("POOL-K local_id 分配与跨包召唤无空壳", GateCardIndexAndCrossPack);
         Check("POOL-L 含 discover+deck_mod 的四端同构往返", GateFourWayDiscover);
         Check("POOL-M Builder 关键词 + UseExtraPp + Overflow 阈值", GateBuilderKeywordsAndRules);
+        Check("POOL-N 两条构筑入口都必须走 DeckRuleResolver", GateUnifiedDeckEntry);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -402,7 +403,7 @@ public static class RegressPacks
             Cards = new List<(int, int)> { (750001, 5) },
         };
         var e2 = DeckValidator.Validate(tooMany, pool);
-        bool copiesBlocked = e2.Any(x => x.Contains("超过本卡池同名卡上限"));
+        bool copiesBlocked = e2.Any(x => x.Contains("超过该卡上限") || x.Contains("超过本卡池同名卡上限"));
 
         // 反向 3：张数不符
         var wrongSize = new ConstructedDeck
@@ -411,7 +412,7 @@ public static class RegressPacks
             Cards = new List<(int, int)> { (750001, 10) },
         };
         var e3 = DeckValidator.Validate(wrongSize, pool);
-        bool sizeBlocked = e3.Any(x => x.Contains("构筑张数不合法"));
+        bool sizeBlocked = e3.Any(x => x.Contains("构筑张数不合法") || x.Contains("构筑总张数不合法"));
 
         // 正向：合法 40 张。默认同名上限是 3，所以必须用足够多的不同卡凑满，
         // 不能用「20 + 20」——那会先撞上同名上限，测不到我们想测的东西。
@@ -1118,5 +1119,107 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
         return (ok, "守护魔像=" + golemWard + " 寂静骑士=" + riderStorm
                     + " UseExtraPp被禁=" + extraPpBlocked + "(" + ppBefore + "→" + ppAfter + ")"
                     + " 阈值生效=" + thresholdWorks + "[" + printA + " vs " + printB + "]");
+    }
+
+    // ---------------------------------------------------------------- 门禁 N
+
+    /// <summary>
+    /// 组牌校验有两条入口，开局也有两条入口 —— 必须走**同一条**规则计算。
+    ///
+    /// 只改一条的表现是：DeckValidator.Validate 认扩容卡，
+    /// 但 MatchRunner.StartWithConstructedDecks 不认（或反过来），
+    /// 于是「编辑器里能存、开局就报张数不合法」。
+    /// </summary>
+    private static (bool, string) GateUnifiedDeckEntry()
+    {
+        const int expanderId = 795001;
+        const int fillerId = 795002;
+
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["u"] = new CardPackDef
+            {
+                PackId = "u", NativePoolId = "u-pool",
+                Cards = new List<CardRawEntry>
+                {
+                    new CardRawEntry { CardId = expanderId, NameEng = "Expander",
+                                       Kind = CardKind.Follower, Cost = 3, Attack = 3, Life = 4 },
+                    new CardRawEntry { CardId = fillerId, NameEng = "Filler",
+                                       Kind = CardKind.Follower, Cost = 1, Attack = 1, Life = 1 },
+                },
+            },
+        };
+
+        // 用 GlobalCatalog 直接搭一个带 deck_mod 的池（CardPoolBuilder 不解析 deck_modifiers JSON，
+        // 这里用内存注册，专测「两条入口是否一致」这件事本身）。
+        var cat = new GlobalCatalog();
+        cat.Register(new CardPackDef
+        {
+            PackId = "u", NativePoolId = "u-pool",
+            Cards = new List<CardRawEntry>
+            {
+                new CardRawEntry { CardId = expanderId, NameEng = "Expander",
+                                   Kind = CardKind.Follower, Cost = 3, Attack = 3, Life = 4 },
+                new CardRawEntry { CardId = fillerId, NameEng = "Filler",
+                                   Kind = CardKind.Follower, Cost = 1, Attack = 1, Life = 1 },
+            },
+        });
+        cat.Build();
+
+        var expander = new CardDef
+        {
+            CardId = expanderId, Name = "Expander", Kind = CardKind.Follower,
+            BaseCost = 3, BaseAttack = 3, BaseLife = 4, PackId = "u",
+            DeckModifiers = new List<DeckBuildModifier>
+            {
+                new DeckBuildModifier { Kind = DeckModKind.ModifyDeckSize, Value = 20, ExclusiveGroup = "cap" },
+                new DeckBuildModifier { Kind = DeckModKind.ModifyLeaderStartLife, Value = 10 },
+            },
+        };
+        cat.RegisterCompiledCard(expander);
+        // 同名上限 3 张，所以要用足够多的不同卡凑满 60 —— 不能 57 张同一张。
+        for (int i = 0; i < 20; i++)
+        {
+            cat.RegisterCompiledCard(new CardDef
+            {
+                CardId = fillerId + i, Name = "Filler" + i, Kind = CardKind.Follower,
+                BaseCost = 1, BaseAttack = 1, BaseLife = 1, PackId = "u",
+            });
+        }
+
+        var view = new CardPool
+        {
+            PoolId = "u-pool", Catalog = cat, BaseRules = MatchRules.CreateStandard(),
+            EnabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "u" },
+        };
+
+        // 带扩容卡的牌组：3 张扩容 + 57 张填充 = 60 张
+        var big = new ConstructedDeck
+        {
+            PoolId = "u-pool", LeaderClan = "Neutral",
+            Cards = new List<(int, int)> { (expanderId, 3) }
+                .Concat(Enumerable.Range(0, 19).Select(i => (fillerId + i, 3)))
+                .ToList(),
+        };
+
+        // ① DeckRuleResolver 认为它合法（60 张在扩容后的区间内）
+        var prof = DeckRuleResolver.ResolveAndValidate(big, view);
+        bool resolverOk = prof.IsValid;
+        bool sizeExpanded = prof.MinDeckSize == 60 && prof.MaxDeckSize == 60;
+        bool lifeBonus = prof.LeaderInitialLife == 30;
+
+        // ② 反向：同样的 60 张但不带扩容卡 —— 必须判超限
+        var bigNoMod = new ConstructedDeck
+        {
+            PoolId = "u-pool", LeaderClan = "Neutral",
+            Cards = Enumerable.Range(0, 20).Select(i => (fillerId + i, 3)).ToList(),
+        };
+        var profRev = DeckRuleResolver.ResolveAndValidate(bigNoMod, view);
+        bool reverseBlocked = !profRev.IsValid
+                              && profRev.Errors.Any(e => e.Contains("构筑总张数不合法"));
+
+        bool ok = resolverOk && sizeExpanded && lifeBonus && reverseBlocked;
+        return (ok, "扩容生效=" + sizeExpanded + "(" + prof.MinDeckSize + "~" + prof.MaxDeckSize + ")"
+                    + " 生命+10=" + lifeBonus + " 反向拦截=" + reverseBlocked);
     }
 }

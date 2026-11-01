@@ -52,7 +52,22 @@ public sealed class ConstructedDeck
 /// <summary>局外构筑合法性校验器（严格按所属卡池的 MatchRules 与卡片索引核验）。</summary>
 public static class DeckValidator
 {
+    /// <summary>
+    /// 按**动态构筑规则**校验：先跑 DeckRuleResolver 扫描牌组里的构筑修正，
+    /// 再用算出的有效规则判张数/上限/职业。
+    ///
+    /// 直接用 pool.Rules 硬判会把「带扩容卡的 60 张牌组」误判成超限 ——
+    /// 那条路径根本没扫 DeckBuildModifier。
+    /// </summary>
     public static List<string> Validate(ConstructedDeck deck, CardPoolRuntime pool)
+    {
+        if (pool == null) return new List<string> { "卡池为空" };
+        var view = pool.ToCardPoolView();
+        var prof = DeckRuleResolver.ResolveAndValidate(deck, view);
+        return prof.Errors;
+    }
+
+    private static List<string> ValidateLegacy(ConstructedDeck deck, CardPoolRuntime pool)
     {
         var errors = new List<string>();
         if (deck == null) { errors.Add("构筑为空"); return errors; }

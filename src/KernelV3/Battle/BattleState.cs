@@ -358,7 +358,7 @@ public sealed class BattleState : IVmWorld
     {
 
         void Token(int id, string name, CardKind kind, int cost, int atk, int life,
-                   string[] traits, params string[] keywords)
+                   string[] traits, string packText, params string[] keywords)
         {
             if (_cardPool.ContainsKey(id)) return;
             var trs = new List<SymbolId<TraitTag>>();
@@ -368,9 +368,16 @@ public sealed class BattleState : IVmWorld
 
             // 有卡面文本的衍生卡必须真的编译出能力 —— 否则它是个白板，
             // 而「白板」与「效果已生效但没观测到」在测试里无法区分。
+            //
+            // 文本优先取**卡包里写的**，其次才是内置回落表。
+            // 只查 BuiltinTokenTexts 会让 DIY 作者新加的带效果衍生卡变成白板 ——
+            // 他的卡包装进引擎了，效果却没人读。
             IReadOnlyList<Ast.AbilityDef> abilities = Array.Empty<Ast.AbilityDef>();
             string text = null;
-            if (lex != null && BuiltinTokenTexts.TryGetValue(id, out var src))
+            string src = !string.IsNullOrWhiteSpace(packText)
+                ? packText
+                : (BuiltinTokenTexts.TryGetValue(id, out var builtinSrc) ? builtinSrc : null);
+            if (lex != null && !string.IsNullOrWhiteSpace(src))
             {
                 text = src;
                 var r = new Lang.EnglishCompiler(lex).Compile(src, null, name, id);
@@ -393,7 +400,8 @@ public sealed class BattleState : IVmWorld
         foreach (var t in tokens)
         {
             // params string[] 必须用展开语法传，直接丢数组会被当成单个参数。
-            Token(t.id, t.name, t.kind, t.cost, t.atk, t.life, t.traits, t.keywords ?? Array.Empty<string>());
+            Token(t.id, t.name, t.kind, t.cost, t.atk, t.life, t.traits,
+                  t.text, t.keywords ?? Array.Empty<string>());
         }
     }
 
