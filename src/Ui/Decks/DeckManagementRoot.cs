@@ -79,6 +79,11 @@ public partial class DeckManagementRoot : Control
         };
         modal.OnCancelled += () => { };
         AddChild(modal);
+
+        // 模态层必须自己铺满：Control 的子节点 AddChild 后默认 0x0，
+        // 而模态内部靠 SetAnchorsPreset(FullRect) 定位遮罩 ——
+        // 父级是 0x0 时遮罩与居中面板全部不可见。
+        modal.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
     }
 
     private void ShowBuilder(ConstructedDeck deck)
@@ -96,6 +101,31 @@ public partial class DeckManagementRoot : Control
         var deck = _store.SavedDecks.OrderByDescending(d => d.Cards.Count).FirstOrDefault()
                    ?? _store.CreateDeck("standard", "Swordcraft", "截图牌组");
         ShowBuilder(deck);
+    }
+
+    /// <summary>开发期入口：直接弹创建向导（截图用）。</summary>
+    public void OpenWizardForShot()
+    {
+        if (_store == null) return;
+        ShowDeckList();
+        ShowWizard();
+    }
+
+    /// <summary>开发期入口：进构筑台并让浮窗显示第一张卡的效果（截图用）。</summary>
+    public void OpenHoverForShot()
+    {
+        if (_store == null) return;
+        var deck = _store.SavedDecks.OrderByDescending(d => d.Cards.Count).FirstOrDefault()
+                   ?? _store.CreateDeck("standard", "Swordcraft", "截图牌组");
+        var view = new DeckBuilderView(_store, deck);
+        view.OnSaveAndBack += _ => ShowDeckList();
+        Swap(view);
+        CallDeferred(nameof(ForceHover));
+    }
+
+    private void ForceHover()
+    {
+        if (_current is DeckBuilderView bv) bv.ShowFirstTooltipForShot();
     }
 
     private void ShowFatal(string msg)

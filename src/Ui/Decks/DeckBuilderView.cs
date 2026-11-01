@@ -441,9 +441,23 @@ public partial class DeckBuilderView : Control
                 var d = def;
                 strip.OnLeftClick += _ => _vm.RemoveCard(d.CardId);
                 strip.OnRightClick += cd => ShowInspector(cd);
+                strip.OnHoverEntered += (cd, ctrl) => _tooltip?.ShowForCard(cd, _store.CardPrinter, ctrl);
+                strip.OnHoverExited += _ => _tooltip?.HideTooltip();
                 _deckList.AddChild(strip);
             }
         }
+    }
+
+    /// <summary>开发期入口：强制让浮窗显示卡池里第一张卡的效果（截图用）。</summary>
+    public void ShowFirstTooltipForShot()
+    {
+        var first = _vm.GetFilteredPoolCards().FirstOrDefault();
+        if (first == null || _tooltip == null) return;
+
+        // 造一个锚点控件包住第一格，让浮窗有位置可依。
+        var anchorCtrl = _cardGrid.GetChildren().OfType<CardVisualWidget>().FirstOrDefault();
+        if (anchorCtrl != null)
+            _tooltip.ShowForCard(first, _store.CardPrinter, anchorCtrl);
     }
 
     private void ShowInspector(CardDef def)

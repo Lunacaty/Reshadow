@@ -14,6 +14,8 @@ public partial class DevShot : Node
     private string _path;
     private int _frames;
     private bool _openBuilder;
+    private bool _openWizard;
+    private bool _openHover;
 
     public override void _Ready()
     {
@@ -22,12 +24,30 @@ public partial class DevShot : Node
             if (a.StartsWith("--shot=")) _path = a.Substring(7);
             if (a.StartsWith("--frames=")) int.TryParse(a.Substring(9), out _frames);
             if (a == "--builder") _openBuilder = true;
+            if (a == "--wizard") _openWizard = true;
+            if (a == "--hover") _openHover = true;
         }
         if (_frames <= 0) _frames = 30;
         SetProcess(true);
 
         if (_openBuilder)
             CallDeferred(nameof(OpenBuilder));
+        else if (_openWizard)
+            CallDeferred(nameof(OpenWizard));
+        else if (_openHover)
+            CallDeferred(nameof(OpenHover));
+    }
+
+    private void OpenWizard()
+    {
+        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        root?.OpenWizardForShot();
+    }
+
+    private void OpenHover()
+    {
+        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        root?.OpenHoverForShot();
     }
 
     private void OpenBuilder()

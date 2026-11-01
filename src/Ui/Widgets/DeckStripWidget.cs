@@ -11,6 +11,8 @@ public partial class DeckStripWidget : PanelContainer
     public CardDef Card { get; private set; }
     public event Action<CardDef> OnLeftClick;
     public event Action<CardDef> OnRightClick;
+    public event Action<CardDef, Control> OnHoverEntered;
+    public event Action<CardDef> OnHoverExited;
 
     private Label _countLabel;
 
@@ -20,6 +22,11 @@ public partial class DeckStripWidget : PanelContainer
         CustomMinimumSize = new Vector2(0, 38);
         MouseFilter = MouseFilterEnum.Stop;
         MouseDefaultCursorShape = CursorShape.PointingHand;
+
+        // 牌组条也要能弹效果浮窗 —— 卡面本体不印效果文字，
+        // 玩家在右侧清单里看到一条卡名时，必须能悬停读到它到底做什么。
+        MouseEntered += () => OnHoverEntered?.Invoke(Card, this);
+        MouseExited  += () => OnHoverExited?.Invoke(Card);
 
         Color clanCol = SvWbTheme.ClanColor(def.Clan.IsValid ? def.Clan.Name : null);
         AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(

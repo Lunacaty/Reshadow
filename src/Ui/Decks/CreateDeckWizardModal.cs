@@ -52,11 +52,16 @@ public partial class CreateDeckWizardModal : Control
         var panel = new PanelContainer();
         panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             SvWbTheme.BgPanel, SvWbTheme.AccentCyan, 12, 2, 18));
-        panel.CustomMinimumSize = new Vector2(880, 540);
-        panel.Position = new Vector2(
-            (GetViewportRect().Size.X - 880) / 2,
-            (GetViewportRect().Size.Y - 540) / 2);
         AddChild(panel);
+
+        // 必须先 AddChild 再定位：Position 在未入树时会被父级布局覆盖。
+        // 且要用 Size 显式指定尺寸 —— 只设 CustomMinimumSize 时
+        // PanelContainer 会按锚点拉伸填满父容器（这里就是整屏）。
+        panel.SetAnchorsPreset(LayoutPreset.TopLeft);
+        panel.Size = new Vector2(880, 540);
+        panel.Position = new Vector2(
+            Mathf.Max(0, (GetViewportRect().Size.X - 880) / 2),
+            Mathf.Max(0, (GetViewportRect().Size.Y - 540) / 2));
 
         var root = new VBoxContainer();
         root.AddThemeConstantOverride("separation", 12);
@@ -108,7 +113,10 @@ public partial class CreateDeckWizardModal : Control
         _stepLabel.Text = "Step 1 / 3  选择所属赛制卡池";
         _nextBtn.Text = "下一步 →";
 
-        var row = new HBoxContainer();
+        var row = new HBoxContainer
+        {
+            SizeFlagsVertical = SizeFlags.ShrinkBegin,
+        };
         row.AddThemeConstantOverride("separation", 12);
         _body.AddChild(row);
 
@@ -118,7 +126,12 @@ public partial class CreateDeckWizardModal : Control
             var rules = cfg.Rules;
             bool selected = string.Equals(_poolId, cfg.PoolId, StringComparison.OrdinalIgnoreCase);
 
-            var card = new PanelContainer { CustomMinimumSize = new Vector2(260, 320) };
+            // 高度只到内容所需即可 —— 撑到 320 会在下方留一大片空白。
+            var card = new PanelContainer
+            {
+                CustomMinimumSize = new Vector2(260, 0),
+                SizeFlagsVertical = SizeFlags.ShrinkBegin,
+            };
             card.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
                 selected ? new Color(0.05f, 0.18f, 0.24f, 0.95f) : SvWbTheme.BgSurface,
                 selected ? SvWbTheme.AccentCyan : SvWbTheme.BorderSubtle,
@@ -166,7 +179,11 @@ public partial class CreateDeckWizardModal : Control
         _stepLabel.Text = "Step 2 / 3  选择主战者职业";
         _nextBtn.Text = "下一步 →";
 
-        var grid = new GridContainer { Columns = 8 };
+        var grid = new GridContainer
+        {
+            Columns = 8,
+            SizeFlagsVertical = SizeFlags.ShrinkBegin,
+        };
         grid.AddThemeConstantOverride("h_separation", 10);
         _body.AddChild(grid);
 
