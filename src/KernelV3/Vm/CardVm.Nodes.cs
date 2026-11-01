@@ -43,7 +43,7 @@ public sealed partial class CardVm
             case BranchModeNode n: return DoBranch(n, frame);
             case GrantAbilityNode n: return DoGrant(n, scope);
             case GrantCounterAbilityNode n: return DoGrantCounter(n, scope);
-            case InvokeAbilityNode n: return DoInvoke(n, scope);
+            case InvokeAbilityNode n: return DoInvoke(n, scope, frame);
             case MacroNode n: return DoMacro(n, scope);
             default:
                 throw new VmFaultException("未知的动作节点: " + node.GetType().Name);
@@ -1040,9 +1040,13 @@ public sealed partial class CardVm
         return false;
     }
 
-    private bool DoInvoke(InvokeAbilityNode n, VmScope scope)
+    private bool DoInvoke(InvokeAbilityNode n, VmScope scope, VmFrame frame)
     {
-        var targets = _eval.Resolve(n.Target, scope);
+        // 必须走 ResolveOrBlock：目标的选法可能是 Choose（「启动 1 个己方护符」），
+        // 直接调 _eval.Resolve 在 Choose 模式下返回空列表 ——
+        // 既不弹选择框、也不复刻任何东西，表现为「这张卡什么都没做」。
+        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected, frame);
+        if (targets == null) return true;      // 已挂起，等待玩家选目标
         foreach (var t in targets)
         {
             if (t.Def?.Abilities == null) continue;

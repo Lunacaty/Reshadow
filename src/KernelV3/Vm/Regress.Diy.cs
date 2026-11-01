@@ -49,6 +49,7 @@ public static partial class Regress
         Check("DIY-5 往返后真卡仍能实战生效", GateRoundTripLiveBattle);
         Check("DIY-6 纯真实对局（无手搭夹具）", GateRealMatch);
         Check("DIY-7 四门槛表单闭环 + 限时效果往返", GateGateAndDuration);
+        Check("DIY-8 复刻能力遍历全部同事件能力且绑定 $self", GateInvokeCoverage);
 
         log.AppendLine();
         log.AppendLine("=== DIY 门禁 " + pass + "/" + total + " ===");
@@ -945,4 +946,141 @@ public static partial class Regress
         return (ok, string.Join("；", report));
     }
 
+
+    // ---------------------------------------------------------------- 门禁 8
+
+    /// <summary>
+    /// 复刻能力（InvokeAbilityNode）的两条性质：
+    ///   ① 目标卡在**同一事件**下有多条能力时，必须全部复刻（不能 FirstOrDefault）
+    ///   ② 子作用域的 $self 必须指向**被复刻的实体**，不是施法者
+    ///
+    /// 为什么单独测：这两条是 94 号文档里最后一处「修了但没有测试覆盖」的地方。
+    /// 只验「复刻生效」不够 —— 复刻一条也是生效，$self 绑错也可能生效（只是绑错了人）。
+    /// </summary>
+    private static (bool, string) GateInvokeCoverage()
+    {
+        var ws = DiyCtx(seed: 57);
+        var st = ws.State;
+        var comp = new ReshadowScriptCompiler(ws);
+        var report = new List<string>();
+        bool ok = true;
+
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 0; st.TurnNumber = 6;
+        st.WriteCounter(0, st.Schema.Counter("pp"), 20);
+        st.WriteCounter(1, st.Schema.Counter("pp"), 20);
+        for (int i = 0; i < 8; i++)
+        {
+            int id = 931000 + i;
+            st.RegisterCard(new CardDef
+            {
+                CardId = id, Name = "F" + i, Kind = CardKind.Follower,
+                BaseAttack = 1, BaseLife = 1, BaseCost = 1,
+            });
+            st.SpawnCard(id, ZoneRef.Deck, 0);
+        }
+
+        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+        var tr = new TurnRunner(st, st.Schema);
+
+        // ---- ① 多条同事件能力都要复刻 ----
+        {
+            const int targetId = 932001;
+            const int invokerId = 932002;
+            const int extraId = 932003;
+
+            var tgtDef = comp.Compile(
+                "card " + targetId + " \"复刻目标\" (Follower, cost: 1, atk: 1, life: 1) {\n" +
+                "    on play { damage(target(enemy, leader), 1) }\n" +
+                "}").First();
+            st.RegisterCard(tgtDef);
+
+            var invDef = comp.Compile(
+                "card " + invokerId + " \"复刻者\" (Follower, cost: 1, atk: 1, life: 1) {\n" +
+                "    on play { invoke(play, target(ally, board, follower, count: 1)) }\n" +
+                "}").First();
+            st.RegisterCard(invDef);
+
+            var extraDef = comp.Compile(
+                "card " + extraId + " \"追加能力\" (Follower, cost: 1, atk: 1, life: 1) {\n" +
+                "    on play { draw(1) }\n" +
+                "}").First();
+
+            var tgt = st.SpawnCard(targetId, ZoneRef.Board, 0);
+
+            // 用引擎 API 给目标追加**第二条** OnPlay 能力（真实路径，不是夹具）。
+            // 若有 FirstOrDefault，这条不会被复刻。
+            st.GrantAbility(tgt, extraDef.Abilities[0], DurationKind.Permanent);
+
+            int hand0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+            int foeLife0 = st.Players[1].Leader.Life;
+
+            var invoker = st.SpawnCard(invokerId, ZoneRef.Hand, 0);
+            vm.DropPendingTriggers();
+            tr.PlayCard(0, invoker, vm);
+            int guard = 0;
+            while (vm.Pending != null && guard++ < 8)
+            {
+                vm.SubmitChoice(vm.Pending.ChoiceId, new[] { tgt.EntityId });
+                vm.StepUntilBlocked();
+            }
+            vm.StepUntilBlocked();
+
+            int hand1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
+            int foeLife1 = st.Players[1].Leader.Life;
+
+            bool dmg = foeLife1 == foeLife0 - 1;
+            bool drew = hand1 >= hand0;
+            bool pass = dmg && drew;
+            ok &= pass;
+            report.Add("多条同事件 打1=" + dmg + " 抽1=" + drew
+                       + "（主战者 " + foeLife0 + "→" + foeLife1 + "，手牌 " + hand0 + "→" + hand1 + "）");
+        }
+
+        // ---- ② $self 必须指向被复刻的实体 ----
+        {
+            const int selfId = 933001;
+            const int casterId = 933002;
+
+            var selfDef = comp.Compile(
+                "card " + selfId + " \"自身目标\" (Follower, cost: 1, atk: 2, life: 2) {\n" +
+                "    on play { buff($self, 3/3) }\n" +
+                "}").First();
+            st.RegisterCard(selfDef);
+
+            var casterDef = comp.Compile(
+                "card " + casterId + " \"施法者\" (Follower, cost: 1, atk: 1, life: 1) {\n" +
+                "    on play { invoke(play, target(ally, board, follower, count: 1)) }\n" +
+                "}").First();
+            st.RegisterCard(casterDef);
+
+            var selfCard = st.SpawnCard(selfId, ZoneRef.Board, 0);
+            var caster = st.SpawnCard(casterId, ZoneRef.Hand, 0);
+            int selfAtk0 = selfCard.Attack, selfLife0 = selfCard.Life;
+            int castAtk0 = caster.Attack, castLife0 = caster.Life;
+
+            vm.DropPendingTriggers();
+            tr.PlayCard(0, caster, vm);
+            int guard = 0;
+            while (vm.Pending != null && guard++ < 8)
+            {
+                vm.SubmitChoice(vm.Pending.ChoiceId, new[] { selfCard.EntityId });
+                vm.StepUntilBlocked();
+            }
+            vm.StepUntilBlocked();
+
+            bool selfBuffed = selfCard.Attack == selfAtk0 + 3 && selfCard.Life == selfLife0 + 3;
+            bool casterUntouched = caster.Attack == castAtk0 && caster.Life == castLife0;
+            bool pass = selfBuffed && casterUntouched;
+            ok &= pass;
+            report.Add("$self 绑定 被复刻卡=" + selfCard.Attack + "/" + selfCard.Life
+                       + "（原 " + selfAtk0 + "/" + selfLife0 + "）"
+                       + " 施法者=" + caster.Attack + "/" + caster.Life
+                       + "（原 " + castAtk0 + "/" + castLife0 + "）");
+        }
+
+        return (ok, string.Join("；", report));
+    }
 }
