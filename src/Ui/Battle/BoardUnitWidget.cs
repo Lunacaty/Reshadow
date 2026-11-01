@@ -169,13 +169,16 @@ public partial class BoardUnitWidget : Control
             if (tex != null) { DrawTextureRect(tex, art, false); return; }
         }
 
-        Color top = clanCol.Darkened(0.70f).Lerp(new Color("141020"), 0.55f);
-        Color bot = clanCol.Darkened(0.50f).Lerp(new Color("070A14"), 0.60f);
+        // 棋子只有 96x124，压得太暗就成了一块黑方块。
+        // 用职业色作为主调，再叠一层亮心，让「这是什么职业的随从」一眼可辨。
+        Color top = clanCol.Darkened(0.45f).Lerp(new Color("141020"), 0.30f);
+        Color bot = clanCol.Darkened(0.20f).Lerp(new Color("0B0F1A"), 0.35f);
         DrawRect(art, bot);
-        DrawRect(new Rect2(art.Position.X, art.Position.Y, art.Size.X, art.Size.Y * 0.45f), top);
+        DrawRect(new Rect2(art.Position.X, art.Position.Y, art.Size.X, art.Size.Y * 0.48f), top);
 
         Vector2 c = art.Position + art.Size * 0.5f;
-        DrawCircle(c, art.Size.X * 0.30f, clanCol.Lightened(0.30f) with { A = 0.16f });
+        DrawCircle(c, art.Size.X * 0.34f, clanCol.Lightened(0.45f) with { A = 0.38f });
+        DrawCircle(c, art.Size.X * 0.20f, clanCol.Lightened(0.65f) with { A = 0.30f });
         DrawArc(c, art.Size.X * 0.32f, 0, Mathf.Tau, 30,
                 new Color(0.90f, 0.94f, 1f, 0.16f), 1.2f);
         DrawArc(c, art.Size.X * 0.22f, 0, Mathf.Tau, 24,

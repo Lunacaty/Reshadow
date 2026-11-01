@@ -43,6 +43,8 @@ public static class RegressBattleUi
         Check("BUI-3 结算与回合推进不腐坏", CaseAdvance);
         Check("BUI-4 拖拽出牌判定（Y<500）", CaseDragPlayRelease);
         Check("BUI-5 拖拽攻击命中判定", CaseDragAttackHit);
+        Check("BUI-6 仅入场曲/守护不得亮绿旗", CaseBadgeFalsePositive);
+        Check("BUI-7 后手 ExtraPP 黄灰双态", CaseExtraPpPhase);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -130,7 +132,13 @@ public static class RegressBattleUi
             {
                 new AbilityDef
                 {
-                    Trigger = new TriggerSpec { Event = CoreEvent.OnPlay },
+                    // 必须显式声明在场上监听 —— 三态判定要求 ActiveZone == Board。
+                    // 不写的话默认值不是 Board，会被正确的白名单过滤掉。
+                    Trigger = new TriggerSpec
+                    {
+                        Event = CoreEvent.TurnStart,
+                        ActiveZone = ActiveZoneScope.Board,
+                    },
                     Body = new List<EffectNode>(),
                 },
             },
@@ -285,4 +293,80 @@ public static class RegressBattleUi
                     + " 非法攻击者=" + (notLegal == null)
                     + " 落点在外=" + (miss == null)
                     + " | " + posNote);    }
+
+    // ---------------------------------------------------------------- BUI-6
+
+    /// <summary>
+    /// 三态判定的**反向**断言：只有入场曲（OnPlay）或纯关键词（PassiveAura）的随从
+    /// 绝不能亮绿旗。
+    ///
+    /// 这是一个真实的假阳性：旧实现写成「if (OnDestroy) 红书页; else 绿旗;」，
+    /// 于是每张有入场曲的普通随从底部都亮了一个图标。
+    /// </summary>
+    private static (bool, string) CaseBadgeFalsePositive()
+    {
+        CardDef Make(string name, CoreEvent ev, bool manualOnly = false)
+            => new CardDef
+            {
+                CardId = 1, Name = name, Kind = CardKind.Follower,
+                Abilities = new List<AbilityDef>
+                {
+                    new AbilityDef
+                    {
+                        Trigger = new TriggerSpec
+                        {
+                            Event = ev,
+                            ActiveZone = ActiveZoneScope.Board,
+                            ManualEvolveOnly = manualOnly,
+                        },
+                        Body = new List<EffectNode>(),
+                    },
+                },
+            };
+
+        var fanfare = UnitAbilityBadgeResolver.Resolve(Make("Fanfare", CoreEvent.OnPlay));
+        var aura = UnitAbilityBadgeResolver.Resolve(Make("Aura", CoreEvent.PassiveAura));
+        var engage = UnitAbilityBadgeResolver.Resolve(Make("Engage", CoreEvent.OnEngage));
+        var manualEv = UnitAbilityBadgeResolver.Resolve(Make("ManualEvo", CoreEvent.OnEvolve, true));
+        var turnStart = UnitAbilityBadgeResolver.Resolve(Make("TurnStart", CoreEvent.TurnStart));
+        var onAttack = UnitAbilityBadgeResolver.Resolve(Make("OnAttack", CoreEvent.OnAttack));
+        var lastWords = UnitAbilityBadgeResolver.Resolve(Make("LW", CoreEvent.OnDestroy));
+
+        bool ok = fanfare == UnitAbilityBadge.None
+                  && aura == UnitAbilityBadge.None
+                  && engage == UnitAbilityBadge.None
+                  && manualEv == UnitAbilityBadge.None
+                  && turnStart == UnitAbilityBadge.Triggered
+                  && onAttack == UnitAbilityBadge.Triggered
+                  && lastWords == UnitAbilityBadge.LastWords;
+
+        return (ok, "入场曲=" + fanfare + " 常驻=" + aura + " 启动=" + engage
+                    + " 手动进化=" + manualEv
+                    + " | TurnStart=" + turnStart + " OnAttack=" + onAttack
+                    + " 谢幕曲=" + lastWords);
+    }
+
+    // ---------------------------------------------------------------- BUI-7
+
+    /// <summary>
+    /// 后手 Extra PP 的黄/灰双态。
+    /// 直接读内核的 UsedEarly/UsedLateExtraPp，不是 UI 自己记状态。
+    /// </summary>
+    private static (bool, string) CaseExtraPpPhase()
+    {
+        var store = NewStore();
+        var deck = SampleDeck(store, out string e0);
+        if (deck == null) return (false, e0);
+
+        var ctrl = new BattleSessionController(store, deck, deck, seed: 9001);
+
+        bool foeIsSecond = ctrl.IsSecondPlayer(1);
+        bool allyIsFirst = !ctrl.IsSecondPlayer(0);
+        bool before = ctrl.IsExtraPpAvailableInPhase(1);
+        bool firstNever = !ctrl.IsExtraPpAvailableInPhase(0);
+
+        bool ok = foeIsSecond && allyIsFirst && before && firstNever;
+        return (ok, "后手=" + foeIsSecond + " 先手=" + allyIsFirst
+                    + " 后手初始可用=" + before + " 先手恒不可用=" + firstNever);
+    }
 }

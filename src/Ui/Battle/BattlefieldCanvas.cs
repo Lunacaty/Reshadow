@@ -133,11 +133,41 @@ public partial class BattlefieldCanvas : Control
             DrawCircle(c, 21f, new Color("0284C7"));
             DrawArc(c, 22f, 0, Mathf.Tau, 28, new Color("FDE047"), 2.5f);
 
-            string nm = DeckEditorViewModel.DisplayName(ent.Def);
-            if (nm.Length > 1) nm = nm.Substring(0, 1);
+            // 中文首字（不印英文缩写）：从简中卡名取第一个汉字。
+            string full = DeckEditorViewModel.DisplayName(ent.Def);
+            string nm = full.Length > 0 ? full.Substring(0, 1) : "?";
             Vector2 tw = font.GetStringSize(nm, HorizontalAlignment.Left, -1, 15);
             DrawString(font, new Vector2(c.X - tw.X * 0.5f, c.Y + 6f),
                        nm, HorizontalAlignment.Left, -1, 15, Colors.White);
+
+            // 右下角数值角标：吟唱倒计时或信仰值
+            int badgeVal = 0;
+            try
+            {
+                var cdKey = Controller.Schema.Counter("countdown");
+                if (ent.Counters != null
+                    && ent.Counters.TryGetValue(cdKey, out int cdv) && cdv > 0)
+                    badgeVal = cdv;
+                else
+                {
+                    var faKey = Controller.Schema.Counter("faith");
+                    if (ent.Counters != null
+                        && ent.Counters.TryGetValue(faKey, out int fav) && fav > 0)
+                        badgeVal = fav;
+                }
+            }
+            catch { }
+
+            if (badgeVal > 0)
+            {
+                Vector2 bc = new(c.X + 14f, c.Y + 14f);
+                DrawCircle(bc, 9f, new Color("B45309"));
+                DrawArc(bc, 9f, 0, Mathf.Tau, 18, new Color("FDE047"), 1.2f);
+                string bs = badgeVal.ToString();
+                Vector2 bsz = font.GetStringSize(bs, HorizontalAlignment.Left, -1, 11);
+                DrawString(font, new Vector2(bc.X - bsz.X * 0.5f, bc.Y + 4f), bs,
+                           HorizontalAlignment.Left, -1, 11, Colors.White);
+            }
         }
     }
 
@@ -160,16 +190,37 @@ public partial class BattlefieldCanvas : Control
 
     private void DrawEnemyHandBacks(int count, Vector2 origin, Font font)
     {
-        int n = Math.Min(count, 8);
+        // 标准卡牌比例 52x72（不是 24x82 的细长蓝条）。
+        // 牌多时自适应收紧间距，绝不向右/向上溢出。
+        int n = Math.Min(count, 9);
+        const float cw = 52f, ch = 72f;
+        float step = n <= 1 ? cw : Math.Min(cw - 6f, (420f - cw) / (n - 1));
+
         for (int i = 0; i < n; i++)
         {
-            var r = new Rect2(origin.X + i * 28f, origin.Y, 24f, 82f);
-            DrawRect(r, new Color("1E3A8A"));
-            DrawRect(r, new Color("93C5FD") { A = 0.5f }, false, 1f);
+            float x = origin.X + i * step;
+            var r = new Rect2(x, origin.Y, cw, ch);
+
+            // 深酒红底 + 鎏金描边
+            DrawRect(r, new Color("3B1220"));
+            DrawRect(r, new Color("B45309"), false, 1.6f);
+
+            // 中心菱形背纹
+            Vector2 c = new(x + cw * 0.5f, origin.Y + ch * 0.5f);
+            Vector2[] gem =
+            {
+                new(c.X, c.Y - 12f), new(c.X + 9f, c.Y),
+                new(c.X, c.Y + 12f), new(c.X - 9f, c.Y),
+            };
+            DrawPolyline(new[] { gem[0], gem[1], gem[2], gem[3], gem[0] },
+                         new Color("FCD34D") { A = 0.75f }, 1.4f);
+            DrawCircle(c, 3f, new Color("FCD34D") { A = 0.55f });
         }
-        if (count > 8)
-            DrawString(font, new Vector2(origin.X + 8 * 28f + 4f, origin.Y + 46f),
-                       "+" + (count - 8), HorizontalAlignment.Left, -1, 12, Colors.White);
+
+        if (count > 9)
+            DrawString(font, new Vector2(origin.X + 9 * step + 4f, origin.Y + 40f),
+                       "+" + (count - 9), HorizontalAlignment.Left, -1, 13,
+                       new Color("FCD34D"));
     }
 
     public override void _GuiInput(InputEvent @event)

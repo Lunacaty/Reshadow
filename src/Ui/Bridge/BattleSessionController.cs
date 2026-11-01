@@ -239,6 +239,30 @@ public sealed class BattleSessionController
 
     public bool TryUseExtraPp() => Runner.UseExtraPp();
 
+    // ---------------------------------------------------------------- Extra PP
+
+    /// <summary>该玩家是否是后手（只有后手才有 Extra PP 框）。</summary>
+    /// 注意 State.FirstPlayer 是 int（玩家 id），不是 PlayerState 对象 ——
+    /// 早先拿它跟 PlayerState 比 Equals，永远不等，于是两边都被判成后手。
+    public bool IsSecondPlayer(int playerId)
+        => playerId != State.FirstPlayer;
+
+    /// <summary>
+    /// 后手的 Extra PP 当前是否处于「耀金可用态」。
+    ///
+    /// 规则：1~5 回合看 UsedEarlyExtraPp；第 6 回合起刷新，看 UsedLateExtraPp。
+    /// 这不是 UI 自定义规则 —— 是内核实际使用的判定，这里只是暴露给界面。
+    /// </summary>
+    public bool IsExtraPpAvailableInPhase(int playerId)
+    {
+        if (!State.Rules.EnableExtraPpForSecondPlayer) return false;
+        if (!IsSecondPlayer(playerId)) return false;
+
+        var p = State.Players[playerId];
+        bool early = State.TurnNumber <= State.Rules.ExtraPpEarlyPhaseLastTurn;
+        return early ? !p.UsedEarlyExtraPp : !p.UsedLateExtraPp;
+    }
+
     // ---------------------------------------------------------------- 拖拽判定
 
     /// <summary>手牌区上沿：松手位置高于这条线才算「拖到战场」。</summary>
@@ -309,14 +333,34 @@ public static class UnitAbilityBadgeResolver
         foreach (var ab in def.Abilities)
         {
             if (ab?.Trigger == null) continue;
-            if (ab.Trigger.Event == CoreEvent.OnDestroy || ab.Trigger.Event == CoreEvent.OnBanish)
+            var ev = ab.Trigger.Event;
+
+            // (1) 谢幕曲 -> 红色书页
+            if (ev == CoreEvent.OnDestroy)
+            {
                 hasLastWords = true;
-            else
-                hasTriggered = true;
+                continue;
+            }
+
+            // (2) 明确排除：这些不是「在场上持续监听的时机能力」。
+            //     入场曲用完就没了，PassiveAura 是常驻关键词，
+            //     OnEngage 是玩家主动启动，BattleStart 是开局一次性。
+            //     把这几类画成绿旗，会让每张普通随从底部都亮一个图标。
+            if (ev is CoreEvent.OnPlay or CoreEvent.PassiveAura
+                   or CoreEvent.OnEngage or CoreEvent.BattleStart)
+                continue;
+
+            // (3) 手动进化冒号头也即时结算，不常驻监听
+            if ((ev is CoreEvent.OnEvolve or CoreEvent.OnSuperEvolve) && ab.Trigger.ManualEvolveOnly)
+                continue;
+
+            // (4) 必须在场上才监听的才算
+            if (ab.Trigger.ActiveZone != ActiveZoneScope.Board)
+                continue;
+
+            hasTriggered = true;
         }
 
-        // 谢幕曲优先：官方卡面上两种同时存在时，左下是红色书页、右上是绿旗，
-        // 我们只有一个槽位，取信息量更大的谢幕曲（它决定「这张卡死后还会做事」）。
         if (hasLastWords) return UnitAbilityBadge.LastWords;
         if (hasTriggered) return UnitAbilityBadge.Triggered;
         return UnitAbilityBadge.None;

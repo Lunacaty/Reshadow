@@ -37,15 +37,15 @@ public partial class RightCommandColumnWidget : Control
         if (_ctrl?.State == null) return;
         var font = ThemeDB.FallbackFont;
 
-        // 1. 能量点 +1
-        bool canEx = _ctrl.CanUseExtraPp();
-        DrawRect(ExtraPpRect, canEx ? new Color("065F46") : new Color(0.10f, 0.13f, 0.16f, 0.88f));
-        DrawRect(ExtraPpRect, canEx ? new Color("34D399") : new Color("475569"), false, 1.8f);
-        DrawCircle(ExtraPpRect.Position + new Vector2(16, 21), 8f,
-                   canEx ? new Color("10B981") : new Color("0F172A"));
-        DrawString(font, ExtraPpRect.Position + new Vector2(32, 27), "能量点 +1",
-                   HorizontalAlignment.Left, -1, 15,
-                   canEx ? Colors.White : new Color("64748B"));
+        // 1. 能量点 +1 —— 只有「后手那一侧」才画。
+        //    我方后手 -> 画在我方 PP 牌下方；敌方后手 -> 画在敌方 PP 牌上方。
+        bool foeIsSecond = _ctrl.IsSecondPlayer(1);
+        bool allyIsSecond = _ctrl.IsSecondPlayer(0);
+
+        if (foeIsSecond)
+            DrawExtraPpBox(new Rect2(10, 0, 196, 42), 1, font);
+        if (allyIsSecond)
+            DrawExtraPpBox(new Rect2(10, 374, 196, 42), 0, font);
 
         // 2. 敌方能量点
         int foePp = _ctrl.ReadCounter(1, "pp");
@@ -98,6 +98,32 @@ public partial class RightCommandColumnWidget : Control
             DrawArc(oc, 5.5f, 0, Mathf.Tau, 16,
                     i < myPp ? new Color("86EFAC") : new Color("64748B"), 1.2f);
         }
+    }
+
+    /// <summary>
+    /// 画 Extra PP 指示框。
+    /// 金/灰双态由 IsExtraPpAvailableInPhase 决定 ——
+    /// 那个方法直接读内核的 UsedEarly/LateExtraPp，不在这里重新实现规则。
+    /// </summary>
+    private void DrawExtraPpBox(Rect2 r, int playerId, Font font)
+    {
+        bool avail = _ctrl.IsExtraPpAvailableInPhase(playerId);
+        Color gold = new Color("F59E0B");
+        Color goldLight = new Color("FDE047");
+        Color gray = new Color("475569");
+        Color grayDim = new Color("334155");
+
+        DrawRect(r, avail ? new Color(0.28f, 0.20f, 0.04f, 0.92f)
+                          : new Color(0.10f, 0.13f, 0.16f, 0.88f));
+        DrawRect(r, avail ? gold : gray, false, 1.8f);
+
+        Vector2 dot = new(r.Position.X + 16f, r.Position.Y + r.Size.Y * 0.5f);
+        DrawCircle(dot, 8f, avail ? goldLight : grayDim);
+        DrawArc(dot, 8f, 0, Mathf.Tau, 20, avail ? gold : gray, 1.4f);
+
+        DrawString(font, new Vector2(r.Position.X + 32f, r.Position.Y + r.Size.Y * 0.5f + 5f),
+                   "能量点 +1", HorizontalAlignment.Left, -1, 15,
+                   avail ? goldLight : new Color("64748B"));
     }
 
     private void DrawCentered(Font font, Vector2 c, string t, int size, Color col)

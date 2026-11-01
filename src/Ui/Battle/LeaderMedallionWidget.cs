@@ -23,8 +23,10 @@ public partial class LeaderMedallionWidget : Control
     private BattleSessionController _ctrl;
     private int _playerId;
 
-    private static readonly Vector2 EpOrbOffset = new(-34f, 6f);
-    private static readonly Vector2 SepOrbOffset = new(206f, 6f);
+    // 紧贴拱框左右肩部（拱框 l=34, w=172 -> 左肩 36 / 右肩 202），
+    // 早先写 -34 会让进化球脱离拱框飞到沙地上。
+    private static readonly Vector2 EpOrbOffset = new(2f, 0f);
+    private static readonly Vector2 SepOrbOffset = new(168f, 0f);
     private const float OrbRadius = 20f;
 
     public void Setup(BattleSessionController ctrl, int playerId, bool isEnemy)
@@ -97,7 +99,9 @@ public partial class LeaderMedallionWidget : Control
                    HorizontalAlignment.Left, -1, 22, Colors.White);
 
         // 名字
-        string nm = DeckEditorViewModel.DisplayName(Leader.Def);
+        // 严禁印出内部代号 Leader0 / Leader1 —— 那是调试名。
+        string nm = SvWbTheme.ClanDisplayZh(
+            Leader.Def.Clan.IsValid ? Leader.Def.Clan.Name : null) + "主战者";
         var nsz = font.GetStringSize(nm, HorizontalAlignment.Left, -1, 12);
         DrawString(font, new Vector2(l + w * 0.5f - nsz.X * 0.5f, t + h - 6f), nm,
                    HorizontalAlignment.Left, -1, 12, new Color("E2E8F0"));
@@ -107,9 +111,11 @@ public partial class LeaderMedallionWidget : Control
         // EP / SEP 进化球（镶在拱框左右）
         int ep = _ctrl.ReadCounter(_playerId, "ep");
         int sep = _ctrl.ReadCounter(_playerId, "sep");
-        DrawEvolutionOrb(new Vector2(EpOrbOffset.X, t + 60f + EpOrbOffset.Y), ep,
+        // 敌方主战者的进化球镶在拱框下沿，我方的镶在上沿（与原版一致）。
+        float orbY = IsEnemy ? (t + h - 10f) : (t + 10f);
+        DrawEvolutionOrb(new Vector2(EpOrbOffset.X, orbY), ep,
                          new Color("F59E0B"), "EP", font);
-        DrawEvolutionOrb(new Vector2(SepOrbOffset.X + 34f, t + 60f + SepOrbOffset.Y), sep,
+        DrawEvolutionOrb(new Vector2(SepOrbOffset.X, orbY), sep,
                          new Color("A855F7"), "SEP", font);
     }
 
@@ -146,8 +152,9 @@ public partial class LeaderMedallionWidget : Control
         if (@event is not InputEventMouseButton mb || !mb.Pressed) return;
         if (mb.ButtonIndex != MouseButton.Left) return;
 
-        var epC = new Vector2(EpOrbOffset.X, 14f + 60f + EpOrbOffset.Y);
-        var sepC = new Vector2(SepOrbOffset.X + 34f, 14f + 60f + SepOrbOffset.Y);
+        float orbY = IsEnemy ? (14f + 108f - 10f) : (14f + 10f);
+        var epC = new Vector2(EpOrbOffset.X, orbY);
+        var sepC = new Vector2(SepOrbOffset.X, orbY);
 
         if (mb.Position.DistanceTo(sepC) <= OrbRadius + 3f) { OnEvolveOrbClicked?.Invoke(true); AcceptEvent(); }
         else if (mb.Position.DistanceTo(epC) <= OrbRadius + 3f) { OnEvolveOrbClicked?.Invoke(false); AcceptEvent(); }

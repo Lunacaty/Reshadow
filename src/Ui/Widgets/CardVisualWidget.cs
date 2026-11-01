@@ -46,6 +46,9 @@ public partial class CardVisualWidget : Control
         _maxCopyLimit = Math.Max(1, maxCopyLimit);
         _showCopyPips = showCopyPips;
 
+        // 基准尺寸只是默认值。要缩略显示必须调 SetCardSize ——
+        // 只改 Size 不写 CustomMinimumSize 的话，容器会把控件重新撑回 192x254，
+        // 手牌叠放的计算就全错了（右侧溢出屏幕就是这么来的）。
         CustomMinimumSize = new Vector2(192, showCopyPips ? 276 : 254);
         MouseFilter = MouseFilterEnum.Stop;
         MouseDefaultCursorShape = CursorShape.PointingHand;
@@ -58,6 +61,23 @@ public partial class CardVisualWidget : Control
         MouseEntered += () => { _hovered = true; QueueRedraw(); OnHoverEntered?.Invoke(Card, this); };
         MouseExited  += () => { _hovered = false; QueueRedraw(); OnHoverExited?.Invoke(Card); };
 
+        QueueRedraw();
+    }
+
+    /// <summary>
+    /// 显式设定显示尺寸（缩略手牌、牌组托盘都用它）。
+    /// 必须同时改 CustomMinimumSize 与 Size，否则容器会把控件撑回基准尺寸。
+    /// </summary>
+    public void SetCardSize(float w, float h)
+    {
+        // Control 进普通父节点时，Size 会被父级布局覆盖。
+        // 必须先把锚点钉死在左上角、清掉 offset 拉伸，再写 Size ——
+        // 否则改完 CustomMinimumSize 后 Size 仍停在基准值 192x254。
+        SetAnchorsPreset(LayoutPreset.TopLeft);
+        CustomMinimumSize = new Vector2(w, h);
+        Size = new Vector2(w, h);
+        OffsetRight = w;
+        OffsetBottom = h;
         QueueRedraw();
     }
 
@@ -78,10 +98,24 @@ public partial class CardVisualWidget : Control
     {
         if (Card == null) return;
 
-        float w = Size.X;
-        float pipsH = _showCopyPips ? 22f : 0f;
-        float h = Size.Y - pipsH;
-        if (w < 60 || h < 80) return;
+        // 全部绘制都在 192 x (254+pips) 的基准空间里完成，
+        // 最后靠变换矩阵整体等比缩放。
+        // 少了这一步，控件被压到 88x116 时费用球与刀盾会挤成一团 ——
+        // 因为它们是按基准尺寸写死的像素坐标。
+        const float BaseW = 192f;
+        const float BaseH = 254f;
+        float pipsH0 = _showCopyPips ? 22f : 0f;
+        float baseTotalH = BaseH + pipsH0;
+        if (Size.X < 20 || Size.Y < 20) return;
+
+        float scale = Mathf.Min(Size.X / BaseW, Size.Y / baseTotalH);
+        Vector2 offset = new((Size.X - BaseW * scale) * 0.5f,
+                             (Size.Y - baseTotalH * scale) * 0.5f);
+        DrawSetTransform(offset, 0f, new Vector2(scale, scale));
+
+        float w = BaseW;
+        float h = BaseH;
+        float pipsH = pipsH0;
 
         var font = ThemeDB.FallbackFont;
         Color clanCol = SvWbTheme.ClanColor(Card.Clan.IsValid ? Card.Clan.Name : null);

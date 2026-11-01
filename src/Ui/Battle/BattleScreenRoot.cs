@@ -34,6 +34,10 @@ public partial class BattleScreenRoot : Control
     private VBoxContainer _boardAlly;
     private VBoxContainer _boardFoe;
     private Button _pageBtn;
+    private Button _menuBtn;
+    private BattleVfxDirector _vfx;
+    private int _lastEventIdx;
+    private readonly Dictionary<long, Vector2> _unitCenters = new();
 
     private bool _handExpanded;
     private RuntimeEntity _attacker;
@@ -61,13 +65,13 @@ public partial class BattleScreenRoot : Control
 
         _foeLeader = new LeaderMedallionWidget();
         _foeLeader.Setup(_ctrl, 1, true);
-        _foeLeader.Position = new Vector2(430, 10);
+        _foeLeader.Position = new Vector2(475, 6);
         _foeLeader.OnLeaderClicked += () => _actionPanel.ShowForEntity(_ctrl.Leader(1));
         AddChild(_foeLeader);
 
         _allyLeader = new LeaderMedallionWidget();
         _allyLeader.Setup(_ctrl, 0, false);
-        _allyLeader.Position = new Vector2(520, 480);
+        _allyLeader.Position = new Vector2(475, 558);
         _allyLeader.OnLeaderClicked += () => _actionPanel.ShowForEntity(_ctrl.Leader(0));
         AddChild(_allyLeader);
 
@@ -90,15 +94,30 @@ public partial class BattleScreenRoot : Control
         _handLayer = new Control { MouseFilter = MouseFilterEnum.Pass };
         AddChild(_handLayer);
 
+        _vfx = new BattleVfxDirector();
+        AddChild(_vfx);
+
         _actionPanel = new TopLeftCardActionPanel();
         _actionPanel.Setup(_ctrl);
         AddChild(_actionPanel);
 
-        _pageBtn = new Button { Text = "[ 书页 ]", Position = new Vector2(46, 292) };
+        // 书页按钮：矢量绘制的鎏金暗蓝方框 + 折角书页，不是文字按钮。
+        _pageBtn = new Button { Text = "", Position = new Vector2(52, 312) };
         _pageBtn.CustomMinimumSize = new Vector2(52, 52);
+        _pageBtn.Size = new Vector2(52, 52);
         SvWbTheme.StyleButton(_pageBtn);
         _pageBtn.Pressed += OpenInfoModal;
+        _pageBtn.Draw += () => DrawPageIcon(_pageBtn);
         AddChild(_pageBtn);
+
+        // 左上角菜单按钮 [≡]：点击返回卡组一览
+        _menuBtn = new Button { Text = "", Position = new Vector2(52, 24) };
+        _menuBtn.CustomMinimumSize = new Vector2(52, 52);
+        _menuBtn.Size = new Vector2(52, 52);
+        SvWbTheme.StyleButton(_menuBtn);
+        _menuBtn.Pressed += () => OnExitToDecks?.Invoke();
+        _menuBtn.Draw += () => DrawMenuIcon(_menuBtn);
+        AddChild(_menuBtn);
 
         // 点战场空白处收起手牌
         _field.GuiInput += (InputEvent e) =>
@@ -127,6 +146,7 @@ public partial class BattleScreenRoot : Control
     {
         RebuildBoards();
         RebuildHand();
+        ConsumeNewEventsToVfx();
         _allyLeader.QueueRedraw();
         _foeLeader.QueueRedraw();
         _rightCol.QueueRedraw();
@@ -181,7 +201,77 @@ public partial class BattleScreenRoot : Control
             w.OnDragAttackReleased += (ent, pos) => ReleaseAttack(pos);
 
             row.AddChild(w);
+
+            // 记下实体的屏幕中心：事件到来时要往这里播特效。
+            var cap = e;
+            CallDeferred(nameof(CaptureCenter), cap.EntityId, w);
         }
+    }
+
+    private void CaptureCenter(long entityId, Control w)
+    {
+        if (w == null || !IsInstanceValid(w)) return;
+        _unitCenters[entityId] = w.GlobalPosition + w.Size * 0.5f;
+    }
+
+    private Vector2 PosOf(EntityRef? r, int playerId)
+    {
+        if (r != null && _unitCenters.TryGetValue(r.Value.EntityId, out var p))
+            return p;
+        // 找不到就用主战者位置兜底（伤害多半打在主战者身上）
+        var leader = _ctrl.Leader(playerId >= 0 ? playerId : 1);
+        if (leader != null && _unitCenters.TryGetValue(leader.EntityId, out var lp))
+            return lp;
+        return new Vector2(640f, 300f);
+    }
+
+    /// <summary>
+    /// 把 BattleState.EventLog 里新增的事件翻译成视觉演出。
+    ///
+    /// 这是「前后端分离」在这里的体现：内核只管往日志里写发生了什么，
+    /// UI 按游标消费日志决定播什么动画 —— 内核完全不知道有特效这回事。
+    /// </summary>
+    private void ConsumeNewEventsToVfx()
+    {
+        if (_vfx == null || _ctrl?.State == null) return;
+        var log = _ctrl.State.EventLog;
+
+        for (int i = _lastEventIdx; i < log.Count; i++)
+        {
+            var ev = log[i];
+            var pos = PosOf(ev.Subject, ev.PlayerId);
+
+            switch (ev.Kind)
+            {
+                case CoreEvent.OnDamaged:
+                    _vfx.PlayDamage(pos, ev.Amount);
+                    break;
+                case CoreEvent.OnHealed:
+                    _vfx.PlayHeal(pos, ev.Amount);
+                    break;
+                case CoreEvent.OnDestroy:
+                    _vfx.PlayDestroy(pos);
+                    break;
+                case CoreEvent.OnBanish:
+                    _vfx.PlayBanish(pos);
+                    break;
+                case CoreEvent.OnEnterField:
+                case CoreEvent.OnSummon:
+                    _vfx.PlayEnterField(pos);
+                    break;
+                case CoreEvent.OnTransform:
+                    _vfx.PlayTransform(pos);
+                    break;
+                case CoreEvent.OnEvolve:
+                    _vfx.PlayEvolve(pos, false);
+                    break;
+                case CoreEvent.OnSuperEvolve:
+                    _vfx.PlayEvolve(pos, true);
+                    break;
+            }
+        }
+
+        _lastEventIdx = log.Count;
     }
 
     private void ReleaseAttack(Vector2 screenPos)
@@ -223,23 +313,34 @@ public partial class BattleScreenRoot : Control
         foreach (var c in _handLayer.GetChildren()) c.QueueFree();
 
         var hand = _ctrl.Hand(0);
-        var panel = new PanelContainer();
-        _handLayer.AddChild(panel);
+        int n = hand.Count;
 
-        // 缩小态要让开主战者拱框（拱框中心约 X=620）。
-        // 放在 860 起才不压住立绘；展开态才允许铺到中右。
-        Rect2 rect = _handExpanded
-            ? new Rect2(430, 516, 830, 200)
-            : new Rect2(862, 600, 402, 116);
+        float cardW = _handExpanded ? 138f : 88f;
+        float cardH = _handExpanded ? 182f : 116f;
+        float rightEdge = 1266f;
 
-        panel.SetAnchorsPreset(LayoutPreset.TopLeft);
-        panel.Position = rect.Position;
-        panel.Size = rect.Size;
-        panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
-            new Color(0.05f, 0.07f, 0.12f, 0.88f), SvWbTheme.AccentCyan, 10, 1, 8));
-        panel.MouseFilter = MouseFilterEnum.Stop;
+        // 缩小态不越过 750（让开主战者拱框 X=475..715）；展开态可到 420。
+        float minLeft = _handExpanded ? 420f : 750f;
+        float maxTrayW = rightEdge - minLeft;
 
-        panel.GuiInput += (InputEvent e) =>
+        float idealStep = cardW + (_handExpanded ? 6f : 4f);
+        float neededW = n <= 0 ? 180f : cardW + (n - 1) * idealStep + 20f;
+        float trayW = Mathf.Clamp(neededW, 180f, maxTrayW);
+        float trayLeft = rightEdge - trayW;
+        float trayTop = _handExpanded ? 528f : 596f;
+        float trayH = cardH + 14f;
+
+        var tray = new Panel
+        {
+            Position = new Vector2(trayLeft, trayTop),
+            Size = new Vector2(trayW, trayH),
+            MouseFilter = MouseFilterEnum.Stop,
+        };
+        tray.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
+            new Color(0.05f, 0.07f, 0.12f, _handExpanded ? 0.90f : 0.72f),
+            _handExpanded ? new Color("D4AF37") : SvWbTheme.BorderSubtle,
+            10, _handExpanded ? 2 : 1, 6));
+        tray.GuiInput += e =>
         {
             if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
             {
@@ -247,38 +348,41 @@ public partial class BattleScreenRoot : Control
                 RebuildHand();
             }
         };
+        _handLayer.AddChild(tray);
 
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 6);
-        panel.AddChild(row);
+        if (n == 0) return;
 
-        float cardW = _handExpanded ? 132f : 92f;
-        float cardH = _handExpanded ? 184f : 116f;
+        // 牌多时自动叠牌：步进被压缩，绝不越过右边界。
+        float stepX = n == 1 ? 0f : Mathf.Min(idealStep, (trayW - 20f - cardW) / (n - 1));
+        float startX = trayLeft + 10f;
 
-        foreach (var card in hand.Take(9))
+        for (int i = 0; i < n; i++)
         {
+            var card = hand[i];
             var w = new CardVisualWidget();
             w.Setup(card.Def, _store.CardPrinter, 0, 3, showCopyPips: false);
-            w.CustomMinimumSize = new Vector2(cardW, cardH);
-            w.Size = new Vector2(cardW, cardH);
+            w.Position = new Vector2(startX + i * stepX, trayTop + 7f);
+            // 必须走 SetCardSize：单写 Size 会被 CustomMinimumSize 撑回 192x254，
+            // 手牌就会全部溢出右边界（截图里被切掉的那张就是这么来的）。
+            w.SetCardSize(cardW, cardH);
 
             var bound = card;
             w.OnLeftClick += _ =>
             {
+                if (!_handExpanded) { _handExpanded = true; RebuildHand(); return; }
                 _actionPanel.ShowForEntity(bound);
+                if (_ctrl.IsInFuseMode && !ReferenceEquals(_ctrl.FuseBaseCard, bound))
+                {
+                    _ctrl.ToggleFuseMaterial(bound);
+                    _actionPanel.ShowForEntity(_ctrl.FuseBaseCard);
+                    RebuildHand();
+                    return;
+                }
                 _draggingCard = bound;
                 _draggingPlay = true;
             };
             w.OnRightClick += _ => _actionPanel.ShowForEntity(bound);
-            row.AddChild(w);
-        }
-
-        if (hand.Count == 0)
-        {
-            var empty = new Label { Text = "（手牌为空）" };
-            empty.AddThemeFontSizeOverride("font_size", 12);
-            empty.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
-            row.AddChild(empty);
+            _handLayer.AddChild(w);
         }
     }
 
@@ -303,6 +407,56 @@ public partial class BattleScreenRoot : Control
                 _ctrl.TryPlayCard(card, out _);
                 Rebuild();
             }
+        }
+    }
+
+    /// <summary>折角书页图标（矢量，零贴图）。</summary>
+    private static void DrawPageIcon(Control host)
+    {
+        var rect = new Rect2(14f, 12f, 24f, 28f);
+        // 鎏金暗蓝方框底
+        host.DrawRect(new Rect2(4f, 4f, 44f, 44f), new Color(0.06f, 0.09f, 0.16f, 0.9f));
+        host.DrawRect(new Rect2(4f, 4f, 44f, 44f), new Color("D4AF37"), false, 1.5f);
+
+        // 书页主体（右上折角）
+        Vector2[] page =
+        {
+            new(rect.Position.X, rect.Position.Y),
+            new(rect.Position.X + rect.Size.X - 8f, rect.Position.Y),
+            new(rect.Position.X + rect.Size.X, rect.Position.Y + 8f),
+            new(rect.Position.X + rect.Size.X, rect.Position.Y + rect.Size.Y),
+            new(rect.Position.X, rect.Position.Y + rect.Size.Y),
+        };
+        host.DrawColoredPolygon(page, new Color("F8FAFC"));
+
+        // 折角三角
+        Vector2[] fold =
+        {
+            new(rect.Position.X + rect.Size.X - 8f, rect.Position.Y),
+            new(rect.Position.X + rect.Size.X - 8f, rect.Position.Y + 8f),
+            new(rect.Position.X + rect.Size.X, rect.Position.Y + 8f),
+        };
+        host.DrawColoredPolygon(fold, new Color("CBD5E1"));
+
+        // 三条文字线
+        for (int i = 0; i < 3; i++)
+        {
+            float y = rect.Position.Y + 12f + i * 6f;
+            host.DrawLine(new Vector2(rect.Position.X + 5f, y),
+                          new Vector2(rect.Position.X + rect.Size.X - 5f, y),
+                          new Color(0.35f, 0.40f, 0.50f), 1.2f);
+        }
+    }
+
+    /// <summary>三道横线菜单图标（矢量）。</summary>
+    private static void DrawMenuIcon(Control host)
+    {
+        host.DrawRect(new Rect2(4f, 4f, 44f, 44f), new Color(0.06f, 0.09f, 0.16f, 0.9f));
+        host.DrawRect(new Rect2(4f, 4f, 44f, 44f), new Color("D4AF37"), false, 1.5f);
+        for (int i = 0; i < 3; i++)
+        {
+            float y = 19f + i * 7f;
+            host.DrawLine(new Vector2(15f, y), new Vector2(37f, y), new Color("F8FAFC"), 2.4f);
         }
     }
 
