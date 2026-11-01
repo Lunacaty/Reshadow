@@ -64,6 +64,33 @@ public sealed class MatchRunner
     ///   4. 双方各抽 4 张起手
     /// 完成后停在 Mulligan 阶段，等待 ConfirmMulligan()。
     /// </summary>
+    /// <summary>
+    /// 用「局外构筑 + 卡池环境」开局。
+    ///
+    /// 构筑在这里被**展开**成卡号序列，再由 FillDeck 生成局内的 40 个实体 ——
+    /// 此后无论洗牌、塞衍生卡、换整副牌库，改的都是 PlayerState.Deck，
+    /// 局外那份构筑一字不动。
+    /// </summary>
+    public void StartWithConstructedDecks(
+        Packs.CardPoolRuntime pool, int firstPlayer,
+        Packs.ConstructedDeck deck0, Packs.ConstructedDeck deck1)
+    {
+        if (pool == null) throw new ArgumentNullException(nameof(pool));
+
+        var err0 = Packs.DeckValidator.Validate(deck0, pool);
+        var err1 = Packs.DeckValidator.Validate(deck1, pool);
+        if (err0.Count > 0 || err1.Count > 0)
+        {
+            var all = new List<string>(err0);
+            all.AddRange(err1);
+            throw new InvalidOperationException("构筑不合法：" + string.Join("; ", all));
+        }
+
+        // 本卡池的具名牌组表必须挂上，否则「替换为启示录牌组」会找不到定义。
+        CardVm.DeckDefs = pool.DeckDefs;
+        Start(firstPlayer, deck0.ExpandToCardIds(), deck1.ExpandToCardIds(), pool.Rules.LeaderInitialLife);
+    }
+
     public void Start(int firstPlayer, IReadOnlyList<int> deck0, IReadOnlyList<int> deck1,
                       int leaderLife = 20)
     {
