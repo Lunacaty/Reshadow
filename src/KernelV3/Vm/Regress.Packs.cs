@@ -61,6 +61,7 @@ public static class RegressPacks
         Check("POOL-S 5选2 自定义发现", GateDiscoverFivePickTwo);
         Check("POOL-T 本职业 self 与多职业区间发现", GateDiscoverClanRanges);
         Check("POOL-U X选Y 的四端同构与中文渲染", GateOfferPickFourEnds);
+        Check("POOL-V 指定卡包跨池发现", GateCrossPoolPackDiscover);
 
         log.AppendLine();
         log.AppendLine("=== 卡池门禁 " + pass + "/" + total + " ===");
@@ -1808,5 +1809,115 @@ card 943001 ""四端选卡"" (Follower, cost: 2, atk: 2, life: 2) {
         return (ok, "脚本=" + scriptOk + " 积木=" + blockOk + " 表单=" + formOk
                     + " 打印offer=" + printOffer + " 中文4选2=" + cnOffer
                     + (ok ? "" : " | S:" + Short(dS) + " B:" + Short(dB) + " F:" + Short(dF)));
+    }
+
+    // ---------------------------------------------------------------- 门禁 V
+
+    /// <summary>
+    /// 指定卡包跨池发现：卡池只启用 pack.a，但卡面写 pack: pack.b 时，
+    /// 必须能从全量总表里发现 pack.b 的卡 —— 哪怕它没勾进当前卡池。
+    ///
+    /// 这是「发现与混沌发现合并」那条设计的核心：
+    /// 范围由 pack 筛选表达，而不是靠 Zone 二选一。
+    /// </summary>
+    private static (bool, string) GateCrossPoolPackDiscover()
+    {
+        var pa = new CardPackDef
+        {
+            PackId = "pack.a", NativePoolId = "xp",
+            Cards = new List<CardRawEntry>
+            {
+                new CardRawEntry { CardId = 796001, NameEng = "InA", Kind = CardKind.Follower,
+                                   Cost = 2, Attack = 1, Life = 1 },
+            },
+        };
+        var pb = new CardPackDef
+        {
+            PackId = "pack.b", NativePoolId = "yp",
+            Cards = new List<CardRawEntry>
+            {
+                new CardRawEntry { CardId = 796002, NameEng = "InB1", Kind = CardKind.Follower,
+                                   Cost = 2, Attack = 1, Life = 1 },
+                new CardRawEntry { CardId = 796003, NameEng = "InB2", Kind = CardKind.Follower,
+                                   Cost = 3, Attack = 1, Life = 1 },
+            },
+        };
+        var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["pack.a"] = pa, ["pack.b"] = pb,
+        };
+
+        // 只启用 A
+        var built = CardPoolBuilder.Build(new CardPoolConfig
+        {
+            PoolId = "xp", EnabledPackIds = new List<string> { "pack.a" },
+        }, packs);
+        if (!built.Ok) return (false, "建池失败：" + string.Join("|", built.Errors.Take(2)));
+
+        var st = built.Pool.CreateBattleState(seed: 99);
+
+        // B 装在「硬盘上」（总表里有），但没勾进卡池
+        foreach (var c in pb.Cards)
+            st.Pool.Catalog.RegisterCompiledCard(new CardDef
+            {
+                CardId = c.CardId, Name = c.NameEng, Kind = c.Kind,
+                BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life, PackId = "pack.b",
+            });
+
+        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
+        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
+        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
+        st.ActivePlayer = 0; st.TurnNumber = 3;
+
+        // 反向对照：不加 pack 筛选时，只该看见 A（当前卡池）
+        bool CurrentPoolOnly(out string note0)
+        {
+            var w0 = new AndExpr(new List<BoolExpr>
+            {
+                new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item },
+            });
+            var n0 = new SpawnCardNode
+            {
+                SourceKind = CardSourceKind.PoolQuery,
+                CopyFrom = new TargetSpec { Zone = ZoneRef.CardPool, Mode = SelectMode.Choose, Where = w0, Count = null },
+                ToZone = ZoneRef.Hand, ToOwner = ZoneScope.Self, Count = NumExpr.Const(1), OfferCount = 3,
+            };
+            var vm0 = new CardVm(st) { CurrentTurnOwner = 0 };
+            var sco0 = new VmScope { Owner = ZoneScope.Self, Controller = 0 };
+            vm0.PushBody(new List<EffectNode> { n0 }, sco0);
+            vm0.StepUntilBlocked();
+            if (vm0.Pending == null) { note0 = "未挂起"; return false; }
+            note0 = string.Join(",", vm0.Pending.Candidates);
+            return vm0.Pending.Candidates.All(id => id == 796001);
+        }
+
+        // 正向：加了 pack: pack.b 之后，只该看见 B（跨池）
+        var where = new AndExpr(new List<BoolExpr>
+        {
+            new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item },
+            new HasPackExpr { PackId = "pack.b", Of = TargetSpec.Item },
+        });
+        var node = new SpawnCardNode
+        {
+            SourceKind = CardSourceKind.PoolQuery,
+            CopyFrom = new TargetSpec { Zone = ZoneRef.CardPool, Mode = SelectMode.Choose, Where = where, Count = null },
+            ToZone = ZoneRef.Hand, ToOwner = ZoneScope.Self, Count = NumExpr.Const(1), OfferCount = 3,
+        };
+        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
+        var src = st.SpawnCard(796001, ZoneRef.Hand, 0);
+        var sco = new VmScope { Owner = ZoneScope.Self, Controller = 0, Source = EntityRef.From(src) };
+        vm.PushBody(new List<EffectNode> { node }, sco);
+        vm.StepUntilBlocked();
+
+        if (vm.Pending == null) return (false, "未挂起");
+        var cands = vm.Pending.Candidates;
+        bool crossPool = cands.Count > 0 && cands.All(id => id == 796002 || id == 796003);
+        bool unresolved = st.UnresolvedSpawnCount == 0;
+        bool control = CurrentPoolOnly(out var note0);
+
+        bool ok = crossPool && unresolved && control;
+        return (ok, "跨池命中=" + crossPool + "[" + string.Join(",", cands) + "]"
+                    + " 反向对照=" + control + "[" + note0 + "]"
+                    + " Unresolved=" + st.UnresolvedSpawnCount);
     }
 }
