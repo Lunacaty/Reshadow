@@ -45,6 +45,11 @@ public partial class DiyWorkshopView : Control
     private LineEdit _formTraitsEdit;
     private LineEdit _formKeywordsEdit;
 
+    // 英文端可编辑控件
+    private LineEdit _engNameEdit;
+    private LineEdit _engTraitsEdit;
+    private TextEdit _engTextEdit;
+
     public void Boot(GameSessionStore store)
     {
         _store = store;
@@ -92,6 +97,11 @@ public partial class DiyWorkshopView : Control
         title.AddThemeFontSizeOverride("font_size", 22);
         title.AddThemeColorOverride("font_color", new Color("FEF08A"));
         row.AddChild(title);
+
+        var defineBtn = new Button { Text = "➕ 注册新词条", CustomMinimumSize = new Vector2(150, 34) };
+        SvWbTheme.StyleButton(defineBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
+        defineBtn.Pressed += ShowDefineDialog;
+        row.AddChild(defineBtn);
 
         row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
@@ -466,30 +476,87 @@ public partial class DiyWorkshopView : Control
         var spec = _ctrl.CnlSpec;
         if (spec == null) { _endpointHost.AddChild(new Label { Text = "（英文规格为空）" }); return; }
 
-        _endpointHost.AddChild(Row("Card Name", spec.Name ?? ""));
-        _endpointHost.AddChild(Row("Clan", spec.Clan ?? "Neutral"));
-        _endpointHost.AddChild(Row("Traits", string.Join(", ", spec.Traits ?? new List<string>())));
-
-        var engTitle = new Label { Text = "官方英文卡面文本" };
-        engTitle.AddThemeFontSizeOverride("font_size", 13);
-        engTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
-        _endpointHost.AddChild(engTitle);
-
-        var box = new PanelContainer { CustomMinimumSize = new Vector2(0, 200) };
-        box.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
-            SvWbTheme.BgSurface, SvWbTheme.BorderSubtle, 8, 1, 0));
-        var rich = new RichTextLabel
+        var hint = new Label
         {
-            BbcodeEnabled = false,
-            Text = spec.EngText ?? "",
-            FitContent = true,
-            ScrollActive = false,
+            Text = "官方英文卡面。可编辑后点【立即编译并同步四端】；也可点下方模板按钮插入常用句式。",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
-        rich.AddThemeFontSizeOverride("normal_font_size", 13);
-        box.AddChild(rich);
-        _endpointHost.AddChild(box);
+        hint.AddThemeFontSizeOverride("font_size", 11);
+        hint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+        _endpointHost.AddChild(hint);
+
+        // 模板插入按钮：让玩家不用背英文语法
+        var tplRow = new HBoxContainer();
+        tplRow.AddThemeConstantOverride("separation", 6);
+        _endpointHost.AddChild(tplRow);
+
+        AddTemplateButton(tplRow, "Fanfare: draw a card.");
+        AddTemplateButton(tplRow, "Fanfare: deal 2 damage to an enemy follower.");
+        AddTemplateButton(tplRow, "Ward");
+        AddTemplateButton(tplRow, "Last Words: draw a card.");
+
+        _engNameEdit = new LineEdit { Text = spec.Name ?? "", CustomMinimumSize = new Vector2(300, 32) };
+        _endpointHost.AddChild(EditRow("Cardsheet Name", _engNameEdit));
+
+        _engTraitsEdit = new LineEdit
+        {
+            Text = string.Join(", ", spec.Traits ?? new List<string>()),
+            CustomMinimumSize = new Vector2(300, 32),
+            PlaceholderText = "逗号分隔，如 Officer, Commander",
+        };
+        _endpointHost.AddChild(EditRow("Traits", _engTraitsEdit));
+
+        var txtTitle = new Label { Text = "Official English Text" };
+        txtTitle.AddThemeFontSizeOverride("font_size", 13);
+        txtTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
+        _endpointHost.AddChild(txtTitle);
+
+        _engTextEdit = new TextEdit
+        {
+            Text = spec.EngText ?? "",
+            CustomMinimumSize = new Vector2(0, 240),
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
+        _engTextEdit.AddThemeFontSizeOverride("font_size", 13);
+        _endpointHost.AddChild(_engTextEdit);
     }
 
+    private void AddTemplateButton(HBoxContainer host, string snippet)
+    {
+        var b = new Button { Text = snippet.Length > 26 ? snippet.Substring(0, 24) + "…" : snippet };
+        b.TooltipText = snippet;
+        SvWbTheme.StyleButton(b);
+        b.Pressed += () =>
+        {
+            if (_engTextEdit == null) return;
+            string cur = _engTextEdit.Text ?? "";
+            _engTextEdit.Text = string.IsNullOrWhiteSpace(cur) ? snippet : cur.TrimEnd() + "\n" + snippet;
+        };
+        host.AddChild(b);
+    }
+
+    /// <summary>把英文端的编辑结果写回 CnlSpec 再交给控制器编译。</summary>
+    private bool ApplyEnglishEdits()
+    {
+        var spec = _ctrl.CnlSpec;
+        if (spec == null) return false;
+
+        var rebuilt = new ShadowverseFan.KernelV3.Diy.DiyWorkspace.CnlCardSpec
+        {
+            CardId = spec.CardId,
+            Name = _engNameEdit?.Text ?? spec.Name,
+            NameChs = spec.NameChs,
+            Kind = spec.Kind,
+            Cost = spec.Cost,
+            Attack = spec.Attack,
+            Life = spec.Life,
+            Clan = spec.Clan,
+            Traits = SplitList(_engTraitsEdit?.Text),
+            EngText = _engTextEdit?.Text ?? spec.EngText,
+        };
+
+        return _ctrl.CompileFromEnglishCnl(rebuilt);
+    }
     private static Control Row(string label, string value)
     {
         var row = new HBoxContainer();
@@ -519,6 +586,9 @@ public partial class DiyWorkshopView : Control
                 break;
             case DiyEndpointKind.Form:
                 ok = ApplyFormEdits();
+                break;
+            case DiyEndpointKind.EnglishCnl:
+                ok = ApplyEnglishEdits();
                 break;
             default:
                 // 其余三端目前为只读投影，编译退化为「用当前 AST 重投影」
@@ -552,6 +622,26 @@ public partial class DiyWorkshopView : Control
             _statusLabel.Text = "✘ 同构校验失败：" + diff;
             _statusLabel.AddThemeColorOverride("font_color", SvWbTheme.StatusDanger);
         }
+    }
+
+    /// <summary>弹出词条注册窗，注册完立刻可用于所有端。</summary>
+    private void ShowDefineDialog()
+    {
+        var dlg = new DefineEntryDialog();
+        AddChild(dlg);
+        dlg.Setup();
+        dlg.OnDefined += (kind, eng, chs, min, max) =>
+        {
+            switch (kind)
+            {
+                case "counter": _ctrl.DefineCustomCounter(eng, chs, min, max); break;
+                case "clan":    _ctrl.DefineCustomClan(eng, chs); break;
+                default:        _ctrl.DefineCustomTrait(eng, chs); break;
+            }
+            _statusLabel.Text = _ctrl.LastStatusMessage;
+            _statusLabel.AddThemeColorOverride("font_color", SvWbTheme.StatusValid);
+            RefreshAll();
+        };
     }
 
     private void OnSave()

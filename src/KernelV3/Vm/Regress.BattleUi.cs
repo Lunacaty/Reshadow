@@ -55,6 +55,8 @@ public static class RegressBattleUi
         Check("DIYU-3 保存进卡包并热重载读回", CaseDiySaveAndReload);
         Check("DIYU-4 表单端可编辑", CaseFormEditable);
         Check("DIYU-5 卡池规则可编辑并读回", CasePoolRulesSave);
+        Check("DIYU-6 英文端可编辑", CaseEnglishEditable);
+        Check("DIYU-7 自定义词条注册即可用", CaseDefineCustomEntry);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -721,5 +723,95 @@ public static class RegressBattleUi
 
         bool ok = after == origHand + 1;
         return (ok, pid + " 起始手牌 " + origHand + "->" + after + "（应为 " + (origHand + 1) + "）");
+    }
+
+    // ---------------------------------------------------------------- DIYU-6
+
+    /// <summary>
+    /// 英文端可编辑：改官方英文卡面后编译，AST 必须跟着变。
+    ///
+    /// 这条验的是「英文端不是只读投影」—— 四端互通的前提是
+    /// 每一端都能作为入口产出 CurrentDef。
+    /// </summary>
+    private static (bool, string) CaseEnglishEditable()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        var spec = ctrl.CnlSpec;
+        if (spec == null) return (false, "英文规格为空");
+
+        string beforeAst = ctrl.GetCanonicalAstText();
+
+        var edited = new ShadowverseFan.KernelV3.Diy.DiyWorkspace.CnlCardSpec
+        {
+            CardId = spec.CardId,
+            Name = spec.Name,
+            NameChs = spec.NameChs,
+            Kind = spec.Kind,
+            Cost = spec.Cost,
+            Attack = spec.Attack,
+            Life = spec.Life,
+            Clan = spec.Clan,
+            Traits = spec.Traits,
+            // 用一句与示例卡不同的官方英文
+            EngText = "Fanfare: Deal 3 damage to an enemy follower.",
+        };
+
+        bool compiled = ctrl.CompileFromEnglishCnl(edited);
+        if (!compiled)
+            return (false, "英文编译失败：" + string.Join("；", ctrl.LastErrors));
+
+        string afterAst = ctrl.GetCanonicalAstText();
+        bool astChanged = !string.Equals(beforeAst, afterAst, StringComparison.Ordinal);
+        bool hasAbilities = ctrl.CurrentDef?.Abilities != null && ctrl.CurrentDef.Abilities.Count > 0;
+
+        bool ok = astChanged && hasAbilities;
+        return (ok, "AST 变化=" + astChanged + " 能力非空=" + hasAbilities
+                    + " | 新AST=" + (afterAst ?? "").Split('\n')[0].Trim());
+    }
+
+    // ---------------------------------------------------------------- DIYU-7
+
+    /// <summary>
+    /// 自定义词条注册后必须立刻可用于卡牌（Schema 真的发号了）。
+    /// </summary>
+    private static (bool, string) CaseDefineCustomEntry()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        string traitEng = "MechaProbe";
+        string counterEng = "probe_counter";
+        string clanEng = "ProbeCraft";
+
+        ctrl.DefineCustomTrait(traitEng, "探测机甲");
+        bool traitOk = ctrl.Workspace.Schema.Trait(traitEng).IsValid;
+
+        ctrl.DefineCustomCounter(counterEng, "探测计数", 0, 7);
+        bool counterOk = ctrl.Workspace.Schema.Counter(counterEng) != null;
+
+        ctrl.DefineCustomClan(clanEng, "探测职业");
+        bool clanOk = ctrl.Workspace.Schema.Clan(clanEng).IsValid;
+
+        // 注册后应能真的写进卡里
+        // 兵种写在**卡牌头部括号内**：traits: [A, B]。放在 body 里会报「无法识别」。
+        string script = string.Join("\n",
+            "card 959902 \"词条测试\" (Follower, cost: 2, atk: 1, life: 1, clan: " + clanEng
+                + ", traits: [" + traitEng + "]) {",
+            "    on play {",
+            "        draw(1)",
+            "    }",
+            "}");
+        bool compiled = ctrl.CompileFromScript(script);
+
+        bool usedTrait = compiled && ctrl.CurrentDef.Traits != null
+                         && ctrl.CurrentDef.Traits.Any(t => t.Name == traitEng);
+        bool usedClan = compiled && ctrl.CurrentDef.Clan.IsValid
+                        && ctrl.CurrentDef.Clan.Name == clanEng;
+
+        bool ok = traitOk && counterOk && clanOk && compiled && usedTrait && usedClan;
+        return (ok, "兵种=" + traitOk + " 计数器=" + counterOk + " 职业=" + clanOk
+                    + " 可用于卡=" + usedTrait + "/" + usedClan);
     }
 }
