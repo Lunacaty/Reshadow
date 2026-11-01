@@ -155,26 +155,69 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         return wrap;
     }
 
+    /// <summary>数值块的显示文本。数值挂在 Number 子积木上，不在块自身 IntA。</summary>
+    private static string NumText(Block numBlk, int fallback = 1)
+    {
+        if (numBlk == null) return fallback.ToString();
+        return numBlk.Opcode switch
+        {
+            "num_const" => numBlk.IntA.ToString(),
+            "num_counter" => "【" + (numBlk.Text ?? "计数") + "】",
+            "num_count" => "统计数量",
+            "num_prop" => (numBlk.EnumA ?? "属性"),
+            _ => string.IsNullOrEmpty(numBlk.Opcode) ? fallback.ToString() : numBlk.Opcode,
+        };
+    }
+
+    /// <summary>
+    /// 积木的卡面化描述。
+    ///
+    /// 两个坑都在这里踩过：
+    ///   1) 数值要读 blk.Number（子积木），读 blk.IntA 恒为 0
+    ///      —— 于是「打 3 点伤害」显示成「打 0 点伤害」；
+    ///   2) opcode 的真实拼写是 act_restore / act_summon，
+    ///      写成 act_heal / act_spawn 永远匹配不上，只会落到 default 分支。
+    /// </summary>
     private static string BuildLabel(Block blk)
     {
         string op = blk.Opcode ?? "";
         string txt = blk.Text ?? "";
-        string t2 = blk.Text2 ?? "";
 
-        string core = op switch
+        return op switch
         {
-            "act_damage"   => "对目标造成 " + blk.IntA + " 点伤害",
-            "act_draw"     => "抽 " + (blk.IntA > 0 ? blk.IntA : 1) + " 张牌",
-            "act_heal"     => "回复 " + blk.IntA + " 点生命",
-            "act_spawn"    => "召唤 " + (string.IsNullOrEmpty(t2) ? "随从" : t2),
-            "act_discover" => "发现 " + (blk.IntA > 0 ? blk.IntA : 1) + " 张牌",
-            "act_deck_mod" => "构筑修正：" + txt,
-            "act_grant_kw" => "赋予关键词：" + txt,
-            ""             => string.IsNullOrEmpty(txt) ? "(未知积木)" : txt,
-            _              => string.IsNullOrEmpty(txt) ? op : op + "  " + txt,
+            "hat_self_event" => "🎩 当自身【" + txt + "】时",
+            "hat_watch_event" => "🎩 每当监听到【" + txt + "】时",
+            "hat_passive" => "🎩 常驻光环 / 初始设置",
+            "c_if_else" => "🔀 如果满足条件…否则…",
+            "c_repeat" => "🔁 重复执行 " + NumText(blk.Number) + " 次",
+            "c_mode" => "❖ 模式抉择 (" + (blk.EnumA ?? "") + ", 选 " + Math.Max(1, blk.IntA) + " 项)",
+            "act_damage" => "⚔ 对目标造成 " + NumText(blk.Number, 0) + " 点伤害",
+            "act_split_damage" => "⚔ 分配造成 " + NumText(blk.Number, 0) + " 点伤害",
+            "act_restore" => "💚 回复 " + NumText(blk.Number, 0) + " 点生命",
+            "act_full_restore" => "💚 完全回复生命",
+            "act_draw" => "🃏 抽取 " + NumText(blk.Number, 1) + " 张牌",
+            "act_summon" => "✨ 召唤 " + NumText(blk.Number, 1) + " 个《" + txt + "》",
+            "act_add_hand" => "📥 将 " + NumText(blk.Number, 1) + " 张《" + txt + "》加入手牌",
+            "act_gain_crest" => "❖ 获得纹章：《" + txt + "》",
+            "act_destroy" => "💀 破坏目标",
+            "act_banish" => "🌀 消失目标",
+            "act_discard" => "🗑 舍弃目标",
+            "act_bounce" => "↩ 将目标返回手牌",
+            "act_buff" => "⬆ 给予 +" + NumText(blk.Number, 0) + "/+" + NumText(blk.Number2, 0),
+            "act_grant_kw" => "🛡 给予关键词：【" + txt + "】",
+            "act_evolve" => "✦ 使目标进化",
+            "act_super_evolve" => "★ 使目标超进化",
+            "act_transform" => "🦋 使目标变身为《" + txt + "》",
+            "act_reanimate" => "⚰ 亡者召还 (" + NumText(blk.Number, 0) + ")",
+            "act_discover" => "🔍 发现 (" + (blk.IntB > 0 ? blk.IntB : 3) + " 选 "
+                                + (blk.IntA > 0 ? blk.IntA : 1) + ")",
+            "act_deck_mod" => "📐 构筑修正：" + txt + "(" + blk.IntA + ")",
+            "act_copy" => "📋 复制目标",
+            "act_move_zone" => "📦 移动目标区域",
+            "act_flip_damage" => "⚔ 翻转伤害",
+            "" => string.IsNullOrEmpty(txt) ? "(未知积木)" : txt,
+            _ => string.IsNullOrEmpty(txt) ? op : op + "  " + txt,
         };
-
-        return core;
     }
 
     /// <summary>按形状画一个带切角/圆角的色块。</summary>

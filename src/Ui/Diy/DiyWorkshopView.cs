@@ -98,6 +98,27 @@ public partial class DiyWorkshopView : Control
         title.AddThemeColorOverride("font_color", new Color("FEF08A"));
         row.AddChild(title);
 
+        // 从现有卡池导入一张真卡：把测试集里的卡拉进工坊看它的四端投影。
+        var loadPicker = new OptionButton { CustomMinimumSize = new Vector2(220, 34) };
+        SvWbTheme.StyleButton(loadPicker);
+        loadPicker.AddItem("📂 加载现有卡牌…", 0);
+        var allCards = _store.Catalog.AllCards.Values.OrderBy(c => c.CardId).ToList();
+        for (int ci = 0; ci < allCards.Count; ci++)
+        {
+            var cd = allCards[ci];
+            string nm = string.IsNullOrWhiteSpace(cd.NameChs) ? (cd.Name ?? "") : cd.NameChs;
+            loadPicker.AddItem(cd.CardId + " " + nm, ci + 1);
+        }
+        loadPicker.ItemSelected += idx =>
+        {
+            int k = (int)idx;
+            if (k <= 0 || k - 1 >= allCards.Count) return;
+            _ctrl.LoadExistingCard(allCards[k - 1]);
+            RefreshAll();
+            if (_statusLabel != null) _statusLabel.Text = _ctrl.LastStatusMessage;
+        };
+        row.AddChild(loadPicker);
+
         var defineBtn = new Button { Text = "➕ 注册新词条", CustomMinimumSize = new Vector2(150, 34) };
         SvWbTheme.StyleButton(defineBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
         defineBtn.Pressed += ShowDefineDialog;

@@ -28,6 +28,8 @@ public partial class PackAndPoolManagerView : Control
     private Button _saveRulesBtn;
     private Label _ruleStatus;
     private string _selectedPoolId;
+    private OptionButton _poolPicker;
+    private OptionButton rowPools;
 
     public void Boot(GameSessionStore store)
     {
@@ -110,6 +112,20 @@ public partial class PackAndPoolManagerView : Control
         ruleBar.AddChild(ruleTitle);
 
         ruleBar.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+
+        // 卡池切换：允许自由选择要查看/编辑哪个赛制卡池，
+        // 而不是写死只让第一个可编辑、其余只读跳过。
+        _poolPicker = new OptionButton { CustomMinimumSize = new Vector2(200, 32) };
+        SvWbTheme.StyleButton(_poolPicker);
+        _poolPicker.ItemSelected += idx =>
+        {
+            var keys = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).ToList();
+            int k = (int)idx;
+            if (k < 0 || k >= keys.Count) return;
+            _selectedPoolId = keys[k];
+            RefreshRules();
+        };
+        ruleBar.AddChild(_poolPicker);
 
         _saveRulesBtn = new Button { Text = "💾 保存卡池规则", CustomMinimumSize = new Vector2(150, 32) };
         SvWbTheme.StyleButton(_saveRulesBtn, isPrimary: true, customAccent: SvWbTheme.AccentGold);
@@ -198,28 +214,39 @@ public partial class PackAndPoolManagerView : Control
     {
         foreach (var c in _ruleList.GetChildren()) c.QueueFree();
         _ruleEdits.Clear();
-        _selectedPoolId = null;
 
-        foreach (var kv in _store.PoolConfigs.OrderBy(k => k.Key, StringComparer.Ordinal))
+        // 下拉框：列出全部卡池
+        if (_poolPicker != null)
         {
-            // 只给第一个池做可编辑控件，避免多个池的同名字段互相覆盖。
-            bool editable = _selectedPoolId == null;
-            if (editable) _selectedPoolId = kv.Key;
+            _poolPicker.Clear();
+            int pi = 0;
+            foreach (var k in _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal))
+                _poolPicker.AddItem(k, pi++);
+        }
 
-            var head = new Label { Text = "【" + (kv.Value.Name ?? kv.Key) + "】" };
+        if (string.IsNullOrEmpty(_selectedPoolId)
+            || !_store.PoolConfigs.ContainsKey(_selectedPoolId))
+            _selectedPoolId = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).FirstOrDefault();
+
+        // 只渲染当前选中的那个卡池（下拉框切换）。
+        // 早先写死「只有第一个池可编辑、其余 continue 跳过」，
+        // 导致玩家根本没法编辑 standard 或 custom-high-mana。
+        if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var curCfg))
+            return;
+
+        {
+            var head = new Label { Text = "【" + (curCfg.Name ?? _selectedPoolId) + "】" };
             head.AddThemeFontSizeOverride("font_size", 13);
             head.AddThemeColorOverride("font_color", new Color("FEF08A"));
             _ruleList.AddChild(head);
 
-            if (!editable) continue;
-
-            var headHint = new Label { Text = "（可编辑，其余卡池只读）" };
+            var headHint = new Label { Text = "（当前编辑中的卡池）" };
             headHint.AddThemeFontSizeOverride("font_size", 10);
             headHint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
             _ruleList.AddChild(headHint);
 
-            var rules = kv.Value.Rules;
-            if (rules == null) continue;
+            var rules = curCfg.Rules;
+            if (rules == null) return;
 
             int count = 0;
             foreach (var prop in typeof(MatchRules).GetProperties())

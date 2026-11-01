@@ -21,6 +21,9 @@ public sealed class GameSessionStore
     public GlobalCatalog Catalog { get; private set; }
     public Dictionary<string, CardPoolConfig> PoolConfigs { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, CardPoolRuntime> PoolRuntimes { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>PoolId → 该卡池来自的 .pool.json 绝对路径（保存时写回原文件）。</summary>
+    public Dictionary<string, string> PoolFilePaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public List<ConstructedDeck> SavedDecks { get; } = new();
     public ChineseCardPrinter CardPrinter { get; private set; }
 
@@ -41,9 +44,13 @@ public sealed class GameSessionStore
 
         // 2. 全部赛制卡池
         var poolsDir = Path.Combine(DataRoot, "pools");
-        foreach (var cfg in PoolConfigLoader.LoadAllPools(poolsDir))
+        PoolFilePaths.Clear();
+        foreach (var (cfg, path) in PoolConfigLoader.LoadAllPoolsWithPaths(poolsDir))
         {
             PoolConfigs[cfg.PoolId] = cfg;
+            // 记住原文件：official-standard.pool.json 里的 id 是 "standard"，
+            // 按 id 拼文件名会在磁盘上造出第二个同 id 文件互相打架。
+            PoolFilePaths[cfg.PoolId] = path;
             var built = CardPoolBuilder.Build(cfg, Catalog.Packs);
             if (built.Ok) PoolRuntimes[cfg.PoolId] = built.Pool;
         }
@@ -227,17 +234,33 @@ public sealed class GameSessionStore
         ReloadCatalogAndPools();
     }
 
+    /// <summary>
+    /// 把 CardPackDef 序列化回 pack.json。
+    ///
+    /// 两条铁律：
+    ///   1) **kind 必须按 CardPackLoader 的编码写**（2=护符 3=法术 4=纹章 5=信仰 其余=随从），
+    ///      不能直接 (int)CardKind —— 枚举里 Spell=1，而加载器把 1 当随从，
+    ///      结果「造一张法术，存盘再读回来变成 0/0 随从」。
+    ///   2) **全部字段都要写**。少写 counters / stackable_amulets / named_decks /
+    ///      keywords / deck_modifiers / alt_modes，等于往包里存一张卡的同时
+    ///      把整个包的其他内容抹掉。
+    /// </summary>
     private static string SerializePacket(CardPackDef pack)
     {
         var sb = new StringBuilder();
         sb.Append("{\n");
         sb.Append("  \"pack_id\": ").Append(JsonStr(pack.PackId)).Append(",\n");
         sb.Append("  \"name\": ").Append(JsonStr(pack.Name)).Append(",\n");
-        sb.Append("  \"native_pool_id\": ").Append(JsonStr(pack.NativePoolId)).Append(",\n");
+        sb.Append("  \"author\": ").Append(JsonStr(pack.Author ?? "")).Append(",\n");
+        sb.Append("  \"version\": ").Append(JsonStr(pack.Version ?? "1.0.0")).Append(",\n");
+        sb.Append("  \"native_pool_id\": ").Append(JsonStr(pack.NativePoolId ?? "standard")).Append(",\n");
         sb.Append("  \"dependencies\": ").Append(JsonArr(pack.Dependencies)).Append(",\n");
-        sb.Append("  \"clans\": ").Append(JsonNameArr(pack.Clans?.Select(x => x.Name))).Append(",\n");
-        sb.Append("  \"traits\": ").Append(JsonNameArr(pack.Traits?.Select(x => x.Name))).Append(",\n");
-        sb.Append("  \"keywords\": ").Append(JsonNameArr(pack.Keywords?.Select(x => x.Name))).Append(",\n");
+        sb.Append("  \"clans\": ").Append(JsonSymbolArr(pack.Clans)).Append(",\n");
+        sb.Append("  \"traits\": ").Append(JsonSymbolArr(pack.Traits)).Append(",\n");
+        sb.Append("  \"keywords\": ").Append(JsonSymbolArr(pack.Keywords)).Append(",\n");
+        sb.Append("  \"counters\": ").Append(JsonCounterArr(pack.Counters)).Append(",\n");
+        sb.Append("  \"stackable_amulets\": ").Append(JsonStackableArr(pack.StackableAmulets)).Append(",\n");
+        sb.Append("  \"named_decks\": ").Append(JsonNamedDeckArr(pack.NamedDecks)).Append(",\n");
         sb.Append("  \"cards\": [\n");
 
         for (int i = 0; i < pack.Cards.Count; i++)
@@ -245,16 +268,27 @@ public sealed class GameSessionStore
             var c = pack.Cards[i];
             sb.Append("    {\n");
             sb.Append("      \"card_id\": ").Append(c.CardId).Append(",\n");
+            if (!string.IsNullOrEmpty(c.LocalId))
+                sb.Append("      \"local_id\": ").Append(JsonStr(c.LocalId)).Append(",\n");
             sb.Append("      \"name_eng\": ").Append(JsonStr(c.NameEng)).Append(",\n");
             sb.Append("      \"name_chs\": ").Append(JsonStr(c.NameChs ?? "")).Append(",\n");
-            sb.Append("      \"kind\": ").Append((int)c.Kind).Append(",\n");
+            sb.Append("      \"kind\": ").Append(KindCode(c.Kind)).Append(",\n");
             sb.Append("      \"is_token\": ").Append(c.IsToken ? "true" : "false").Append(",\n");
             sb.Append("      \"clan\": ").Append(JsonStr(c.Clan ?? "Neutral")).Append(",\n");
             sb.Append("      \"traits\": ").Append(JsonArr(c.Traits)).Append(",\n");
+            if (c.Keywords != null && c.Keywords.Count > 0)
+                sb.Append("      \"keywords\": ").Append(JsonArr(c.Keywords)).Append(",\n");
             sb.Append("      \"cost\": ").Append(c.Cost).Append(",\n");
             sb.Append("      \"attack\": ").Append(c.Attack).Append(",\n");
             sb.Append("      \"life\": ").Append(c.Life).Append(",\n");
-            sb.Append("      \"source_format\": ").Append(JsonStr(c.SourceFormat ?? "reshadow_script")).Append(",\n");
+            sb.Append("      \"source_format\": ").Append(JsonStr(c.SourceFormat ?? "eng_cnl")).Append(",\n");
+
+            if (c.DeckModifiers != null && c.DeckModifiers.Count > 0)
+                sb.Append("      \"deck_modifiers\": ").Append(JsonDeckModArr(c.DeckModifiers)).Append(",\n");
+
+            if (c.AltModes != null && c.AltModes.Count > 0)
+                sb.Append("      \"alt_modes\": ").Append(JsonAltModeArr(c.AltModes)).Append(",\n");
+
             sb.Append("      \"text\": ").Append(JsonStr(c.Text ?? "")).Append("\n");
             sb.Append("    }").Append(i < pack.Cards.Count - 1 ? "," : "").Append("\n");
         }
@@ -262,6 +296,90 @@ public sealed class GameSessionStore
         sb.Append("  ]\n");
         sb.Append("}\n");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// CardKind → pack.json 的整数编码。
+    ///
+    /// 必须与 CardPackLoader 的读取侧严格对齐：2=护符 3=法术 4=纹章 5=信仰 其余=随从。
+    /// 直接写 (int)Kind 会把 Spell(1) 写成 1，加载器当成随从。
+    /// </summary>
+    private static int KindCode(CardKind k) => k switch
+    {
+        CardKind.Amulet => 2,
+        CardKind.Spell => 3,
+        CardKind.Crest => 4,
+        CardKind.Faith => 5,
+        _ => 1,
+    };
+
+    private static string JsonSymbolArr(IEnumerable<SymbolRawEntry> items)
+    {
+        if (items == null) return "[]";
+        var parts = items.Where(x => x != null && !string.IsNullOrEmpty(x.Name))
+            .Select(x => string.IsNullOrEmpty(x.NameChs)
+                ? "{ \"name\": " + JsonStr(x.Name) + " }"
+                : "{ \"name\": " + JsonStr(x.Name) + ", \"name_chs\": " + JsonStr(x.NameChs) + " }");
+        return "[" + string.Join(", ", parts) + "]";
+    }
+
+    private static string JsonCounterArr(IEnumerable<CounterRawEntry> items)
+    {
+        if (items == null) return "[]";
+        var parts = items.Where(x => x != null && !string.IsNullOrEmpty(x.Name))
+            .Select(x => "{ \"name\": " + JsonStr(x.Name)
+                       + ", \"name_chs\": " + JsonStr(x.NameChs ?? x.Name)
+                       + ", \"min\": " + x.Min + ", \"max\": " + x.Max + " }");
+        return "[" + string.Join(", ", parts) + "]";
+    }
+
+    private static string JsonStackableArr(IEnumerable<StackableAmuletSpec> items)
+    {
+        if (items == null) return "[]";
+        var parts = items.Where(x => x != null).Select(x =>
+            "{ \"counter_name\": " + JsonStr(x.CounterName)
+            + ", \"default_token_card_id\": " + x.DefaultTokenCardId
+            + ", \"match_trait_name\": " + JsonStr(x.MatchTraitName ?? "")
+            + ", \"merge_policy\": " + JsonStr(x.MergePolicy.ToString())
+            + ", \"protected_from_abilities\": " + (x.ProtectedFromAbilities ? "true" : "false") + " }");
+        return "[" + string.Join(", ", parts) + "]";
+    }
+
+    private static string JsonNamedDeckArr(IEnumerable<NamedDeckRawDef> items)
+    {
+        if (items == null) return "[]";
+        var parts = items.Where(x => x != null).Select(nd =>
+        {
+            var es = (nd.Entries ?? new List<NamedDeckEntryRaw>())
+                .Select(e => "{ \"card_id\": " + e.CardId
+                           + ", \"card_name\": " + JsonStr(e.CardName ?? "")
+                           + ", \"copies\": " + e.Copies + " }");
+            return "{ \"deck_name\": " + JsonStr(nd.DeckName)
+                 + ", \"deck_name_chs\": " + JsonStr(nd.DeckNameChs ?? "")
+                 + ", \"entries\": [" + string.Join(", ", es) + "] }";
+        });
+        return "[" + string.Join(", ", parts) + "]";
+    }
+
+    private static string JsonDeckModArr(IEnumerable<DeckBuildModifier> items)
+    {
+        if (items == null) return "[]";
+        var parts = items.Where(x => x != null).Select(m =>
+            "{ \"kind\": " + JsonStr(m.Kind.ToString())
+            + ", \"value\": " + m.Value
+            + ", \"stack_per_copy\": " + (m.StackPerCopy ? "true" : "false")
+            + ", \"exclusive_group\": " + JsonStr(m.ExclusiveGroup ?? "") + " }");
+        return "[" + string.Join(", ", parts) + "]";
+    }
+
+    private static string JsonAltModeArr(IEnumerable<AltModeRawEntry> items)
+    {
+        if (items == null) return "[]";
+        var parts = items.Where(x => x != null).Select(a =>
+            "{ \"type_eng\": " + JsonStr(a.TypeEng ?? "")
+            + ", \"cost\": " + a.Cost
+            + ", \"text_eng\": " + JsonStr(a.TextEng ?? "") + " }");
+        return "[" + string.Join(", ", parts) + "]";
     }
 
     private static string JsonStr(string s)
@@ -315,7 +433,14 @@ public sealed class GameSessionStore
 
         var poolsDir = Path.Combine(DataRoot, "pools");
         Directory.CreateDirectory(poolsDir);
-        var path = Path.Combine(poolsDir, poolId + ".pool.json");
+
+        // 优先写回原文件。PoolId 与文件名未必同名
+        // （official-standard.pool.json 里装的是 pool_id="standard"），
+        // 按 id 拼名会造出第二个同 id 文件，两边的规则互相覆盖。
+        var path = PoolFilePaths.TryGetValue(poolId, out var existingPath)
+                   && !string.IsNullOrEmpty(existingPath)
+            ? existingPath
+            : Path.Combine(poolsDir, poolId + ".pool.json");
 
         var sb = new StringBuilder();
         sb.Append("{\n");

@@ -38,30 +38,30 @@ public static class PoolConfigLoader
                 PpGainPerTurn = I(ru, "pp_gain_per_turn", rules.PpGainPerTurn),
                 MaxPpCap = I(ru, "max_pp_cap", rules.MaxPpCap),
                 OverflowThreshold = I(ru, "overflow_threshold", rules.OverflowThreshold),
-                EnableExtraPpForSecondPlayer = B(ru, "enable_extra_pp", rules.EnableExtraPpForSecondPlayer),
-                ExtraPpEarlyPhaseLastTurn = I(ru, "extra_pp_last_turn", rules.ExtraPpEarlyPhaseLastTurn),
+                EnableExtraPpForSecondPlayer = B2(ru, "enable_extra_pp", "enable_extra_pp_for_second_player", rules.EnableExtraPpForSecondPlayer),
+                ExtraPpEarlyPhaseLastTurn = I2(ru, "extra_pp_last_turn", "extra_pp_early_phase_last_turn", rules.ExtraPpEarlyPhaseLastTurn),
                 StartingHandSize = I(ru, "starting_hand_size", rules.StartingHandSize),
                 CardsDrawnPerTurn = I(ru, "cards_drawn_per_turn", rules.CardsDrawnPerTurn),
-                FirstPlayerDrawsOnTurn1 = B(ru, "first_player_draws_turn1", rules.FirstPlayerDrawsOnTurn1),
-                EvolveUnlockTurnFirstPlayer = I(ru, "evolve_unlock_p0", rules.EvolveUnlockTurnFirstPlayer),
-                EvolveUnlockTurnSecondPlayer = I(ru, "evolve_unlock_p1", rules.EvolveUnlockTurnSecondPlayer),
-                SuperEvolveUnlockTurnFirstPlayer = I(ru, "super_evolve_unlock_p0", rules.SuperEvolveUnlockTurnFirstPlayer),
-                SuperEvolveUnlockTurnSecondPlayer = I(ru, "super_evolve_unlock_p1", rules.SuperEvolveUnlockTurnSecondPlayer),
+                FirstPlayerDrawsOnTurn1 = B2(ru, "first_player_draws_turn1", "first_player_draws_on_turn1", rules.FirstPlayerDrawsOnTurn1),
+                EvolveUnlockTurnFirstPlayer = I2(ru, "evolve_unlock_p0", "evolve_unlock_turn_first_player", rules.EvolveUnlockTurnFirstPlayer),
+                EvolveUnlockTurnSecondPlayer = I2(ru, "evolve_unlock_p1", "evolve_unlock_turn_second_player", rules.EvolveUnlockTurnSecondPlayer),
+                SuperEvolveUnlockTurnFirstPlayer = I2(ru, "super_evolve_unlock_p0", "super_evolve_unlock_turn_first_player", rules.SuperEvolveUnlockTurnFirstPlayer),
+                SuperEvolveUnlockTurnSecondPlayer = I2(ru, "super_evolve_unlock_p1", "super_evolve_unlock_turn_second_player", rules.SuperEvolveUnlockTurnSecondPlayer),
                 EvolveBonusAttack = I(ru, "evolve_bonus_attack", rules.EvolveBonusAttack),
                 EvolveBonusLife = I(ru, "evolve_bonus_life", rules.EvolveBonusLife),
                 SuperEvolveBonusAttack = I(ru, "super_evolve_bonus_attack", rules.SuperEvolveBonusAttack),
                 SuperEvolveBonusLife = I(ru, "super_evolve_bonus_life", rules.SuperEvolveBonusLife),
                 MinDeckSize = I(ru, "min_deck_size", rules.MinDeckSize),
                 MaxDeckSize = I(ru, "max_deck_size", rules.MaxDeckSize),
-                MaxCopiesPerCard = I(ru, "max_copies", rules.MaxCopiesPerCard),
+                MaxCopiesPerCard = I2(ru, "max_copies", "max_copies_per_card", rules.MaxCopiesPerCard),
                 AllowCrossCraft = B(ru, "allow_cross_craft", rules.AllowCrossCraft),
-                AllowTokensInConstructedDeck = B(ru, "allow_tokens_in_deck", rules.AllowTokensInConstructedDeck),
+                AllowTokensInConstructedDeck = B2(ru, "allow_tokens_in_deck", "allow_tokens_in_constructed_deck", rules.AllowTokensInConstructedDeck),
                 // 这 9 项漏读会让 .pool.json 里写的规则被静默忽略（回落到默认值）。
-                InitialEpFirstPlayer = I(ru, "initial_ep_p0", rules.InitialEpFirstPlayer),
-                InitialEpSecondPlayer = I(ru, "initial_ep_p1", rules.InitialEpSecondPlayer),
+                InitialEpFirstPlayer = I2(ru, "initial_ep_p0", "initial_ep_first_player", rules.InitialEpFirstPlayer),
+                InitialEpSecondPlayer = I2(ru, "initial_ep_p1", "initial_ep_second_player", rules.InitialEpSecondPlayer),
                 MaxEpCap = I(ru, "max_ep_cap", rules.MaxEpCap),
-                InitialSepFirstPlayer = I(ru, "initial_sep_p0", rules.InitialSepFirstPlayer),
-                InitialSepSecondPlayer = I(ru, "initial_sep_p1", rules.InitialSepSecondPlayer),
+                InitialSepFirstPlayer = I2(ru, "initial_sep_p0", "initial_sep_first_player", rules.InitialSepFirstPlayer),
+                InitialSepSecondPlayer = I2(ru, "initial_sep_p1", "initial_sep_second_player", rules.InitialSepSecondPlayer),
                 MaxSepCap = I(ru, "max_sep_cap", rules.MaxSepCap),
                 SuperEvolveOverflowDamage = I(ru, "super_evolve_overflow_damage", rules.SuperEvolveOverflowDamage),
                 SkyboundArtThreshold = I(ru, "skybound_art_threshold", rules.SkyboundArtThreshold),
@@ -114,11 +114,21 @@ public static class PoolConfigLoader
 
     /// <summary>扫一个目录下的全部 *.pool.json。</summary>
     public static List<CardPoolConfig> LoadAllPools(string dir)
+        => LoadAllPoolsWithPaths(dir).Select(x => x.cfg).ToList();
+
+    /// <summary>
+    /// 同 LoadAllPools，但把**每个卡池来自哪个文件**一并带出。
+    ///
+    /// 用途：保存规则时要写回原文件。文件名与 pool_id 未必同名
+    /// （official-standard.pool.json 里的 pool_id 是 "standard"），
+    /// 按 pool_id 拼文件名会在磁盘上造出两个 id 相同的文件互相打架。
+    /// </summary>
+    public static List<(CardPoolConfig cfg, string path)> LoadAllPoolsWithPaths(string dir)
     {
-        var list = new List<CardPoolConfig>();
+        var list = new List<(CardPoolConfig, string)>();
         if (!Directory.Exists(dir)) return list;
         foreach (var f in Directory.GetFiles(dir, "*.pool.json").OrderBy(x => x, StringComparer.Ordinal))
-            list.Add(LoadPool(f));
+            list.Add((LoadPool(f), f));
         return list;
     }
 
@@ -136,6 +146,23 @@ public static class PoolConfigLoader
 
     private static int I(JsonElement e, string n, int d)
         => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : d;
+
+    /// <summary>
+    /// 双键名读取：先试缩写键（现有 .pool.json 的写法），再试完整 snake_case
+    /// （GameSessionStore.SavePoolRules 按属性名反射写出的写法）。
+    ///
+    /// 少了这层兼容，玩家在「卡池管理」里改的 13 项规则——同名上限、进化解锁回合、
+    /// 先手抽牌等——保存后全部因键名对不上而静默回落成默认值。
+    /// </summary>
+    private static int I2(JsonElement e, string shortKey, string longKey, int d)
+        => e.TryGetProperty(shortKey, out var v1) && v1.ValueKind == JsonValueKind.Number ? v1.GetInt32()
+         : e.TryGetProperty(longKey, out var v2) && v2.ValueKind == JsonValueKind.Number ? v2.GetInt32()
+         : d;
+
+    private static bool B2(JsonElement e, string shortKey, string longKey, bool d)
+        => e.TryGetProperty(shortKey, out var v1) && (v1.ValueKind == JsonValueKind.True || v1.ValueKind == JsonValueKind.False) ? v1.GetBoolean()
+         : e.TryGetProperty(longKey, out var v2) && (v2.ValueKind == JsonValueKind.True || v2.ValueKind == JsonValueKind.False) ? v2.GetBoolean()
+         : d;
 
     private static bool B(JsonElement e, string n, bool d)
         => e.TryGetProperty(n, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False

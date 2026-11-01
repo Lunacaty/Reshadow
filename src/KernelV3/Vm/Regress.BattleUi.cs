@@ -59,6 +59,8 @@ public static class RegressBattleUi
         Check("DIYU-6 英文端可编辑", CaseEnglishEditable);
         Check("DIYU-7 自定义词条注册即可用", CaseDefineCustomEntry);
         Check("DIYU-8 积木端增删移可编辑", CaseBlockEditable);
+        Check("DIYU-9 法术卡存盘重载不蜕变", CaseSpellSurvivesSave);
+        Check("DIYU-10 卡池规则 13 项键名往返", CasePoolRulesKeyRoundTrip);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -878,5 +880,123 @@ public static class RegressBattleUi
         return (ok, "加块可见=" + addVisible + "(" + before + "->" + afterAdd + ")"
                     + " 删块可见=" + delVisible + "(" + afterDel + ")"
                     + " 上移生效=" + orderOk + " 越界返回false=" + edge);
+    }
+
+    // ---------------------------------------------------------------- DIYU-9
+
+    /// <summary>
+    /// 法术卡保存→重载不能蜕变成随从。
+    ///
+    /// 这是 Bug 1 的回归门禁：CardKind.Spell 枚举值是 1，
+    /// 而 pack.json 的 kind 编码里 3 才是法术。
+    /// 直接写 (int)Kind 会让「造一张法术，存盘再读回来变成 0/0 随从」。
+    /// </summary>
+    private static (bool, string) CaseSpellSurvivesSave()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        const int probeId = 959903;
+        string script = string.Join("\n",
+            "card " + probeId + " \"星界法术\" (Spell, cost: 2) {",
+            "    on play {",
+            "        draw(2)",
+            "    }",
+            "}");
+
+        if (!ctrl.CompileFromScript(script))
+            return (false, "脚本编译失败：" + string.Join("；", ctrl.LastErrors));
+
+        if (ctrl.CurrentDef.Kind != CardKind.Spell)
+            return (false, "编译后就不是法术：" + ctrl.CurrentDef.Kind);
+
+        bool saved = ctrl.SaveCurrentCardToPack("testset-v2", out string msg);
+        if (!saved) return (false, "保存失败：" + msg);
+
+        var store2 = NewStore();
+        var back = store2.Catalog.AllCards.TryGetValue(probeId, out var d) ? d : null;
+
+        bool exists = back != null;
+        bool stillSpell = exists && back.Kind == CardKind.Spell;
+
+        // 顺带验原有的法术卡没被写坏
+        var alert = store2.Catalog.AllCards.TryGetValue(81000002, out var a) ? a : null;
+        var gold = store2.Catalog.AllCards.TryGetValue(81000033, out var g2) ? g2 : null;
+        bool othersOk = alert?.Kind == CardKind.Spell && gold?.Kind == CardKind.Spell;
+
+        // 纹章子卡：81000006 的 CrestDef 不能丢
+        var aria = store2.Catalog.AllCards.TryGetValue(81000006, out var ar) ? ar : null;
+        bool crestOk = aria?.CrestDef != null;
+
+        CleanupProbeCard("testset-v2", probeId);
+
+        bool ok = exists && stillSpell && othersOk && crestOk;
+        return (ok, "读回存在=" + exists + " 仍是法术=" + stillSpell
+                    + "(实际 " + (back?.Kind.ToString() ?? "null") + ")"
+                    + " 既有法术完好=" + othersOk + " 纹章子卡完好=" + crestOk);
+    }
+
+    // ---------------------------------------------------------------- DIYU-10
+
+    /// <summary>
+    /// SavePoolRules 写出的长键名，必须能被 PoolConfigLoader 读回来。
+    ///
+    /// 这是 Bug 2 的回归门禁：加载器原本只认 13 个缩写键
+    /// （max_copies / evolve_unlock_p0 …），而保存侧写的是完整 snake_case，
+    /// 两边对不上，改完保存再重载会静默回落成默认值。
+    /// </summary>
+    private static (bool, string) CasePoolRulesKeyRoundTrip()
+    {
+        var store = NewStore();
+        if (store.PoolConfigs.Count == 0) return (false, "无卡池");
+
+        string pid = store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).First();
+        var orig = store.PoolConfigs[pid].Rules ?? MatchRules.CreateStandard();
+
+        int oCopies = orig.MaxCopiesPerCard;
+        int oEvolve = orig.EvolveUnlockTurnFirstPlayer;
+        bool oDraw = orig.FirstPlayerDrawsOnTurn1;
+
+        // 改三个「缩写键」字段（正是昔日对不上的那批）
+        var modified = new MatchRules
+        {
+            LeaderInitialLife = orig.LeaderInitialLife,
+            LeaderMaxLife = orig.LeaderMaxLife,
+            MaxBoardSize = orig.MaxBoardSize,
+            MaxHandSize = orig.MaxHandSize,
+            MaxCrestSize = orig.MaxCrestSize,
+            InitialMaxPp = orig.InitialMaxPp,
+            PpGainPerTurn = orig.PpGainPerTurn,
+            MaxPpCap = orig.MaxPpCap,
+            OverflowThreshold = orig.OverflowThreshold,
+            EnableExtraPpForSecondPlayer = orig.EnableExtraPpForSecondPlayer,
+            ExtraPpEarlyPhaseLastTurn = orig.ExtraPpEarlyPhaseLastTurn,
+            StartingHandSize = orig.StartingHandSize,
+            CardsDrawnPerTurn = orig.CardsDrawnPerTurn,
+            MinDeckSize = orig.MinDeckSize,
+            MaxDeckSize = orig.MaxDeckSize,
+            AllowCrossCraft = orig.AllowCrossCraft,
+            MaxCopiesPerCard = 5,
+            EvolveUnlockTurnFirstPlayer = 3,
+            FirstPlayerDrawsOnTurn1 = false,
+        };
+
+        bool saved = store.SavePoolRules(pid, modified, out string msg);
+        if (!saved) return (false, "保存失败：" + msg);
+
+        var store2 = NewStore();
+        var r2 = store2.PoolConfigs[pid].Rules;
+
+        bool copiesOk = r2.MaxCopiesPerCard == 5;
+        bool evolveOk = r2.EvolveUnlockTurnFirstPlayer == 3;
+        bool drawOk = r2.FirstPlayerDrawsOnTurn1 == false;
+
+        // 还原
+        store2.SavePoolRules(pid, orig, out _);
+
+        bool ok = copiesOk && evolveOk && drawOk;
+        return (ok, "同名上限=" + r2.MaxCopiesPerCard + "(应5)"
+                    + " 进化解锁=" + r2.EvolveUnlockTurnFirstPlayer + "(应3)"
+                    + " 先手抽牌=" + r2.FirstPlayerDrawsOnTurn1 + "(应False)");
     }
 }
