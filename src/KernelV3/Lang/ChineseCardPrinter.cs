@@ -90,12 +90,12 @@ public sealed class ChineseCardPrinter
         // ④ 关联纹章 / 信仰
         if (card.CrestDef != null)
         {
-            sb.Append('\n').Append("【关联纹章：").Append(card.CrestDef.Name).Append("】\n");
+            sb.Append('\n').Append("【关联纹章：").Append(CardZh(card.CrestDef.Name)).Append("】\n");
             sb.Append(PrintAbilities(card.CrestDef.Abilities)).Append('\n');
         }
         if (card.FaithDef != null)
         {
-            sb.Append('\n').Append("【关联信仰：").Append(card.FaithDef.Name).Append("】\n");
+            sb.Append('\n').Append("【关联信仰：").Append(CardZh(card.FaithDef.Name)).Append("】\n");
             sb.Append(PrintAbilities(card.FaithDef.Abilities)).Append('\n');
         }
 
@@ -260,6 +260,30 @@ public sealed class ChineseCardPrinter
     }
 
     /// <summary>及物动词：它们要放在宾语前面。</summary>
+    /// <summary>能力持有者（复刻类效果的目标）。</summary>
+    private string AbilityOwnerZh(TargetSpec t)
+    {
+        if (t == null) return "本卡牌";
+        if (t.SourceKind == TargetSourceKind.Slot && t.Slot == TargetSpec.SlotSelf) return "本卡牌";
+        return PrintTarget(t);
+    }
+
+    /// <summary>能力名（触发头的叫法，不是动词）。</summary>
+    private static string AbilityLabelZh(CoreEvent ev) => ev switch
+    {
+        CoreEvent.OnPlay => "入场曲",
+        CoreEvent.OnDestroy => "谢幕曲",
+        CoreEvent.OnEvolve => "进化时",
+        CoreEvent.OnSuperEvolve => "超进化时",
+        CoreEvent.OnEngage => "启动",
+        CoreEvent.OnAttack => "攻击时",
+        CoreEvent.OnClash => "交战时",
+        CoreEvent.OnFuse => "融合",
+        CoreEvent.OnSpellboost => "魔力增幅",
+        CoreEvent.PassiveAura => "常驻",
+        _ => ev.ToString(),
+    };
+
     private static bool IsTransitiveVerb(CoreEvent ev) => ev is
         CoreEvent.OnPlay or CoreEvent.OnFuse or CoreEvent.OnDiscard
         or CoreEvent.OnDraw or CoreEvent.OnSummon or CoreEvent.OnAddToHand
@@ -429,7 +453,9 @@ public sealed class ChineseCardPrinter
                 return PrintCounter(c);
 
             case InvokeAbilityNode i:
-                return "发动本卡牌的【" + EventNameZh(i.Event) + "】能力。";
+                // 能力名要用**触发头**的叫法（入场曲/谢幕曲/进化时），
+                // 不是动词（打出/被破坏）。打错会写成「发动本卡牌的【打出】能力」。
+                return "发动" + AbilityOwnerZh(i.Target) + "的【" + AbilityLabelZh(i.Event) + "】能力。";
 
             case ConditionalNode cd:
                 return PrintConditional(cd);
@@ -1183,7 +1209,7 @@ public sealed class ChineseCardPrinter
         "Havencraft" => "主教",
         "Portalcraft" => "复仇者",
         "Neutral" => "中立",
-        _ => en,
+        _ => _glossary.ToChinese(en),
     };
 
     /// <summary>
@@ -1256,7 +1282,9 @@ public sealed class ChineseCardPrinter
         "commander" => "司令官",
         "machina" => "机械",
         "levin" => "雷维翁",
-        _ => en ?? "",
+        // 默认走 Glossary：DefineTrait("Mecha", "机甲") 注册的自定义兵种
+        // 译名就在那里。硬编码 default 会让 DIY 兵种直接吐英文。
+        _ => _glossary.ToChinese(en),
     };
 
     public string CardZh(string en)
@@ -1268,6 +1296,6 @@ public sealed class ChineseCardPrinter
         "Apocalypse Deck" => "启示录牌组",
         "a deck of 40 cards" => "40张牌的牌组",
         "deck of 40 cards" => "40张牌的牌组",
-        _ => en,
+        _ => _glossary.ToChinese(en),
     };
 }

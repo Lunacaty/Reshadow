@@ -270,15 +270,26 @@ public sealed class DiyFormCompiler
 
         switch (item.Gate)
         {
-            case "Combo": costs.Add(Cost(CostKind.TurnPlayCount, item.GateAmount)); break;
-            case "Necromancy": costs.Add(Cost(CostKind.Necromance, item.GateAmount)); break;
-            case "EarthRite": costs.Add(Cost(CostKind.DestroyAlly, item.GateAmount)); break;
-            case "Enhance": costs.Add(Cost(CostKind.UsePp, item.GateAmount)); break;
+            case "Combo": costs.Add(Cost(CostKind.TurnPlayCount, item.GateAmount, "combo")); break;
+            case "Necromancy": costs.Add(Cost(CostKind.Necromance, item.GateAmount, "necromancy")); break;
+            case "EarthRite": costs.Add(Cost(CostKind.DestroyAlly, item.GateAmount, "earth_rite")); break;
+            case "Enhance": costs.Add(Cost(CostKind.UsePp, item.GateAmount, "enhance")); break;
             default: break;
         }
 
         // 觉醒不是代价而是条件。
         BoolExpr cond = BoolExpr.True;
+        // 门槛 -> 条件（与 EnglishCompiler 的 AndCosts 保持一致）
+        BoolExpr? gateCond = item.Gate switch
+        {
+            "Combo" => CtrGe("combo", item.GateAmount),
+            "Necromancy" => CtrGe("shadow", item.GateAmount),
+            "EarthRite" => CtrGe("earth_sigil", item.GateAmount),
+            "Enhance" => CtrGe("pp_at_play", item.GateAmount),
+            _ => null,
+        };
+        if (gateCond != null) cond = new AndExpr(new List<BoolExpr> { cond, gateCond });
+
         if (item.Gate == "Overflow")
         {
             cond = new CompareExpr
@@ -351,8 +362,21 @@ public sealed class DiyFormCompiler
         };
     }
 
-    private static CostSpec Cost(CostKind k, int amt)
-        => new CostSpec { Kind = k, Amount = NumExpr.Const(Math.Max(0, amt)) };
+    /// <summary>
+    /// 造一个代价。Label 必须填：TurnRunner.EnhanceTiers 只认 Label=="enhance"，
+    /// 留空的话用表单造的爆能强化卡永远只扣基础费。
+    /// </summary>
+    /// <summary>计数器 >= N 的条件。</summary>
+    private BoolExpr CtrGe(string counter, int n)
+        => new CompareExpr
+           {
+               Left = NumExpr.Ctr(_schema.Counter(counter)),
+               Op = CompareOp.Ge,
+               Right = NumExpr.Const(Math.Max(0, n)),
+           };
+
+    private static CostSpec Cost(CostKind k, int amt, string label)
+        => new CostSpec { Kind = k, Amount = NumExpr.Const(Math.Max(0, amt)), Label = label };
 
     private EffectNode RowToNode(ActionFormRow row)
     {

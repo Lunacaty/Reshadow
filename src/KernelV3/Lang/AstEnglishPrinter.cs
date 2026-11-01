@@ -162,7 +162,10 @@ public static class AstEnglishPrinter
                 // 直接拼 CardName 会得到空串，看起来像卡名丢了。
                 var what = sp.SourceKind switch
                 {
-                    CardSourceKind.CopyOfTarget => "copy of " + PrintTarget(sp.CopyFrom),
+                    // exact copy 继承当前攻防/关键词，普通 copy 只取印刷白板 ——
+                    // 两者语义天差地别，不打出来会被判成等价。
+                    CardSourceKind.CopyOfTarget => (sp.IsExactCopy ? "exact copy of " : "copy of ")
+                                                  + PrintTarget(sp.CopyFrom),
                     CardSourceKind.CopyOfPrevious => "copy of previous (same card)",
                     _ => sp.CardName,
                 };

@@ -40,16 +40,30 @@ public static class CostExecutor
                 // TurnRunner.EngageAmulet（扣 N 点）。这里绝不能再判一次：
                 // 判定时 PP 已经被扣过，再判必然失败，整条能力（含基础部分）被吞掉。
                 case CostKind.UsePp:
+                    // 爆能强化：判「本回合已用能量」而不是当前能量（当前已被扣过）。
+                    // 放在这里而不是另起 when 分支，是因为 UsePp 已经匹配了所有同类。
+                    if (string.Equals(c.Label, "enhance", StringComparison.OrdinalIgnoreCase)
+                        && world.ReadCounter(playerId, world.Schema.Counter("pp_at_play")) < need)
+                        return false;
                     break;
 
                 case CostKind.Necromance:
                     if (world.ReadCounter(playerId, shadowKey) < need) return false;
                     break;
 
-                // Combo / Rally 已由生成的 Condition 检查，这里不重复判定
+                // Combo / Rally 在**官方卡池**里由生成的 Condition 检查；
+                // 但那是 EnglishCompiler 的约定，DIY 的脚本/积木/表单三条路
+                // 并不保证都会生成同源条件 —— 只要有一条没生成，
+                // 这里放行就等于「无条件白嫖触发」，且卡面完全看不出问题。
+                // 所以这里必须自己判一次：多判一层的代价是零，漏判的代价是规则错误。
                 case CostKind.TurnPlayCount:
-                case CostKind.MatchPlayCount:
+                    if (world.ReadCounter(playerId, world.Schema.Counter("combo")) < need) return false;
                     break;
+
+                case CostKind.MatchPlayCount:
+                    if (world.ReadCounter(playerId, world.Schema.Counter("rally")) < need) return false;
+                    break;
+
 
                 // Earth Rite 需要破坏自己 N 个护符，裁判交给调用方（需要选择目标）
                 case CostKind.DestroyAlly:
@@ -80,6 +94,7 @@ public static class CostExecutor
             switch (c.Kind)
             {
                 // 同上：费用已由 TurnRunner 扣过，再扣一次就是双重扣费。
+                // 爆能强化的实际扣费也在 TurnRunner 里完成，这里不重复。
                 case CostKind.UsePp:
                     break;
                 case CostKind.Necromance:

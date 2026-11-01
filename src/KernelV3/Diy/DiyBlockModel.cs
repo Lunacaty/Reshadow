@@ -637,6 +637,7 @@ public sealed class DiyBlockCompiler
                     Op = StatModOp.Add,
                     Attack = CompileNumber(b.Number),
                     Life = CompileNumber(b.Number2),
+                    Duration = ParseDuration(b.EnumB),
                 };
 
             case "act_set_stats":
@@ -646,6 +647,7 @@ public sealed class DiyBlockCompiler
                     Op = StatModOp.Set,
                     Attack = CompileNumber(b.Number),
                     Life = CompileNumber(b.Number2),
+                    Duration = ParseDuration(b.EnumB),
                 };
 
             case "act_swap_stats":
@@ -666,6 +668,7 @@ public sealed class DiyBlockCompiler
                         _ => CostModOp.Add,
                     },
                     Value = CompileNumber(b.Number) ?? NumExpr.Const(0),
+                    Duration = ParseDuration(b.EnumB),
                 };
 
             case "act_grant_kw":
@@ -675,6 +678,7 @@ public sealed class DiyBlockCompiler
                     Op = KeywordOp.Grant,
                     Keyword = _schema.Keyword(b.Text ?? ""),
                     Value = CompileNumber(b.Number),
+                    Duration = ParseDuration(b.EnumB),
                 };
 
             case "act_remove_kw":
@@ -803,6 +807,20 @@ public sealed class DiyBlockCompiler
                 return null;
         }
     }
+
+    /// <summary>
+    /// Duration 字面量 → DurationKind。
+    ///
+    /// 限时效果（直到回合结束 / 直到敌方回合结束）与永久效果在 AST 上
+    /// 只差这一个字段；丢了它就全变成永久，而卡面中文看不出区别。
+    /// </summary>
+    private static DurationKind ParseDuration(string s) => s switch
+    {
+        "ThisTurn" => DurationKind.ThisTurn,
+        "UntilEndOfOpponentTurn" => DurationKind.UntilEndOfOpponentTurn,
+        "ThisMatch" => DurationKind.ThisMatch,
+        _ => DurationKind.Permanent,
+    };
 
     private EffectNode MoveTo(Block b, ZoneRef zone, bool destroy)
         => new MoveZoneNode
@@ -1268,6 +1286,21 @@ public sealed class DiyBlockDecompiler
                     ReanimateHelper.TryExtractCostCap(sp, out var cap);
                     return new Block { Opcode = "act_reanimate", Number = Num(cap) };
                 }
+
+                // 复制体与召唤是两种节点：SourceKind=CopyOfTarget 时没有 CardId，
+                // 落到下面的 act_summon 分支会导出成「召唤一张空名卡」，
+                // CopyFrom 与 IsExactCopy 全部丢失。
+                if (sp.SourceKind == CardSourceKind.CopyOfTarget)
+                {
+                    return new Block
+                    {
+                        Opcode = "act_copy",
+                        Target = Target(sp.CopyFrom),
+                        FlagA = sp.IsExactCopy,
+                        Number = Num(sp.Count),
+                        EnumA = sp.ToZone == ZoneRef.Hand ? "Hand" : "Board",
+                    };
+                }
                 string op = sp.IsCrest ? "act_gain_crest"
                           : sp.ToZone == ZoneRef.Hand ? "act_add_hand" : "act_summon";
                 // IntB 存真实卡号：卡名可能重名或被改名，卡号不会。
@@ -1290,6 +1323,7 @@ public sealed class DiyBlockDecompiler
                 {
                     Opcode = op, Target = Target(ms.Target),
                     Number = Num(ms.Attack), Number2 = Num(ms.Life),
+                    EnumB = ms.Duration == DurationKind.Permanent ? null : ms.Duration.ToString(),
                 };
             }
 
@@ -1298,6 +1332,7 @@ public sealed class DiyBlockDecompiler
                 {
                     Opcode = "act_mod_cost", Target = Target(mc.Target),
                     EnumA = mc.Op.ToString(), Number = Num(mc.Value),
+                    EnumB = mc.Duration == DurationKind.Permanent ? null : mc.Duration.ToString(),
                 };
 
             case ModifyKeywordNode mk:
@@ -1308,6 +1343,7 @@ public sealed class DiyBlockDecompiler
                 {
                     Opcode = mk.Op == KeywordOp.Remove ? "act_remove_kw" : "act_grant_kw",
                     Target = Target(mk.Target), Text = mk.Keyword.Name, Number = Num(mk.Value),
+                    EnumB = mk.Duration == DurationKind.Permanent ? null : mk.Duration.ToString(),
                 };
             }
 

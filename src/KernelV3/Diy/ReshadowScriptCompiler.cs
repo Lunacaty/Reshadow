@@ -767,6 +767,8 @@ public sealed class ReshadowScriptCompiler
             "draw" or "抽牌" => ParseDraw(p),
             "summon" or "召唤" => ParseSummon(p),
             "crest_gain" or "获得纹章" => ParseCrestGain(p),
+            "copy_card" or "复制" => ParseCopyCard(p),
+            "grant_ability" or "赋予能力" => ParseGrantEntityAbility(p),
             "add_hand" or "加入手牌" => ParseAddHand(p),
             "destroy" or "破坏" => ParseDestroy(p),
             "banish" or "消失" => ParseBanish(p),
@@ -871,6 +873,86 @@ public sealed class ReshadowScriptCompiler
         };
     }
 
+    /// <summary>copy_card(target(...), N, [exact], to: board/hand)</summary>
+    private EffectNode ParseCopyCard(Cursor p)
+    {
+        var from = ParseTargetOrExpr(p);
+        p.TryChar(',');
+        var count = ParseNumExpr(p);
+        bool exact = false;
+        var toZone = ZoneRef.Board;
+
+        while (p.TryChar(','))
+        {
+            var t = p.Next();
+            if (t == "exact") { exact = true; continue; }
+            if (t == "to")
+            {
+                p.TryChar(':');
+                toZone = p.Next() == "hand" ? ZoneRef.Hand : ZoneRef.Board;
+            }
+        }
+
+        return new SpawnCardNode
+        {
+            SourceKind = CardSourceKind.CopyOfTarget,
+            CopyFrom = from,
+            IsExactCopy = exact,
+            Count = count,
+            ToZone = toZone,
+            ToOwner = ZoneScope.Self,
+        };
+    }
+
+    /// <summary>grant_ability(target, [dur: X]) { on ... { ... } }</summary>
+    private EffectNode ParseGrantEntityAbility(Cursor p)
+    {
+        var tgt = ParseTargetOrExpr(p);
+        var dur = DurationKind.Permanent;
+        if (p.TryChar(','))
+        {
+            if (p.PeekToken() == "dur")
+            {
+                p.Next();
+                p.TryChar(':');
+                dur = p.Next() switch
+                {
+                    "ThisTurn" => DurationKind.ThisTurn,
+                    "UntilEndOfOpponentTurn" => DurationKind.UntilEndOfOpponentTurn,
+                    _ => DurationKind.Permanent,
+                };
+            }
+        }
+
+        AbilityDef granted = null;
+        if (p.TryChar('{'))
+        {
+            // 块内若以 on 开头，就是一条完整能力（含自己的触发头）；
+            // 否则按 PassiveAura 解析动作序列。
+            if (p.PeekToken() == "on") granted = ParseOnBlock(p);
+            else
+            {
+                granted = new AbilityDef
+                {
+                    Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                    Body = ParseBlockBody(p),
+                };
+            }
+            p.TryChar('}');
+        }
+
+        return new GrantAbilityNode
+        {
+            Target = tgt,
+            Granted = granted ?? new AbilityDef
+            {
+                Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                Body = new List<EffectNode>(),
+            },
+            Duration = dur,
+        };
+    }
+
     private EffectNode ParseCrestGain(Cursor p)
     {
         string name = p.TryString() ?? p.Next();
@@ -931,7 +1013,8 @@ public sealed class ReshadowScriptCompiler
         var a = ParseNumOrNa(p);
         p.TryChar('/');
         var l = ParseNumOrNa(p);
-        return new ModifyStatsNode { Target = tgt, Op = StatModOp.Add, Attack = a, Life = l };
+        var dur = TryParseDur(p);
+        return new ModifyStatsNode { Target = tgt, Op = StatModOp.Add, Attack = a, Life = l, Duration = dur };
     }
 
     /// <summary>读一个数值；na 表示「这一项不动」，还原成 null。</summary>
@@ -948,7 +1031,8 @@ public sealed class ReshadowScriptCompiler
         var a = ParseNumStopAtSlash(p);
         p.TryChar('/');
         var l = ParseNumStopAtSlash(p);
-        return new ModifyStatsNode { Target = tgt, Op = StatModOp.Set, Attack = a, Life = l };
+        var dur = TryParseDur(p);
+        return new ModifyStatsNode { Target = tgt, Op = StatModOp.Set, Attack = a, Life = l, Duration = dur };
     }
 
     /// <summary>
@@ -1398,6 +1482,9 @@ public sealed class ReshadowScriptCompiler
                 Owner = inner.Owner, Zone = inner.Zone, Mode = inner.Mode,
                 Count = inner.Count, Where = inner.Where, History = inner.History,
                 IncludeLeader = inner.IncludeLeader, DuplicatesOnly = inner.DuplicatesOnly,
+                // 排序与去重也必须拷：具名卡池同样可能带「基础费用最高的 1 个」。
+                Sort = inner.Sort, SortDescending = inner.SortDescending,
+                TopN = inner.TopN, DistinctByName = inner.DistinctByName,
             };
         }
         if (t != null && t.Length > 0 && t[0] == DollarSign)
@@ -1859,10 +1946,12 @@ public sealed class ReshadowScriptCompiler
                         // null 表示「这一项不动」。打成 0 会把「只改攻击力」变成「攻击力设为0」，
                         // 而 n/a 是显式的「无此值」标记，解析端据此还原 null。
                         return ind + "set_stats(" + PrintTargetExpr(m.Target) + ", "
-                               + PrintNumOrNa(m.Attack) + "/" + PrintNumOrNa(m.Life) + ")\n";
+                               + PrintNumOrNa(m.Attack) + "/" + PrintNumOrNa(m.Life)
+                               + DurArg(m.Duration) + ")\n";
                     default:
                         return ind + "buff(" + PrintTargetExpr(m.Target) + ", "
-                               + PrintNumOrNa(m.Attack) + "/" + PrintNumOrNa(m.Life) + ")\n";
+                               + PrintNumOrNa(m.Attack) + "/" + PrintNumOrNa(m.Life)
+                               + DurArg(m.Duration) + ")\n";
                 }
 
             case ModifyKeywordNode k:
@@ -1898,6 +1987,16 @@ public sealed class ReshadowScriptCompiler
                     ReanimateHelper.TryExtractCostCap(sp, out var cap);
                     return ind + "reanimate(" + PrintNumExpr(cap) + ")\n";
                 }
+                // 复制体：SourceKind=CopyOfTarget 时没有卡名，
+                // 落到 summon 分支会导出成 summon("", 1)，CopyFrom 与 IsExactCopy 全丢。
+                if (sp.SourceKind == CardSourceKind.CopyOfTarget)
+                {
+                    return ind + "copy_card(" + PrintTargetExpr(sp.CopyFrom) + ", "
+                           + PrintNumExpr(sp.Count)
+                           + (sp.IsExactCopy ? ", exact" : "")
+                           + ", to: " + (sp.ToZone == ZoneRef.Hand ? "hand" : "board") + ")\n";
+                }
+
                 // 纹章与召唤是两种完全不同的节点语义（同名唯一 / 不占战场 / 落纹章区），
                 // 都写成 summon 会让「获得纹章」在往返后变成「在战场上召唤一个随从」。
                 if (sp.IsCrest)
@@ -1941,7 +2040,8 @@ public sealed class ReshadowScriptCompiler
                     CostModOp.Set => "cost_set",
                     _ => "cost_mod",
                 };
-                return ind + op2 + "(" + PrintTargetExpr(mc.Target) + ", " + PrintNumExpr(mc.Value) + ")\n";
+                return ind + op2 + "(" + PrintTargetExpr(mc.Target) + ", " + PrintNumExpr(mc.Value)
+                       + DurArg(mc.Duration) + ")\n";
             }
 
             case InvokeAbilityNode ia:
@@ -1952,6 +2052,20 @@ public sealed class ReshadowScriptCompiler
 
             case ReplaceDeckNode rd:
                 return ind + "replace_deck(\"" + rd.DeckName + "\")\n";
+
+            case GrantAbilityNode ga:
+            {
+                // 被授予的能力要**连触发头一起**写回：
+                // 「每当友方随从进化，打对手主战者 1 点」的触发头是 OnEvolve，
+                // 硬编码成 PassiveAura 会让它永远不触发。
+                var gsb = new StringBuilder();
+                gsb.Append(ind).Append("grant_ability(").Append(PrintTargetExpr(ga.Target))
+                   .Append(ga.Duration == DurationKind.Permanent ? "" : ", dur: " + ga.Duration)
+                   .Append(") {\n");
+                if (ga.Granted != null) gsb.Append(PrintAbility(ga.Granted, depth + 1));
+                gsb.Append(ind).Append("}\n");
+                return gsb.ToString();
+            }
 
             case GrantCounterAbilityNode gc:
             {
@@ -2032,6 +2146,30 @@ public sealed class ReshadowScriptCompiler
            && (ab.Costs == null || ab.Costs.Count == 0)
            && ab.Body != null && ab.Body.Count == 1
            && ab.Body[0] is ModifyKeywordNode mk && mk.Op == KeywordOp.Grant;
+
+    /// <summary>Duration 参数后缀。限时与永久在 AST 上只差这一个字段。</summary>
+    private static string DurArg(DurationKind d)
+        => d == DurationKind.Permanent ? "" : ", dur: " + d;
+
+    /// <summary>读取可选的 ", dur: X" 参数。</summary>
+    private DurationKind TryParseDur(Cursor p)
+    {
+        var save = p.Save();
+        if (!p.TryChar(CommaChar)) { p.Restore(save); return DurationKind.Permanent; }
+        if (p.PeekToken() != "dur") { p.Restore(save); return DurationKind.Permanent; }
+        p.Next();
+        p.TryChar(ColonChar);
+        return p.Next() switch
+        {
+            "ThisTurn" => DurationKind.ThisTurn,
+            "UntilEndOfOpponentTurn" => DurationKind.UntilEndOfOpponentTurn,
+            "ThisMatch" => DurationKind.ThisMatch,
+            _ => DurationKind.Permanent,
+        };
+    }
+
+    private const char CommaChar = (char)44;
+    private const char ColonChar = (char)58;
 
     private string PrintNumOrNa(NumExpr e) => e == null ? "na" : PrintNumExpr(e);
 
