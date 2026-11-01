@@ -203,6 +203,13 @@ public sealed class DeckEditorViewModel
     private void RecalculateProfile()
         => CurrentProfile = DeckRuleResolver.ResolveAndValidate(WorkingDeck, CurrentPool);
 
+    /// <summary>
+    /// 显示名：优先中文名，没有则回落英文原名。
+    ///
+    /// 测试集卡本来就没有官方中文名 —— 把英文塞进 NameChs 会让 UI
+    /// 「看起来有中文名」（牌面全是英文却当成中文在显示），
+    /// 而正确行为是明确回落到英文。
+    /// </summary>
     public static string DisplayName(CardDef d)
         => d == null ? "?"
          : !string.IsNullOrWhiteSpace(d.NameChs) ? d.NameChs

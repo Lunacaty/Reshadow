@@ -97,9 +97,11 @@ public partial class CardVisualWidget : PanelContainer
         }
         else
         {
+            bool hasZh = !string.IsNullOrWhiteSpace(def.NameChs);
             var watermark = new Label
             {
-                Text = !string.IsNullOrWhiteSpace(def.NameChs) ? def.NameChs : def.Name,
+                // 没有中文名时明确回落英文，并在下方副标题里标出来。
+                Text = hasZh ? def.NameChs : def.Name,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
