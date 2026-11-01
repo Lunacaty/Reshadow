@@ -1,7 +1,9 @@
 {
  "pool_id": "official",
- "name": "官方标准卡池",
- "enabled_packs": ["official-sv"],
+ "name": "官方全卡池",
+ "enabled_packs": [
+  "official-sv"
+ ],
  "rules": {
   "leader_initial_life": 20,
   "max_pp_cap": 10,

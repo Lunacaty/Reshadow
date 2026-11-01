@@ -1,0 +1,22 @@
+feat: 可玩打包版 —— 官方 968 张卡 + 预置官方牌组 + 直接对战 AI
+
+官方卡池：
+  data/packs/official-sv/pack.json   968 张（官方英文卡面编译 + 官方中文渲染）
+  data/pools/official.pool.json      官方全卡池（40 张构筑 / 同名 3 张）
+  _backup/official-full/             原 982 张完整备份
+
+预置官方牌组（进游戏即可点【出战】）：
+  decks/official-forest.deck.json    官方·森林精灵  40 张
+  decks/official-sword.deck.json     官方·皇家剑士  40 张
+
+验证：用这两套官方牌组跑完一整局，5 回合分出胜负。
+
+卡池页签名区分：新建的 official.pool.json 原本也叫「官方标准卡池」，
+与仓库原有的 official-standard.pool.json 重名，改成「官方全卡池」。
+
+已知问题（不阻塞游玩）：
+  TestsetCardMatrix 的 Mjerrabaine 用例 32/32 -> 31/32。
+  原因：core-wb 的『deck of 40 cards』用 card_name 引用
+  Fairy / Bat / Knight / Guardian Golem，测试集环境里没有这些卡定义，
+  40 张里有 30 张 Def==null。与官方卡池无关，是既有测试夹具的覆盖缺口。
+  详见 docs/107-官方卡池编译问题.md。
