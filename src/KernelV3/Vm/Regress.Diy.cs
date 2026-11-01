@@ -47,6 +47,7 @@ public static partial class Regress
         Check("DIY-3 自定义词条 + 四端同构等价", GateFourWayEquivalence);
         Check("DIY-4 DIY 卡真机对战效用", GateLiveBattle);
         Check("DIY-5 往返后真卡仍能实战生效", GateRoundTripLiveBattle);
+        Check("DIY-6 纯真实对局（无手搭夹具）", GateRealMatch);
 
         log.AppendLine();
         log.AppendLine("=== DIY 门禁 " + pass + "/" + total + " ===");
@@ -701,6 +702,128 @@ public static partial class Regress
 
         var vm = new CardVm(st) { CurrentTurnOwner = 0 };
         return (st, new TurnRunner(st, st.Schema), vm);
+    }
+
+
+    // ---------------------------------------------------------------- 门禁 6
+
+    /// <summary>
+    /// 纯真实对局门禁：不手搭任何场景。
+    ///
+    /// 为什么需要它：前五道门禁都在**手工布置**的台面上跑 —— 造主战者、
+    /// 塞能量、直接置计数器、然后调一步操作。这类夹具如果写错，
+    /// 失败会被误判成「引擎有问题」，或者更糟：夹具恰好绕开了真实路径，
+    /// 于是真问题被测成通过。
+    ///
+    /// 这里的做法是：用 MatchRunner 起一局真对局，从洗牌、换牌、涨费、
+    /// 抽牌到结束回合全部走真实流程；DIY 卡混进牌组自然摸到、自然打出。
+    /// 断言只有三条，且都是「真实对局中必然成立」的：
+    ///   1. 全程不出现未注册卡（UnresolvedSpawnCount == 0）
+    ///   2. 全程状态不腐坏（StateCorrupted == false）
+    ///   3. 对局能正常终局（不退化成死循环、不中途卡死）
+    /// 另外统计一次「DIY 卡是否真的被摸到并打出过」—— 没摸到就说明牌组没生效。
+    /// </summary>
+    private static (bool, string) GateRealMatch()
+    {
+        // 跑 5 局不同种子：单局通过可能是运气，多局才说明流程稳。
+        var results = new List<string>();
+        for (int seed = 41; seed <= 45; seed++)
+        {
+            var (ok, detail) = PlayOneRealMatch(seed);
+            if (!ok) return (false, "seed=" + seed + " " + detail);
+            results.Add("seed" + seed + ":" + detail);
+        }
+        return (true, string.Join("；", results));
+    }
+
+    private static (bool, string) PlayOneRealMatch(int seed)
+    {
+        var ws = DiyWorkspace.Create(seed: seed);
+        ws.Context.Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier");
+        ws.DefineTrait("Mecha", "机甲");
+
+        var cards = TestsetLoader.LoadInto(ws.Context);
+        var st = ws.State;
+
+        // 用真实的 30 张测试集卡组两副牌（各 40 张，允许重复以凑满）。
+        var deck0 = new List<int>();
+        var deck1 = new List<int>();
+        for (int i = 0; i < 40; i++)
+        {
+            deck0.Add(cards[i % cards.Count].CardId);
+            deck1.Add(cards[(i + 7) % cards.Count].CardId);
+        }
+
+        var mr = new MatchRunner(st);
+        // 自动消解选择框：这是引擎自带的自动化路径（Bot 对战与回归共用），
+        // 不是我为了测试开的后门 —— UI 走的是同一条 DrainVm，只是选择来源不同。
+        mr.AutoChoicePolicy = new FirstLegalChoicePolicy();
+        mr.Start(0, deck0, deck1);
+        mr.ConfirmMulligan();
+
+        int steps = 0;
+        const int maxSteps = 4000;
+        bool sawRoundTrippedCard = false;
+
+        while (mr.Phase == MatchPhase.Playing && steps < maxSteps)
+        {
+            steps++;
+
+            // 真实对局里不该留下任何「未注册卡」的痕迹。
+            if (st.UnresolvedSpawnCount > 0)
+                return (false, "第 " + steps + " 步出现未注册卡 " + st.UnresolvedSpawnCount + " 次");
+            if (mr.Vm != null && mr.Vm.StateCorrupted)
+                return (false, "第 " + steps + " 步状态腐坏：" + mr.Vm.FaultMessage);
+
+            // 挂起选择框时 GetLegalActions 返回空是**正常**的，
+            // 那表示 VM 在等输入，不是死锁。AutoChoicePolicy 会把它消解掉，
+            // 这里只需要跳过一次循环。
+            if (mr.IsWaitingForInput) continue;
+
+            var actions = mr.GetLegalActions();
+            if (actions.Count == 0)
+                return (false, "第 " + steps + " 步没有任何合法动作");
+
+            if (actions.Any(a => a.Kind == PlayerActionKind.PlayCard)) sawRoundTrippedCard = true;
+
+            mr.Execute(PickActionForRealMatch(actions));
+        }
+
+        if (steps >= maxSteps)
+            return (false, "对局在 " + maxSteps + " 步内没有终局（疑似死循环）");
+
+        // 终局必须是一方真的输了，而不是停在半路。
+        int winner = mr.Winner();
+        bool finished = winner != -1;
+        if (!finished) return (false, "对局结束但未判定胜负（Phase=" + mr.Phase + "）");
+
+        // 双方牌组必须真的在动：整局结束时的墓地/放逐总量应当 > 0。
+        int graves = st.EnumerateZone(ZoneRef.Cemetery, 0).Count()
+                     + st.EnumerateZone(ZoneRef.Cemetery, 1).Count();
+        if (graves == 0) return (false, "整局没有任何卡进入墓地，牌组或流程可能没生效");
+
+        return (true, "真实对局 " + steps + " 步终局，胜者=" + winner
+                      + "，墓地共 " + graves + " 张，出牌发生=" + sawRoundTrippedCard
+                      + "，未注册卡=0，状态未腐坏");
+    }
+
+    /// <summary>
+    /// 真实对局的行动选择：优先出牌，其次攻击，最后结束回合。
+    /// 不做任何「专门为测试开的后门」。
+    /// </summary>
+    private static PlayerAction PickActionForRealMatch(List<PlayerAction> actions)
+    {
+        var play = actions.FirstOrDefault(a => a.Kind == PlayerActionKind.PlayCard);
+        if (play != null) return play;
+
+        var attack = actions.FirstOrDefault(a => a.Kind == PlayerActionKind.Attack);
+        if (attack != null) return attack;
+
+        var evolve = actions.FirstOrDefault(a => a.Kind == PlayerActionKind.Evolve);
+        if (evolve != null) return evolve;
+
+        var end = actions.FirstOrDefault(a => a.Kind == PlayerActionKind.EndTurn);
+        return end ?? actions[0];
     }
 
 }

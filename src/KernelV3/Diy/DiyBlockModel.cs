@@ -69,6 +69,10 @@ public sealed class Block
     public bool FlagA { get; set; }           // 各种开关（IsCrest / IsExact / manualOnly …）
     public bool FlagB { get; set; }
     public bool FlagC { get; set; }
+    public bool FlagD { get; set; }
+    public bool FlagE { get; set; }
+    public int IntC { get; set; }
+    public string EnumC { get; set; }
     public string EnumA { get; set; }         // 枚举字面量（Zone / Owner / Mode / Op …）
     public string EnumB { get; set; }
     public string CardNameA { get; set; }     // 具名卡池（card("X", …)）
@@ -170,6 +174,7 @@ public static class DiyBlockModel
         ["act_replace_deck"] = BlockShape.Stack,
         ["act_invoke"] = BlockShape.Stack,
         ["act_grant_ability"] = BlockShape.Stack,
+        ["act_grant_entity_ability"] = BlockShape.Stack,
 
         // ---- 胶囊 ----
         ["tgt_slot"] = BlockShape.Pill,
@@ -741,6 +746,42 @@ public sealed class DiyBlockCompiler
                     Target = CompileTarget(b.Target) ?? TargetSpec.Self,
                 };
 
+            case "act_copy":
+                // 复制体：SourceKind 必须是 CopyOfTarget，否则运行期会去 SpawnCard(0)。
+                return new SpawnCardNode
+                {
+                    SourceKind = CardSourceKind.CopyOfTarget,
+                    CopyFrom = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    IsExactCopy = b.FlagA,
+                    Count = CompileNumber(b.Number) ?? NumExpr.Const(1),
+                    ToZone = b.EnumA == "Hand" ? ZoneRef.Hand : ZoneRef.Board,
+                    ToOwner = ZoneScope.Self,
+                };
+
+            case "act_grant_entity_ability":
+            {
+                // 给**实体**授予能力（不是给计数器）。
+                // 与 GrantCounterAbilityNode 是两种节点，不能合并。
+                var innerBody = b.Stacks != null && b.Stacks.Count > 0
+                    ? CompileStackList(b.Stacks)
+                    : new List<EffectNode>();
+                return new GrantAbilityNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Granted = new AbilityDef
+                    {
+                        Trigger = new TriggerSpec { Event = EventOf(b.Text ?? "PassiveAura") },
+                        Body = innerBody,
+                    },
+                    Duration = b.EnumA switch
+                    {
+                        "ThisTurn" => DurationKind.ThisTurn,
+                        "UntilEndOfOpponentTurn" => DurationKind.UntilEndOfOpponentTurn,
+                        _ => DurationKind.Permanent,
+                    },
+                };
+            }
+
             case "act_grant_ability":
             {
                 var inner = b.Stacks != null && b.Stacks.Count > 0
@@ -845,6 +886,11 @@ public sealed class DiyBlockCompiler
                     CardName = b.CardNameA ?? "",
                     IncludeLeader = b.FlagB,
                     DuplicatesOnly = b.FlagC,
+                    Sort = string.IsNullOrEmpty(b.EnumC) ? SortKey.None
+                         : (Enum.TryParse<SortKey>(b.EnumC, true, out var sk2) ? sk2 : SortKey.None),
+                    SortDescending = b.FlagD,
+                    DistinctByName = b.FlagE,
+                    TopN = b.IntC,
                     History = b.EnumB switch
                     {
                         "DestroyedThisMatch" => HistoryScope.DestroyedThisMatch,
@@ -965,13 +1011,15 @@ public sealed class DiyBlockCompiler
             case "num_const": return NumExpr.Const(b.IntA);
             case "num_counter": return NumExpr.Ctr(_schema.Counter(b.Text ?? ""));
             case "num_prop":
-                return NumExpr.Prop(b.EnumA switch
-                {
-                    "Life" => StatKey.Life,
-                    "MaxLife" => StatKey.MaxLife,
-                    "Cost" => StatKey.Cost,
-                    _ => StatKey.Attack,
-                }, TargetSpec.Item);
+            {
+                // 用 TryParse 覆盖**全部** StatKey：只列三种会让 BaseCost /
+                // BaseAttack / Countdown 等经过往返后被篡改成「攻击力」，
+                // 而卡面中文完全一样（都读「攻击力」以外的词）。
+                var sk = Enum.TryParse<StatKey>(b.EnumA, true, out var parsedSk)
+                    ? parsedSk : StatKey.Attack;
+                // Of 必须还原：缺省是 $item（筛选上下文），但「X = 本卡攻击力」用的是 $self。
+                return NumExpr.Prop(sk, CompileTarget(b.Target) ?? TargetSpec.Item);
+            }
             case "num_count":
                 return NumExpr.CountOf(CompileTarget(b.Target) ?? TargetSpec.Self);
             case "num_max_group":
@@ -1321,6 +1369,19 @@ public sealed class DiyBlockDecompiler
             case InvokeAbilityNode ia:
                 return new Block { Opcode = "act_invoke", Text = ia.Event.ToString(), Target = Target(ia.Target ?? TargetSpec.Self) };
 
+            case GrantAbilityNode ga:
+            {
+                var gb = new Block
+                {
+                    Opcode = "act_grant_entity_ability",
+                    Target = Target(ga.Target),
+                    Text = ga.Granted?.Trigger?.Event.ToString() ?? "PassiveAura",
+                    EnumA = ga.Duration == DurationKind.Permanent ? null : ga.Duration.ToString(),
+                };
+                gb.Stacks = Stacks(ga.Granted?.Body);
+                return gb;
+            }
+
             case GrantCounterAbilityNode gc:
             {
                 var blk = new Block { Opcode = "act_grant_ability", Text = gc.Counter.Name };
@@ -1366,6 +1427,12 @@ public sealed class DiyBlockDecompiler
             FlagC = t.DuplicatesOnly,
             EnumB = t.History == HistoryScope.None ? null : t.History.ToString(),
             CardNameA = t.CardName,
+            // 排序与去重是筛选语义的一部分：「基础费用最高的 1 个」与「任意 1 个」
+            // 出天差地别，而 AstEnglishPrinter 不打印它们时会被静默丢掉。
+            EnumC = t.Sort == SortKey.None ? null : t.Sort.ToString(),
+            FlagD = t.SortDescending,
+            FlagE = t.DistinctByName,
+            IntC = t.TopN,
             Number = t.Mode == SelectMode.All ? null : Num(t.Count),
             Condition = Cond(restWhere2),
         };
@@ -1522,7 +1589,7 @@ public sealed class DiyBlockDecompiler
             case NumOp.Const: return new Block { Opcode = "num_const", IntA = e.Value };
             case NumOp.Counter: return new Block { Opcode = "num_counter", Text = e.Counter.Name };
             case NumOp.Property:
-                return new Block { Opcode = "num_prop", EnumA = e.Stat.ToString() };
+                return new Block { Opcode = "num_prop", EnumA = e.Stat.ToString(), Target = Target(e.Of) };
             case NumOp.Count:
                 return new Block { Opcode = "num_count", Target = Target(e.Of) };
             case NumOp.MaxGroupSize:

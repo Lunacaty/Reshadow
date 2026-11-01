@@ -1190,6 +1190,10 @@ public sealed class ReshadowScriptCompiler
         bool other = false;
         bool includeLeader = false;
         bool duplicates = false;
+        bool distinct = false;
+        bool sortDesc = false;
+        int topn = 0;
+        var sort = Core.SortKey.None;
         var history = HistoryScope.None;
 
         while (!p.AtEnd && !p.TryChar(')'))
@@ -1235,6 +1239,18 @@ public sealed class ReshadowScriptCompiler
 
                 case "include_leader": includeLeader = true; break;
                 case "duplicates": duplicates = true; break;
+                case "distinct": distinct = true; break;
+
+                case "sort":
+                    p.TryChar(':');
+                    sort = Enum.TryParse<Core.SortKey>(p.Next(), true, out var sk3) ? sk3 : Core.SortKey.None;
+                    if (p.PeekToken() == "desc") { p.Next(); sortDesc = true; }
+                    break;
+
+                case "topn":
+                    p.TryChar(':');
+                    topn = p.TryInt() ?? 0;
+                    break;
 
                 case "history":
                     p.TryChar(':');
@@ -1333,6 +1349,10 @@ public sealed class ReshadowScriptCompiler
             Where = where,
             IncludeLeader = includeLeader,
             DuplicatesOnly = duplicates,
+            DistinctByName = distinct,
+            Sort = sort,
+            SortDescending = sortDesc,
+            TopN = topn,
             History = history,
         };
     }
@@ -2082,6 +2102,12 @@ public sealed class ReshadowScriptCompiler
 
         if (t.IncludeLeader) parts.Add("include_leader");
         if (t.History != HistoryScope.None) parts.Add("history: " + t.History);
+        // 排序与去重是筛选语义的一部分：「基础费用最高的 1 个」与「任意 1 个」
+        // 出天差地别，不打印就会被静默丢掉。
+        if (t.Sort != Core.SortKey.None)
+            parts.Add("sort: " + t.Sort + (t.SortDescending ? " desc" : ""));
+        if (t.TopN > 0) parts.Add("topn: " + t.TopN);
+        if (t.DistinctByName) parts.Add("distinct");
 
         if (t.DuplicatesOnly) parts.Add("duplicates");
 
