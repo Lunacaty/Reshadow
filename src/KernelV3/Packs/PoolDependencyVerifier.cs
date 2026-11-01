@@ -44,13 +44,13 @@ public static class PoolDependencyVerifier
             if (def?.Abilities == null) continue;
             foreach (var ab in def.Abilities)
             {
-                WalkAbility(ab, def, poolCardIds, allCardsLookup, rep);
+                WalkAbility(ab, def, poolCardIds, allCardsLookup, deckDefs, rep);
 
                 // 分栏（激奏 / 结晶 / 纹章 / 信仰）里的 AST 同样要扫。
-                WalkSubDef(def.AccelerateDef, def, poolCardIds, allCardsLookup, rep);
-                WalkSubDef(def.CrystallizeDef, def, poolCardIds, allCardsLookup, rep);
-                WalkSubDef(def.CrestDef, def, poolCardIds, allCardsLookup, rep);
-                WalkSubDef(def.FaithDef, def, poolCardIds, allCardsLookup, rep);
+                WalkSubDef(def.AccelerateDef, def, poolCardIds, allCardsLookup, deckDefs, rep);
+                WalkSubDef(def.CrystallizeDef, def, poolCardIds, allCardsLookup, deckDefs, rep);
+                WalkSubDef(def.CrestDef, def, poolCardIds, allCardsLookup, deckDefs, rep);
+                WalkSubDef(def.FaithDef, def, poolCardIds, allCardsLookup, deckDefs, rep);
             }
         }
 
@@ -79,24 +79,24 @@ public static class PoolDependencyVerifier
 
     private static void WalkSubDef(
         CardDef sub, CardDef host, IReadOnlySet<int> poolIds,
-        Func<int, CardDef> lookup, DependencyReport rep)
+        Func<int, CardDef> lookup, DeckDefTable deckDefs, DependencyReport rep)
     {
         if (sub?.Abilities == null) return;
         foreach (var ab in sub.Abilities)
-            WalkAbility(ab, host, poolIds, lookup, rep);
+            WalkAbility(ab, host, poolIds, lookup, deckDefs, rep);
     }
 
     private static void WalkAbility(
         AbilityDef ab, CardDef host, IReadOnlySet<int> poolIds,
-        Func<int, CardDef> lookup, DependencyReport rep)
+        Func<int, CardDef> lookup, DeckDefTable deckDefs, DependencyReport rep)
     {
         if (ab?.Body == null) return;
-        foreach (var node in ab.Body) WalkNode(node, host, poolIds, lookup, rep);
+        foreach (var node in ab.Body) WalkNode(node, host, poolIds, lookup, deckDefs, rep);
     }
 
     private static void WalkNode(
         EffectNode node, CardDef host, IReadOnlySet<int> poolIds,
-        Func<int, CardDef> lookup, DependencyReport rep)
+        Func<int, CardDef> lookup, DeckDefTable deckDefs, DependencyReport rep)
     {
         if (node == null) return;
 
@@ -104,8 +104,10 @@ public static class PoolDependencyVerifier
         {
             case SpawnCardNode sp:
                 // 只有「按卡号指名」的才需要检查；复制体 / 卡池检索不指名。
+                // IsCrest 的 SpawnCardNode 走 GainCrest，不是「造一张卡」：
+                // 它的 CardId 可能是 0（纹章按名字生成），不该被判成悬空引用。
                 if (sp.SourceKind == CardSourceKind.CardId && sp.CardId > 0
-                    && !poolIds.Contains(sp.CardId))
+                    && !sp.IsCrest && !poolIds.Contains(sp.CardId))
                 {
                     var owner = lookup?.Invoke(sp.CardId);
                     // Token 类引用缺失才是硬错误：它是「点名要的那张卡」。
@@ -130,14 +132,33 @@ public static class PoolDependencyVerifier
 
             case ReplaceDeckNode rd:
             {
-                // 牌组名本身在 DeckDefs 里查不到时，第 2 步才会报 ——
-                // 这里只补一句来源，方便定位是哪张卡写的。
+                // 换整副牌库是跨包依赖最容易断的地方：
+                // 卡面写「替换为《Custom Deck》」，而那份牌组的成员卡
+                // 可能定义在另一个包里。只查牌组名存在是不够的 ——
+                // 名字存在但成员卡缺一张，照样会在换牌库时造出空壳。
+                var expanded = deckDefs?.Expand(rd.DeckName);
+                if (expanded == null || expanded.Count == 0)
+                {
+                    rep.Errors.Add("悬空牌组引用：卡包 [" + host.PackId + "] 的《" + host.Name
+                                   + "》试图替换牌库为《" + rd.DeckName + "》，但本卡池未定义该牌组！");
+                    break;
+                }
+                foreach (var cid in expanded.Distinct())
+                {
+                    if (poolIds.Contains(cid)) continue;
+                    var owner = lookup?.Invoke(cid);
+                    rep.Errors.Add("跨包牌组残缺：具名牌组《" + rd.DeckName + "》包含卡片 "
+                                   + (owner != null ? "《" + owner.Name + "》" : "")
+                                   + "(id=" + cid + ")，但提供该卡片的卡包"
+                                   + (owner != null && !string.IsNullOrEmpty(owner.PackId) ? " [" + owner.PackId + "]" : "")
+                                   + "未加入本卡池！");
+                }
                 break;
             }
         }
 
         // 递归进容器节点
-        foreach (var child in Children(node)) WalkNode(child, host, poolIds, lookup, rep);
+        foreach (var child in Children(node)) WalkNode(child, host, poolIds, lookup, deckDefs, rep);
     }
 
     /// <summary>取节点的直接子节点（容器类节点才有）。</summary>

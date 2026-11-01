@@ -314,7 +314,7 @@ public static class CardPoolBuilder
         {
             return new CardDef
             {
-                CardId = c.CardId, Name = c.NameEng, Kind = c.Kind,
+                CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
                 BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
                 Traits = traits, Clan = clan,
                 PackId = pack.PackId, IsToken = c.IsToken,
@@ -329,7 +329,7 @@ public static class CardPoolBuilder
 
         return new CardDef
         {
-            CardId = c.CardId, Name = c.NameEng, Kind = c.Kind,
+            CardId = c.CardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
             BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
             Abilities = result.Abilities,
             Traits = traits, Clan = clan,

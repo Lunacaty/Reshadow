@@ -128,9 +128,54 @@ public static class RegressPacks
         bool built = both.Ok;
         bool deckOk = built && both.Pool.DeckDefs.Expand(deckName)?.Count == 3;
 
-        bool ok = blocked && built && deckOk;
+        // ---- 换整副牌库的跨包残缺（文档 VerifyAstCrossReferences 的核心场景）----
+        // 卡 alpha 的 AST 里写着 ReplaceDeckNode，而牌组成员在另一个包。
+        // 只查「具名牌组名字存在」不够 —— 名字存在但成员卡缺，照样在换牌库时造空壳。
+        var alphaCard = new CardDef
+        {
+            CardId = 710003, Name = "Alpha", Kind = CardKind.Spell, BaseCost = 1, PackId = "pack.a",
+            Abilities = new List<AbilityDef>
+            {
+                new AbilityDef
+                {
+                    Trigger = new TriggerSpec { Event = CoreEvent.OnPlay },
+                    Body = new List<EffectNode>
+                    {
+                        new ReplaceDeckNode { DeckName = "Replace Target", Owner = ZoneScope.Self },
+                    },
+                },
+            },
+        };
+        var memberCard = new CardDef
+        {
+            CardId = 710004, Name = "Member", Kind = CardKind.Follower, BaseCost = 1,
+            BaseAttack = 1, BaseLife = 1, PackId = "pack.b",
+        };
+        var deckDefs = new DeckDefTable();
+        deckDefs.Register("Replace Target", new[] { new DeckEntry(710004, 5) });
+        var allMap = new Dictionary<int, CardDef> { [710003] = alphaCard, [710004] = memberCard };
+        Func<int, CardDef> look = id => allMap.TryGetValue(id, out var d) ? d : null;
+
+        var onlyAlpha = PoolDependencyVerifier.Verify(
+            new Dictionary<int, CardDef> { [710003] = alphaCard }, deckDefs,
+            new HashSet<int> { 710003 }, look);
+        bool deckMemberGap = !onlyAlpha.Ok && onlyAlpha.Errors.Any(e => e.Contains("跨包牌组残缺"));
+
+        var bothOk = PoolDependencyVerifier.Verify(
+            new Dictionary<int, CardDef> { [710003] = alphaCard, [710004] = memberCard }, deckDefs,
+            new HashSet<int> { 710003, 710004 }, look);
+        bool deckBothOk = bothOk.Ok;
+
+        // 牌组本身没定义
+        var noDeck = PoolDependencyVerifier.Verify(
+            new Dictionary<int, CardDef> { [710003] = alphaCard }, new DeckDefTable(),
+            new HashSet<int> { 710003 }, look);
+        bool deckUndefined = !noDeck.Ok && noDeck.Errors.Any(e => e.Contains("悬空牌组引用"));
+
+        bool ok = blocked && built && deckOk && deckMemberGap && deckBothOk && deckUndefined;
         return (ok, "仅A时拦截=" + blocked + " 双包构建=" + built + " 牌组3张=" + deckOk
-                    + (onlyA.Ok ? "" : " | 拦截原因：" + onlyA.Errors.FirstOrDefault()));
+                    + " 换牌库跨包残缺=" + deckMemberGap + " 双包换牌库通过=" + deckBothOk
+                    + " 牌组未定义=" + deckUndefined);
     }
 
     // ---------------------------------------------------------------- 门禁 B
