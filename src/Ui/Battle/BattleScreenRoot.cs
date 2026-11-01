@@ -51,6 +51,12 @@ public partial class BattleScreenRoot : Control
         _store = store;
         _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101);
         BoardUnitWidget.CurrentController = _ctrl;
+
+        // 开局前先把游标推到日志末尾。
+        // 否则起手抽牌、换牌这些「开局事件」会在第一次 Rebuild 时
+        // 被当成刚发生的事故，满屏播一遍伤害与破坏特效。
+        _lastEventIdx = _ctrl.State.EventLog.Count;
+
         BuildUi();
         Rebuild();
     }
@@ -83,6 +89,22 @@ public partial class BattleScreenRoot : Control
         _allyLeader.Position = new Vector2(
             475, GetViewportRect().Size.Y - LeaderMedallionWidget.FlatEdgeY);
         _allyLeader.OnLeaderClicked += () => _actionPanel.ShowForEntity(_ctrl.Leader(0));
+
+        // EP / SEP 球可直接点击进化 —— 原版就是把进化球镶在主战者拱框上，
+        // 玩家会自然去点它。之前事件定义了却没人订阅，点了毫无反应。
+        // 和左上角弹窗的【进化】按钮等价：都作用于当前选中的实体。
+        _allyLeader.OnEvolveOrbClicked += isSuper =>
+        {
+            var target = _actionPanel.BoundEntity;
+            if (target == null) return;
+            if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
+        };
+        _foeLeader.OnEvolveOrbClicked += isSuper =>
+        {
+            var target = _actionPanel.BoundEntity;
+            if (target == null) return;
+            if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
+        };
         AddChild(_allyLeader);
 
         _rightCol = new RightCommandColumnWidget();
@@ -188,9 +210,13 @@ public partial class BattleScreenRoot : Control
 
             w.OnClicked += ent =>
             {
+                // 只弹左上详情，**绝不在这里 Rebuild()**。
+                // OnClicked 是鼠标「按下」瞬间触发的，此刻这个 widget 正准备
+                // 进入拖拽攻击（OnDragAttackStarted 紧随其后）。
+                // 一旦 Rebuild() 就会把它 QueueFree 掉，拖拽直接断在半路，
+                // 玩家永远拉不出瞄准箭头。
                 _actionPanel.ShowForEntity(ent);
                 if (_ctrl.IsInFuseMode) _ctrl.ToggleFuseMaterial(ent);
-                Rebuild();
             };
             w.OnRightClicked += ent => _actionPanel.ShowForEntity(ent);
 
@@ -216,6 +242,27 @@ public partial class BattleScreenRoot : Control
             var cap = e;
             CallDeferred(nameof(CaptureCenter), cap.EntityId, w);
         }
+    }
+
+    /// <summary>
+    /// 攻击命中瞬间播一次冲撞动画。
+    ///
+    /// 必须**在 Rebuild() 之前**调：攻击者控件马上会被 QueueFree，
+    /// 之后再拿到它就是一个失效引用，Tween 会打在一个已释放的节点上。
+    /// </summary>
+    private void PlayLungeBeforeRebuild(RuntimeEntity attacker, Vector2 defenderCenter)
+    {
+        if (_vfx == null || attacker == null) return;
+
+        var attackerWidget = _boardAlly.GetChildren().OfType<HBoxContainer>()
+            .SelectMany(h => h.GetChildren().OfType<BoardUnitWidget>())
+            .FirstOrDefault(x => x.Entity != null && x.Entity.EntityId == attacker.EntityId);
+
+        Vector2 attackerCenter = attackerWidget != null
+            ? attackerWidget.GetGlobalRect().GetCenter()
+            : _unitCenters.TryGetValue(attacker.EntityId, out var c) ? c : defenderCenter;
+
+        _vfx.PlayAttackLunge(attackerWidget, attackerCenter, defenderCenter);
     }
 
     private void CaptureCenter(long entityId, Control w)
@@ -300,6 +347,7 @@ public partial class BattleScreenRoot : Control
         if (foeLeader != null && legal.Contains(foeLeader.EntityId)
             && _foeLeader.GetGlobalRect().HasPoint(screenPos))
         {
+            PlayLungeBeforeRebuild(atk, _foeLeader.GetGlobalRect().GetCenter());
             _ctrl.TryAttack(atk, foeLeader, out _);
             Rebuild();
             return;
@@ -311,6 +359,7 @@ public partial class BattleScreenRoot : Control
             if (!w.GetGlobalRect().HasPoint(screenPos)) continue;
             if (legal.Contains(w.Entity.EntityId))
             {
+                PlayLungeBeforeRebuild(atk, w.GetGlobalRect().GetCenter());
                 _ctrl.TryAttack(atk, w.Entity, out _);
                 Rebuild();
             }

@@ -26,8 +26,10 @@ public partial class RightCommandColumnWidget : Control
     public void Setup(BattleSessionController ctrl)
     {
         _ctrl = ctrl;
-        CustomMinimumSize = new Vector2(216, 380);
-        Size = new Vector2(216, 380);
+        // 高 420：下方 Extra PP 框底边在 374+42=416，
+        // 控件只有 380 高的话那块会落在控件外，鼠标事件根本收不到。
+        CustomMinimumSize = new Vector2(216, 420);
+        Size = new Vector2(216, 420);
         MouseFilter = MouseFilterEnum.Stop;
         QueueRedraw();
     }
@@ -162,7 +164,10 @@ public partial class RightCommandColumnWidget : Control
                 OnEndTurnClicked?.Invoke();
                 AcceptEvent();
             }
-            else if (ExtraPpRect.HasPoint(mb.Position))
+            // 我方后手时，Extra PP 框画在下方（Y=374..416）；
+            // 敌方后手时画在上方（Y=0..42）。两个位置都要能点。
+            else if (ExtraPpRect.HasPoint(mb.Position)
+                     || new Rect2(10, 374, 196, 42).HasPoint(mb.Position))
             {
                 OnExtraPpClicked?.Invoke();
                 AcceptEvent();
