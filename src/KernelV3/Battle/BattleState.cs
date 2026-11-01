@@ -56,6 +56,54 @@ public sealed class BattleState : IVmWorld
         Schema.CounterLimits["ep"] = (0, Rules.MaxEpCap);
         Schema.CounterLimits["sep"] = (0, Rules.MaxSepCap);
 
+        // 具名牌组优先从 data/packs 加载（与内置回落表合并：同名时卡包覆盖）。
+        // 少了这一步，卡包里定义的「自定义牌组」在换牌库时仍然查不到。
+        try
+        {
+            var packsRoot = Packs.CardPackLoader.ResolvePacksRoot();
+            if (packsRoot != null)
+            {
+                var all = Packs.CardPackLoader.LoadAll(packsRoot);
+
+                // 牌组成员通常按**卡名**写（跨包引用必须如此），
+                // 所以要先建一张「卡名 → 卡号」表再解析。
+                // 只认 CardId 会让按名写的牌组整个丢掉，表现为
+                // 「未定义的具名牌组: [a deck of 40 cards]」。
+                var nameToId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var pk in all)
+                    foreach (var c in pk.Cards)
+                        if (c.CardId > 0 && !string.IsNullOrEmpty(c.NameEng))
+                            nameToId[c.NameEng] = c.CardId;
+
+                var packed = new DeckDefTable();
+                foreach (var pk in all)
+                {
+                    foreach (var nd in pk.NamedDecks)
+                    {
+                        var entries = new List<DeckEntry>();
+                        foreach (var e in nd.Entries)
+                        {
+                            int id = e.CardId;
+                            if (id <= 0 && !string.IsNullOrEmpty(e.CardName)
+                                && nameToId.TryGetValue(e.CardName, out var resolved))
+                                id = resolved;
+                            if (id > 0) entries.Add(new DeckEntry(id, e.Copies));
+                        }
+                        if (entries.Count > 0) packed.Register(nd.DeckName, entries);
+                    }
+                }
+                // 卡包里的定义合并进回落表：卡包优先，但回落里独有的（如占位牌组）保留。
+                var merged = DeckDefTable.CreateDefault();
+                foreach (var name in packed.Names())
+                    merged.Register(name, packed.TryGet(name));
+                Vm.CardVm.BindDeckDefs(merged);
+            }
+        }
+        catch
+        {
+            // 读不到卡包就用回落表：卡包是可选内容，不是运行前提。
+        }
+
         // 可堆叠资源规格在**构造时就注册**，不等到 RegisterBuiltinTokens。
         // 规格描述的是「计数器怎么绑定护符」，属于规则而非卡；
         // 放在注册卡时才做，会让只用 SpawnCard 布置的测试拿不到规格，

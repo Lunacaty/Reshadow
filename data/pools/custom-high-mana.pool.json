@@ -1,0 +1,20 @@
+{
+ "pool_id": "custom-high-mana",
+ "name": "高费自定义卡池",
+ "enabled_packs": [
+  "core-wb",
+  "testset-v2"
+ ],
+ "rules": {
+  "leader_initial_life": 30,
+  "max_pp_cap": 12,
+  "pp_gain_per_turn": 2,
+  "starting_hand_size": 5,
+  "first_player_draws_turn1": false,
+  "evolve_unlock_p0": 3,
+  "evolve_unlock_p1": 2,
+  "min_deck_size": 30,
+  "max_deck_size": 60,
+  "max_copies": 4
+ }
+}

@@ -118,6 +118,7 @@ public static class CardPackLoader
                 int kindNum = Int(c, "kind", 1);
                 cards.Add(new CardRawEntry
                 {
+                    LocalId = Str(c, "local_id"),
                     CardId = Int(c, "card_id", 0),
                     NameEng = Str(c, "name_eng"),
                     NameChs = Str(c, "name_chs"),

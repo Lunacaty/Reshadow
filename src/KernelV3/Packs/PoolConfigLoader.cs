@@ -1,0 +1,133 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using ShadowverseFan.KernelV3.Core;
+
+namespace ShadowverseFan.KernelV3.Packs;
+
+// ============================================================================
+// 磁盘目录约定（ReshadowGame/ 根目录）：
+//   packs/<pack_id>/pack.json      物理卡包
+//   pools/<name>.pool.json         卡池配置（启用哪些包 + 自定义规则）
+//   decks/<name>.deck.json         局外构筑存档
+//
+// 三层分开存：卡包是内容、卡池是环境、构筑是玩家的配方。
+// 混在一起的话，「换一个卡池」就等于「换一套卡包文件」。
+// ============================================================================
+public static class PoolConfigLoader
+{
+    /// <summary>从 .pool.json 读卡池配置。</summary>
+    public static CardPoolConfig LoadPool(string path)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(path, System.Text.Encoding.UTF8));
+        var r = doc.RootElement;
+
+        var rules = MatchRules.CreateStandard();
+        if (r.TryGetProperty("rules", out var ru) && ru.ValueKind == JsonValueKind.Object)
+        {
+            rules = new MatchRules
+            {
+                LeaderInitialLife = I(ru, "leader_initial_life", rules.LeaderInitialLife),
+                LeaderMaxLife = I(ru, "leader_max_life", rules.LeaderMaxLife),
+                MaxBoardSize = I(ru, "max_board_size", rules.MaxBoardSize),
+                MaxHandSize = I(ru, "max_hand_size", rules.MaxHandSize),
+                MaxCrestSize = I(ru, "max_crest_size", rules.MaxCrestSize),
+                InitialMaxPp = I(ru, "initial_max_pp", rules.InitialMaxPp),
+                PpGainPerTurn = I(ru, "pp_gain_per_turn", rules.PpGainPerTurn),
+                MaxPpCap = I(ru, "max_pp_cap", rules.MaxPpCap),
+                OverflowThreshold = I(ru, "overflow_threshold", rules.OverflowThreshold),
+                EnableExtraPpForSecondPlayer = B(ru, "enable_extra_pp", rules.EnableExtraPpForSecondPlayer),
+                ExtraPpEarlyPhaseLastTurn = I(ru, "extra_pp_last_turn", rules.ExtraPpEarlyPhaseLastTurn),
+                StartingHandSize = I(ru, "starting_hand_size", rules.StartingHandSize),
+                CardsDrawnPerTurn = I(ru, "cards_drawn_per_turn", rules.CardsDrawnPerTurn),
+                FirstPlayerDrawsOnTurn1 = B(ru, "first_player_draws_turn1", rules.FirstPlayerDrawsOnTurn1),
+                EvolveUnlockTurnFirstPlayer = I(ru, "evolve_unlock_p0", rules.EvolveUnlockTurnFirstPlayer),
+                EvolveUnlockTurnSecondPlayer = I(ru, "evolve_unlock_p1", rules.EvolveUnlockTurnSecondPlayer),
+                SuperEvolveUnlockTurnFirstPlayer = I(ru, "super_evolve_unlock_p0", rules.SuperEvolveUnlockTurnFirstPlayer),
+                SuperEvolveUnlockTurnSecondPlayer = I(ru, "super_evolve_unlock_p1", rules.SuperEvolveUnlockTurnSecondPlayer),
+                EvolveBonusAttack = I(ru, "evolve_bonus_attack", rules.EvolveBonusAttack),
+                EvolveBonusLife = I(ru, "evolve_bonus_life", rules.EvolveBonusLife),
+                SuperEvolveBonusAttack = I(ru, "super_evolve_bonus_attack", rules.SuperEvolveBonusAttack),
+                SuperEvolveBonusLife = I(ru, "super_evolve_bonus_life", rules.SuperEvolveBonusLife),
+                MinDeckSize = I(ru, "min_deck_size", rules.MinDeckSize),
+                MaxDeckSize = I(ru, "max_deck_size", rules.MaxDeckSize),
+                MaxCopiesPerCard = I(ru, "max_copies", rules.MaxCopiesPerCard),
+                AllowCrossCraft = B(ru, "allow_cross_craft", rules.AllowCrossCraft),
+                AllowTokensInConstructedDeck = B(ru, "allow_tokens_in_deck", rules.AllowTokensInConstructedDeck),
+            };
+        }
+
+        var enabled = new List<string>();
+        if (r.TryGetProperty("enabled_packs", out var ep) && ep.ValueKind == JsonValueKind.Array)
+            foreach (var x in ep.EnumerateArray())
+                if (x.ValueKind == JsonValueKind.String) enabled.Add(x.GetString() ?? "");
+
+        return new CardPoolConfig
+        {
+            PoolId = S(r, "pool_id") is { Length: > 0 } pid ? pid : "standard",
+            Name = S(r, "name") is { Length: > 0 } nm ? nm : "标准卡池",
+            Rules = rules,
+            EnabledPackIds = enabled,
+        };
+    }
+
+    /// <summary>从 .deck.json 读构筑存档。</summary>
+    public static ConstructedDeck LoadDeck(string path)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(path, System.Text.Encoding.UTF8));
+        var r = doc.RootElement;
+
+        var cards = new List<(int, int)>();
+        if (r.TryGetProperty("cards", out var cs) && cs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var c in cs.EnumerateArray())
+                cards.Add((I(c, "card_id", 0), I(c, "count", 1)));
+        }
+
+        var chosen = new List<string>();
+        if (r.TryGetProperty("chosen_extra_clans", out var ch) && ch.ValueKind == JsonValueKind.Array)
+            foreach (var x in ch.EnumerateArray())
+                if (x.ValueKind == JsonValueKind.String) chosen.Add(x.GetString() ?? "");
+
+        return new ConstructedDeck
+        {
+            DeckId = S(r, "deck_id") is { Length: > 0 } did ? did : Guid.NewGuid().ToString("N").Substring(0, 8),
+            Name = S(r, "name") is { Length: > 0 } nm ? nm : "新建牌组",
+            PoolId = S(r, "pool_id") is { Length: > 0 } pid ? pid : "standard",
+            LeaderClan = S(r, "leader_clan") is { Length: > 0 } lc ? lc : "Neutral",
+            ChosenExtraClans = chosen,
+            Cards = cards,
+        };
+    }
+
+    /// <summary>扫一个目录下的全部 *.pool.json。</summary>
+    public static List<CardPoolConfig> LoadAllPools(string dir)
+    {
+        var list = new List<CardPoolConfig>();
+        if (!Directory.Exists(dir)) return list;
+        foreach (var f in Directory.GetFiles(dir, "*.pool.json").OrderBy(x => x, StringComparer.Ordinal))
+            list.Add(LoadPool(f));
+        return list;
+    }
+
+    public static List<ConstructedDeck> LoadAllDecks(string dir)
+    {
+        var list = new List<ConstructedDeck>();
+        if (!Directory.Exists(dir)) return list;
+        foreach (var f in Directory.GetFiles(dir, "*.deck.json").OrderBy(x => x, StringComparer.Ordinal))
+            list.Add(LoadDeck(f));
+        return list;
+    }
+
+    private static string S(JsonElement e, string n)
+        => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
+
+    private static int I(JsonElement e, string n, int d)
+        => e.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : d;
+
+    private static bool B(JsonElement e, string n, bool d)
+        => e.TryGetProperty(n, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False
+           ? v.GetBoolean() : d;
+}

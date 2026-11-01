@@ -18,6 +18,12 @@ namespace ShadowverseFan.KernelV3.Packs;
 /// <summary>卡包里的卡片原始条目（未编译）。</summary>
 public sealed class CardRawEntry
 {
+    /// <summary>
+    /// 包内局部编号（字符串）。作者只写这个，由卡池分配全局 int 卡号。
+    /// 与 CardId 二选一：给了 CardId 就直接用（作者自留号），否则走分配。
+    /// </summary>
+    public string LocalId { get; init; } = "";
+
     public int CardId { get; init; }
     public string NameEng { get; init; } = "";
     public string NameChs { get; init; } = "";

@@ -1,0 +1,17 @@
+{
+ "pool_id": "standard",
+ "name": "官方标准卡池",
+ "enabled_packs": [
+  "core-wb",
+  "testset-v2"
+ ],
+ "rules": {
+  "leader_initial_life": 20,
+  "max_pp_cap": 10,
+  "pp_gain_per_turn": 1,
+  "starting_hand_size": 4,
+  "min_deck_size": 40,
+  "max_deck_size": 40,
+  "max_copies": 3
+ }
+}

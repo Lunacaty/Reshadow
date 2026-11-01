@@ -39,6 +39,9 @@ public sealed class CardPoolRuntime
     public Glossary Glossary { get; init; }
     public DeckDefTable DeckDefs { get; init; }
 
+    /// <summary>PackId:LocalId ↔ 局内 int CardId 的双向映射（跨作者撞号消歧的依据）。</summary>
+    public Core.PoolCardIndex CardIndex { get; init; } = new();
+
     private readonly Dictionary<int, CardDef> _cardsById = new();
     private readonly Dictionary<string, CardDef> _cardsByName = new(StringComparer.OrdinalIgnoreCase);
 
@@ -234,14 +237,34 @@ public static class CardPoolBuilder
             DeckDefs = deckDefs,
         };
 
+        // 全卡包的卡定义（含未启用包）—— 依赖校验要靠它说清「缺的那张在哪个包」。
+        var allCardsLookupTable = new Dictionary<int, CardDef>();
+        foreach (var pk in availablePacks.Values)
+            foreach (var c in pk.Cards)
+                allCardsLookupTable[c.CardId] = null;      // 占位，下面填真定义
+
         var comp = new EnglishCompiler(lexicon);
         foreach (var pack in packs)
             foreach (var c in pack.Cards)
             {
                 var card = CompileCard(pack, c, schema, comp, res.Errors);
-                if (card != null) pool.RegisterCompiledCard(card);
+                if (card != null)
+                {
+                    pool.RegisterCompiledCard(card);
+                    allCardsLookupTable[card.CardId] = card;
+                }
             }
 
+        if (res.Errors.Count > 0) return res;
+
+        // ================= 第 4.5 步：AST 静态依赖完整性 =================
+        // 两遍编译只保证「认得出名字」，认得出不代表那张卡**在卡池里**。
+        // 少了这一步，跨包引用缺失要等对局打到一半 summon 出空壳才暴露。
+        var poolIds = new HashSet<int>(pool.AllCards.Keys);
+        var depReport = PoolDependencyVerifier.Verify(
+            pool.AllCards, deckDefs, poolIds,
+            id => allCardsLookupTable.TryGetValue(id, out var d) ? d : null);
+        foreach (var e in depReport.Errors) res.Errors.Add(e);
         if (res.Errors.Count > 0) return res;
 
         // ================= 第 5 步 =================

@@ -54,6 +54,9 @@ public sealed class DeckDefTable
 
     public bool Has(string name) => TryGet(name) != null;
 
+    /// <summary>全部已登记的牌组名（依赖校验要逐个检查成员卡）。</summary>
+    public IReadOnlyList<string> Names() => _defs.Keys.ToList();
+
     /// <summary>剥掉英文冠词与多余空白，得到真正的牌组名。</summary>
     public static string Normalize(string name)
     {
@@ -82,22 +85,27 @@ public sealed class DeckDefTable
     }
 
     /// <summary>官方内置牌组。名称按卡面英文拼写，大小写不敏感。</summary>
+    /// <summary>
+    /// 内置具名牌组。
+    ///
+    /// 这里是**回落表**，不是真相源 —— 真相在 data/packs/core-wb/pack.json 里。
+    /// 保留它的理由：把仓库拷到没有 data/packs 的地方（或单文件跑测试）时，
+    /// 「替换为启示录牌组」这类效果不至于因为查不到定义而抛异常。
+    /// 两边的数据必须一致，改一处就要改另一处。
+    /// </summary>
     public static DeckDefTable CreateDefault()
     {
         var t = new DeckDefTable();
         t.Register("Apocalypse Deck", new[]
         {
-            new DeckEntry(90004110, 3),   // Silent Rider
-            new DeckEntry(90004120, 3),   // Servant of Cocytus
+            new DeckEntry(90004110, 2),   // Silent Rider
+            new DeckEntry(90004120, 2),   // Servant of Cocytus
             new DeckEntry(90004130, 3),   // Demon of Purgatory
-            new DeckEntry(90004310, 1),   // Astaroth's Reckoning
+            new DeckEntry(90004310, 3),   // Astaroth's Reckoning
         });
-
-        // "Replace your deck with a deck of 40 cards."（Mjerrabaine, Great Manifest）
-        // 不注册的话，获得纹章的那一刻会抛「未定义的具名牌组」。
-        // 40 张用同一张填充卡表示 —— 官方这张卡组的实际内容不影响当前引擎语义
-        // （换牌库只改变牌库张数与后续抽牌），张数才是被消费的那个事实。
-        t.Register("deck of 40 cards", new[] { new DeckEntry(90004110, 40) });
+        t.Register("deck of 40 cards", Enumerable.Range(0, 40)
+            .Select(_ => new DeckEntry(90001110, 1))     // Fairy 占位
+            .ToArray());
         return t;
     }
 }

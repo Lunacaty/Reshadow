@@ -51,6 +51,16 @@ public sealed partial class CardVm
     /// </summary>
     public static DeckDefTable DeckDefs { get; set; } = DeckDefTable.CreateDefault();
 
+    /// <summary>
+    /// 用卡包里定义的具名牌组覆盖内置回落表。
+    /// 同名时卡包优先 —— 卡包才是真相源，回落表只是「读不到卡包时别崩」。
+    /// </summary>
+    public static void BindDeckDefs(DeckDefTable fromPacks)
+    {
+        if (fromPacks == null) return;
+        DeckDefs = fromPacks;
+    }
+
     /// <summary>符号表。代价执行需要它取 pp / shadow 的真实 Id。</summary>
     public static GameSchema Schema { get; set; } = GameSchema.CreateDefault();
 
