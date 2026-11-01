@@ -932,21 +932,32 @@ public sealed class ReshadowScriptCompiler
             }
         }
 
+        // 参数表右括号必须先吃掉。不吃的话游标停在 ')' 上，
+        // 下面 TryChar('{') 恒为 false —— 被授予的能力体永远是空的，
+        // 而真正的 { on ... } 留在流里把外层解析器搞崩。
+        p.TryChar(')');
+
         AbilityDef granted = null;
         if (p.TryChar('{'))
         {
             // 块内若以 on 开头，就是一条完整能力（含自己的触发头）；
             // 否则按 PassiveAura 解析动作序列。
-            if (p.PeekToken() == "on") granted = ParseOnBlock(p);
+            if (p.PeekToken() == "on")
+            {
+                granted = ParseOnBlock(p);
+                // ParseOnBlock 只吃它自己那层的 }，外层 grant_ability 的 } 还在。
+                p.TryChar('}');
+            }
             else
             {
+                // ParseBlockBody 会吃掉闭合的 }，这里绝不能再吃一次：
+                // 再吃一次会把**外层能力**的 } 也吞掉，导致后续解析全乱。
                 granted = new AbilityDef
                 {
                     Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
                     Body = ParseBlockBody(p),
                 };
             }
-            p.TryChar('}');
         }
 
         return new GrantAbilityNode
@@ -1128,10 +1139,19 @@ public sealed class ReshadowScriptCompiler
         var tgt = ParseTargetOrExpr(p);
         p.TryChar(',');
         string kw = p.Next();
-        p.TryChar(',');
-        int? val = p.TryInt();
-        // Duration 必须读：限时关键词与永久关键词在 AST 上只差这一个字段，
-        // 不读就会把「直到回合结束」变成永久，而卡面中文完全一样。
+
+        // 可选的值参数。这里必须 save/restore：如果写的是 ", dur: ThisTurn"
+        // 而不是 ", 2"，无条件 TryChar(',') 会把 dur 前面的逗号偷吃掉，
+        // 后面的 TryParseDur 就再也找不到它了。
+        int? val = null;
+        var saveVal = p.Save();
+        if (p.TryChar(','))
+        {
+            val = p.TryInt();
+            if (!val.HasValue) p.Restore(saveVal);
+        }
+
+        // Duration 必须读：限时与永久在 AST 上只差这一个字段。
         var dur = TryParseDur(p);
         return new ModifyKeywordNode
         {
@@ -1221,8 +1241,16 @@ public sealed class ReshadowScriptCompiler
     {
         var tgt = ParseTargetOrExpr(p);
         p.TryChar(',');
-        var val = op == CostModOp.Halve ? NumExpr.Const(0) : ParseNumExpr(p);
-        return new ModifyCostNode { Target = tgt, Op = op, Value = val };
+        // 打印端对 cost_halve 也输出了数值位（恒 0），所以这里一律先读数值，
+        // 否则那个 0 会留在括号里，右括号匹配不上。
+        var val = ParseNumExpr(p);
+        var dur = TryParseDur(p);
+        return new ModifyCostNode
+        {
+            Target = tgt, Op = op,
+            Value = op == CostModOp.Halve ? NumExpr.Const(0) : val,
+            Duration = dur,
+        };
     }
 
     private EffectNode ParseInvoke(Cursor p)
@@ -1972,7 +2000,8 @@ public sealed class ReshadowScriptCompiler
                 if (k.Op == KeywordOp.SilenceAll) return ind + "silence(" + PrintTargetExpr(k.Target) + ")\n";
                 if (k.Op == KeywordOp.Remove) return ind + "remove_kw(" + PrintTargetExpr(k.Target) + ", " + k.Keyword.Name + ")\n";
                 return ind + "grant_kw(" + PrintTargetExpr(k.Target) + ", " + k.Keyword.Name
-                       + (k.Value != null && k.Value.Op == NumOp.Const ? ", " + k.Value.Value : "") + ")\n";
+                       + (k.Value != null && k.Value.Op == NumOp.Const ? ", " + k.Value.Value : "")
+                       + DurArg(k.Duration) + ")\n";
 
             case MoveZoneNode mv:
             {

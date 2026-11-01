@@ -29,7 +29,14 @@ MOD = re.compile(r'^\s*(public|private|internal|protected)\b')
 
 
 def _skip_literal(text, i):
-    """若 text[i] 是字符串/字符字面量起点，返回其后的位置，否则返回 i。"""
+    """若 text[i] 是字符串/字符字面量/注释起点，返回其后的位置，否则返回 i。
+
+    注释必须一起跳过：注释里出现的 '{' / '}' 会打乱括号配对，
+    让方法体的边界算错（本会话已因此误报过一次）。
+    """
+    if text.startswith('//', i):
+        k = text.find(chr(10), i)
+        return len(text) if k < 0 else k + 1
     if text[i] == '"':
         j = i + 1
         while j < len(text):

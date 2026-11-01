@@ -730,7 +730,7 @@ public sealed class DiyFormCompiler
         // 条件：只接受空的 / 恒真 / 觉醒（overflows）/ 进化域
         if (ab.Condition != null)
         {
-            var cleaned = StripFormCondition(ab.Condition, ab.Trigger.Event);
+            var cleaned = StripFormCondition(ab.Condition, ab.Trigger.Event, item.Gate);
             if (cleaned != null)
             {
                 // 觉醒：max_pp >= N
@@ -781,8 +781,20 @@ public sealed class DiyFormCompiler
     }
 
     /// <summary>剥掉恒真项与进化域条件；剩空返回 null。</summary>
-    private static BoolExpr StripFormCondition(BoolExpr e, CoreEvent ev)
+    private static BoolExpr StripFormCondition(BoolExpr e, CoreEvent ev, string gate = null)
     {
+        // 门槛对应的计数器名。表单正向生成的条件必须在这里剥掉 ——
+        // 否则 TryCardDefToForm 会把残留的 CompareExpr 判成「超出表达能力」，
+        // 于是表单自己造出来的带连击/唤灵/土之秘术/爆能强化的卡，连表单自己都读不回来。
+        string gateCtr = gate switch
+        {
+            "Combo" => "combo",
+            "Necromancy" => "shadow",
+            "EarthRite" => "earth_sigil",
+            "Enhance" => "pp_at_play",
+            _ => null,
+        };
+
         var items = e is AndExpr a ? a.Items.ToList() : new List<BoolExpr> { e };
         var kept = new List<BoolExpr>();
         foreach (var x in items)
@@ -792,6 +804,10 @@ public sealed class DiyFormCompiler
                 && ((ev == CoreEvent.OnEvolve && hs.State == Core.UnitState.Evolved)
                     || (ev == CoreEvent.OnSuperEvolve && hs.State == Core.UnitState.SuperEvolved));
             if (isEvolveDomain) continue;
+            if (gateCtr != null && x is CompareExpr gcmp
+                && gcmp.Left != null && gcmp.Left.Op == NumOp.Counter
+                && string.Equals(gcmp.Left.Counter.Name, gateCtr, StringComparison.OrdinalIgnoreCase))
+                continue;
             kept.Add(x);
         }
         if (kept.Count == 0) return null;

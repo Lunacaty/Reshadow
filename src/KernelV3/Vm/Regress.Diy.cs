@@ -48,6 +48,7 @@ public static partial class Regress
         Check("DIY-4 DIY 卡真机对战效用", GateLiveBattle);
         Check("DIY-5 往返后真卡仍能实战生效", GateRoundTripLiveBattle);
         Check("DIY-6 纯真实对局（无手搭夹具）", GateRealMatch);
+        Check("DIY-7 四门槛表单闭环 + 限时效果往返", GateGateAndDuration);
 
         log.AppendLine();
         log.AppendLine("=== DIY 门禁 " + pass + "/" + total + " ===");
@@ -824,6 +825,102 @@ public static partial class Regress
 
         var end = actions.FirstOrDefault(a => a.Kind == PlayerActionKind.EndTurn);
         return end ?? actions[0];
+    }
+
+
+    // ---------------------------------------------------------------- 门禁 7
+
+    /// <summary>
+    /// 两个反复出问题的点的定点回归：
+    ///   ① 带门槛（连击/唤灵/土之秘术/爆能强化）的卡必须能被表单读回去
+    ///   ② 限时效果（Duration）必须在脚本双向里保住
+    ///
+    /// 这两类都属于「正向写了、反向忘了」——单看任一端都能通过，
+    /// 只有把「造出来再读回去」连起来跑才会暴露。
+    /// </summary>
+    private static (bool, string) GateGateAndDuration()
+    {
+        var ws = DiyCtx(withTestset: false);
+        var fc = new DiyFormCompiler(ws.Schema, ws.Lexicon);
+        var report = new List<string>();
+        bool ok = true;
+
+        // ---- ① 四门槛表单闭环 ----
+        foreach (var gate in new[] { "Combo", "Necromancy", "EarthRite", "Enhance" })
+        {
+            var form = new CardFormModel
+            {
+                CardId = 950001, NameChs = "门槛测试" + gate, Kind = "Follower",
+                Cost = 2, Attack = 1, Life = 1,
+                Abilities = new List<AbilityFormItem>
+                {
+                    new AbilityFormItem
+                    {
+                        Trigger = "OnPlay", Gate = gate, GateAmount = 3,
+                        Actions = new List<ActionFormRow>
+                        {
+                            new ActionFormRow
+                            {
+                                Kind = FormActionKind.Draw,
+                                NumberSource = FormNumberSource.Const, Number = 1,
+                            },
+                        },
+                    },
+                },
+            };
+
+            var def = fc.FormToCardDef(form);
+            if (def == null) { ok = false; report.Add(gate + " 正译失败：" + string.Join("|", fc.Errors)); continue; }
+
+            if (!fc.TryCardDefToForm(def, out var back, out var why))
+            { ok = false; report.Add(gate + " 回读失败：" + why); continue; }
+
+            var again = fc.FormToCardDef(back);
+            string diff = "";
+            if (again == null || !DiyWorkspace.StructurallyEqual(def, again, out diff))
+            { ok = false; report.Add(gate + " 再译不等价：" + (diff.Length > 0 ? diff.Replace("\n", " ") : "null")); continue; }
+
+            report.Add(gate + "闭环ok");
+        }
+
+        // ---- ② 限时效果脚本双向 ----
+        var comp = new ReshadowScriptCompiler(ws);
+        var durCases = new (string name, string script)[]
+        {
+            ("grant_ability",
+             "card 940001 \"授予能力\" (Follower, cost: 2, atk: 1, life: 1) {\n" +
+             "    on play {\n" +
+             "        grant_ability(target(ally, board, follower, count: 1), dur: ThisTurn) {\n" +
+             "            on destroy { damage(target(enemy, leader), 2) }\n" +
+             "        }\n" +
+             "    }\n}\n"),
+            ("grant_kw",
+             "card 940002 \"限时关键词\" (Follower, cost: 1, atk: 1, life: 1) {\n" +
+             "    on play {\n" +
+             "        grant_kw(target(ally, board, follower, count: 1), ward, dur: ThisTurn)\n" +
+             "    }\n}\n"),
+            ("cost_mod",
+             "card 940003 \"限时减费\" (Spell, cost: 1) {\n" +
+             "    on play {\n" +
+             "        cost_mod(target(ally, hand, count: 1), 1, dur: ThisTurn)\n" +
+             "    }\n}\n"),
+        };
+
+        foreach (var (name, script) in durCases)
+        {
+            var first = comp.Compile(script);
+            if (first.Count == 0) { ok = false; report.Add(name + " 解析失败：" + string.Join("|", comp.Errors)); continue; }
+
+            var printed = comp.Print(first[0]);
+            var second = comp.Compile(printed);
+            string d2 = "";
+            if (second.Count == 0 || !DiyWorkspace.StructurallyEqual(first[0], second[0], out d2))
+            { ok = false; report.Add(name + " 往返不等价：" + (d2.Length > 0 ? d2.Replace("\n", " ") : "重解析失败")); continue; }
+
+            report.Add(name + "往返ok");
+        }
+
+        return (ok, string.Join("；", report));
     }
 
 }
