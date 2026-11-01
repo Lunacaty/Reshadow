@@ -261,6 +261,19 @@ public sealed class DiyWorkspace
         return AstEnglishPrinter.PrintCard(norm);
     }
 
+    /// <summary>归一化一条 AbilityDef（用于被授予的能力）。</summary>
+    private static AbilityDef NormalizeAbility(AbilityDef ab)
+    {
+        if (ab == null) return null;
+        return new AbilityDef
+        {
+            Trigger = ab.Trigger,
+            Condition = NormalizeBoolDeep(ab.Condition),
+            Costs = ab.Costs,
+            Body = (ab.Body ?? Array.Empty<EffectNode>()).Select(NormalizeNode).ToList(),
+        };
+    }
+
     private static BoolExpr NormalizeBool(BoolExpr e)
     {
         if (e is AndExpr a)
@@ -290,6 +303,24 @@ public sealed class DiyWorkspace
                 return new ModifyStatsNode { Target = NormalizeTarget(ms.Target), Op = ms.Op, Attack = NormalizeNum(ms.Attack), Life = NormalizeNum(ms.Life), Duration = ms.Duration };
             case ModifyKeywordNode mk:
                 return new ModifyKeywordNode { Target = NormalizeTarget(mk.Target), Op = mk.Op, Keyword = mk.Keyword, Value = mk.Value, Duration = mk.Duration };
+
+            // 被授予的能力内部同样有条件与目标，也必须归一化：
+            // 否则「(true and is Evolved)」与「is Evolved」会被判成两张不同的卡。
+            case GrantAbilityNode ga:
+                return new GrantAbilityNode
+                {
+                    Target = NormalizeTarget(ga.Target),
+                    Granted = NormalizeAbility(ga.Granted),
+                    Duration = ga.Duration,
+                };
+
+            case GrantCounterAbilityNode gc:
+                return new GrantCounterAbilityNode
+                {
+                    Counter = gc.Counter,
+                    Owner = gc.Owner,
+                    Granted = NormalizeAbility(gc.Granted),
+                };
             case ConditionalNode cd:
                 return new ConditionalNode
                 {

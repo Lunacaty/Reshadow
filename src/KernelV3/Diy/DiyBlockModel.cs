@@ -766,17 +766,10 @@ public sealed class DiyBlockCompiler
             {
                 // 给**实体**授予能力（不是给计数器）。
                 // 与 GrantCounterAbilityNode 是两种节点，不能合并。
-                var innerBody = b.Stacks != null && b.Stacks.Count > 0
-                    ? CompileStackList(b.Stacks)
-                    : new List<EffectNode>();
                 return new GrantAbilityNode
                 {
                     Target = CompileTarget(b.Target) ?? TargetSpec.Self,
-                    Granted = new AbilityDef
-                    {
-                        Trigger = new TriggerSpec { Event = EventOf(b.Text ?? "PassiveAura") },
-                        Body = innerBody,
-                    },
+                    Granted = CompileGrantedAbility(b),
                     Duration = b.EnumA switch
                     {
                         "ThisTurn" => DurationKind.ThisTurn,
@@ -788,17 +781,10 @@ public sealed class DiyBlockCompiler
 
             case "act_grant_ability":
             {
-                var inner = b.Stacks != null && b.Stacks.Count > 0
-                    ? CompileStackList(b.Stacks)
-                    : new List<EffectNode>();
                 return new GrantCounterAbilityNode
                 {
                     Counter = _schema.Counter(b.Text ?? ""),
-                    Granted = new AbilityDef
-                    {
-                        Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
-                        Body = inner,
-                    },
+                    Granted = CompileGrantedAbility(b),
                 };
             }
 
@@ -821,6 +807,23 @@ public sealed class DiyBlockCompiler
         "ThisMatch" => DurationKind.ThisMatch,
         _ => DurationKind.Permanent,
     };
+
+    /// <summary>还原被授予的能力：优先按整条事件帽解析，兼容旧的纯动作写法。</summary>
+    private AbilityDef CompileGrantedAbility(Block b)
+    {
+        if (b?.Stacks != null && b.Stacks.Count == 1 && b.Stacks[0].Shape == BlockShape.Hat)
+        {
+            var ab = CompileHat(b.Stacks[0]);
+            if (ab != null) return ab;
+        }
+        return new AbilityDef
+        {
+            Trigger = new TriggerSpec { Event = EventOf(b?.Text ?? "PassiveAura") },
+            Body = b?.Stacks != null && b.Stacks.Count > 0
+                ? CompileStackList(b.Stacks)
+                : new List<EffectNode>(),
+        };
+    }
 
     private EffectNode MoveTo(Block b, ZoneRef zone, bool destroy)
         => new MoveZoneNode
@@ -1181,6 +1184,21 @@ public sealed class DiyBlockDecompiler
         return list;
     }
 
+    /// <summary>
+    /// 把被授予的能力整条装进事件帽积木。
+    ///
+    /// 被授予的能力可以是完整能力（带 SubjectFilter / DuringTurn / Condition / Costs），
+    /// 只存 Event 名会让这些限定词全部丢失 —— 而卡面中文读起来完全一样。
+    /// </summary>
+    private List<Block> WrapGranted(AbilityDef granted)
+    {
+        var list = new List<Block>();
+        if (granted == null) return list;
+        var h = Hat(granted);
+        if (h != null) list.Add(h);
+        return list;
+    }
+
     private Block Hat(AbilityDef ab)
     {
         if (ab?.Trigger == null) return null;
@@ -1411,17 +1429,19 @@ public sealed class DiyBlockDecompiler
                 {
                     Opcode = "act_grant_entity_ability",
                     Target = Target(ga.Target),
-                    Text = ga.Granted?.Trigger?.Event.ToString() ?? "PassiveAura",
                     EnumA = ga.Duration == DurationKind.Permanent ? null : ga.Duration.ToString(),
                 };
-                gb.Stacks = Stacks(ga.Granted?.Body);
+                // 被授予的能力必须**整条**装进事件帽：
+                // 只存 Event 名会丢掉 SubjectFilter / DuringTurn / Condition / Costs ——
+                // 「每当友方随从进化」会退化成「常驻」、「若…则…」会变成无条件。
+                gb.Stacks = WrapGranted(ga.Granted);
                 return gb;
             }
 
             case GrantCounterAbilityNode gc:
             {
                 var blk = new Block { Opcode = "act_grant_ability", Text = gc.Counter.Name };
-                blk.Stacks = Stacks(gc.Granted?.Body);
+                blk.Stacks = WrapGranted(gc.Granted);
                 return blk;
             }
 

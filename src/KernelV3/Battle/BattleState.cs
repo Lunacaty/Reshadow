@@ -34,7 +34,9 @@ public sealed class BattleState : IVmWorld
 
     private readonly Dictionary<int, CardDef> _cardPool = new();
     private readonly List<RuntimeEntity> _all = new();
-    private readonly List<(RuntimeEntity e, AbilityDef ab)> _granted = new();
+    // 第三个字段是期限：授予能力也支持「直到回合结束」，
+    // 没有它，本回合授予的能力到了下回合依然生效。
+    private readonly List<(RuntimeEntity e, AbilityDef ab, DurationKind dur)> _granted = new();
     private readonly List<(int playerId, SymbolId<CounterTag> ctr, AbilityDef ab)> _grantedCounters = new();
     private int _nextEntityId = 1;
 
@@ -1456,8 +1458,8 @@ public sealed class BattleState : IVmWorld
         foreach (var t in s.Traits) e.Traits.Add(t);
 
         // 授予能力不写在 CardDef 里（GrantAbility 单独记账），必须按实体逐条搬。
-        foreach (var (ge, gab) in _granted.ToList())
-            if (ge != null && ge.EntityId == s.EntityId) _granted.Add((e, gab));
+        foreach (var (ge, gab, gdur) in _granted.ToList())
+            if (ge != null && ge.EntityId == s.EntityId) _granted.Add((e, gab, gdur));
 
         // 「本回合已攻击 / 已启动」显式清掉：新实体即使默认值正确，
         // 也不该依赖默认值来表达一条规则。
@@ -1521,8 +1523,13 @@ public sealed class BattleState : IVmWorld
         EmitEvent(new VmEvent { Kind = CoreEvent.OnTransform, Subject = EntityRef.From(e) });
     }
 
-    public void GrantAbility(RuntimeEntity e, AbilityDef ability)
-        => _granted.Add((e, ability));
+    public void GrantAbility(RuntimeEntity e, AbilityDef ability,
+                             DurationKind duration = DurationKind.Permanent)
+        => _granted.Add((e, ability, duration));
+
+    /// <summary>IVmWorld 的两参版本：永久。</summary>
+    void IVmWorld.GrantAbility(RuntimeEntity e, AbilityDef ability)
+        => GrantAbility(e, ability, DurationKind.Permanent);
 
     /// <summary>
     /// 清掉挂在某个实体身上的全部授予能力。
@@ -1537,7 +1544,8 @@ public sealed class BattleState : IVmWorld
         _granted.RemoveAll(x => x.e != null && x.e.EntityId == e.EntityId);
     }
 
-    public IReadOnlyList<(RuntimeEntity e, AbilityDef ab)> GrantedAbilities => _granted;
+    public IReadOnlyList<(RuntimeEntity e, AbilityDef ab)> GrantedAbilities
+        => _granted.Select(x => (x.e, x.ab)).ToList();
 
     public void GrantCounterAbility(int playerId, SymbolId<CounterTag> counter, AbilityDef ability)
         => _grantedCounters.Add((playerId, counter, ability));
@@ -1618,6 +1626,20 @@ public sealed class BattleState : IVmWorld
                 foreach (var e in list) n += ExpireOn(e, endingPlayer);
             }
         }
+
+        // 到期的「授予能力」也要撤：_granted 是独立账本，
+        // ExpireOn 只管 TempModifiers，不处理它的话限时授予永不失效。
+        n += _granted.RemoveAll(g =>
+        {
+            if (g.e == null) return true;
+            return g.dur switch
+            {
+                DurationKind.ThisTurn => true,
+                DurationKind.UntilEndOfOpponentTurn => endingPlayer != g.e.PlayerId,
+                _ => false,
+            };
+        });
+
         return n;
     }
 
@@ -1641,6 +1663,13 @@ public sealed class BattleState : IVmWorld
             {
                 e.Keywords.Remove(m.Keyword);
                 e.KeywordValues.Remove(m.Keyword);
+            }
+            else if (m.IsCostMod)
+            {
+                // 限时改费必须按增量撤销。
+                // 之前 Duration 只写进 AST、运行时从不处理，
+                // 于是「本回合费用 -1」会永久减费 —— 而卡面中文完全正常。
+                e.Cost = Math.Max(0, e.Cost - m.Cost);
             }
             else if (!m.IsCounterMod)
             {

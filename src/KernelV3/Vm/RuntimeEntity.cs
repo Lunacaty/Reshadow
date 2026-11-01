@@ -199,7 +199,10 @@ public sealed class TemporaryModifier
     public int Life { get; init; }
     public Core.SymbolId<Core.KeywordTag> Keyword { get; init; }
     public bool IsKeywordGrant { get; init; }
+    /// <summary>临时费用变化的增量（到期时按 -Cost 撤销）。</summary>
     public int Cost { get; init; }
+    /// <summary>这条记录是费用变化而不是攻防变化。</summary>
+    public bool IsCostMod { get; init; }
     public Core.SymbolId<Core.CounterTag> Counter { get; init; }
     public int CounterDelta { get; init; }
     public bool IsCounterMod { get; init; }

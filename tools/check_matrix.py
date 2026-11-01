@@ -339,9 +339,12 @@ for fk in SWITCH_FILES:
 
 # ---------------- 输出 ----------------
 if ERRORS:
-    report = '=== AST 支持矩阵：%d 项检查，%d 处不合规 ===' % (CHECKS[0], len(ERRORS))
-    report += chr(10) + chr(10).join('  ' + e for e in ERRORS)
-    io.open('.matrix_report.txt', 'w', encoding='utf-8', newline=chr(10)).write(report)
+    # 只打到 stdout，不往仓库写文件：
+    # 之前写 .matrix_report.txt 并提交进仓库，结果仓库里留着一份注入测试时的
+    # 报错内容，看起来像「当前有问题」，实际早已修复 —— 脏文件比没报告更误导。
+    print('=== AST 支持矩阵：%d 项检查，%d 处不合规 ===' % (CHECKS[0], len(ERRORS)))
+    for e in ERRORS:
+        print('  ' + e)
     print('FAILED: %d of %d checks' % (len(ERRORS), CHECKS[0]))
     sys.exit(1)
 

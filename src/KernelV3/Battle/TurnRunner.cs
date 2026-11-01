@@ -231,8 +231,28 @@ public sealed class TurnRunner
 
         if (pp < pay)
         {
-            if (card.Def.AccelerateDef != null && pp >= card.Def.AccelerateDef.BaseCost) return true;
-            if (card.Def.CrystallizeDef != null && pp >= card.Def.CrystallizeDef.BaseCost && !full) return true;
+            // 激奏与结晶都要做**法术形态的目标预检**：
+            // 之前这里直接 return true，于是「敌方空场 + 只够激奏费」时
+            // GetLegalActions 说能打，真打时又被 PlayAsAltMode 拦下 ——
+            // 玩家看到的是一个点了没反应的动作。
+            if (card.Def.AccelerateDef != null && pp >= card.Def.AccelerateDef.BaseCost)
+            {
+                var accProbe = card.Def;
+                card.Def = card.Def.AccelerateDef;
+                bool accLegal = HasLegalTargetForSpell(card);
+                card.Def = accProbe;
+                if (accLegal) return true;
+            }
+
+            if (card.Def.CrystallizeDef != null && pp >= card.Def.CrystallizeDef.BaseCost && !full)
+            {
+                var cryProbe = card.Def;
+                card.Def = card.Def.CrystallizeDef;
+                bool cryLegal = HasLegalTargetForSpell(card);
+                card.Def = cryProbe;
+                if (cryLegal) return true;
+            }
+
             reason = "费用不足"; return false;
         }
 

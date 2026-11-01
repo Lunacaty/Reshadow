@@ -150,6 +150,8 @@ public interface IVmWorld
 
     /// <summary>给实体附加一段能力。</summary>
     void GrantAbility(RuntimeEntity e, Ast.AbilityDef ability);
+    /// <summary>带期限的授予：期限到了要撤销。</summary>
+    void GrantAbility(RuntimeEntity e, Ast.AbilityDef ability, Ast.DurationKind duration);
 
     /// <summary>运行时授予的能力（不写在 CardDef 上），触发器扫描时必须一并检查。</summary>
     IReadOnlyList<(RuntimeEntity e, Ast.AbilityDef ab)> GrantedAbilities { get; }

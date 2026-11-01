@@ -328,6 +328,7 @@ public sealed partial class CardVm
         int v = _eval.EvalNum(n.Value, scope);
         foreach (var t in targets)
         {
+            int before = t.Cost;
             t.Cost = n.Op switch
             {
                 CostModOp.Add => Math.Max(0, t.Cost + v),
@@ -336,6 +337,19 @@ public sealed partial class CardVm
                 CostModOp.Halve => Math.Max(0, (t.Cost + 1) / 2),
                 _ => t.Cost,
             };
+
+            // 限时改费必须登记到临时修正里，否则到期无从撤销：
+            // 之前 Duration 只写进 AST、运行时从不处理，
+            // 于是「本回合费用 -1」永久生效，而卡面中文完全正常。
+            if (n.Duration != DurationKind.Permanent && t.Cost != before)
+            {
+                t.TempModifiers.Add(new TemporaryModifier
+                {
+                    Duration = n.Duration,
+                    IsCostMod = true,
+                    Cost = t.Cost - before,
+                });
+            }
         }
         return false;
     }
@@ -1002,7 +1016,9 @@ public sealed partial class CardVm
     private bool DoGrant(GrantAbilityNode n, VmScope scope)
     {
         var targets = _eval.Resolve(n.Target, scope);
-        foreach (var t in targets) _world.GrantAbility(t, n.Granted);
+        // Duration 必须一起传：不传就等于永久授予，
+        // 「本回合赋予某能力」到了下回合依然生效。
+        foreach (var t in targets) _world.GrantAbility(t, n.Granted, n.Duration);
         return false;
     }
 
@@ -1029,8 +1045,23 @@ public sealed partial class CardVm
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets)
         {
-            var ab = t.Def?.Abilities?.FirstOrDefault(a => a.Trigger != null && a.Trigger.Event == n.Event);
-            if (ab != null) PushBody(ab.Body, scope.Derive());
+            if (t.Def?.Abilities == null) continue;
+
+            // 必须遍历**全部**同事件能力，不能用 FirstOrDefault：
+            // 一张卡可能有两条同事件能力（或通过 GrantAbility 追加一条），
+            // 只复刻第一条等于漏掉其余。
+            foreach (var ab in t.Def.Abilities)
+            {
+                if (ab?.Trigger == null || ab.Trigger.Event != n.Event) continue;
+
+                // 子作用域必须把 Source 与 $self 指向**被复刻的那个实体**：
+                // 「启动 $selected 里的护符」时，护符能力里的 $self 应当是护符自己，
+                // 而不是施法的那张卡。
+                var sub = scope.Derive();
+                sub.Source = EntityRef.From(t);
+                sub.Bind(TargetSpec.SlotSelf, new[] { t });
+                PushBody(ab.Body, sub);
+            }
         }
         return false;
     }

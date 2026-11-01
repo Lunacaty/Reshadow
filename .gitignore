@@ -53,3 +53,7 @@ src/_v2_archive/
 .env
 *.key
 *.token
+
+# 校验器临时报告（不应提交）
+.matrix_report.txt
+.tmp_*

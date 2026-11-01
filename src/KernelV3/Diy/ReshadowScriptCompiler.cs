@@ -1015,9 +1015,12 @@ public sealed class ReshadowScriptCompiler
     {
         var tgt = ParseTargetOrExpr(p);
         p.TryChar(',');
-        var a = ParseNumOrNa(p);
+        // 必须用「遇到 / 就停」的解析器：buff(目标, A/B) 里的 / 是**分段符**，
+        // 不是除法。用会吃除法的 ParseNumExpr 会把 A/B 解析成一次除法，
+        // 于是 "+2/+2" 变成 "+2 除以 2 / 0"。
+        var a = ParseNumStopAtSlash(p);
         p.TryChar('/');
-        var l = ParseNumOrNa(p);
+        var l = ParseNumStopAtSlash(p);
         var dur = TryParseDur(p);
         return new ModifyStatsNode { Target = tgt, Op = StatModOp.Add, Attack = a, Life = l, Duration = dur };
     }
@@ -1071,6 +1074,20 @@ public sealed class ReshadowScriptCompiler
             if (p.TryChar('(')) { var nm = p.Next(); p.TryChar(')'); return ParseArithNoDiv(p, NumExpr.Ctr(_schema.Counter(nm))); }
             return NumExpr.Const(0);
         }
+        // set_stats 也会用 count(...)（如「攻防变为手牌数」）——
+        // 缺这一支会让它静默解析成 0，而卡面中文完全正常。
+        if (t == "count" || t == "maxgroup")
+        {
+            bool isMax = t == "maxgroup";
+            p.Next();
+            p.TryChar('(');
+            var cspec = ParseTargetOrExpr(p);
+            p.TryChar(')');
+            return ParseArithNoDiv(p, isMax
+                ? new NumExpr { Op = NumOp.MaxGroupSize, Of = cspec }
+                : NumExpr.CountOf(cspec));
+        }
+
         if (t == "prop")
         {
             p.Next();
@@ -1572,7 +1589,9 @@ public sealed class ReshadowScriptCompiler
             {
                 string nm = p.Next();
                 p.TryChar(')');
-                return NumExpr.Ctr(_schema.Counter(nm));
+                // 必须接上算术尾巴：否则 counter(combo) + 1 里的 "+ 1" 留在流里，
+                // 后面括号配不上，整句解析失败。
+                return ParseArithTail(p, NumExpr.Ctr(_schema.Counter(nm)));
             }
             return NumExpr.Const(0);
         }
@@ -1584,17 +1603,15 @@ public sealed class ReshadowScriptCompiler
             p.TryChar('(');
             var spec = ParseTargetOrExpr(p);
             p.TryChar(')');
-            return isMax
+            // 同上：count(ally, hand) * 2 的 "* 2" 必须被吃掉。
+            return ParseArithTail(p, isMax
                 ? new NumExpr { Op = NumOp.MaxGroupSize, Of = spec }
-                : NumExpr.CountOf(spec);
+                : NumExpr.CountOf(spec));
         }
 
-        if (t == "maxgroup")
-        {
-            p.Next();
-            var spec = ParseTargetArgs(p);
-            return ParseArithTail(p, new NumExpr { Op = NumOp.MaxGroupSize, Of = spec });
-        }
+        // 注意：这里**不能**再写一个 if (t == "maxgroup") 分支。
+        // 上面那条已经把 maxgroup 拦掉了，这一份永远走不到 ——
+        // 死代码比缺代码更误导，读的人会以为它才是真正生效的那条。
 
         if (t == "prop")
         {
