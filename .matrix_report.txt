@@ -1,2 +1,2 @@
-=== AST 支持矩阵：126 项检查，1 处不合规 ===
-  [缺字段] script::ParseGrantEntityAbility 里没有 GrantAbilityNode —— 脚本解析要产出实体授予能力
+=== AST 支持矩阵：185 项检查，1 处不合规 ===
+  [重复分派] script 第 757 行的 switch 里同一 opcode 出现多次：{'draw': 2} —— 后一份永远走不到

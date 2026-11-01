@@ -285,6 +285,58 @@ requires('form', 'RowToNode', 'IntoCardId', '表单变身必须填目标卡号')
 requires('form', 'FormAbilityToDef', 'CtrGe', '门槛必须生成同源条件')
 requires('form', 'TryCardDefToForm', 'HasFuse', '含融合声明的卡必须显式拒绝')
 
+# ---------------- D. 重复分派（同一个 opcode 在同一 switch 里出现两次） ----------------
+# 两份实现并存比「漏改一端」更危险：后改的那份看起来对了，实际走不到，
+# 而往返测试还会告诉你「等价」（因为正反两端都用了同一份错实现）。
+from collections import Counter
+
+
+def switch_blocks(src):
+    """切出所有 switch 表达式的块体（{ 到配对 }）。
+
+    同一个 switch 只会被扫到一次：记录已覆盖的起点，跳过落在已知块里的 match
+    （例如 "switch (x)" 后面还有一层嵌套 switch 时，外层已把它包含进来）。
+    """
+    out = []
+    covered_until = -1
+    for m in re.finditer(r'switch\b', src):
+        if m.start() < covered_until:
+            continue
+        i = src.find('{', m.start())
+        if i < 0:
+            continue
+        d = 0
+        k = i
+        while k < len(src):
+            if src[k] == '{':
+                d += 1
+            elif src[k] == '}':
+                d -= 1
+                if d == 0:
+                    break
+            k += 1
+        out.append((i, src[i:k + 1]))
+        covered_until = k + 1
+    return out
+
+
+SWITCH_FILES = ('block', 'script', 'form')
+for fk in SWITCH_FILES:
+    for pos, block in switch_blocks(SRC[fk]):
+        ops = re.findall(r'"([a-z_0-9]{3,})"(?:\s+or\s+"([^"]+)")?\s*=>', block)
+        flat = []
+        for a, b in ops:
+            flat.append(a)
+            if b:
+                flat.append(b)
+        CHECKS[0] += 1
+        dup = {x: n for x, n in Counter(flat).items() if n > 1}
+        if dup:
+            line = SRC[fk][:pos].count(chr(10)) + 1
+            ERRORS.append('[重复分派] %s 第 %d 行的 switch 里同一 opcode 出现多次：%s '
+                          '—— 后一份永远走不到' % (fk, line, dup))
+
+
 # ---------------- 输出 ----------------
 if ERRORS:
     report = '=== AST 支持矩阵：%d 项检查，%d 处不合规 ===' % (CHECKS[0], len(ERRORS))
