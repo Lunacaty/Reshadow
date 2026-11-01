@@ -20,6 +20,8 @@ public partial class DevShot : Node
     private bool _battleExpanded;
     private bool _battleBadges;
     private bool _battleMulligan;
+    private bool _openDiy;
+    private bool _openPackMgr;
 
     public override void _Ready()
     {
@@ -34,6 +36,8 @@ public partial class DevShot : Node
             if (a == "--battle-expanded") { _openBattle = true; _battleExpanded = true; }
             if (a == "--battle-badges") { _openBattle = true; _battleBadges = true; }
             if (a == "--mulligan") { _openBattle = true; _battleMulligan = true; }
+            if (a == "--diy") _openDiy = true;
+            if (a == "--packmgr") _openPackMgr = true;
         }
         if (_frames <= 0) _frames = 30;
         SetProcess(true);
@@ -46,12 +50,28 @@ public partial class DevShot : Node
             CallDeferred(nameof(OpenHover));
         else if (_openBattle)
             CallDeferred(nameof(OpenBattle));
+        else if (_openDiy)
+            CallDeferred(nameof(OpenDiy));
+        else if (_openPackMgr)
+            CallDeferred(nameof(OpenPackMgr));
+    }
+
+    private void OpenDiy()
+    {
+        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        root?.OpenDiyForShot();
+    }
+
+    private void OpenPackMgr()
+    {
+        var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
+        root?.OpenPackMgrForShot();
     }
 
     private void OpenBattle()
     {
         var root = GetParent().GetNodeOrNull<Decks.DeckManagementRoot>("DeckManagementRoot");
-        root?.OpenBattleForShot(_battleExpanded, _battleBadges);
+        root?.OpenBattleForShot(_battleExpanded, _battleBadges, _battleMulligan);
     }
 
     private void OpenWizard()

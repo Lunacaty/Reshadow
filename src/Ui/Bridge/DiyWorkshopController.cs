@@ -1,0 +1,327 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using ShadowverseFan.KernelV3.Ast;
+using ShadowverseFan.KernelV3.Core;
+using ShadowverseFan.KernelV3.Diy;
+using ShadowverseFan.KernelV3.Lang;
+
+namespace ShadowverseFan.Ui.Bridge;
+
+public enum DiyEndpointKind { Form = 0, Block = 1, Script = 2, EnglishCnl = 3 }
+
+/// <summary>
+/// DIY 四端造卡工坊的纯 C# 控制器（零 Godot 依赖，可在 .et 门禁里直接单测）。
+///
+/// 核心：四端共享同一个真相源 CurrentDef（CardDef）。
+/// 任一端编译成功后立刻反向投影更新另外三端，
+/// 玩家切页签时看到的永远是同一张卡的四种表达。
+///
+/// 表单端遇到超纲效果时标记只读并给出原因，**绝不静默丢弃** ——
+/// 静默丢弃会让玩家以为自己造出了一张卡，实际存下来的是残缺版。
+/// </summary>
+public sealed class DiyWorkshopController
+{
+    public GameSessionStore Store { get; }
+    public DiyWorkspace Workspace { get; private set; }
+
+    public CardDef CurrentDef { get; private set; }
+    public CardFormModel FormModel { get; private set; }
+    public CardBlockWorkspace BlockModel { get; private set; }
+    public string ScriptText { get; set; } = "";
+    public DiyWorkspace.CnlCardSpec CnlSpec { get; set; }
+
+    public bool FormIsReadOnly { get; private set; }
+    public string FormReadOnlyReason { get; private set; } = "";
+    public List<string> LastErrors { get; } = new();
+    public string LastStatusMessage { get; private set; } = "就绪";
+
+    public event Action OnCardUpdated;
+
+    public DiyWorkshopController(GameSessionStore store)
+    {
+        Store = store ?? throw new ArgumentNullException(nameof(store));
+        Store.Initialize();
+
+        Workspace = DiyWorkspace.Create(7, Store.Catalog.Glossary);
+
+        // 把总表已注册的卡名灌进词法表，
+        // 否则编辑现有卡时它连自己的卡名都认不出。
+        foreach (var kv in Store.Catalog.CardsByName)
+        {
+            if (kv.Value != null) Workspace.Lexicon.AddCard(kv.Key, kv.Value.CardId);
+        }
+        Workspace.Lexicon.Build();
+
+        LoadSampleCard();
+    }
+
+    /// <summary>加载一张带构筑规则与入场曲的示例卡，让工坊一打开就有东西看。</summary>
+    public void LoadSampleCard()
+    {
+        string sample = string.Join("\n",
+            "card 950001 \"星界旅者\" (Follower, cost: 3, atk: 3, life: 4, clan: Swordcraft) {",
+            "    deck_mod size(+10)",
+            "    keywords: [ward, rush]",
+            "    on play {",
+            "        draw(1)",
+            "    }",
+            "}");
+        CompileFromScript(sample);
+    }
+
+    public void LoadExistingCard(CardDef def)
+    {
+        if (def == null) return;
+        CurrentDef = def;
+        LastErrors.Clear();
+        SyncAllEndpointsFromCurrentDef();
+        LastStatusMessage = "已加载《" + DeckEditorViewModel.DisplayName(def) + "》(ID: " + def.CardId + ")";
+        OnCardUpdated?.Invoke();
+    }
+
+    // ---------------------------------------------------------------- 四端编译入口
+
+    public bool CompileFromForm(CardFormModel form)
+    {
+        LastErrors.Clear();
+        if (form == null) { LastStatusMessage = "表单为空"; return false; }
+
+        var fc = new DiyFormCompiler(Workspace.Schema, Workspace.Lexicon);
+        var def = fc.FormToCardDef(form);
+        if (def == null || fc.Errors.Count > 0)
+        {
+            LastErrors.AddRange(fc.Errors);
+            LastStatusMessage = "表单编译失败：" + string.Join("；", LastErrors);
+            return false;
+        }
+
+        CurrentDef = PreserveChineseName(def, form.NameChs);
+        SyncAllEndpointsFromCurrentDef();
+        LastStatusMessage = "✔ 从【表单向导端】编译成功，已同步至其余三端";
+        OnCardUpdated?.Invoke();
+        return true;
+    }
+
+    public bool CompileFromBlocks(CardBlockWorkspace blocks)
+    {
+        LastErrors.Clear();
+        if (blocks == null) { LastStatusMessage = "积木为空"; return false; }
+
+        var bc = new DiyBlockCompiler(Workspace.Schema, Workspace.Lexicon);
+        var res = bc.Compile(blocks);
+        if (!res.Ok)
+        {
+            LastErrors.AddRange(res.Errors);
+            LastStatusMessage = "积木编译失败：" + string.Join("；", LastErrors);
+            return false;
+        }
+
+        CurrentDef = PreserveChineseName(res.Def, blocks.Name);
+        SyncAllEndpointsFromCurrentDef();
+        LastStatusMessage = "✔ 从【Scratch 积木端】编译成功，已同步至其余三端";
+        OnCardUpdated?.Invoke();
+        return true;
+    }
+
+    public bool CompileFromScript(string script)
+    {
+        LastErrors.Clear();
+        ScriptText = script ?? "";
+
+        var sc = new ReshadowScriptCompiler(Workspace);
+        var list = sc.Compile(ScriptText);
+        if (list.Count == 0 || sc.Errors.Count > 0)
+        {
+            LastErrors.AddRange(sc.Errors);
+            if (LastErrors.Count == 0) LastErrors.Add("脚本中未找到有效的 card 声明");
+            LastStatusMessage = "脚本编译失败：" + string.Join("；", LastErrors);
+            return false;
+        }
+
+        // 脚本端的卡名写进了 Name（ReshadowScriptCompiler 把引号里的字符串
+        // 直接当卡名用），所以中文名要从 Name 取，而不是 NameChs ——
+        // 取 NameChs 会得到一个空串，卡面立刻变英文。
+        CurrentDef = PreserveChineseName(list[0], list[0].Name);
+        SyncAllEndpointsFromCurrentDef();
+        LastStatusMessage = "✔ 从【ReshadowScript 脚本端】编译成功，已同步至其余三端";
+        OnCardUpdated?.Invoke();
+        return true;
+    }
+
+    public bool CompileFromEnglishCnl(DiyWorkspace.CnlCardSpec spec)
+    {
+        LastErrors.Clear();
+        if (spec == null) { LastStatusMessage = "英文规格为空"; return false; }
+        CnlSpec = spec;
+
+        var def = Workspace.CompileFromEnglishCnl(spec, out var errs);
+        if (def == null || (errs != null && errs.Count > 0))
+        {
+            if (errs != null) LastErrors.AddRange(errs);
+            LastStatusMessage = "英文编译失败：" + string.Join("；", LastErrors);
+            return false;
+        }
+
+        CurrentDef = PreserveChineseName(def, spec.NameChs);
+        SyncAllEndpointsFromCurrentDef();
+        LastStatusMessage = "✔ 从【受限英文端】编译成功，已同步至其余三端";
+        OnCardUpdated?.Invoke();
+        return true;
+    }
+
+    // ---------------------------------------------------------------- 反向投影
+
+    /// <summary>用 CurrentDef 反向生成四端模型，保证四端时刻同构。</summary>
+    private void SyncAllEndpointsFromCurrentDef()
+    {
+        if (CurrentDef == null) return;
+
+        // ① 脚本端
+        var sc = new ReshadowScriptCompiler(Workspace);
+        ScriptText = sc.Print(CurrentDef);
+
+        // ② 积木端
+        BlockModel = new DiyBlockDecompiler(Workspace.Schema).Decompile(CurrentDef);
+
+        // ③ 表单端：超纲时标只读并保留原因，绝不静默丢效果
+        var fc = new DiyFormCompiler(Workspace.Schema, Workspace.Lexicon);
+        if (fc.TryCardDefToForm(CurrentDef, out var fm, out var reason))
+        {
+            FormModel = fm;
+            FormIsReadOnly = false;
+            FormReadOnlyReason = "";
+        }
+        else
+        {
+            FormIsReadOnly = true;
+            FormReadOnlyReason = string.IsNullOrEmpty(reason) ? "该效果超出表单表达能力" : reason;
+            FormModel = new CardFormModel
+            {
+                NameChs = DeckEditorViewModel.DisplayName(CurrentDef),
+                Cost = CurrentDef.BaseCost,
+                Attack = CurrentDef.BaseAttack,
+                Life = CurrentDef.BaseLife,
+            };
+        }
+
+        // ④ 受限英文端
+        var np = new NaturalPrinter(Workspace.Glossary, RenderLang.English);
+        string engText = !string.IsNullOrWhiteSpace(CurrentDef.SourceText)
+            ? CurrentDef.SourceText
+            : np.PrintCard(CurrentDef.Abilities);
+
+        CnlSpec = new DiyWorkspace.CnlCardSpec
+        {
+            CardId = CurrentDef.CardId,
+            Name = CurrentDef.Name,
+            NameChs = DeckEditorViewModel.DisplayName(CurrentDef),
+            Kind = CurrentDef.Kind,
+            Cost = CurrentDef.BaseCost,
+            Attack = CurrentDef.BaseAttack,
+            Life = CurrentDef.BaseLife,
+            Clan = CurrentDef.Clan.IsValid ? CurrentDef.Clan.Name : "Neutral",
+            Traits = (CurrentDef.Traits ?? Array.Empty<SymbolId<TraitTag>>())
+                     .Select(t => t.Name).ToList(),
+            EngText = engText,
+        };
+    }
+
+    public string GetChineseCardText()
+        => CurrentDef == null ? "" : Workspace.PrintChinese(CurrentDef);
+
+    public string GetCanonicalAstText()
+        => CurrentDef == null ? "" : AstEnglishPrinter.PrintCard(CurrentDef.Abilities);
+
+    /// <summary>四端往返同构自检：Script 打印 → 重编译 → 结构化判等。</summary>
+    public bool VerifyRoundTripIsomorphism(out string diff)
+    {
+        diff = "";
+        if (CurrentDef == null) { diff = "当前无卡牌定义"; return false; }
+
+        var sc = new ReshadowScriptCompiler(Workspace);
+        string printed = sc.Print(CurrentDef);
+        var recompiled = sc.Compile(printed).FirstOrDefault();
+        if (recompiled == null) { diff = "脚本重编译失败"; return false; }
+
+        return DiyWorkspace.StructurallyEqual(CurrentDef, recompiled, out diff);
+    }
+
+    // ---------------------------------------------------------------- 自定义词条
+
+    public void DefineCustomTrait(string nameEng, string nameChs)
+    {
+        Workspace.DefineTrait(nameEng, nameChs);
+        Store.Catalog.Glossary.Add(nameEng, nameChs);
+        LastStatusMessage = "已注册新兵种：" + nameEng + "（" + nameChs + "）";
+        OnCardUpdated?.Invoke();
+    }
+
+    public void DefineCustomCounter(string nameEng, string nameChs, int min, int max)
+    {
+        Workspace.DefineCounter(nameEng, nameChs, min, max);
+        Store.Catalog.Glossary.Add(nameEng, nameChs);
+        LastStatusMessage = "已注册新计数器：" + nameEng + "（" + nameChs + "，范围 " + min + ".." + max + "）";
+        OnCardUpdated?.Invoke();
+    }
+
+    public void DefineCustomClan(string nameEng, string nameChs)
+    {
+        Workspace.DefineClan(nameEng, nameChs);
+        Store.Catalog.Glossary.Add(nameEng, nameChs);
+        LastStatusMessage = "已注册新职业：" + nameEng + "（" + nameChs + "）";
+        OnCardUpdated?.Invoke();
+    }
+
+    // ---------------------------------------------------------------- 保存
+
+    public bool SaveCurrentCardToPack(string packId, out string message)
+    {
+        message = "";
+        if (CurrentDef == null) { message = "当前没有可保存的卡牌"; return false; }
+        if (string.IsNullOrWhiteSpace(packId)) packId = "testset-v2";
+
+        Store.SaveCardIntoPack(packId, CurrentDef, ScriptText);
+        LastStatusMessage = "✔ 已将《" + DeckEditorViewModel.DisplayName(CurrentDef)
+                          + "》保存至卡包 [" + packId + "] 并热重载卡池";
+        message = LastStatusMessage;
+        OnCardUpdated?.Invoke();
+        return true;
+    }
+
+    /// <summary>
+    /// 保留中文名。
+    ///
+    /// 各端的编译器只从自己的输入里取英文名，中文名会丢 ——
+    /// 而中文名是卡面上玩家实际看到的那行字，丢了卡面就变英文了。
+    /// </summary>
+    private static CardDef PreserveChineseName(CardDef d, string nameChs)
+    {
+        if (d == null) return null;
+        return new CardDef
+        {
+            CardId = d.CardId,
+            PackId = d.PackId,
+            IsToken = d.IsToken,
+            Name = d.Name,
+            NameChs = !string.IsNullOrWhiteSpace(nameChs) ? nameChs : d.NameChs,
+            Kind = d.Kind,
+            Clan = d.Clan,
+            Traits = d.Traits,
+            BaseCost = d.BaseCost,
+            BaseAttack = d.BaseAttack,
+            BaseLife = d.BaseLife,
+            InnateKeywords = d.InnateKeywords,
+            InnateCounters = d.InnateCounters,
+            Abilities = d.Abilities,
+            DeckModifiers = d.DeckModifiers,
+            HasFuse = d.HasFuse,
+            FuseMaterialFilter = d.FuseMaterialFilter,
+            CrestDef = d.CrestDef,
+            FaithDef = d.FaithDef,
+            AccelerateDef = d.AccelerateDef,
+            CrystallizeDef = d.CrystallizeDef,
+            SourceText = d.SourceText,
+        };
+    }
+}

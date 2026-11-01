@@ -48,11 +48,18 @@ public partial class BattleScreenRoot : Control
     private bool _draggingPlay;
     private RuntimeEntity _draggingCard;
 
+    // 保存双方牌组，供「再战一局」直接重开 ——
+    // 之前 OnRematch 接到 OnExitToDecks，点「再战」会直接退回牌组一览。
+    private ConstructedDeck _myDeck;
+    private ConstructedDeck _foeDeck;
+
     public event Action OnExitToDecks;
 
     public void Boot(GameSessionStore store, ConstructedDeck mine, ConstructedDeck foe)
     {
         _store = store;
+        _myDeck = mine;
+        _foeDeck = foe;
         // startInMulligan: true —— 先停在换牌阶段，由 MulliganOverlay 接管。
         _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
                                             startInMulligan: true);
@@ -101,7 +108,8 @@ public partial class BattleScreenRoot : Control
                 _result = new MatchResultOverlay();
                 AddChild(_result);
                 _result.Setup(victory, _ctrl.State.TurnNumber);
-                _result.OnRematch += () => OnExitToDecks?.Invoke();
+                // 再战：清掉旧的三层 overlay 后原地重开一局。
+                _result.OnRematch += () => RestartMatch();
                 _result.OnBackToDecks += () => OnExitToDecks?.Invoke();
             }
             return;
@@ -589,6 +597,12 @@ public partial class BattleScreenRoot : Control
             var bound = card;
             w.OnLeftClick += _ =>
             {
+                // 手牌也可能是 SelectTarget 的候选（「选择 1 张手牌舍弃/融合」这类效果）。
+                // 少了这一句，玩家点手牌不会提交选择，挂起就永远卡在那里。
+                if (_pending != null && IsInstanceValid(_pending)
+                    && _pending.TryPickBoardOrHandEntity(bound.EntityId))
+                    return;
+
                 if (!_handExpanded) { _handExpanded = true; RebuildHand(); return; }
                 _actionPanel.ShowForEntity(bound);
                 if (_ctrl.IsInFuseMode && !ReferenceEquals(_ctrl.FuseBaseCard, bound))
@@ -678,6 +692,28 @@ public partial class BattleScreenRoot : Control
             float y = 19f + i * 7f;
             host.DrawLine(new Vector2(15f, y), new Vector2(37f, y), new Color("F8FAFC"), 2.4f);
         }
+    }
+
+    /// <summary>
+    /// 再战一局：拆掉旧的 overlay 与控制器状态，用同一副牌组重新 Boot。
+    ///
+    /// 不能只把 _result 隐藏 —— 旧 _ctrl 已处于 Finished，
+    /// 场面、手牌、AI 定时器全是终局态，必须整体重建。
+    /// </summary>
+    private void RestartMatch()
+    {
+        foreach (var ov in new Control[] { _mulligan, _pending, _result })
+        {
+            if (ov != null && IsInstanceValid(ov)) ov.QueueFree();
+        }
+        _mulligan = null;
+        _pending = null;
+        _result = null;
+        _aiTimer = 0;
+        _lastEventIdx = 0;
+        _unitCenters.Clear();
+
+        Boot(_store, _myDeck, _foeDeck);
     }
 
     private void OpenInfoModal()

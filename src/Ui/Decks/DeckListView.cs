@@ -20,6 +20,8 @@ public partial class DeckListView : Control
     public event Action<ConstructedDeck> OnEditDeck;
     public event Action OnCreateDeck;
     public event Action<ConstructedDeck> OnBattleDeck;
+    public event Action OnOpenDiyWorkshop;
+    public event Action OnOpenPackManager;
 
     private readonly GameSessionStore _store;
     private string _poolFilter;
@@ -114,6 +116,16 @@ public partial class DeckListView : Control
 
         var spacer = new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         row.AddChild(spacer);
+
+        var diyBtn = new Button { Text = "🛠 DIY 造卡工坊" };
+        SvWbTheme.StyleButton(diyBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
+        diyBtn.Pressed += () => OnOpenDiyWorkshop?.Invoke();
+        row.AddChild(diyBtn);
+
+        var packBtn = new Button { Text = "🌐 卡包/卡池管理" };
+        SvWbTheme.StyleButton(packBtn);
+        packBtn.Pressed += () => OnOpenPackManager?.Invoke();
+        row.AddChild(packBtn);
 
         var importBtn = new Button { Text = "📥 导入牌组代码" };
         SvWbTheme.StyleButton(importBtn);

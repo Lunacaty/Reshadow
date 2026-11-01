@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using ShadowverseFan.KernelV3.Ast;
+using ShadowverseFan.KernelV3.Core;
 using ShadowverseFan.KernelV3.Lang;
 using ShadowverseFan.KernelV3.Packs;
 
@@ -164,5 +166,134 @@ public sealed class GameSessionStore
         };
         SavedDecks.Add(copy);
         return copy;
+    }
+
+    // ---------------------------------------------------------------- DIY 落盘与热重载
+
+    /// <summary>重新扫描加载所有卡包与卡池（DIY 保存卡牌或改卡池规则后调用）。</summary>
+    public void ReloadCatalogAndPools()
+    {
+        Catalog = null;
+        PoolConfigs.Clear();
+        PoolRuntimes.Clear();
+        Initialize();
+    }
+
+    /// <summary>
+    /// 把一张 DIY 编译好的 CardDef（以 reshadow_script 格式）写入指定卡包的 pack.json，
+    /// 然后热重载 —— 玩家转头去「卡组构筑」就能把刚造的卡塞进牌组出战。
+    /// </summary>
+    public void SaveCardIntoPack(string packId, CardDef card, string scriptText)
+    {
+        if (card == null) return;
+        Initialize();
+
+        var packDir = Path.Combine(DataRoot, "packs", packId);
+        Directory.CreateDirectory(packDir);
+        var packFile = Path.Combine(packDir, "pack.json");
+
+        CardPackDef pack = File.Exists(packFile)
+            ? CardPackLoader.LoadFromFile(packFile)
+            : new CardPackDef { PackId = packId, Name = packId, NativePoolId = "standard" };
+
+        var entry = new CardRawEntry
+        {
+            CardId = card.CardId,
+            NameEng = card.Name ?? ("DIY_" + card.CardId),
+            NameChs = !string.IsNullOrWhiteSpace(card.NameChs) ? card.NameChs : card.Name,
+            Kind = card.Kind,
+            IsToken = card.IsToken,
+            Clan = card.Clan.IsValid ? card.Clan.Name : "Neutral",
+            Traits = (card.Traits ?? Array.Empty<SymbolId<TraitTag>>())
+                     .Select(t => t.Name).ToList(),
+            Cost = card.BaseCost,
+            Attack = card.BaseAttack,
+            Life = card.BaseLife,
+            SourceFormat = "reshadow_script",
+            Text = scriptText ?? "",
+            DeckModifiers = card.DeckModifiers ?? new(),
+        };
+
+        int existing = pack.Cards.FindIndex(c => c.CardId == card.CardId);
+        if (existing >= 0) pack.Cards[existing] = entry;
+        else pack.Cards.Add(entry);
+
+        // 整个 pack.json 重写：只需保留原有字段并替换 cards 段。
+        // 手工拼 JSON 而不是序列化整个 CardPackDef —— 后者会把一堆
+        // 只读派生字段也写进去，再读回来时字段多出来就报错。
+        var json = SerializePacket(pack);
+        File.WriteAllText(packFile, json, new UTF8Encoding(false));
+
+        ReloadCatalogAndPools();
+    }
+
+    private static string SerializePacket(CardPackDef pack)
+    {
+        var sb = new StringBuilder();
+        sb.Append("{\n");
+        sb.Append("  \"pack_id\": ").Append(JsonStr(pack.PackId)).Append(",\n");
+        sb.Append("  \"name\": ").Append(JsonStr(pack.Name)).Append(",\n");
+        sb.Append("  \"native_pool_id\": ").Append(JsonStr(pack.NativePoolId)).Append(",\n");
+        sb.Append("  \"dependencies\": ").Append(JsonArr(pack.Dependencies)).Append(",\n");
+        sb.Append("  \"clans\": ").Append(JsonNameArr(pack.Clans?.Select(x => x.Name))).Append(",\n");
+        sb.Append("  \"traits\": ").Append(JsonNameArr(pack.Traits?.Select(x => x.Name))).Append(",\n");
+        sb.Append("  \"keywords\": ").Append(JsonNameArr(pack.Keywords?.Select(x => x.Name))).Append(",\n");
+        sb.Append("  \"cards\": [\n");
+
+        for (int i = 0; i < pack.Cards.Count; i++)
+        {
+            var c = pack.Cards[i];
+            sb.Append("    {\n");
+            sb.Append("      \"card_id\": ").Append(c.CardId).Append(",\n");
+            sb.Append("      \"name_eng\": ").Append(JsonStr(c.NameEng)).Append(",\n");
+            sb.Append("      \"name_chs\": ").Append(JsonStr(c.NameChs ?? "")).Append(",\n");
+            sb.Append("      \"kind\": ").Append((int)c.Kind).Append(",\n");
+            sb.Append("      \"is_token\": ").Append(c.IsToken ? "true" : "false").Append(",\n");
+            sb.Append("      \"clan\": ").Append(JsonStr(c.Clan ?? "Neutral")).Append(",\n");
+            sb.Append("      \"traits\": ").Append(JsonArr(c.Traits)).Append(",\n");
+            sb.Append("      \"cost\": ").Append(c.Cost).Append(",\n");
+            sb.Append("      \"attack\": ").Append(c.Attack).Append(",\n");
+            sb.Append("      \"life\": ").Append(c.Life).Append(",\n");
+            sb.Append("      \"source_format\": ").Append(JsonStr(c.SourceFormat ?? "reshadow_script")).Append(",\n");
+            sb.Append("      \"text\": ").Append(JsonStr(c.Text ?? "")).Append("\n");
+            sb.Append("    }").Append(i < pack.Cards.Count - 1 ? "," : "").Append("\n");
+        }
+
+        sb.Append("  ]\n");
+        sb.Append("}\n");
+        return sb.ToString();
+    }
+
+    private static string JsonStr(string s)
+    {
+        if (s == null) return "\"\"";
+        var sb = new StringBuilder("\"");
+        foreach (var ch in s)
+        {
+            switch (ch)
+            {
+                case '\"': sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': break;
+                case '\t': sb.Append("\\t"); break;
+                default: sb.Append(ch); break;
+            }
+        }
+        sb.Append("\"");
+        return sb.ToString();
+    }
+
+    private static string JsonArr(IEnumerable<string> items)
+    {
+        if (items == null) return "[]";
+        return "[" + string.Join(", ", items.Where(x => x != null).Select(JsonStr)) + "]";
+    }
+
+    private static string JsonNameArr(IEnumerable<string> items)
+    {
+        if (items == null) return "[]";
+        return "[" + string.Join(", ", items.Where(x => x != null)
+                                     .Select(x => "{ \"name\": " + JsonStr(x) + " }")) + "]";
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Godot;
 using ShadowverseFan.KernelV3.Packs;
+using ShadowverseFan.KernelV3.Vm;
 using ShadowverseFan.Ui.Bridge;
 using ShadowverseFan.Ui.Theme;
 using ShadowverseFan.Ui.Widgets;
@@ -67,6 +68,8 @@ public partial class DeckManagementRoot : Control
         view.OnCreateDeck += ShowWizard;
         view.OnEditDeck += d => ShowBuilder(d);
         view.OnBattleDeck += d => ShowBattle(d);
+        view.OnOpenDiyWorkshop += ShowDiyWorkshop;
+        view.OnOpenPackManager += ShowPackManager;
         Swap(view);
     }
 
@@ -79,6 +82,24 @@ public partial class DeckManagementRoot : Control
 
         // 对手用同一副牌组（本地演示没有联机对手）
         view.Boot(_store, deck, deck);
+    }
+
+    private void ShowDiyWorkshop()
+    {
+        if (_store == null) return;
+        var view = new ShadowverseFan.Ui.Diy.DiyWorkshopView();
+        view.OnBackToDecks += ShowDeckList;
+        Swap(view);
+        view.Boot(_store);
+    }
+
+    private void ShowPackManager()
+    {
+        if (_store == null) return;
+        var view = new ShadowverseFan.Ui.Diy.PackAndPoolManagerView();
+        view.OnBackToDecks += ShowDeckList;
+        Swap(view);
+        view.Boot(_store);
     }
 
     private void ShowWizard()
@@ -141,7 +162,7 @@ public partial class DeckManagementRoot : Control
     }
 
     /// <summary>开发期入口：直接进战斗桌面（截图用）。</summary>
-    public void OpenBattleForShot(bool expanded, bool badges = false)
+    public void OpenBattleForShot(bool expanded, bool badges = false, bool mulligan = false)
     {
         if (_store == null) return;
         var deck = _store.SavedDecks.OrderByDescending(d => d.Cards.Count).FirstOrDefault()
@@ -151,9 +172,27 @@ public partial class DeckManagementRoot : Control
         Swap(view);
         view.Boot(_store, deck, deck);
 
+        // 截图分流：--mulligan 停在换牌画面，
+        // 其余模式（--battle / --battle-expanded / --battle-badges）跳过换牌直接进交战画面。
+        // 否则 Boot 默认停在 Mulligan，后几种截到的永远是换牌界面。
+        if (!mulligan)
+        {
+            if (view.Controller != null && view.Controller.IsInMulligan)
+            {
+                view.Controller.ConfirmPlayerMulligan(Array.Empty<RuntimeEntity>());
+                view.Rebuild();
+            }
+        }
+
         if (expanded) view.SetHandExpanded(true);
         if (badges) view.SpawnBadgeDemo();
     }
+
+    /// <summary>开发期入口：直接打开 DIY 造卡工坊（截图用）。</summary>
+    public void OpenDiyForShot() => ShowDiyWorkshop();
+
+    /// <summary>开发期入口：直接打开卡包/卡池管理（截图用）。</summary>
+    public void OpenPackMgrForShot() => ShowPackManager();
 
     private void ShowFatal(string msg)
     {

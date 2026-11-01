@@ -87,7 +87,7 @@ public partial class TopLeftCardActionPanel : PanelContainer
             + (entity.IsSuperEvolved ? " 【超进化】" : entity.IsEvolved ? " 【进化】" : "");
 
         string stat = def.Kind == CardKind.Follower
-            ? $"费用 {entity.Cost}  |  ⚔ {entity.Attack}  |  U0001F6E1 {entity.Life}/{entity.MaxLife}"
+            ? $"费用 {entity.Cost}  |  ⚔ {entity.Attack}  |  【盾】{entity.Life}/{entity.MaxLife}"
             : $"费用 {entity.Cost}  |  {def.Kind}";
         _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}】 {stat}";
 

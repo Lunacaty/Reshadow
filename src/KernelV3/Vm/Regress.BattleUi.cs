@@ -48,6 +48,8 @@ public static class RegressBattleUi
         Check("BUI-8 起手换牌流程", CaseMulligan);
         Check("BUI-9 玩家选择真正挂起并解析", CasePendingSurfaces);
         Check("BUI-10 AI 回合自动演武闭环", CaseOpponentAi);
+        Check("DIYU-1 四端工坊编译与同构自检", CaseDiyWorkshop);
+        Check("DIYU-2 跨端同步（改脚本，三端跟随）", CaseDiyCrossEnd);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -497,5 +499,72 @@ public static class RegressBattleUi
         bool ok = wasOpponentTurn && acted && backToMe;
         return (ok, "交给对手=" + wasOpponentTurn + " AI执行过动作=" + acted
                     + " 步数=" + steps + " 回合回到我方或终局=" + backToMe);
+    }
+
+    // ---------------------------------------------------------------- DIY-UI-1
+
+    /// <summary>
+    /// DIY 四端工坊控制器：脚本编译后应把结果反向投影到其余三端，
+    /// 且往返同构自检必须通过。
+    /// </summary>
+    private static (bool, string) CaseDiyWorkshop()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        if (ctrl.CurrentDef == null) return (false, "示例卡未编译成功：" + string.Join("；", ctrl.LastErrors));
+
+        // 四端都必须被填上
+        bool hasScript = !string.IsNullOrWhiteSpace(ctrl.ScriptText);
+        bool hasBlock = ctrl.BlockModel != null;
+        bool hasForm = ctrl.FormModel != null;
+        bool hasCnl = ctrl.CnlSpec != null;
+
+        bool iso = ctrl.VerifyRoundTripIsomorphism(out string diff);
+
+        string zh = ctrl.GetChineseCardText();
+        bool zhOk = !string.IsNullOrWhiteSpace(zh);
+
+        bool ok = hasScript && hasBlock && hasForm && hasCnl && iso && zhOk;
+        return (ok, "脚本=" + hasScript + " 积木=" + hasBlock + " 表单=" + hasForm
+                    + " 英文=" + hasCnl + " 同构=" + iso + " 简中非空=" + zhOk
+                    + (iso ? "" : " | " + diff));
+    }
+
+    // ---------------------------------------------------------------- DIY-UI-2
+
+    /// <summary>
+    /// 从脚本端改卡后，其余三端应当跟着变（真跨端同步，不是各存一份）。
+    /// </summary>
+    private static (bool, string) CaseDiyCrossEnd()
+    {
+        var store = NewStore();
+        var ctrl = new DiyWorkshopController(store);
+
+        string before = ctrl.GetCanonicalAstText();
+        int beforeCost = ctrl.CurrentDef.BaseCost;
+
+        string edited = string.Join("\n",
+            "card 950002 \"改过的卡\" (Follower, cost: 7, atk: 5, life: 6, clan: Runecraft) {",
+            "    keywords: [storm]",
+            "    on play {",
+            "        draw(2)",
+            "    }",
+            "}");
+
+        bool compiled = ctrl.CompileFromScript(edited);
+        if (!compiled) return (false, "改卡编译失败：" + string.Join("；", ctrl.LastErrors));
+
+        string after = ctrl.GetCanonicalAstText();
+        int afterCost = ctrl.CurrentDef.BaseCost;
+
+        bool costChanged = afterCost == 7 && beforeCost != afterCost;
+        bool astChanged = after != before;
+        bool nameZh = ctrl.CurrentDef.NameChs == "改过的卡";
+        bool blockSynced = ctrl.BlockModel != null;
+
+        bool ok = costChanged && astChanged && nameZh && blockSynced;
+        return (ok, "费用 " + beforeCost + "->" + afterCost + " AST变了=" + astChanged
+                    + " 中文名=\"" + ctrl.CurrentDef.NameChs + "\" 积木已同步=" + blockSynced);
     }
 }
