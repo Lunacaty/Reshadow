@@ -274,7 +274,7 @@ public partial class DeckManagementRoot : Control
     }
 
     /// <summary>开发期入口：直接进战斗桌面（截图用）。</summary>
-    public void OpenBattleForShot(bool expanded, bool badges = false, bool mulligan = false)
+    public void OpenBattleForShot(bool expanded, bool badges = false, bool mulligan = false, bool board = false)
     {
         if (_store == null) return;
         var deck = _store.SavedDecks.OrderByDescending(d => d.Cards.Count).FirstOrDefault()
@@ -287,6 +287,8 @@ public partial class DeckManagementRoot : Control
         // 截图分流：--mulligan 停在换牌画面，
         // 其余模式（--battle / --battle-expanded / --battle-badges）跳过换牌直接进交战画面。
         // 否则 Boot 默认停在 Mulligan，后几种截到的永远是换牌界面。
+        // board 模式也必须跳过换牌：否则截图里只有换牌遮罩，
+        // 战场上的随从全被压在后面看不见。
         if (!mulligan)
         {
             if (view.Controller != null && view.Controller.IsInMulligan)
@@ -298,6 +300,19 @@ public partial class DeckManagementRoot : Control
 
         if (expanded) view.SetHandExpanded(true);
         if (badges) view.SpawnBadgeDemo();
+
+        // board 模式：确认换牌之后再放随从。
+        // 反过来的话，SpawnBoardDemo 里的 Rebuild() 会先跑一遍，
+        // 而那时仍是 Mulligan 阶段，换牌遮罩被重新建出来盖住战场。
+        if (board)
+        {
+            GD.Print("[board] before confirm: mulligan=" + (view.Controller?.IsInMulligan));
+            if (view.Controller != null && view.Controller.IsInMulligan)
+                view.Controller.ConfirmPlayerMulligan(Array.Empty<RuntimeEntity>());
+            GD.Print("[board] after confirm: mulligan=" + (view.Controller?.IsInMulligan)
+                     + " phase=" + view.Controller?.Runner.Phase);
+            view.SpawnBoardDemo();
+        }
     }
 
     /// <summary>开发期入口：直接打开 DIY 造卡工坊（截图用）。</summary>

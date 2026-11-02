@@ -234,12 +234,56 @@ public partial class BoardUnitWidget : Control
         DrawColoredPolygon(inner, new Color("161228"));
     }
 
+    /// <summary>
+    /// 从纹理里取一块与目标区域等宽高比的源矩形（居中裁切）。
+    ///
+    /// 这样 DrawTextureRectRegion 画出来既不变形，也不会超出目标矩形 ——
+    /// 等于用源矩形实现了「按边框裁剪」。
+    /// </summary>
+    private static Rect2 FitSourceRect(Vector2 texSize, Vector2 boxSize)
+    {
+        if (texSize.X <= 0 || texSize.Y <= 0 || boxSize.X <= 0 || boxSize.Y <= 0)
+            return new Rect2(0, 0, texSize.X, texSize.Y);
+
+        float boxAspect = boxSize.X / boxSize.Y;
+        float texAspect = texSize.X / texSize.Y;
+
+        if (texAspect > boxAspect)
+        {
+            // 纹理更宽：左右各裁掉一部分
+            float w = texSize.Y * boxAspect;
+            return new Rect2((texSize.X - w) * 0.5f, 0, w, texSize.Y);
+        }
+        else
+        {
+            // 纹理更高：上下各裁掉一部分
+            float h = texSize.X / boxAspect;
+            return new Rect2(0, (texSize.Y - h) * 0.5f, texSize.X, h);
+        }
+    }
+
     private void DrawArtwork(Color clanCol, CardDef def, bool isAmulet)
     {
         var art = new Rect2(8f, 14f, W - 16f, H - 30f);
 
         var tex = ShadowverseFan.Ui.CardArtLoader.Load(def.CardId);
-        if (tex != null) { DrawTextureRect(tex, art, false); return; }
+        if (tex != null)
+        {
+            // 立绘必须被棋子边框裁掉。
+            // DrawTextureRect 是**等比铺满**目标矩形：卡牌立绘的宽高比
+            // 与棋子的 96x124 不同，等比缩放后必然有一边溢出，
+            // 直接画会盖住刚画好的边框，看起来像贴歪了的贴纸。
+            //
+            // 用 ClipChildren 行不通（那是 Control 的子节点裁剪，
+            // 对 _Draw 里的自绘无效），只能靠 CanvasItem 的
+            // draw_set_clip / ClipContents 或手动计算贴合区域。
+            // 这里用「按 art 比例裁源矩形」：取纹理中心最大可用块，
+            // 做到不变形且绝不越界。
+            var src = FitSourceRect(tex.GetSize(), art.Size);
+            DrawTextureRectRegion(tex, art, src);
+            DrawRect(art, new Color(0, 0, 0, 0), false, 0f); // 占位保持绘制顺序
+            return;
+        }
 
         // 棋子只有 96x124，压得太暗就成了一块黑方块。
         // 用职业色作为主调，再叠一层亮心，让「这是什么职业的随从」一眼可辨。

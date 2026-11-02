@@ -31,6 +31,8 @@ public partial class BattleScreenRoot : Control
     private RightCommandColumnWidget _rightCol;
     private TopLeftCardActionPanel _actionPanel;
     private Control _handLayer;
+    /// <summary>浮字/粒子等短命特效层：不随 Rebuild 销毁，自己驱动生命周期。</summary>
+    private Control _overlayLayer;
     private VBoxContainer _boardAlly;
     private VBoxContainer _boardFoe;
     private Button _pageBtn;
@@ -47,6 +49,16 @@ public partial class BattleScreenRoot : Control
     private RuntimeEntity _attacker;
     private bool _draggingPlay;
     private RuntimeEntity _draggingCard;
+
+    // ---- 拖拽跟随 ----
+    /// <summary>跟随用的浮动卡面（独立于手牌层，不随 RebuildHand 销毁）。</summary>
+    private CardVisualWidget _dragGhost;
+    /// <summary>是否已越过手牌区阈值、开始跟随。</summary>
+    private bool _dragFollow;
+    /// <summary>跟随卡当前插值位置（缓动用）。</summary>
+    private Vector2 _dragPos;
+    /// <summary>鼠标当前位置。</summary>
+    private Vector2 _dragTarget;
 
     // 保存双方牌组，供「再战一局」直接重开 ——
     // 之前 OnRematch 接到 OnExitToDecks，点「再战」会直接退回牌组一览。
@@ -86,6 +98,10 @@ public partial class BattleScreenRoot : Control
         if (_ctrl == null) return;
 
         // ① 换牌
+        //
+        // 换牌层必须**显式卸掉**：RefreshOverlays 早先只负责「装」不负责「卸」，
+        // 确认换牌后 _mulligan 仍挂在树上盖住整个战场 ——
+        // 表现就是「换完牌画面不动，点哪里都没反应」。
         if (_ctrl.IsInMulligan)
         {
             if (_mulligan == null || !IsInstanceValid(_mulligan))
@@ -96,6 +112,11 @@ public partial class BattleScreenRoot : Control
                 _mulligan.OnMulliganConfirmed += () => { _mulligan = null; Rebuild(); };
             }
             return;
+        }
+        else if (_mulligan != null && IsInstanceValid(_mulligan))
+        {
+            _mulligan.QueueFree();
+            _mulligan = null;
         }
 
         // ② 终局
@@ -203,6 +224,12 @@ public partial class BattleScreenRoot : Control
         _handLayer = new Control { MouseFilter = MouseFilterEnum.Pass };
         AddChild(_handLayer);
 
+        // 浮字层：必须盖在手牌之上，且**不参与 Rebuild 清理** ——
+        // 伤害数字要在玩家后续操作时继续飘完。
+        _overlayLayer = new Control { MouseFilter = MouseFilterEnum.Ignore };
+        _overlayLayer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(_overlayLayer);
+
         _vfx = new BattleVfxDirector();
         AddChild(_vfx);
 
@@ -253,9 +280,14 @@ public partial class BattleScreenRoot : Control
         if (_draggingPlay && _draggingCard != null)
         {
             var mp = GetGlobalMousePosition();
+            _dragTarget = mp;
             _field.IsDraggingPlayCard = mp.Y < 500f;
             _field.QueueRedraw();
         }
+
+        // 跟随插值必须每帧推进：只靠 InputEvent 会在鼠标静止时不更新，
+        // 卡就停在半路追不上。
+        StepDragFollow((float)delta);
 
         StepOpponentIfNeeded(delta);
         UpdateAimLine();
@@ -357,9 +389,16 @@ public partial class BattleScreenRoot : Control
 
     private void AddBoardRow(VBoxContainer host, int playerId)
     {
+        // 用 CenterContainer 包一层：随从不足 5 个时整排居中，
+        // 而不是从左往右贴着左边排 —— 原版战场就是这样，
+        // 随从越少越靠中间。
+        var center = new CenterContainer();
+        center.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        host.AddChild(center);
+
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 14);
-        host.AddChild(row);
+        center.AddChild(row);
 
         foreach (var e in _ctrl.Board(playerId).Take(5))
         {
@@ -479,9 +518,11 @@ public partial class BattleScreenRoot : Control
             {
                 case CoreEvent.OnDamaged:
                     _vfx.PlayDamage(pos, ev.Amount);
+                    SpawnDamageFloat(pos, ev.Amount, false);
                     break;
                 case CoreEvent.OnHealed:
                     _vfx.PlayHeal(pos, ev.Amount);
+                    SpawnDamageFloat(pos, ev.Amount, true);
                     break;
                 case CoreEvent.OnDestroy:
                     _vfx.PlayDestroy(pos);
@@ -506,6 +547,23 @@ public partial class BattleScreenRoot : Control
         }
 
         _lastEventIdx = log.Count;
+    }
+
+    /// <summary>
+    /// 弹一个伤害浮字。
+    ///
+    /// 挂在 _handLayer 之外的独立层，并且自己驱动生命周期 ——
+    /// 如果挂在会随 Rebuild 销毁的容器里，玩家一操作数字就被抹掉了。
+    /// 主战者与随从都走这里。
+    /// </summary>
+    private void SpawnDamageFloat(Vector2 center, int amount, bool heal)
+    {
+        if (amount == 0) return;
+
+        var f = new DamageFloat();
+        _overlayLayer.AddChild(f);
+        // 从目标头顶偏上一点浮出
+        f.Setup(amount, center + new Vector2(-48f, -34f), heal);
     }
 
     private void ReleaseAttack(Vector2 screenPos)
@@ -633,6 +691,21 @@ public partial class BattleScreenRoot : Control
 
     public override void _Input(InputEvent @event)
     {
+        // 鼠标移动：更新跟随时目标点（真正的插值在 _Process 里做，
+        // 这样速度与帧率无关，也不会因为一次大幅移动而瞬移）
+        if (@event is InputEventMouseMotion mm && _draggingPlay && _draggingCard != null)
+        {
+            _dragTarget = mm.Position;
+
+            // 起跟条件：越过手牌区上沿**再往外一点**才算。
+            // 不给阈值的话，按下瞬间手就在原地，卡会立刻弹起 ——
+            // 玩家只是想点一下看效果，却被当成要出牌。
+            const float PLAY_THRESHOLD = 40f;
+            if (!_dragFollow && mm.Position.Y < BattleSessionController.HandZoneTopY - PLAY_THRESHOLD)
+                BeginDragFollow();
+            return;
+        }
+
         if (@event is not InputEventMouseButton mb || mb.ButtonIndex != MouseButton.Left) return;
 
         if (!mb.Pressed && _draggingPlay && _draggingCard != null)
@@ -643,14 +716,73 @@ public partial class BattleScreenRoot : Control
             _field.IsDraggingPlayCard = false;
             _field.QueueRedraw();
 
-            // 判定逻辑在 BattleSessionController.ShouldPlayOnRelease 里，
-            // 这里只负责取坐标 —— 那段逻辑在门禁里被测到。
-            if (BattleSessionController.ShouldPlayOnRelease(mb.GlobalPosition.Y, true))
+            // 松手判定必须同时满足：跟已启动（越过了阈值）
+            // 且松手时仍在手牌区外。两者缺一不可 ——
+            // 只判松手位置的话，鼠标移动回手牌区再松开也会打出。
+            bool shouldPlay = _dragFollow
+                && BattleSessionController.ShouldPlayOnRelease(mb.GlobalPosition.Y, true);
+            EndDragFollow();
+
+            if (shouldPlay)
             {
                 _ctrl.TryPlayCard(card, out _);
                 Rebuild();
             }
+            else
+            {
+                RebuildHand();
+            }
         }
+    }
+
+    /// <summary>开始跟随：造一张浮动卡面，从原位快速「提起来」。</summary>
+    private void BeginDragFollow()
+    {
+        if (_draggingCard == null) return;
+        _dragFollow = true;
+
+        _dragGhost = new CardVisualWidget();
+        // Setup 收的是 CardDef，不是运行时实体。
+        _dragGhost.Setup(_draggingCard.Def, _store.CardPrinter, 0, 3, false);
+        _dragGhost.SetCardSize(150f, 198f);
+        _dragGhost.MouseFilter = MouseFilterEnum.Ignore;
+        _dragGhost.ZIndex = 55;
+        _dragGhost.Modulate = new Color(1, 1, 1, 0.94f);
+        _overlayLayer.AddChild(_dragGhost);
+
+        _dragPos = _dragTarget;
+        _dragGhost.Position = _dragPos - new Vector2(75f, 99f);
+    }
+
+    /// <summary>结束跟随：销毁浮动卡面。</summary>
+    private void EndDragFollow()
+    {
+        _dragFollow = false;
+        if (_dragGhost != null && IsInstanceValid(_dragGhost))
+        {
+            _dragGhost.QueueFree();
+        }
+        _dragGhost = null;
+    }
+
+    /// <summary>
+    /// 拖拽跟随的插值。
+    ///
+    /// 目标点 = 鼠标位置，当前位置按 EaseOutCubic 每帧逼近。
+    /// 不做 1:1 硬跟随：那看起来像卡粘在光标上，没有「被拖动」的重量感。
+    /// 速度设为 18/s：约 0.15 秒追平，明显慢于鼠标但不会拖沓。
+    /// </summary>
+    private void StepDragFollow(float dt)
+    {
+        if (!_dragFollow || _dragGhost == null || !IsInstanceValid(_dragGhost)) return;
+
+        float k = 1f - Mathf.Pow(0.001f, dt * 1.9f);
+        _dragPos = _dragPos.Lerp(_dragTarget, Mathf.Clamp(k, 0f, 1f));
+        _dragGhost.Position = _dragPos - new Vector2(75f, 99f);
+
+        // 离开手牌区时微微放大 + 提高不透明度，给出「准备打出」的暗示
+        float inHand = Mathf.Clamp((BattleSessionController.HandZoneTopY - _dragPos.Y) / 120f, 0f, 1f);
+        _dragGhost.Scale = Vector2.One * (0.96f + 0.10f * inHand);
     }
 
     /// <summary>折角书页图标（矢量，零贴图）。</summary>
@@ -754,6 +886,19 @@ public partial class BattleScreenRoot : Control
             if (def == null) continue;
             var e = _ctrl.State.SpawnCard(def.CardId, ZoneRef.Board, 0);
             if (e != null) e.EnteredTurn = _ctrl.State.TurnNumber - 1;
+        }
+        Rebuild();
+    }
+
+    /// <summary>开发期入口：往双方战场各放几个随从（截图用）。</summary>
+    public void SpawnBoardDemo()
+    {
+        if (_ctrl?.State == null) return;
+        var ids = new[] { 10001120, 10001110, 10001130, 10002120 };
+        for (int i = 0; i < ids.Length; i++)
+        {
+            _ctrl.State.SpawnCard(ids[i], ZoneRef.Board, _ctrl.MyPlayerId);
+            _ctrl.State.SpawnCard(ids[i], ZoneRef.Board, _ctrl.MyPlayerId == 0 ? 1 : 0);
         }
         Rebuild();
     }

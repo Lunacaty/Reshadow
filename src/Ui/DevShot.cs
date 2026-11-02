@@ -26,6 +26,7 @@ public partial class DevShot : Node
     private bool _openBattleSelect;
     private bool _openDeckList;
     private bool _openRarity;
+    private bool _battleBoard;
 
     public override void _Ready()
     {
@@ -46,6 +47,7 @@ public partial class DevShot : Node
             if (a == "--battle-select") _openBattleSelect = true;
             if (a == "--decklist") _openDeckList = true;
             if (a == "--rarity") _openRarity = true;
+            if (a == "--board") { _openBattle = true; _battleBoard = true; }
         }
         if (_frames <= 0) _frames = 30;
         SetProcess(true);
@@ -111,7 +113,7 @@ public partial class DevShot : Node
     private void OpenBattle()
     {
         var root = FindRoot();
-        root?.OpenBattleForShot(_battleExpanded, _battleBadges, _battleMulligan);
+        root?.OpenBattleForShot(_battleExpanded, _battleBadges, _battleMulligan, _battleBoard);
     }
 
     private void OpenWizard()
