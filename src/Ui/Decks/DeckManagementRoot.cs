@@ -171,6 +171,60 @@ public partial class DeckManagementRoot : Control
         Swap(view);
     }
 
+    /// <summary>开发期入口：稀有度对照页（截图用）。</summary>
+    public void OpenRaritySheetForShot() => ShowRaritySheet();
+
+    /// <summary>
+    /// 稀有度对照：铜/银/金/虹 各抽两张并排，用来肉眼校验卡框配色。
+    /// </summary>
+    private void ShowRaritySheet()
+    {
+        var view = new Control();
+        Swap(view);
+
+        var bg = new Widgets.AstralBackgroundCanvas();
+        view.AddChild(bg);
+
+        var title = new Label { Text = "稀有度卡框对照 · 铜 / 银 / 金 / 虹" };
+        view.AddChild(title);
+        title.SetAnchorsPreset(LayoutPreset.TopLeft);
+        title.Position = new Vector2(40, 24);
+        title.AddThemeFontSizeOverride("font_size", 24);
+        title.AddThemeColorOverride("font_color", new Color("FEF08A"));
+
+        var pool = _store.GetPoolView("official");
+        string[] names = { "青铜", "白银", "黄金", "虹彩" };
+        Color[] hues = { new("B07A4A"), new("C8D0DC"), new("E6B23C"), new("C77DFF") };
+
+        const float CW = 122f, CH = 152f, GAP = 18f;
+
+        for (int r = 1; r <= 4; r++)
+        {
+            float y = 62 + (r - 1) * (CH + 16f);
+
+            var lbl = new Label { Text = names[r - 1] };
+            view.AddChild(lbl);
+            lbl.SetAnchorsPreset(LayoutPreset.TopLeft);
+            lbl.Position = new Vector2(36, y + CH * 0.5f - 14);
+            lbl.Size = new Vector2(56, 0);
+            lbl.AddThemeFontSizeOverride("font_size", 17);
+            lbl.AddThemeColorOverride("font_color", hues[r - 1]);
+
+            var picks = pool.EnumerateCollectibleCards()
+                .Where(c => c.Rarity == r).OrderBy(c => c.CardId).Take(4).ToList();
+
+            for (int i = 0; i < picks.Count; i++)
+            {
+                var def = picks[i];
+                var w = new Widgets.CardVisualWidget();
+                view.AddChild(w);
+                w.SetCardSize(CW, CH);
+                w.Position = new Vector2(110 + i * (CW + GAP), y);
+                w.Setup(def, _store.CardPrinter, 1, 3);
+            }
+        }
+    }
+
     /// <summary>开发期入口：牌组一览（截图用）。</summary>
     public void OpenDeckListForShot() => ShowDeckList();
 

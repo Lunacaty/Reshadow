@@ -56,6 +56,9 @@ public sealed class CardRawEntry
     public List<DeckBuildModifier> DeckModifiers { get; init; } = new();
 
     public List<AltModeRawEntry> AltModes { get; init; } = new();
+
+    /// <summary>稀有度：1=青铜 2=白银 3=黄金 4=虹彩 0=未标注（只影响卡框配色）。</summary>
+    public int Rarity { get; init; }
 }
 
 public sealed class AltModeRawEntry

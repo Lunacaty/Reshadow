@@ -105,8 +105,8 @@ public partial class BoardUnitWidget : Control
 
         bool isAmulet = def.Kind is CardKind.Amulet or CardKind.Crest;
 
-        if (isAmulet) DrawAmuletFrame(clanCol);
-        else DrawFollowerArch(clanCol);
+        if (isAmulet) DrawAmuletFrame(clanCol, def);
+        else DrawFollowerArch(clanCol, def);
 
         DrawArtwork(clanCol, def, isAmulet);
 
@@ -173,7 +173,7 @@ public partial class BoardUnitWidget : Control
         }
     }
 
-    private void DrawFollowerArch(Color clanCol)
+    private void DrawFollowerArch(Color clanCol, CardDef def)
     {
         // 顶部圆拱：近似「圆拱窗」的上半弧 + 直身
         Vector2[] frame =
@@ -186,7 +186,9 @@ public partial class BoardUnitWidget : Control
             new(W - 3f, H - 6f),
             new(3f, H - 6f),
         };
-        DrawColoredPolygon(frame, new Color("D6C7B2"));
+        // 外框按稀有度上色。桌面上卡很小，只染最外一圈 ——
+        // 整块铺满稀有度色会让场面花掉，影响落子判断。
+        DrawColoredPolygon(frame, RarityRim(def));
 
         Vector2[] inner =
         {
@@ -201,7 +203,21 @@ public partial class BoardUnitWidget : Control
         DrawColoredPolygon(inner, new Color("161228"));
     }
 
-    private void DrawAmuletFrame(Color clanCol)
+    /// <summary>
+    /// 稀有度外框色（与 CardVisualWidget.RarityPalette 的 rim 一致）。
+    ///
+    /// 桌面卡很小，只染最外一圈；整块铺满稀有度色会让场面花掉。
+    /// </summary>
+    private static Color RarityRim(CardDef d) => (d?.Rarity ?? 0) switch
+    {
+        1 => new Color("B07A4A"),
+        2 => new Color("C8D0DC"),
+        3 => new Color("E6B23C"),
+        4 => new Color("C77DFF"),
+        _ => new Color("B07A4A"),
+    };
+
+    private void DrawAmuletFrame(Color clanCol, CardDef def)
     {
         Vector2[] frame =
         {

@@ -387,7 +387,7 @@ public static class CardPoolBuilder
                 // 无文本分支也必须带关键词：《守护魔像》《寂静骑士》的 text 是空串，
                 // 关键词只写在 "keywords" 里。漏了这一行，它们上场就是白板。
                 InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k)).ToList(),
-                PackId = pack.PackId, IsToken = c.IsToken,
+                PackId = pack.PackId, IsToken = c.IsToken, Rarity = c.Rarity,
                 SourceText = "",
             };
         }
@@ -449,7 +449,7 @@ public static class CardPoolBuilder
                 HasFuse = d.HasFuse, FuseMaterialFilter = d.FuseMaterialFilter,
                 CrestDef = d.CrestDef, FaithDef = d.FaithDef,
                 AccelerateDef = d.AccelerateDef, CrystallizeDef = d.CrystallizeDef,
-                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text,
+                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
             };
         }
 
@@ -469,7 +469,7 @@ public static class CardPoolBuilder
             HasFuse = result.HasFuse, FuseMaterialFilter = result.FuseMaterialFilter,
             CrestDef = result.CrestDef, FaithDef = result.FaithDef,
             AccelerateDef = result.AccelerateDef, CrystallizeDef = result.CrystallizeDef,
-            PackId = pack.PackId, IsToken = c.IsToken,
+            PackId = pack.PackId, IsToken = c.IsToken, Rarity = c.Rarity,
             SourceText = c.Text,
         };
     }

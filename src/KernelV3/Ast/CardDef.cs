@@ -122,6 +122,14 @@ public sealed class CardDef
     public Core.SymbolId<Core.ClanTag> Clan { get; init; } = Core.SymbolId<Core.ClanTag>.Invalid;
     public IReadOnlyList<Core.SymbolId<Core.TraitTag>> Traits { get; init; } = Array.Empty<Core.SymbolId<Core.TraitTag>>();
 
+    /// <summary>
+    /// 稀有度：1=青铜 2=白银 3=黄金 4=虹彩 0=未标注。
+    ///
+    /// 只有卡框渲染读它（铜/银/金/虹四种边色），不参与任何规则判定 ——
+    /// 名字相近的 RarityTag 是卡面文案用的，两者不要混。
+    /// </summary>
+    public int Rarity { get; init; }
+
     public int BaseCost { get; init; }
     public int BaseAttack { get; init; }
     public int BaseLife { get; init; }

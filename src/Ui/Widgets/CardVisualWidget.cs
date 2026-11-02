@@ -164,16 +164,41 @@ public partial class CardVisualWidget : Control
             DrawRect(new Rect2(l - 3f, t - 3f, w + 6f, h + 6f), new Color(1.0f, 0.84f, 0.35f, 0.45f));
     }
 
+    /// <summary>
+    /// 稀有度配色：1=青铜 2=白银 3=黄金 4=虹彩，0=未标注按青铜处理。
+    ///
+    /// Rim  = 最外圈高光边（也是外框底色）
+    /// Metal= 第二层金属带（会与职业色轻微混合，保留职业辨识）
+    /// Gem  = 顶部宝石与铭牌色
+    /// </summary>
+    private static (Color rim, Color metal, Color gem) RarityPalette(int rarity) => rarity switch
+    {
+        // 青铜：暖棕金，压得比白银暗一档，避免和黄金混淆
+        1 => (new Color("B07A4A"), new Color("8A5F38"), new Color("D9A066")),
+        // 白银：冷灰白，四档里明度居中
+        2 => (new Color("C8D0DC"), new Color("8E99AB"), new Color("E8EEF7")),
+        // 黄金：明亮金黄，最扎眼的一档
+        3 => (new Color("E6B23C"), new Color("B8862A"), new Color("FFE79A")),
+        // 虹彩：紫粉为底，另加一圈彩虹色描边（下方 DrawRainbowEdge）
+        4 => (new Color("C77DFF"), new Color("7D4BA8"), new Color("FFD1FA")),
+        _ => (new Color("B07A4A"), new Color("8A5F38"), new Color("D9A066")),
+    };
+
     private void DrawOrnateOuterFrame(float l, float t, float w, float h, Color clanCol)
     {
         Vector2[] outerPoly = BuildArchedFramePolygon(l, t, w, h, 0f);
         Vector2[] midPoly   = BuildArchedFramePolygon(l, t, w, h, 2.5f);
         Vector2[] innerPoly = BuildArchedFramePolygon(l, t, w, h, 6.5f);
 
-        Color rimColor = _hovered ? new Color("FFF3C4") : new Color("D6C7B2");
+        var (rim, metal, gem) = RarityPalette(Card.Rarity);
+        int rarity = Card.Rarity;
+
+        Color rimColor = _hovered ? rim.Lerp(Colors.White, 0.45f) : rim;
         DrawColoredPolygon(outerPoly, rimColor);
 
-        Color frameMetal = new Color("8E86A8").Lerp(clanCol, 0.28f);
+        // 金属带仍混一点职业色：稀有度决定「贵气」，职业决定「是谁」
+        float clanMix = rarity >= 4 ? 0.18f : 0.30f;
+        Color frameMetal = metal.Lerp(clanCol, clanMix);
         DrawColoredPolygon(midPoly, frameMetal);
         DrawColoredPolygon(innerPoly, new Color("141020"));
 
@@ -186,11 +211,39 @@ public partial class CardVisualWidget : Control
             new(cx, crownY + 5f),
             new(cx - 7f, crownY),
         };
-        DrawColoredPolygon(crownDiamond, new Color("FDE68A"));
-        DrawLine(new Vector2(cx - 32f, crownY), new Vector2(cx - 9f, crownY), new Color("E2E8F0"), 1.5f);
-        DrawLine(new Vector2(cx + 9f, crownY), new Vector2(cx + 32f, crownY), new Color("E2E8F0"), 1.5f);
+        DrawColoredPolygon(crownDiamond, gem);
+        Color wingCol = gem.Lerp(Colors.White, 0.35f);
+        DrawLine(new Vector2(cx - 32f, crownY), new Vector2(cx - 9f, crownY), wingCol, 1.5f);
+        DrawLine(new Vector2(cx + 9f, crownY), new Vector2(cx + 32f, crownY), wingCol, 1.5f);
 
-        DrawPolyline(ClosePoly(outerPoly), _hovered ? SvWbTheme.AccentGold : new Color("F8FAFC"), 1.5f);
+        // 虹彩专属：外圈一道流动彩色描边，四档里唯一带渐变的一档
+        if (rarity >= 4)
+        {
+            DrawRainbowEdge(outerPoly);
+        }
+        else
+        {
+            DrawPolyline(ClosePoly(outerPoly), _hovered ? SvWbTheme.AccentGold : rim.Lerp(Colors.White, 0.55f), 1.5f);
+        }
+    }
+
+    /// <summary>
+    /// 虹彩卡的彩色描边：沿外框多边形逐段换色，凑成一圈渐变。
+    /// 用逐段上色而不是真渐变，是因为 CanvasItem 没有直接的描边渐变 API。
+    /// </summary>
+    private void DrawRainbowEdge(Vector2[] poly)
+    {
+        Color[] spectrum =
+        {
+            new("FF6B9D"), new("C77DFF"), new("7B9EFF"),
+            new("4ADE80"), new("FDE047"), new("FB923C"),
+        };
+        int seg = poly.Length;
+        for (int i = 0; i < seg; i++)
+        {
+            Color c = spectrum[i % spectrum.Length];
+            DrawLine(poly[i], poly[(i + 1) % seg], c, 1.8f);
+        }
     }
 
     private static Vector2[] BuildArchedFramePolygon(float l, float t, float w, float h, float inset)

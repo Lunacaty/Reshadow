@@ -141,6 +141,7 @@ public static class CardPackLoader
                     Keywords = ParseStringList(c, "keywords"),
                     DeckModifiers = ParseDeckMods(c),
                     AltModes = alt,
+                    Rarity = Int(c, "rarity", 0),
                 });
             }
         }

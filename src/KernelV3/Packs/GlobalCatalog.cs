@@ -230,7 +230,7 @@ public sealed class GlobalCatalog
                 HasFuse = sd.HasFuse, FuseMaterialFilter = sd.FuseMaterialFilter,
                 CrestDef = sd.CrestDef, FaithDef = sd.FaithDef,
                 AccelerateDef = sd.AccelerateDef, CrystallizeDef = sd.CrystallizeDef,
-                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text,
+                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
             };
         }
 
@@ -248,7 +248,7 @@ public sealed class GlobalCatalog
             HasFuse = r.HasFuse, FuseMaterialFilter = r.FuseMaterialFilter,
             CrestDef = r.CrestDef, FaithDef = r.FaithDef,
             AccelerateDef = r.AccelerateDef, CrystallizeDef = r.CrystallizeDef,
-            PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text,
+            PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
         };
     }
 }
