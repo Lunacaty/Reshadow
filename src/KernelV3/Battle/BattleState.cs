@@ -1726,6 +1726,28 @@ public sealed class BattleState : IVmWorld
         e.Traits.Clear();
         foreach (var t in s.Traits) e.Traits.Add(t);
 
+        // 带参关键词的数值：max_attacks_per_turn 的次数、damage_cap 的上限
+        // 全在这张表里，只拷 Keywords 等于「有这个关键词但值是 0」。
+        if (s.KeywordValues != null)
+        {
+            e.KeywordValues.Clear();
+            foreach (var kv in s.KeywordValues) e.KeywordValues[kv.Key] = kv.Value;
+        }
+
+        // 单卡计数器（吟唱 / 魔力增幅 / 自定义）
+        if (s.Counters != null)
+        {
+            e.Counters.Clear();
+            foreach (var kv in s.Counters) e.Counters[kv.Key] = kv.Value;
+        }
+
+        // 限时修正：exact copy 要的是此刻的实际状态
+        if (s.TempModifiers != null)
+        {
+            e.TempModifiers.Clear();
+            foreach (var tm in s.TempModifiers) e.TempModifiers.Add(tm);
+        }
+
         // 授予能力不写在 CardDef 里（GrantAbility 单独记账），必须按实体逐条搬。
         foreach (var (ge, gab, gdur) in _granted.ToList())
             if (ge != null && ge.EntityId == s.EntityId) _granted.Add((e, gab, gdur));

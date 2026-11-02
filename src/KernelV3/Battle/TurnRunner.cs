@@ -939,7 +939,15 @@ public sealed class TurnRunner
     // ---------- 进化 ----------
 
     /// <summary>普通进化。先手第 5 回合 / 后手第 4 回合解锁，消耗 1 ep。</summary>
-    public bool CanEvolve(int playerId)
+    public bool CanEvolve(int playerId) => CanEvolve(playerId, null);
+
+    /// <summary>
+    /// 能否手动进化。
+    ///
+    /// 传入 unit 时会检查「无需进化点即可进化」：持有该关键词的随从
+    /// 即使 EP 为 0 也能进化，且进化时不扣点。
+    /// </summary>
+    public bool CanEvolve(int playerId, RuntimeEntity unit)
     {
         if (playerId != _state.ActivePlayer) return false;
         var p = _state.Players[playerId];
@@ -947,18 +955,25 @@ public sealed class TurnRunner
 
         if (_state.TurnNumber < _state.Rules.EvolveUnlockTurn(playerId)) return false;
 
+        if (unit != null && unit.Keywords.Contains(_schema.Keyword("free_evolve"))) return true;
+
         var epKey = _schema.Counter("ep");
         return _state.ReadCounter(playerId, epKey) > 0;
     }
 
     /// <summary>超进化。先手第 7 回合 / 后手第 6 回合解锁，消耗 1 sep。</summary>
-    public bool CanSuperEvolve(int playerId)
+    public bool CanSuperEvolve(int playerId) => CanSuperEvolve(playerId, null);
+
+    /// <summary>能否手动超进化；持有 free_super_evolve 时即使是 0 点也允许。</summary>
+    public bool CanSuperEvolve(int playerId, RuntimeEntity unit)
     {
         if (playerId != _state.ActivePlayer) return false;
         var p = _state.Players[playerId];
         if (p.ManualEvolvedThisTurn) return false;
 
         if (_state.TurnNumber < _state.Rules.SuperEvolveUnlockTurn(playerId)) return false;
+
+        if (unit != null && unit.Keywords.Contains(_schema.Keyword("free_super_evolve"))) return true;
 
         var sepKey = _schema.Counter("sep");
         return _state.ReadCounter(playerId, sepKey) > 0;
@@ -981,7 +996,9 @@ public sealed class TurnRunner
 
     public bool Evolve(int playerId, RuntimeEntity e, bool super, CardVm vm)
     {
-        bool ok = super ? CanSuperEvolve(playerId) : CanEvolve(playerId);
+        // 必须把 e 传进去：否则持有 free_evolve / free_super_evolve 的随从
+        // 在 EP/SEP 为 0 时会被这道守卫挡掉，关键词形同虚设。
+        bool ok = super ? CanSuperEvolve(playerId, e) : CanEvolve(playerId, e);
         if (!ok) return false;
         if (e == null || e.Zone != ZoneRef.Board || e.PlayerId != playerId) return false;
         if (e.IsEvolved) return false;
@@ -991,8 +1008,12 @@ public sealed class TurnRunner
 
         if (super)
         {
-            var sepKey = _schema.Counter("sep");
-            _state.WriteCounter(playerId, sepKey, _state.ReadCounter(playerId, sepKey) - 1);
+            // 「无需超进化点即可超进化」：不扣点，其余流程完全不变。
+            if (!e.Keywords.Contains(_schema.Keyword("free_super_evolve")))
+            {
+                var sepKey = _schema.Counter("sep");
+                _state.WriteCounter(playerId, sepKey, _state.ReadCounter(playerId, sepKey) - 1);
+            }
             e.IsSuperEvolved = true;
             e.IsEvolved = true;          // 超进化包含普通进化状态
             e.Attack += _state.Rules.SuperEvolveBonusAttack;
@@ -1001,8 +1022,12 @@ public sealed class TurnRunner
         }
         else
         {
-            var epKey = _schema.Counter("ep");
-            _state.WriteCounter(playerId, epKey, _state.ReadCounter(playerId, epKey) - 1);
+            // 「无需进化点即可进化」：不扣点。
+            if (!e.Keywords.Contains(_schema.Keyword("free_evolve")))
+            {
+                var epKey = _schema.Counter("ep");
+                _state.WriteCounter(playerId, epKey, _state.ReadCounter(playerId, epKey) - 1);
+            }
             e.IsEvolved = true;
             e.Attack += _state.Rules.EvolveBonusAttack;
             e.Life += _state.Rules.EvolveBonusLife;

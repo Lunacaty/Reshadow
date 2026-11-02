@@ -98,6 +98,8 @@ public sealed class Glossary
         g.Add("max_attacks_per_turn", "1回合可攻击");
         g.Add("damage_taken_bonus", "受到伤害增加");
         g.Add("damage_cap", "受到伤害上限");
+        g.Add("free_evolve", "无需进化点即可进化");
+        g.Add("free_super_evolve", "无需超进化点即可超进化");
         g.Add("attack_limit", "攻击力上限");
 
         // ---------- 机制 ----------

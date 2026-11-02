@@ -444,10 +444,37 @@ public sealed class ActionParser
             {
                 var words = new List<string>();
                 int? numInClause = null;
+                // 动态数值："Can attack X times per turn" 里的 X
+                // 必须是 NumExpr，不能只认常数。
+                Ast.NumExpr numExpr = null;
+
                 while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
                 {
                     if (cur.Current.Kind == TokKind.Number && numInClause == null)
                         numInClause = cur.Current.Value;
+
+                    // 常量之外还要认变量：X / Y / Z 以及 count(...) 这类表达式。
+                    if (numExpr == null
+                        && (cur.Current.Kind == TokKind.Number
+                            || cur.Current.IsAnyWord("x", "y", "z")))
+                    {
+                        int back = cur.Position;
+                        var saved = numInClause;
+                        try
+                        {
+                            var e2 = ParseNumExpr(cur);
+                            if (e2 != null && e2.Op != Ast.NumOp.Const)
+                            {
+                                numExpr = e2;
+                                words.Add("#expr");
+                                continue;
+                            }
+                        }
+                        catch { }
+                        cur.Seek(back);
+                        numInClause = saved;
+                    }
+
                     words.Add(cur.Current.Text.ToLowerInvariant());
                     cur.Advance();
                 }
@@ -474,12 +501,13 @@ public sealed class ActionParser
                 else if (j.Contains("attack") && j.Contains("time"))
                 {
                     kw = "max_attacks_per_turn";
-                    kwVal = NumExpr.Const(numInClause ?? 1);
+                    // 有表达式就用表达式（X / Y / count(...)），否则退到常数。
+                    kwVal = numExpr ?? NumExpr.Const(numInClause ?? 1);
                 }
                 else if (j.Contains("take more than"))
                 {
                     kw = "damage_cap";
-                    kwVal = NumExpr.Const(numInClause ?? 0);
+                    kwVal = numExpr ?? NumExpr.Const(numInClause ?? 0);
                 }
                 else kw = "cannot_attack";
 

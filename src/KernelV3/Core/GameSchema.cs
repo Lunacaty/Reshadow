@@ -136,6 +136,10 @@ public sealed class GameSchema
         // 写入端与读取端名字写岔了也没人发现（damage_taken_bonus 就出过这种事）。
         "damage_taken_bonus", "max_attacks_per_turn", "cannot_attack_leaders",
         "cannot_attack_followers", "targeting_restriction",
+
+        // 免点数进化。持有这些关键词的随从，即使 EP / SEP 为 0 也能手动进化，
+        // 且进化时不扣点。
+        "free_evolve", "free_super_evolve",
     };
 
     /// <summary>构造一份装好内置词条的 schema。</summary>

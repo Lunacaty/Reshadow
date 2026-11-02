@@ -67,6 +67,24 @@ public sealed class EntitySnapshot
         = Array.Empty<SymbolId<TraitTag>>();
     public IReadOnlyDictionary<SymbolId<CounterTag>, int> Counters { get; init; }
         = new Dictionary<SymbolId<CounterTag>, int>();
+
+    /// <summary>
+    /// 带参关键词的数值（max_attacks_per_turn=3 / damage_cap=2 / damage_taken_bonus=1 …）。
+    ///
+    /// 复制必须带上它：关键词本身在 Keywords 里只说明「有这回事」，
+    /// 具体几次、上限多少全在这张表。漏了的话，
+    /// 从对手场上复制一个「可攻击 3 次」的随从，复制体退化回 1 次。
+    /// </summary>
+    public IReadOnlyDictionary<SymbolId<KeywordTag>, int> KeywordValues { get; init; }
+        = new Dictionary<SymbolId<KeywordTag>, int>();
+
+    /// <summary>
+    /// 限时修正（本回合 +2/+2、「到下回合结束前获得疾驰」等）。
+    ///
+    /// exact copy 继承的是**此刻的实际状态**，这些修正必须一起带走。
+    /// </summary>
+    public IReadOnlyList<TemporaryModifier> TempModifiers { get; init; }
+        = Array.Empty<TemporaryModifier>();
 }
 
 /// <summary>运行时实体。</summary>
@@ -205,6 +223,8 @@ public sealed class RuntimeEntity
         Keywords = new List<SymbolId<KeywordTag>>(Keywords),
         Traits = new List<SymbolId<TraitTag>>(Traits),
         Counters = new Dictionary<SymbolId<CounterTag>, int>(Counters),
+        KeywordValues = new Dictionary<SymbolId<KeywordTag>, int>(KeywordValues),
+        TempModifiers = new List<TemporaryModifier>(TempModifiers),
     };
 }
 
