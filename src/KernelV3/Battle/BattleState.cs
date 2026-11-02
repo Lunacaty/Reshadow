@@ -1382,7 +1382,7 @@ public sealed class BattleState : IVmWorld
     /// <summary>IVmWorld 接口实现：能力破坏，受保护拦截。</summary>
     void IVmWorld.DestroyEntity(RuntimeEntity e) => DestroyEntity(e);
 
-    public void DestroyEntity(RuntimeEntity e, bool byRule = false)
+    public void DestroyEntity(RuntimeEntity e, bool byRule = false, bool bySuperEvolved = false)
     {
         if (e == null) return;
         if (e.Zone != ZoneRef.Board) return;
@@ -1432,7 +1432,12 @@ public sealed class BattleState : IVmWorld
         RestoreOriginalDef(e);
 
         EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
-        EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
+        EmitEvent(new VmEvent
+        {
+            Kind = CoreEvent.OnDestroy,
+            Subject = EntityRef.From(e),
+            KnockedBackBySuperEvolve = bySuperEvolved,
+        });
     }
 
     /// <summary>
@@ -1543,7 +1548,9 @@ public sealed class BattleState : IVmWorld
     /// 超进化免破坏只拦能力破坏，拦不住生命归零——
     /// 否则 Give -0/-3 这类属性修正把超进化随从打到 0 血也死不了。
     /// </summary>
-    public int ProcessStateBasedActions()
+    public int ProcessStateBasedActions() => ProcessStateBasedActions(false);
+
+    public int ProcessStateBasedActions(bool bySuperEvolved)
     {
         int n = 0;
         foreach (var p in Players)
@@ -1568,7 +1575,7 @@ public sealed class BattleState : IVmWorld
                 // 超进化免破坏 / 护符保护拦截（见 DestroyByState）。
                 if (e.Def?.Kind != Ast.CardKind.Follower) continue;
                 if (e.Life > 0) continue;
-                DestroyByState(e);
+                DestroyByState(e, bySuperEvolved);
                 n++;
             }
         }
@@ -1576,7 +1583,7 @@ public sealed class BattleState : IVmWorld
     }
 
     /// <summary>生命归零的破坏：不受超进化免破坏保护。</summary>
-    private void DestroyByState(RuntimeEntity e)
+    private void DestroyByState(RuntimeEntity e, bool bySuperEvolved = false)
     {
         if (e == null || e.Zone != ZoneRef.Board) return;
 

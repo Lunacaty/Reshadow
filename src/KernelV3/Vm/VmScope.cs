@@ -128,6 +128,16 @@ public sealed class VmEvent
     /// </summary>
     public bool IsManualEvolve { get; init; }
 
+    /// <summary>
+    /// 本次破坏（OnDestroy）是否由处于【超进化】状态的随从直接造成。
+    ///
+    /// 前端据此播放「弹飞撞向所属主战者再碎裂」的专属击飞演出。
+    /// 早先是前端自己记一个全局布尔 _lastHitBySuperEvolved，但演出是排队
+    /// 延迟播放的，播到那一段时标志早已被清空 —— 击飞永远不触发。
+    /// 改由后端在事件上打标，前端只读。
+    /// </summary>
+    public bool KnockedBackBySuperEvolve { get; init; }
+
     /// <summary>变动的计数器名（OnCounterChange 专用）。</summary>
     public string CounterName { get; init; }
 

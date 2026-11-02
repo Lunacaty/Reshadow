@@ -125,7 +125,7 @@ public sealed class CombatResolver
         // 2. 攻击方【攻撃時】/【交戦時】
         // Object 必须带上被攻击方：「每当 X 攻击随从/主战者时」
         // 的 SecondaryFilter 就是靠它判断目标类型的，缺了它谓词恒假。
-        vm?.EnqueueEvent(new VmEvent
+        EmitOrEnqueue(vm, new VmEvent
         {
             Kind = CoreEvent.OnAttack,
             Subject = EntityRef.From(attacker),
@@ -140,14 +140,14 @@ public sealed class CombatResolver
         if (isFollowerTarget)
         {
             // 攻击方的交戦時
-            vm?.EnqueueEvent(new VmEvent
+            EmitOrEnqueue(vm, new VmEvent
             {
                 Kind = CoreEvent.OnClash,
                 Subject = EntityRef.From(attacker),
                 Object = EntityRef.From(defender),
             });
             vm?.StepUntilBlocked();
-            _state.ProcessStateBasedActions();
+            _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
 
             // 被攻击方的交戦時。只有双方都还在场才触发：
             // 若攻击方在第 2 步就用能力破坏了对方，对方已经不在场，跳过。
@@ -171,7 +171,7 @@ public sealed class CombatResolver
             }
             else if (attacker.Zone == ZoneRef.Board && defender.Zone == ZoneRef.Board)
             {
-                vm?.EnqueueEvent(new VmEvent
+                EmitOrEnqueue(vm, new VmEvent
                 {
                     Kind = CoreEvent.OnClash,
                     Subject = EntityRef.From(defender),
@@ -180,7 +180,7 @@ public sealed class CombatResolver
             }
         }
 
-        _state.ProcessStateBasedActions();
+        _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
 
         // ── 第 4～12 步：战斗结算主体 ──
         //
@@ -256,14 +256,14 @@ public sealed class CombatResolver
             // 例外：伤害被屏障 Barrier 抵消时， Bane 不生效（R-6.1）。
             bool blockedByBarrier = dealtToDefender == 0 && defenderHadBarrier;
             if (attackerHasBane && !blockedByBarrier && defender.Zone == ZoneRef.Board)
-                _state.DestroyEntity(defender);
+                _state.DestroyEntity(defender, byRule: false, bySuperEvolved: attacker.IsSuperEvolved);
             // 反击的 Bane 同样被屏障抵消（R-6.1 对称适用）。
             bool blockedAttackerByBarrier = dealtToAttacker == 0 && attackerHadBarrier;
             if (defenderHasBane && !blockedAttackerByBarrier && attacker.Zone == ZoneRef.Board)
-                _state.DestroyEntity(attacker);
+                _state.DestroyEntity(attacker, byRule: false, bySuperEvolved: false);
         }
 
-        _state.ProcessStateBasedActions();
+        _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
 
         // 10. 超进化溢出 1 点（交战破坏对方随从时）
         if (!overflowPaid && attacker.IsSuperEvolved && isFollowerTarget && defender.Zone != ZoneRef.Board)
@@ -276,13 +276,13 @@ public sealed class CombatResolver
         // 既然队列已按「主客场 + 旧→新」排序，这里只需在
         // 每个待机能力结算前确保它仍在正确的主客场序上。
         vm?.StepUntilBlocked();
-        _state.ProcessStateBasedActions();
+        _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
 
         // 两轮收尾：第一轮解决破坏时新产生的待机能力，
         // 第二轮解决那些能力再次引发的破坏（例如谢幕曲再造成伤害）。
         // 不做无限循环：最多两轮，避免互相触发无休止。
         vm?.StepUntilBlocked();
-        _state.ProcessStateBasedActions();
+        _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
     }
 
     /// <summary>
@@ -302,6 +302,20 @@ public sealed class CombatResolver
     /// 统一伤害管线：超进化免伤 -> 易伤 -> 伤害上限 -> 屏障 -> 扣血 -> OnDamaged。
     /// </summary>
     /// <summary>统一伤害管线。返回本次**实际扣减**的生命值（被屏障抵消时为 0）。</summary>
+    /// <summary>
+    /// 事件出口：优先走 _state.EmitEvent（同时写入 EventLog 并转发给 VM）。
+    ///
+    /// 早先这里全是 vm?.EnqueueEvent —— 绕过了 EventLog，
+    /// 前端读不到任何战斗事件，所以「伤害飘字、攻击冲撞、
+    /// 吸血回复」全部是空气。
+    /// </summary>
+    private void EmitOrEnqueue(CardVm vm, VmEvent ev)
+    {
+        if (ev == null) return;
+        if (_state.TriggerSink != null || vm == null) _state.EmitEvent(ev);
+        else { _state.EventLog.Add(ev); vm.EnqueueEvent(ev); }
+    }
+
     public int ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId, CardVm vm = null)
     {
         if (target == null || amount <= 0) return 0;
@@ -322,7 +336,7 @@ public sealed class CombatResolver
             target.Keywords.Remove(barrierKey);
             // 这里只入队、不写 EventLog：能力伤害经 BattleState.ApplyDamage 时
             // 由那个包装器统一 EmitEvent（含日志）。两条路各发一次就成了双份。
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnDamaged, Subject = EntityRef.From(target), Amount = 0 });
+            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnDamaged, Subject = EntityRef.From(target), Amount = 0 });
             return 0;
         }
 
@@ -339,7 +353,7 @@ public sealed class CombatResolver
 
         // 同上：入队由 vm 通道走，日志由 BattleState.ApplyDamage 补。
         // 两边都发会让「当受到伤害时」触发两次（实测 hand+2 而不是 +1）。
-        vm?.EnqueueEvent(new VmEvent
+        EmitOrEnqueue(vm, new VmEvent
         {
             Kind = CoreEvent.OnDamaged,
             Subject = EntityRef.From(target),
@@ -361,6 +375,6 @@ public sealed class CombatResolver
         leader.Life = Math.Min(leader.MaxLife, leader.Life + amount);
         int healed = leader.Life - before;
         if (healed > 0)
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnHealed, Subject = EntityRef.From(leader), Amount = healed });
+            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnHealed, Subject = EntityRef.From(leader), Amount = healed });
     }
 }

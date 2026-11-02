@@ -106,7 +106,7 @@ public sealed class TurnRunner
         // 「同一时机同名只 1 张」由 CardVm.FlushNextTrigger 的按 (CardId, 事件) 去重负责。
 
         // ── 第 7 步：清空待机队列 ──
-        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnStart });
+        EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.TurnStart, PlayerId = playerId });
 
         // ── 第 8 步：常规抽牌（先手第一回合也抽） ──
         // 必须等第 2～7 步的回合初能力**彻底结算完**（含玩家完成所有选择）再抽。
@@ -150,7 +150,7 @@ public sealed class TurnRunner
             e.Counters[cdKey] = cd;
             if (cd == 0)
             {
-                vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnCountdownExpire, Subject = EntityRef.From(e) });
+                EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnCountdownExpire, Subject = EntityRef.From(e) });
                 // 吟唱归 0 的纹章**必须离开纹章区**（76-c 2.2 第 2 步）。
                 // 之前只发了个事件，纹章永远留在场上，纹章区越堆越多。
                 //
@@ -173,7 +173,7 @@ public sealed class TurnRunner
             e.Counters[cdKey] = cd;
             if (cd == 0)
             {
-                vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnCountdownExpire, Subject = EntityRef.From(e) });
+                EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnCountdownExpire, Subject = EntityRef.From(e) });
                 _state.DestroyEntity(e);
             }
         }
@@ -192,7 +192,7 @@ public sealed class TurnRunner
         // ── 第 1〜6 步：三类“回合结束时”能力（自己纹章 / 自己战场 / 对手纹章 / 对手战场）──
         // 实现上统一由 TurnEnd 事件驱动，VM 会按触发器的 DuringTurn 限定逐个对号入座。
         // 不再手写四次循环 —— 那样反而会把同一条能力反复排队。
-        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.TurnEnd });
+        EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.TurnEnd, PlayerId = playerId });
 
         // ── 第 7 步：清空待机队列 → 收尾撤销限时修正 ──
         // 撤销必须排在本回合增益真正用完之后：若回合末能力挂起等选择，
@@ -370,7 +370,7 @@ public sealed class TurnRunner
                 _state.WriteCounter(playerId, rallyKey, _state.ReadCounter(playerId, rallyKey) - 1);
 
             // 自身【入场曲】（优先级 10）
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
 
             // 协作（Rally）：入场曲**彻底结算完**之后才 +1。
             // 入场曲里含 Select 时会挂起等玩家选 —— 直接写在 StepUntilBlocked() 后面
@@ -393,7 +393,7 @@ public sealed class TurnRunner
             // VM 会挂起等玩家输入。直接写在 StepUntilBlocked() 后面意味着
             // **玩家还没选，法术已经进墓地、shadow 已 +1、魔力增幅已触发**，
             // 甚至手牌里其它卡的魔力增幅会插到这次选择之前结算。
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
 
             if (vm != null)
             {
@@ -462,7 +462,7 @@ public sealed class TurnRunner
             // 与普通法术同理，全部排进续体：效果挂了起等选择时，
             // 卡不该提前进墓地，也不该提前把 Def 还原成本体随从 ——
             // 那会让后续的「这张卡是什么」读错。
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
 
             if (vm != null)
             {
@@ -505,7 +505,7 @@ public sealed class TurnRunner
 
             // MoveEntity 内部已通过 NotifySummoned 发过 OnEnterField，这里只补 OnPlay。
             _state.MoveEntity(card, ZoneRef.Board, playerId);
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
             vm?.StepUntilBlocked();
         }
 
@@ -660,7 +660,7 @@ public sealed class TurnRunner
             e.Counters[sbKey] = cur + 1;
             any = true;
         }
-        if (any) vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnSpellboost });
+        if (any) EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnSpellboost });
     }
 
 
@@ -774,7 +774,7 @@ public sealed class TurnRunner
         _state.WriteCounter(playerId, ppKey, _state.ReadCounter(playerId, ppKey) - cost);
 
         amulet.EngagedThisTurn = true;
-        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEngage, Subject = EntityRef.From(amulet) });
+        EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnEngage, Subject = EntityRef.From(amulet) });
         vm?.StepUntilBlocked();
         return true;
     }
@@ -894,7 +894,7 @@ public sealed class TurnRunner
         }
 
         baseCard.FusedThisTurn = true;
-        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnFuse, Subject = EntityRef.From(baseCard) });
+        EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnFuse, Subject = EntityRef.From(baseCard) });
         vm?.StepUntilBlocked();
         return true;
     }
@@ -964,6 +964,21 @@ public sealed class TurnRunner
         return _state.ReadCounter(playerId, sepKey) > 0;
     }
 
+    /// <summary>
+    /// 事件出口：优先走 _state.EmitEvent（会同时写入 EventLog 并转发给 VM），
+    /// 只有在没有 TriggerSink 且有 vm 时才退化为直接入列。
+    ///
+    /// 早先这里直接 vm?.EnqueueEvent —— 绕过了 EventLog，
+    /// 前端 ConsumeNewEventsToVfx 读不到任何记录，
+    /// 于是「手动进化」「回合开始/结束」的演出全是空气。
+    /// </summary>
+    private void EmitOrEnqueue(CardVm vm, VmEvent ev)
+    {
+        if (ev == null) return;
+        if (_state.TriggerSink != null || vm == null) _state.EmitEvent(ev);
+        else { _state.EventLog.Add(ev); vm.EnqueueEvent(ev); }
+    }
+
     public bool Evolve(int playerId, RuntimeEntity e, bool super, CardVm vm)
     {
         bool ok = super ? CanSuperEvolve(playerId) : CanEvolve(playerId);
@@ -1005,9 +1020,23 @@ public sealed class TurnRunner
         // 手动进化反而从不调用 —— 于是靠进化攒奥义的卡永远攒不起来。
         BumpSkyboundGauge(playerId);
 
-        vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnEvolve, Subject = EntityRef.From(e), IsManualEvolve = true });
+        EmitOrEnqueue(vm, new VmEvent
+        {
+            Kind = CoreEvent.OnEvolve,
+            Subject = EntityRef.From(e),
+            PlayerId = playerId,
+            IsManualEvolve = true,
+        });
         if (super)
-            vm?.EnqueueEvent(new VmEvent { Kind = CoreEvent.OnSuperEvolve, Subject = EntityRef.From(e), IsManualEvolve = true });
+        {
+            EmitOrEnqueue(vm, new VmEvent
+            {
+                Kind = CoreEvent.OnSuperEvolve,
+                Subject = EntityRef.From(e),
+                PlayerId = playerId,
+                IsManualEvolve = true,
+            });
+        }
         vm?.StepUntilBlocked();
         return true;
     }
