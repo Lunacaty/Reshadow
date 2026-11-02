@@ -73,6 +73,18 @@ public sealed class PendingChoice
 
     /// <summary>用于 UI 提示的原始文本。</summary>
     public string Prompt { get; init; } = "";
+
+    /// <summary>
+    /// 这次选择能否被玩家撤回（点空白处 / 右键）。
+    ///
+    /// true  —— 发动前预选：出牌 / 进化 / 启动时的指向与选模式。
+    ///          此刻卡尚未进场、PP/EP 尚未扣除，点空白处应整个取消、零损耗退回。
+    /// false —— 结算中必选：已抽牌 / 已发现 / 被动触发。玩家已看到不可逆信息，
+    ///          取消等于作弊。
+    ///
+    /// 默认 false：未显式标记为预选的挂起都不许撤回。
+    /// </summary>
+    public bool CanCancel { get; init; }
 }
 
 public enum ChoiceKind

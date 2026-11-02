@@ -111,7 +111,15 @@ public sealed partial class CardVm
             if (min > max) min = max;
 
             // 只有一个候选且只选一个：直接确定，不必打扰玩家
-            if (pool.Count == 1 && max == 1)
+            // 有预选答案排队时**不能**走「单候选自动绑定」：
+            // 预扫描阶段是按当时的局面问的（可能有多个候选），
+            // 这里若自动绑定就跳过了 Block，答案永远不会被消费，
+            // 后续节点会拿到错位的答案。
+            // 让它照常 Block 一次，由 StepUntilBlocked 用预选答案当场消解。
+            bool hasPreCommit = scope.PreCommittedChoices != null
+                                && scope.PreCommittedChoices.Count > 0;
+
+            if (!hasPreCommit && pool.Count == 1 && max == 1)
             {
                 var only = _world.GetLive(pool[0].EntityId, pool[0].EntrySerial);
                 if (only != null)

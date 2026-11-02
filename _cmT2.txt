@@ -1,0 +1,35 @@
+feat(113 专题二): 发动前预选事务 —— 先选目标再扣费，可取消
+
+按 114 号文档的指导重做。核心洞察是：
+**不要改 DoSelect / ResolveOrBlock / DoBranch 任何一行**，
+而是在 StepUntilBlocked 拦 blocked，当场调 SubmitChoice 消解。
+它们需要输入时全走 Block()，恢复时全走 SubmitChoice() ——
+现成逻辑会自动完成 ResolvedChoiceIp、目标绑定、模式分支压栈。
+
+【114 指出的三个真凶】
+  1. 大量「选目标」卡编译成单条 DealDamageNode，走 ResolveOrBlock，
+     根本不过 DoSelect —— 我上一版只在 DoSelect 里做消费，自然无效。
+  2. ResolveOrBlock / DoSelect 第一件事是 scope.Clear(slot)，
+     建帧时提前绑进 Scope 的目标会被当场清空。
+  3. 队列挂在 VmFrame 上，ConditionalNode 压子帧时会丢；
+     挂 VmScope 才能被 Derive() 一路继承。
+
+【实现】
+  · PendingChoice.CanCancel（Block 重建时保留）
+  · VmScope.PreCommittedChoices + Derive 共享同一引用
+  · RuntimeEntity.PreCommittedChoices：答案挂在发起操作那张卡上
+  · FlushNextTrigger 只在「isSelfAbility && 主动事件」时挂载队列 ——
+    旁观卡与开场初始化事件永远偷不到答案
+  · StepUntilBlocked 拦 blocked：有答案当场 SubmitChoice 并 continue
+  · ResolveOrBlock 单候选自动绑定时，若队列非空则跳过（否则答案永不被消费）
+  · MatchRunner 托管 PreActionSession，不碰 CardVm.Pending
+    （Block 会重建 Pending，外部设进去的值会被覆盖）
+  · DrainVm 支持 AutoChoicePolicy 自动答预选，Bot 与回归不会卡死
+
+【实测】
+  出牌后：挂起=True 敌血未变 手牌未减 PP未扣
+  提交后：[blk] submitted ok → 法术进墓地、手牌减少、不再二次弹窗
+
+【验证】
+  ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 /
+  测试集效用 12-12 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 / 战斗 UI 31-31

@@ -93,6 +93,15 @@ public sealed class VmScope
     public void Clear(string slot) => Registers.Remove(slot);
 
     /// <summary>派生一个子作用域（循环体 / 子帧）。寄存器独立，来源信息继承。</summary>
+    /// <summary>
+    /// 玩家在发动前预选阶段已选好的答案队列。
+    ///
+    /// **挂在作用域上而不是帧上**：条件分支、模式分支、替代分支都会
+    /// PushBody 出新帧，帧上的属性不会传下去；而 Derive() 会把作用域
+    /// 一路继承给所有子帧。挂在 scope 上，整棵子帧树共享同一个队列。
+    /// </summary>
+    public Queue<IReadOnlyList<int>> PreCommittedChoices { get; set; }
+
     public VmScope Derive()
     {
         var s = new VmScope
@@ -104,6 +113,8 @@ public sealed class VmScope
             Event = Event,
             Chosen = Chosen,
             LoopDepth = LoopDepth + 1,
+            // 关键：子帧共享同一个队列引用，而不是复制一份。
+            PreCommittedChoices = PreCommittedChoices,
         };
         foreach (var kv in Registers) s.Registers[kv.Key] = new List<EntityRef>(kv.Value);
         return s;

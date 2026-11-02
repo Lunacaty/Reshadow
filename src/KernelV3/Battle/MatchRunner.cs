@@ -35,6 +35,9 @@ public sealed class MatchRunner
     private readonly GameSchema _schema;
     private readonly TurnRunner _turns;
     private readonly CardVm _vm;
+
+    /// <summary>发动前预选会话；null 表示不在预选中。</summary>
+    private PreActionSession _preAction;
     private readonly CombatResolver _combat;
 
     public MatchRunner(BattleState state, GameSchema schema = null)
@@ -362,10 +365,31 @@ public sealed class MatchRunner
     public CombatResolver Combat => _combat;
 
     /// <summary>当前挂起的选择（无挂起时为 null）。</summary>
-    public PendingChoice PendingChoice => _vm?.Pending;
+    /// <summary>当前挂起的选择：预选优先，其次才是 VM 结算中的挂起。</summary>
+    public PendingChoice PendingChoice => _preAction?.CurrentPrompt ?? _vm?.Pending;
 
-    /// <summary>VM 是否正在等玩家做选择。此时禁止任何主动操作。</summary>
-    public bool IsWaitingForInput => _vm != null && _vm.Pending != null;
+    /// <summary>
+    /// 是否在等玩家输入。
+    ///
+    /// 预选阶段由 MatchRunner 自己持有会话，**完全不碰 _vm.Pending** ——
+    /// 因为 Block() 会重建 PendingChoice，外部设进去的值会被覆盖。
+    /// </summary>
+    public bool IsWaitingForInput
+        => _preAction != null || (_vm != null && _vm.Pending != null);
+
+    /// <summary>当前的发动前预选会话；null 表示不在预选中。</summary>
+    public PreActionSession PreAction => _preAction;
+
+    /// <summary>
+    /// 取消发动前预选：卡退回手牌，PP/EP 零消耗。
+    /// 结算中必选（已抽牌/已发现）不允许取消。
+    /// </summary>
+    public bool CancelPendingChoice()
+    {
+        if (_preAction == null) return false;
+        _preAction = null;
+        return true;
+    }
 
     /// <summary>
     /// 自动选择策略。
@@ -381,6 +405,17 @@ public sealed class MatchRunner
         int guard = 0;
         while (true)
         {
+            // 发动前预选阶段：没有自动策略就停下等 UI；
+            // 有策略（Bot / 回归）就自动答完并提交，否则整局会卡死在预选上。
+            if (_preAction != null && _preAction.CurrentPrompt != null)
+            {
+                if (AutoChoicePolicy == null) return;
+                if (++guard > 500) throw new InvalidOperationException("自动预选死循环");
+                var autoChosen = AutoChoicePolicy.Select(_state, _preAction.CurrentPrompt);
+                SubmitPreActionChoice(autoChosen);
+                continue;
+            }
+
             var status = _vm.StepUntilBlocked();
             if (CheckFinished()) return;
             if (status != VmStatus.WaitingForInput || _vm.Pending == null) return;
@@ -394,6 +429,13 @@ public sealed class MatchRunner
     /// <summary>外部提交一次选择，然后继续推进。</summary>
     public bool SubmitChoice(int choiceId, IReadOnlyList<int> selectedIds)
     {
+        // 发动前预选：答案交给会话，卡还没上场、VM 还没开始跑。
+        if (_preAction != null)
+        {
+            SubmitPreActionChoice(selectedIds);
+            return !CheckFinished();
+        }
+
         if (_vm.Pending == null || _vm.Pending.ChoiceId != choiceId) return false;
         _vm.SubmitChoice(choiceId, selectedIds);
         DrainVm();
@@ -409,7 +451,92 @@ public sealed class MatchRunner
     public bool PlayCard(RuntimeEntity card)
     {
         if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
+
+        // 发动前预选：先问目标/模式，问完才真正出牌。
+        if (!TryStartPreAction(PlayerActionKind.PlayCard, card)) return false;
+        if (_preAction != null)
+        {
+            // 已挂起等预选。Bot / 回归设了自动策略时，这里要顺手把它答完，
+            // 否则调用方看到「有挂起」就停手，整局卡死在预选上。
+            DrainVm();
+            return true;
+        }
+
         bool ok = _turns.PlayCard(_state.ActivePlayer, card, _vm);
+        DrainVm();
+        return ok;
+    }
+
+    /// <summary>
+    /// 尝试为一次主动操作发起预选。
+    ///
+    /// 返回 false 表示这张卡根本没有前置必选，调用方按常规流程继续；
+    /// 返回 true 表示答案已备齐（或没有必选），可以提交。
+    /// 发起后若 _preAction 非空，说明正在等玩家选，本次操作挂起。
+    /// </summary>
+    private bool TryStartPreAction(PlayerActionKind kind, RuntimeEntity subject)
+    {
+        if (subject?.Def?.Abilities == null) return true;
+
+        var probe = PreChoiceInspector.Inspect(_state, subject, kind,
+                                               Array.Empty<IReadOnlyList<int>>());
+        if (probe.Prompt == null) return true;   // 没有前置必选
+
+        _preAction = new PreActionSession
+        {
+            ActionKind = kind,
+            PlayerId = subject.PlayerId,
+            Subject = subject,
+            CurrentPrompt = probe.Prompt,
+        };
+        return true;
+    }
+
+    /// <summary>
+    /// 提交一次预选答案。
+    ///
+    /// 答完的答案写进**发起操作那张卡**的 PreCommittedChoices，
+    /// 再真正执行出牌/进化；CardVm 在 StepUntilBlocked 里遇到挂起时会
+    /// 从作用域上的同一队列里取值当场消解，不再二次弹窗。
+    /// </summary>
+    public bool SubmitPreActionChoice(IReadOnlyList<int> chosen)
+    {
+        if (_preAction == null) return false;
+        _preAction.Answers.Add(chosen ?? Array.Empty<int>());
+        _preAction.CurrentPrompt = null;
+
+        var again = PreChoiceInspector.Inspect(_state, _preAction.Subject,
+                                               _preAction.ActionKind, _preAction.Answers);
+        if (again.Prompt != null)
+        {
+            _preAction.CurrentPrompt = again.Prompt;
+            return true;   // 还有下一处必选
+        }
+
+        var session = _preAction;
+        _preAction = null;
+
+        // 答案交给发起操作的那张卡
+        session.Subject.PreCommittedChoices = new Queue<IReadOnlyList<int>>();
+        foreach (var a in session.Answers)
+            session.Subject.PreCommittedChoices.Enqueue(a);
+
+        bool ok;
+        switch (session.ActionKind)
+        {
+            case PlayerActionKind.Evolve:
+                ok = _turns.Evolve(session.PlayerId, session.Subject, false, _vm);
+                break;
+            case PlayerActionKind.SuperEvolve:
+                ok = _turns.Evolve(session.PlayerId, session.Subject, true, _vm);
+                break;
+            case PlayerActionKind.EngageAmulet:
+                ok = _turns.EngageAmulet(session.PlayerId, session.Subject, _vm);
+                break;
+            default:
+                ok = _turns.PlayCard(session.PlayerId, session.Subject, _vm);
+                break;
+        }
         DrainVm();
         return ok;
     }

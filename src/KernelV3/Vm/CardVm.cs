@@ -250,7 +250,27 @@ public sealed partial class CardVm
 
                 // 执行一个原子节点。返回 true 表示已挂起等输入。
                 bool blocked = ExecNode(node, frame);
-                if (blocked) { Status = VmStatus.WaitingForInput; return Status; }
+                if (blocked)
+                {
+                    // 发动前预选：当前作用域带着玩家已经选好的答案，
+                    // 当场调 SubmitChoice 原地消解，绝不二次弹窗。
+                    //
+                    // 关键：**不改 DoSelect / ResolveOrBlock / DoBranch 的任何一行**。
+                    // 它们需要玩家输入时全都走 Block()，恢复时全都走 SubmitChoice()。
+                    // 在这里当场 Submit 一次，等同于玩家刚刚立刻点选 ——
+                    // frame.ResolvedChoiceIp、目标绑定、模式分支压栈全部由现成逻辑完成。
+                    if (Pending != null
+                        && frame.Scope?.PreCommittedChoices != null
+                        && frame.Scope.PreCommittedChoices.Count > 0)
+                    {
+                        var preAnswer = frame.Scope.PreCommittedChoices.Dequeue();
+                        SubmitChoice(Pending.ChoiceId, preAnswer);
+                        continue;
+                    }
+
+                    Status = VmStatus.WaitingForInput;
+                    return Status;
+                }
 
                 // 节点执行成功才推进 Ip（挂起时不推进，恢复后重跑本节点）
                 frame.Ip++;
@@ -665,6 +685,20 @@ public sealed partial class CardVm
                 // 判据只看「这一条能力属不属于事件主体自己」，与卡名、事件种类无关。
                 bool isSelfAbility = ev.Subject != null
                                      && ev.Subject.Value.EntityId == e.EntityId;
+
+                // 只有「事件主体自身的主动能力」才挂载预选答案。
+                // 旁观卡（isSelfAbility == false）与初始化事件绝不触碰，
+                // 否则开场那批 TurnStart 会把答案提前吃光。
+                bool isPrimaryEvent = ev.Kind == CoreEvent.OnPlay
+                                   || ev.Kind == CoreEvent.OnEvolve
+                                   || ev.Kind == CoreEvent.OnSuperEvolve
+                                   || ev.Kind == CoreEvent.OnEngage;
+
+                if (isSelfAbility && isPrimaryEvent && e.PreCommittedChoices != null)
+                {
+                    scope.PreCommittedChoices = e.PreCommittedChoices;
+                }
+
                 (isSelfAbility ? selfTier : watchTier).Add((ab.Body, scope));
             }
         }

@@ -200,6 +200,15 @@ public sealed class RuntimeEntity
     /// </summary>
     public List<TemporaryModifier> TempModifiers { get; } = new();
 
+    /// <summary>
+    /// 玩家在发动前预选阶段已选好的答案队列。
+    ///
+    /// 暂存在**发起操作的那张卡**身上，由 FlushNextTrigger 只交给
+    /// 「事件主体自身的主动能力」那一帧。这样旁观卡与入场初始化事件
+    /// 永远不可能偷吃答案。
+    /// </summary>
+    public Queue<IReadOnlyList<int>> PreCommittedChoices { get; set; }
+
     public EntitySnapshot TakeSnapshot() => new()
     {
         EntityId = EntityId,

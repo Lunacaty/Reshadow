@@ -105,6 +105,21 @@ public sealed class BattleSessionController
     public BranchModeNode GetPendingBranchModeNode()
     {
         if (Runner.PendingChoice?.Kind != ChoiceKind.SelectMode) return null;
+
+        // 发动前预选阶段 VM 还没开始跑、没有任何帧，
+        // 此时要从这张卡的 AST 里把那个 BranchModeNode 找回来。
+        if (Runner.PreAction?.Subject != null)
+        {
+            foreach (var ab in Runner.PreAction.Subject.Def?.Abilities ??
+                                new System.Collections.Generic.List<ShadowverseFan.KernelV3.Ast.AbilityDef>())
+            {
+                if (ab?.Body == null) continue;
+                foreach (var n in ab.Body)
+                    if (n is BranchModeNode bm && bm.Kind == ModeDispatchKind.Choose) return bm;
+            }
+            return null;
+        }
+
         var frames = Runner.Vm?.Frames;
         if (frames == null || frames.Count == 0) return null;
         var top = frames[^1];
