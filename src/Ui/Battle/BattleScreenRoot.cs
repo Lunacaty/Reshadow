@@ -273,7 +273,12 @@ public partial class BattleScreenRoot : Control
         // 但界面不动。玩家看到的是「叮当天使进化后卡住了」——
         // 实际上只要再做一个带 Rebuild() 的操作（出牌、攻击），
         // 画面立刻正常，进化时抽的牌也才显示出来。
-        _actionPanel.OnEntityChanged += _ => Rebuild();
+        _actionPanel.OnEntityChanged += _ =>
+        {
+            Rebuild();
+            // 进化/启动/融合都会改状态：把动画排进队列，播完前锁操作。
+            if (_ctrl?.State != null) ConsumeNewEventsToVfx();
+        };
 
         AddChild(_actionPanel);
 
@@ -320,6 +325,7 @@ public partial class BattleScreenRoot : Control
         // 卡就停在半路追不上。
         StepDragFollow((float)delta);
         _anims.Step((float)delta);
+        ApplyMotionsToWidgets();
 
         // 表演队列：先进先出，一段播完接下一段
         if (_seq.Step((float)delta))
@@ -496,6 +502,8 @@ public partial class BattleScreenRoot : Control
             w.OnDragAttackReleased += (ent, pos) => ReleaseAttack(pos);
 
             row.AddChild(w);
+            // 记录容器给的座位坐标，之后动画只叠加偏移。
+            w.CallDeferred(nameof(BoardUnitWidget.RememberSeat));
 
             // 记下实体的屏幕中心：事件到来时要往这里播特效。
             var cap = e;
@@ -657,6 +665,19 @@ public partial class BattleScreenRoot : Control
                     .Then(new Anim(0.26f, Ease.Linear, _ => { })));
                 break;
 
+            case CoreEvent.TurnStart:
+                // 回合开始也要排队：播完才能操作。
+                _seq.Enqueue(new Seq()
+                    .Do(() => _rightCol?.QueueRedraw())
+                    .Wait(0.24f));
+                break;
+
+            case CoreEvent.TurnEnd:
+                _seq.Enqueue(new Seq()
+                    .Do(() => _rightCol?.QueueRedraw())
+                    .Wait(0.18f));
+                break;
+
             case CoreEvent.OnTransform:
                 _seq.Enqueue(new Seq()
                     .Do(() => _vfx.PlayTransform(pos))
@@ -711,6 +732,34 @@ public partial class BattleScreenRoot : Control
     /// 如果挂在会随 Rebuild 销毁的容器里，玩家一操作数字就被抹掉了。
     /// 主战者与随从都走这里。
     /// </summary>
+    /// <summary>
+    /// 把调度器里的运动状态写到每个棋子控件的真实变换上。
+    ///
+    /// 这是 UI 层的唯一位置真相：控件的 Position 就是它看起来的位置，
+    /// 因此命中判定（GetGlobalRect）与视觉永远一致 ——
+    /// 之前用 _Draw 里的 DrawSetTransform 偏移，导致「看得见但点不中」。
+    /// </summary>
+    private void ApplyMotionsToWidgets()
+    {
+        ApplyMotionsIn(_boardAlly);
+        ApplyMotionsIn(_boardFoe);
+    }
+
+    private void ApplyMotionsIn(Node container)
+    {
+        if (container == null || _anims == null) return;
+
+        foreach (var w in container.GetChildren()
+                     .SelectMany(c => c is CenterContainer cc
+                         ? cc.GetChildren().SelectMany(r => r.GetChildren())
+                         : c.GetChildren())
+                     .OfType<BoardUnitWidget>())
+        {
+            if (w.Entity == null) continue;
+            w.ApplyMotion(_anims.MotionOf(w.Entity.EntityId));
+        }
+    }
+
     /// <summary>在指定位置放一簇光点。坐标是全局坐标，这里转成本层局部坐标。</summary>
     private void SpawnBurst(Vector2 globalPos, int count, float spread, Color tint,
                             float life = 0.7f, float gravity = 60f, float size = 3.2f)

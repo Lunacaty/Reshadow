@@ -81,6 +81,62 @@ public partial class BoardUnitWidget : Control
         QueueRedraw();
     }
 
+    /// <summary>
+    /// 把动画状态写进控件的**真实** Position / Scale / Modulate。
+    ///
+    /// 为什么不能用 DrawSetTransform 在 _Draw 里偏移：
+    ///   那样控件本身仍占着座位坐标，于是
+    ///     · 命中判定（GetGlobalRect）与视觉位置错位 —— 攻击点不中随从；
+    ///     · 动画结束后视觉「瞬移」回座位，但玩家以为是别的卡；
+    ///     · 与前后端分离冲突：UI 层出现了两个位置真相（绘制位置 / 控件位置）。
+    ///   改为直接移动控件：视觉、命中、布局三者永远一致。
+    ///
+    /// 由 BoardAnimDirector 每帧驱动（见 BattleScreenRoot._Process）。
+    /// </summary>
+    public void ApplyMotion(UnitMotion m)
+    {
+        // 静止态完全不碰控件的 Position/Scale/Modulate ——
+        // 那些由容器布局（CenterContainer / HBoxContainer）负责。
+        // 早先每帧无条件写 Position，会和布局互相覆盖，把棋子挤成白块。
+        if (m.IsIdle)
+        {
+            if (_motionApplied)
+            {
+                Position = _seatPosition;
+                Scale = Vector2.One;
+                Modulate = Colors.White;
+                _motionApplied = false;
+            }
+            return;
+        }
+
+        if (!_motionApplied)
+        {
+            // 首次进入动画：此刻的 Position 就是座位坐标
+            _seatPosition = Position;
+            _motionApplied = true;
+        }
+
+        Position = _seatPosition + m.Offset;
+
+        float flipScale = Mathf.Abs(Mathf.Cos(Mathf.Pi * m.FlipX));
+        Scale = new Vector2(m.Scale * flipScale, m.Scale);
+
+        Modulate = new Color(1, 1, 1, Mathf.Clamp(m.Alpha, 0f, 1f));
+    }
+
+    private bool _motionApplied;
+
+    /// <summary>记住容器给这条棋子的座位坐标（布局阶段调用，之后只叠加偏移）。</summary>
+    public void RememberSeat()
+    {
+        _seatPosition = Position;
+        _motionOffset = Vector2.Zero;
+    }
+
+    private Vector2 _seatPosition;
+    private Vector2 _motionOffset;
+
     /// <summary>触发时机能力时调用：播放一圈光效。</summary>
     public void PlayTriggerFlash()
     {
@@ -110,31 +166,9 @@ public partial class BoardUnitWidget : Control
     {
         if (Entity?.Def == null) return;
 
-        // ---- 应用动画变换 ----
-        // 用 DrawSetTransform 而不是改 Position/Scale：
-        // 控件仍占着原有座位与命中框，动画只是绘制层面的偏移，
-        // 不会让「点击判定」和「视觉位置」错位。
-        var m = Director?.MotionOf(Entity.EntityId) ?? UnitMotion.Idle;
-        bool transformed = !m.IsIdle;
-
-        if (transformed)
-        {
-            // FlipX: 0→1 表示水平翻面；用 X 缩放压到 0 再展开来表现
-            float flipScale = Mathf.Abs(Mathf.Cos(Mathf.Pi * m.FlipX));
-
-            var pivot = new Vector2(W * 0.5f, H * 0.5f);
-            DrawSetTransform(
-                pivot + m.Offset,
-                m.FlipX > 0.25f && m.FlipX < 0.75f ? Mathf.Pi : 0f,
-                new Vector2(m.Scale * flipScale, m.Scale));
-            Modulate = new Color(1, 1, 1, Mathf.Clamp(m.Alpha, 0f, 1f));
-        }
-        else
-        {
-            Modulate = Colors.White;
-        }
-
         var def = Entity.Def;
+        // 动画变换由 BoardUnitWidget.ApplyMotion 写到控件的 Position/Scale 上，
+        // 不在 _Draw 里做 —— 见 ApplyMotion 的注释说明为什么必须如此。
         var font = ThemeDB.FallbackFont;
         Color clanCol = SvWbTheme.ClanColor(def.Clan.IsValid ? def.Clan.Name : null);
 
@@ -270,6 +304,78 @@ public partial class BoardUnitWidget : Control
     }
 
     /// <summary>
+    /// 把立绘按棋子外轮廓逐行裁切后画出来。
+    ///
+    /// 参数 src 是「已按比例裁好的源矩形」，dst 是目标矩形。
+    /// 对每一行：算出该行在轮廓内的左右边界，只画这一段。
+    /// </summary>
+    private void DrawArtClippedToOutline(Texture2D tex, Rect2 dst, Rect2 src, bool isAmulet)
+    {
+        const int ROW = 2;
+        int rows = Mathf.CeilToInt(dst.Size.Y / ROW);
+
+        float cx = dst.Position.X + dst.Size.X * 0.5f;
+
+        for (int i = 0; i < rows; i++)
+        {
+            float y0 = dst.Position.Y + i * ROW;
+            float h = Mathf.Min(ROW, dst.Position.Y + dst.Size.Y - y0);
+            if (h <= 0f) break;
+
+            // 取该行中线去问轮廓宽度，避免边缘抖动
+            float half = HalfWidthAt(y0 + h * 0.5f, isAmulet);
+            if (half <= 0.5f) continue;
+
+            float full = half * 2f;
+            float x0 = cx - half;
+
+            // 对应的源矩形：按比例映射到 src
+            float v0 = (y0 - dst.Position.Y) / dst.Size.Y;
+            float vh = h / dst.Size.Y;
+            var s = new Rect2(
+                src.Position.X + (0f) * src.Size.X,
+                src.Position.Y + v0 * src.Size.Y,
+                src.Size.X,
+                vh * src.Size.Y);
+
+            DrawTextureRectRegion(tex, new Rect2(x0, y0, full, h), s);
+        }
+    }
+
+    /// <summary>
+    /// 轮廓在局部坐标 y 处的半宽。
+    /// 数据来自 ArtClipPolygon：拱顶 (48,8) → 肩 (23,14)/(73,14) → 直身 (9,38)/(87,38)。
+    /// </summary>
+    private static float HalfWidthAt(float y, bool isAmulet)
+    {
+        float cx = W * 0.5f;
+
+        if (isAmulet)
+        {
+            // 护符是切角矩形：顶部 9..20 斜切，其余直身
+            if (y < 9f) return 0f;
+            if (y < 20f)
+            {
+                float t = (y - 9f) / 11f;
+                return Mathf.Lerp(W * 0.5f - 11f, W * 0.5f - 6f, t);
+            }
+            return W * 0.5f - 6f;
+        }
+
+        const float archTop = 8f, archEnd = 38f;
+
+        if (y <= archTop) return 0f;
+        if (y >= archEnd) return W * 0.5f - 9f;
+
+        // 二次贝塞尔：顶点(0) → 肩(24,6) → 直身(39,30)，取相对中心的半宽
+        float u = (y - archTop) / (archEnd - archTop);
+        float p1 = (cx - W * 0.24f);
+        float p2 = cx - 9f;
+        float q = 2f * (1f - u) * u;
+        return q * p1 + u * u * p2;
+    }
+
+    /// <summary>
     /// 从纹理里取一块与目标区域等宽高比的源矩形（居中裁切）。
     ///
     /// 这样 DrawTextureRectRegion 画出来既不变形，也不会超出目标矩形 ——
@@ -297,6 +403,37 @@ public partial class BoardUnitWidget : Control
         }
     }
 
+    /// <summary>
+    /// 棋子的可绘区域多边形（上拱下方）。
+    ///
+    /// 立绘必须被这个形状裁掉 —— 之前用的是矩形 Rect2，
+    /// 于是拱顶被方形立绘填满，看起来「立绘超出了边框」。
+    /// </summary>
+    private static Vector2[] ArtClipPolygon(bool isAmulet)
+    {
+        if (isAmulet)
+        {
+            return new Vector2[]
+            {
+                new(11f, 9f), new(W - 11f, 9f),
+                new(W - 6f, 20f), new(W - 6f, H - 12f),
+                new(6f, H - 12f), new(6f, 20f),
+            };
+        }
+
+        // 随从：与 DrawFollowerArch 的 inner 多边形一致，再内缩 2px
+        return new Vector2[]
+        {
+            new(9f, 38f),
+            new(W * 0.24f, 14f),
+            new(W * 0.5f, 8f),
+            new(W * 0.76f, 14f),
+            new(W - 9f, 38f),
+            new(W - 9f, H - 11f),
+            new(9f, H - 11f),
+        };
+    }
+
     private void DrawArtwork(Color clanCol, CardDef def, bool isAmulet)
     {
         var art = new Rect2(8f, 14f, W - 16f, H - 30f);
@@ -315,8 +452,23 @@ public partial class BoardUnitWidget : Control
             // 这里用「按 art 比例裁源矩形」：取纹理中心最大可用块，
             // 做到不变形且绝不越界。
             var src = FitSourceRect(tex.GetSize(), art.Size);
-            DrawTextureRectRegion(tex, art, src);
-            DrawRect(art, new Color(0, 0, 0, 0), false, 0f); // 占位保持绘制顺序
+
+            // DrawTextureRectRegion 的源矩形必须落在纹理内。
+            // 浮点宽高比不同会差出一两个像素，越界时 Godot 直接画空白 ——
+            // 表现就是「路径对、文件在、却是白块」。这里钳到纹理边界内。
+            var ts = tex.GetSize();
+            float sw = Mathf.Min(src.Size.X, ts.X);
+            float sh = Mathf.Min(src.Size.Y, ts.Y);
+            float sx = Mathf.Clamp(src.Position.X, 0f, Mathf.Max(0f, ts.X - sw));
+            float sy = Mathf.Clamp(src.Position.Y, 0f, Mathf.Max(0f, ts.Y - sh));
+
+            // 按拱形轮廓逐行裁切。
+            //
+            // CanvasItem 没有「按多边形裁剪自绘」的 API，ClipContents 只能裁矩形，
+            // 所以用扫描线：每一行只画该行在轮廓内的那一段。
+            //
+            // 行高 2px 足够 —— 棋子只有 96 宽，再细肉眼也看不出阶梯。
+            DrawArtClippedToOutline(tex, art, new Rect2(sx, sy, sw, sh), isAmulet);
             return;
         }
 

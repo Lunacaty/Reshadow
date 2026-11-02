@@ -113,6 +113,9 @@ public partial class DevShot : Node
     private void OpenBattle()
     {
         var root = FindRoot();
+        GD.Print("[art] root=" + ShadowverseFan.Ui.ContentPaths.Root);
+        GD.Print("[art] path(10001110)=" + ShadowverseFan.Ui.ContentPaths.CardArtPath(10001110)
+                 + " exists=" + System.IO.File.Exists(ShadowverseFan.Ui.ContentPaths.CardArtPath(10001110)));
         root?.OpenBattleForShot(_battleExpanded, _battleBadges, _battleMulligan, _battleBoard);
     }
 
