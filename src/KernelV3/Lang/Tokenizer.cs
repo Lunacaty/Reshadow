@@ -26,7 +26,24 @@ public sealed class Lexicon
     /// </summary>
     public GameSchema Schema { get; }
 
-    public Lexicon(GameSchema schema = null) => Schema = schema ?? GameSchema.CreateDefault();
+    public Lexicon(GameSchema schema = null)
+    {
+        Schema = schema ?? GameSchema.CreateDefault();
+
+        // 必须把 Schema 里**已注册**的关键词 / 兵种 / 职业同步进词法表。
+        //
+        // 早先这里只写了 Schema = ...，词法表是空的。于是
+        // Tokenizer.Classify("Drain") 调 IsKeyword 返回 false，
+        // 把 Drain 当成普通 Word 交给 ActionParser，
+        // 落到 default 分支：不是 Keyword → 返回 null → 报
+        // 「无法解析的动作：停在 [Drain]」。
+        //
+        // 这类报错看起来像「卡池没定义关键词」，实际上 Schema 里全都有，
+        // 只是两个表各管各的、从没同步过。
+        foreach (var k in Schema.Keywords.All) _keywords.Add(k.Name);
+        foreach (var t in Schema.Traits.All) _traits.Add(t.Name);
+        foreach (var c in Schema.Clans.All) _clans.Add(c.Name);
+    }
 
     private readonly Dictionary<string, int> _cardNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _cardIds = new(StringComparer.OrdinalIgnoreCase);

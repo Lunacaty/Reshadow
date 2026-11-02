@@ -1518,19 +1518,26 @@ public partial class BattleScreenRoot : Control
 
         float boardW = 700f * sx;
         float boardX = arena.X - boardW * 0.5f;
-        float rowGap = 96f * sy;
         float halfUnit = BoardUnitWidget.UnitH * 0.5f;
+
+        // 两排棋子的竖直偏移**不对称**：
+        //   敌方可以贴中线往上，我方必须给「出牌判定线」留出空间。
+        // 720p 下原先是 ±96，我方底边落在 510，而出牌线在 500 ——
+        // 随从压进了拖牌时的提示区域，蓝框一亮就盖住半张卡。
+        // 现在把我方那排上收，底边与判定线保持 24px 间隔。
+        float foeGap = 104f * sy;
+        float allyGap = 64f * sy;
 
         if (_boardFoe != null)
         {
-            _boardFoe.Position = new Vector2(boardX, arena.Y - rowGap - halfUnit);
+            _boardFoe.Position = new Vector2(boardX, arena.Y - foeGap - halfUnit);
             _boardFoe.Size = new Vector2(boardW, 0);
             _boardFoe.CustomMinimumSize = new Vector2(boardW, 0);
         }
 
         if (_boardAlly != null)
         {
-            _boardAlly.Position = new Vector2(boardX, arena.Y + rowGap - halfUnit);
+            _boardAlly.Position = new Vector2(boardX, arena.Y + allyGap - halfUnit);
             _boardAlly.Size = new Vector2(boardW, 0);
             _boardAlly.CustomMinimumSize = new Vector2(boardW, 0);
         }
