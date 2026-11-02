@@ -1,0 +1,40 @@
+fix: 补全卡包字段 —— 纹章/信仰全部生效，官方池 982 张零错误
+
+【澄清 pack.json 的真实作用】
+  它是引擎启动时的**卡包清单**，不是编译产物：
+    GameSessionStore.Initialize()
+      -> GlobalCatalog.LoadAll(packsRoot)
+           -> CardPackLoader.LoadAll() 逐个读 data/packs/*/pack.json
+                -> 每张卡的 text / alt_modes 交给 EnglishCompiler
+
+  也就是说卡牌数据 99% 来自这里，data/cards/ 下那两份源数据
+  在 src/ 里**引用次数为 0**，只有 tools/ 脚本用过。
+  （唯一例外：testset_cards.json 被 TestsetLoader 用于回归门禁）
+
+【补齐的字段】
+  1. alt_modes —— 87 张卡的纹章/信仰定义，之前整字段丢失。
+     这是当初 .tmp_conv5.py 一次性转换时漏写的。
+     补后：CrestDef 72 张、FaithDef 5 张全部生效。
+     Aria（10114110）的理想纹章终于有 1 条能力，
+     不再是「名字对、能力全空」的空壳。
+  2. rarity —— 按源数据修正 14 处不一致
+  3. name_chs —— 按中文源修正 1 处
+
+【ParseReplace 牌组名超长捕获】
+  "replace your deck with the Mjerrabaine Deck and transform ..."
+  原来一路吞到句号，把后半句也当成牌组名，查表必然失败。
+  改为遇到 and / then / transform / give / deal 等动词就停。
+
+【Mjerrabaine Deck 定义】
+  源数据只有引用、没有构成。按用户给出的规则补上：
+  「Mjerrabaine Deck = 所有编号 103 开头的非 Token 卡」= 77 张
+  （Neutral 7 张 + 其余七职业各 10 张，构成吻合）。
+
+【结果】
+  official Ok=True 错误=0，982 张卡
+  CrestDef 72 / FaithDef 5 全部非空
+
+【验证】
+  ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 /
+  Combat 16-16 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 / 战斗 UI 31-31
+  （Mjerrabaine 矩阵 31/32 是测试集卡 81000031 的独立问题，与本次无关）

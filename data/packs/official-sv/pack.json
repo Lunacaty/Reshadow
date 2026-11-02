@@ -1472,7 +1472,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Aria, Lady of the Woods</i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Summon 3 copies of <b><i><color=Keyword>Fairy</color></i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】使自己获得『纹章：自然妖精公主·阿丽雅』。\n<hr><ev>【<color=Keyword>进化时</color>】召唤3个『<color=Keyword>妖精</color>』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied Pixie follower enters the field, give it <b><color=Keyword>Storm</color></b>."
+    }
+   ]
   },
   {
    "card_id": 10114120,
@@ -1846,7 +1853,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Last Words</color></b>: Gain <b><i>Crest: Kagemitsu, Enduring Warrior</i></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give this follower <b><color=Keyword>Storm</color></b>.</sev>",
    "text_chs": "【<color=Keyword>谢幕曲</color>】使自己获得『纹章：常在战场·景光』。\n<hr><sev>【<color=Keyword>超进化时</color>】本随从获得【<color=Keyword>疾驰</color>】。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Kagemitsu, Enduring Warrior</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10131110,
@@ -2042,7 +2056,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and deal it X damage. X is the number of earth sigils you have.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Juno, Visionary Alchemist</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，对其造成X点伤害。X为自己的战场上的土之印数。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：黎明炼金术师·诺诺』。</ev>",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\nAt the end of your turn, <b><color=Keyword>Earth Rite</color> (1)</b> - Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10133120,
@@ -2447,7 +2468,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select a card in your hand and discard it. Deal X damage to all enemy followers. X is the cost of the selected card.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give your opponent <b><i>Crest: Burnite, Anathema of Flame</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】选择自己的1张手牌，舍弃该手牌。对对手的战场上的所有随从造成X点伤害。X为选择的卡牌的费用。\n<hr><sev>【<color=Keyword>超进化时</color>】使对手获得『纹章：灼热的安纳提玛·班德奈特』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the start of your turn, deal 1 damage to your leader.\nOnce on each of your turns, when your leader's defense is restored, deal 1 damage to it."
+    }
+   ]
   },
   {
    "card_id": 10144120,
@@ -2732,7 +2760,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Balto, Dusk Bounty Hunter</i></b>.",
    "text_chs": "【<color=Keyword>入场曲</color>】使自己获得『纹章：地下赏金猎人·巴尔特』。",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\nAt the end of your turn, deal 1 damage to both leaders."
+    }
+   ]
   },
   {
    "card_id": 10153310,
@@ -3036,7 +3071,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Last Words</color></b>: Gain <b><i>Crest: Lapis, Shining Seraph</i></b>.",
    "text_chs": "【<color=Keyword>谢幕曲</color>】使自己获得『纹章：伟大的炽天使·勒碧丝』。",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Lapis, Shining Seraph</color></i></b> and give it <b><color=Keyword>Storm</color></b>."
+    }
+   ]
   },
   {
    "card_id": 10163210,
@@ -3396,7 +3438,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Draw a card.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Eudie, Maiden Reborn</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】抽取1张卡牌。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：崭新的少女·欧丝』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\nAt the end of your turn, if you have 5 cards or less in your hand, draw a card. If you have at least 6, restore 1 defense to your leader."
+    }
+   ]
   },
   {
    "card_id": 10174120,
@@ -3549,7 +3598,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the end of your turn, if there's a super-evolved allied follower on the field, deal 2 damage to all enemy followers."
+    }
+   ]
   },
   {
    "card_id": 10211110,
@@ -3699,7 +3755,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Fairy</color></i></b>. Gain <b><i>Crest: Titania, Queen of Fairies</i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Select an enemy follower on the field and transform it into a <b><i><color=Keyword>Fairy</color></i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>妖精</color>』。使自己获得『纹章：翅翼女王·提泰妮娅』。\n<hr><ev>【<color=Keyword>进化时</color>】选择对手的战场上的1个随从，使其变身为『<color=Keyword>妖精</color>』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the start of your turn, add a <b><i><color=Keyword>Fairy</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10214120,
@@ -3951,7 +4014,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon 2 copies of <b><i><color=Keyword>Onion Patch</color></i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Bergent, Rejected Artes</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】召唤2个『<color=Keyword>洋葱军团兵</color>』。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：否定的咏唱·芭赛特』。</ev>",
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the start of your turn, summon an <b><i><color=Keyword>Onion Patch</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10232120,
@@ -4020,7 +4090,14 @@
    "source_format": "eng_cnl",
    "text": "Gain an earth sigil. Gain <b><i>Crest: Pascale's Dance</i></b>.",
    "text_chs": "使自己的战场上的土之印+1。使自己获得『纹章：帕梅拉的舞蹈』。",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (1)</b>\nAt the end of your turn, draw a card. <b><color=Keyword>Earth Rite</color> (10)</b> - Double the attack and defense of all allied followers on the field."
+    }
+   ]
   },
   {
    "card_id": 10234110,
@@ -4177,7 +4254,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied Marine follower enters the field, restore 1 defense to your leader."
+    }
+   ]
   },
   {
    "card_id": 10243310,
@@ -4397,7 +4481,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Reanimate</color> (2)</b> and <b><color=Keyword>Reanimate</color> (1)</b>.\n<hr>Whenever an allied Departed follower enters the field, give it <b><color=Keyword>Ward</color></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Charon, Stygian Oarswoman</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】发动【<color=Keyword>亡者召还</color>_2】和【<color=Keyword>亡者召还</color>_1】。\n<hr>自己的亡者·随从进入战场时，使其获得【<color=Keyword>守护</color>】。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：流动堕落的冥河·凯伦』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the start of your turn, <b><color=Keyword>Reanimate</color> (3)</b>."
+    }
+   ]
   },
   {
    "card_id": 10261110,
@@ -4531,7 +4622,14 @@
    "source_format": "eng_cnl",
    "text": "Restore 10 defense to your leader. Gain <b><i>Crest: Maddening Benison</i></b>.",
    "text_chs": "回复自己的主战者10点生命值。使自己获得『纹章：疯狂的恩宠』。",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\n<b><color=Keyword>Last Words</color></b>: Deal 10 damage to your leader."
+    }
+   ]
   },
   {
    "card_id": 10264110,
@@ -4569,7 +4667,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied follower with <b><color=Keyword>Ward</color></b> enters the field, give it +1/+2."
+    }
+   ]
   },
   {
    "card_id": 10271110,
@@ -4837,7 +4942,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Great Testimony</color></i></b> to your hand.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Mjerrabaine, Great Manifest</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>绝大的证明</color>』加入手牌。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：绝大的显现·麦哲佩恩』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "When you gain this crest, replace your deck with the <b><color=Keyword>Mjerrabaine Deck</color></b> and transform the Reaper Card at the bottom of your deck into a Victory Card.\n<hr>At the end of your turn, discard all cards not named <b><i><color=Keyword>Great Testimony</color></i></b> and draw 6 cards."
+    }
+   ]
   },
   {
    "card_id": 10304120,
@@ -5007,7 +5119,14 @@
    "keywords": [
     "Ambush"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nWhenever an allied follower enters the field, give it -1/-1."
+    }
+   ]
   },
   {
    "card_id": 10314120,
@@ -5183,7 +5302,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Octrice, Hollowness Manifest</i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Add a <b><i><color=Keyword>Gilded Blade</color></i></b> and <b><i><color=Keyword>Gilded Necklace</color></i></b> to your hand.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】使自己获得『纹章：空绝的显现·奥克托丽丝』。\n<hr><ev>【<color=Keyword>进化时</color>】将1张『<color=Keyword>黄金短剑</color>』和1张『<color=Keyword>黄金项链</color>』加入手牌。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (8)</b>\nWhenever you play or <b><color=Keyword>Fuse</color></b> a Loot card, advance this crest's count by 1.\n<b><color=Keyword>Last Words</color></b>: Add a <b><i><color=Keyword>Remnant of Hollowness</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10331110,
@@ -5231,7 +5357,14 @@
    "source_format": "eng_cnl",
    "text": "Gain <b><i>Crest: Crystal Gazing</i></b>.",
    "text_chs": "使自己获得『纹章：水晶的指引』。",
-   "rarity": 1
+   "rarity": 1,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\n<b><color=Keyword>Last Words</color></b>: Draw 2 cards. Deal 4 damage to all enemy followers."
+    }
+   ]
   },
   {
    "card_id": 10332110,
@@ -5513,7 +5646,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Galmieux, Ardor Manifest</i></b>.\n<b><color=Keyword>Enhance</color> (7)</b>: Give this follower <b><color=Keyword>Storm</color></b>.\n<hr>Once on each of your turns, when this follower takes damage but isn't destroyed, deal 3 damage to a random enemy follower.",
    "text_chs": "【<color=Keyword>入场曲</color>】使自己获得『纹章：烈绝的显现·嘉尔缪』。\n【<color=Keyword>爆能强化</color>_7】本随从获得【<color=Keyword>疾驰</color>】。\n<hr>本随从受到伤害且没被破坏时，自己的每回合中可触发1次，对对手的战场上的随机1个随从造成3点伤害。",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Once on each of your turns, when an allied follower takes damage but isn't destroyed, add a <b><i><color=Keyword>Fangs of Ardent Destruction</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10351110,
@@ -5662,7 +5802,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Reduce your faith's value by 10 to give it \"Increase the number of <b><color=Keyword>Mode</color><color=Keyword>s</color></b> you can select by 1.\"\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Select an enemy follower on the field, destroy it, and add a copy of it to your hand.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】信仰值-10，使自己的信仰获得「自己选择的【<color=Keyword>模式</color>】数+1」。\n<hr><sev>【<color=Keyword>超进化时</color>】选择对手的战场上的1个随从，破坏该随从，将1张同名的卡牌加入自己的手牌。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Faith",
+     "cost": 0,
+     "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <b><color=Keyword>Mode</color><color=Keyword>s</color></b>, increase this faith's value by 1."
+    }
+   ]
   },
   {
    "card_id": 10354120,
@@ -5694,7 +5841,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Devotee of Repose</i></b>.",
    "text_chs": "【<color=Keyword>入场曲</color>】使自己获得『纹章：安息的肯定者』。",
-   "rarity": 1
+   "rarity": 1,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\nAt the end of your turn, if allied followers didn't attack this turn, give a random allied follower on the field -2/-0 and <b><color=Keyword>Ward</color></b>."
+    }
+   ]
   },
   {
    "card_id": 10361120,
@@ -5748,7 +5902,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\nAt the end of your turn, if allied followers didn't attack this turn, restore 1 defense to your leader."
+    }
+   ]
   },
   {
    "card_id": 10362210,
@@ -5796,7 +5957,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and destroy it.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Congregant of Repose</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，破坏该随从。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：安息的团结者』。</ev>",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\nAt the end of your turn, if allied followers didn't attack this turn, draw a follower with 4 defense."
+    }
+   ]
   },
   {
    "card_id": 10363210,
@@ -5828,7 +5996,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Himeka, Heir to Repose</i></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Set the attack of all enemy followers on the field to 4.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】使自己获得『纹章：安息的继承者·妃花』。\n<hr><sev>【<color=Keyword>超进化时</color>】使对手的战场上的所有随从的攻击力变为4。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\nAt the end of your turn, if there's an allied <b><i><color=Keyword>Himeka, Heir to Repose</color></i></b> on the field, give X random enemy followers on the field with 4 attack or less \"Can't attack followers or leaders\" and \"At the end of your turn, banish this card.\" X is the number of crests you have."
+    }
+   ]
   },
   {
    "card_id": 10364120,
@@ -5844,7 +6019,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Torrent of Despair</color></i></b> to your hand.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Marwynn, Despair Manifest</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>绝望的奔流</color>』加入手牌。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：绝望的显现·玛温』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the end of your turn, if allied followers didn't attack this turn, deal X damage split between all enemies. X is the number of crests you have."
+    }
+   ]
   },
   {
    "card_id": 10371110,
@@ -6113,7 +6295,14 @@
    "source_format": "eng_cnl",
    "text": "Activates in deck. At the start of your turn, if allied followers have evolved at least 6 times this match, <b><color=Keyword>Invoke</color></b> this card.\n<hr>When this card is <b><color=Keyword>Invoke</color><color=Keyword>d</color></b>, gain <b><i>Crest: Sandalphon, Primarch Successor</i></b> and return this card to hand.\n<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Super Skybound Art</color></b> - Do this 5 times: \"Deal 2 damage to a random enemy.\"",
    "text_chs": "在牌组中发动。自己的回合开始时，若本次对战中自己的随从的进化次数为6次或以上，则【<color=Keyword>瞬念召唤</color>】本卡牌。\n<hr>本卡牌被【<color=Keyword>瞬念召唤</color>】时，使自己获得『纹章：天司长的继承者·圣德芬』。本卡牌返回手牌。\n【<color=Keyword>入场曲</color>】【<color=Keyword>解放奥义</color>】发动5次「随机对对手的战场上的1个随从或对手的主战者造成2点伤害」。",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the end of your turn, restore 1 defense to all allies."
+    }
+   ]
   },
   {
    "card_id": 10411110,
@@ -6209,7 +6398,14 @@
    "source_format": "eng_cnl",
    "text": "Deal 2 damage to a random enemy follower. <b><color=Keyword>Combo</color> (5)</b> - Gain <b><i>Crest: Starry Sky</i></b>.",
    "text_chs": "对对手的战场上的随机1个随从造成2点伤害。【<color=Keyword>连击</color>_5】使自己获得『纹章：绮罗星』。",
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Last Words</color></b>: Deal 1 damage to the enemy leader. Add a <b><i><color=Keyword>Starry Sky</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10413110,
@@ -6276,7 +6472,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Do this 2 times: \"Deal 4 damage to a random enemy follower.\"\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Yuel & Societte, Dancing Duo</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】发动2次「对对手的战场上的随机1个随从造成4点伤害」。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：调和的舞者·尤艾尔&苏丝雅』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\nOnce on each of your turns, when you play a follower, evolve it."
+    }
+   ]
   },
   {
    "card_id": 10421110,
@@ -6558,7 +6761,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field, remove all abilities from it, and deal it 3 damage.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Elmott, Remembrance Aflame</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，使其失去所有能力，对其造成3点伤害。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：缅怀之火·埃尔默特』。</sev>",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the start of your turn, deal 1 damage to the enemy leader."
+    }
+   ]
   },
   {
    "card_id": 10433310,
@@ -6606,7 +6816,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Gain 2 earth sigils. Add an <b><i><color=Keyword>Ars Magna</color></i></b> to your hand. <b><color=Keyword>Skybound Art</color></b> - Evolve this follower. <b><color=Keyword>Super Skybound Art</color></b> - Gain <b><i>Crest: Cagliostro, Genius Alchemist</i></b>.",
    "text_chs": "【<color=Keyword>入场曲</color>】使自己的战场上的土之印+2。将1张『<color=Keyword>伟大之术</color>』加入手牌。【<color=Keyword>奥义</color>】本随从进化。【<color=Keyword>解放奥义</color>】使自己获得『纹章：天才美少女炼金术士·卡莉奥丝特罗』。",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the start of your turn, <b><color=Keyword>Earth Rite</color> (1)</b> - Add an <b><i><color=Keyword>Ars Magna</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10441110,
@@ -6658,7 +6875,14 @@
    "source_format": "eng_cnl",
    "text": "Gain <b><i>Crest: Crescent Tube Ride</i></b>.",
    "text_chs": "使自己获得『纹章：破浪新月』。",
-   "rarity": 1
+   "rarity": 1,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\nAt the end of your turn, give a random allied follower on the field +1/+1."
+    }
+   ]
   },
   {
    "card_id": 10442110,
@@ -6827,7 +7051,14 @@
    "source_format": "eng_cnl",
    "text": "Deal 2 damage to your leader. Gain <b><i>Crest: Valiant Edge</i></b>.",
    "text_chs": "对自己的主战者造成2点伤害。使自己获得『纹章：妖异利刃』。",
-   "rarity": 1
+   "rarity": 1,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the end of your turn, deal 2 damage to a random enemy follower and restore 1 defense to your leader."
+    }
+   ]
   },
   {
    "card_id": 10452110,
@@ -6916,7 +7147,14 @@
    "source_format": "eng_cnl",
    "text": "Give all followers on the field -2/-2. Give yourself and your opponent <b><i>Crest: Corruption</i></b>. <b><color=Keyword>Super Skybound Art</color></b> - Destroy your <b><i>Crest: Corruption</i></b>.",
    "text_chs": "使战场上的所有随从-2/-2。使自己和对手获得『纹章：堕落』。【<color=Keyword>解放奥义</color>】破坏自己的『纹章：堕落』。",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\nAt the end of your turn, deal 2 damage to your leader."
+    }
+   ]
   },
   {
    "card_id": 10454110,
@@ -6948,7 +7186,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Deal 10 damage to all other followers. <b><color=Keyword>Super Skybound Art</color></b> - Gain <b><i>Crest: Belial, Archangel of Cunning</i></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Advance the count of your <b><i>Crest: Belial, Archangel of Cunning</i></b> by 1.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】对战场上的其他所有随从造成10点伤害。【<color=Keyword>解放奥义</color>】使自己获得『纹章：狡诈的堕天司·彼列』。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己的『纹章：狡诈的堕天司·彼列』的倒计数-1。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\n<b><color=Keyword>Last Words</color></b>: Deal 20 damage to the enemy leader."
+    }
+   ]
   },
   {
    "card_id": 10461110,
@@ -7270,7 +7515,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Do this 6 times: \"Deal 1 damage to a random enemy follower.\" Give all followers in your opponent's hand +1/+0. <b><color=Keyword>Skybound Art</color></b> - Gain <b><i>Crest: Lu Woh, Light Personified</i></b>.",
    "text_chs": "【<color=Keyword>入场曲</color>】发动6次「对对手的战场上的随机1个随从造成1点伤害」。使对手的手牌中的所有随从+1/+0。【<color=Keyword>奥义</color>】使自己获得『纹章：光之法则·龙敖』。",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nWhenever an enemy follower with <b><color=Keyword>Storm</color></b> attacks a leader, give it -3/-0 until the end of the turn."
+    }
+   ]
   },
   {
    "card_id": 10474120,
@@ -7713,7 +7965,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and banish it. Add a <b><i><color=Keyword>Glittering Gold</color></i></b> to your hand.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Unkei, Goldbloom</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，使其消失。将1张『<color=Keyword>闪耀的金币</color>』加入自己的手牌。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：丽金花·云庆』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\nAt the end of your turn, add a <b><i><color=Keyword>Glittering Gold</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10531110,
@@ -7777,7 +8036,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Insomniac Witch</i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Destroy your <b><i>Crest: Insomniac Witch</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】使自己获得『纹章：失眠女巫』。\n<hr><ev>【<color=Keyword>进化时</color>】破坏自己的『纹章：失眠女巫』。</ev>",
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\n<b><color=Keyword>Last Words</color></b>: Deal 3 damage to all followers."
+    }
+   ]
   },
   {
    "card_id": 10532120,
@@ -7860,7 +8126,14 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied <b><i><color=Keyword>Lhynkal, Wandering Fool</color></i></b> enters the field, reduce the enemy leader's max defense by 2."
+    }
+   ]
   },
   {
    "card_id": 10534120,
@@ -8035,7 +8308,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Majestic Megalorca</color></i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Select a card in your hand and discard it. Gain <b><i>Crest: Yube, Crestpetal</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>大海虎鲸</color>』。\n<hr><ev>【<color=Keyword>进化时</color>】选择自己的1张手牌，舍弃该手牌。使自己获得『纹章：波摇花·夕夜』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied Marine follower attacks, give it +1/+0 until the end of the turn and, once on each of your turns, add a <b><i><color=Keyword>Majestic Megalorca</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10551110,
@@ -8166,7 +8446,14 @@
    "source_format": "eng_cnl",
    "text": "Gain <b><i>Crest: Rigor of the Nightblossom</i></b>.",
    "text_chs": "使自己获得『纹章：严酷的奥夜花』。",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the end of your turn, draw a card. Then, if you have at least 4 cards with the same cost in your hand, summon a <b><i><color=Keyword>Skeleton</color></i></b> and give it <b><color=Keyword>Ward</color></b>."
+    }
+   ]
   },
   {
    "card_id": 10554110,
@@ -8182,7 +8469,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Reanimate</color> (4)</b> and <b><color=Keyword>Reanimate</color> (2)</b>.\n<hr><ev>When this follower evolves, destroy 6 other random followers.</ev>\n<sev>When this follower super-evolves, gain <b><i>Crest: Milteo & Luzen</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】发动【<color=Keyword>亡者召还</color>_4】和【<color=Keyword>亡者召还</color>_2】。\n<hr><ev>本随从进化时，破坏战场上的随机6个其他随从。</ev>\n<sev>本随从超进化时，使自己获得『纹章：充实的《恋人与节制》·米路缇欧&卢泽』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Allied followers' <b><color=Keyword>Fanfare</color></b> and <b><color=Keyword>Enhance</color></b> abilities don't activate.\nWhenever you play a follower, evolve it."
+    }
+   ]
   },
   {
    "card_id": 10554120,
@@ -8373,7 +8667,14 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "During your turn, whenever you draw a 1-, 3-, or 5-cost card, summon a <b><i><color=Keyword>Fox of Purity</color></i></b> or <b><i><color=Keyword>Holy Falcon</color></i></b> at random.\nDuring your turn, whenever you draw a 2-, 4-, or 6-cost card, summon an enemy <b><i><color=Keyword>Fox of Purity</color></i></b> or <b><i><color=Keyword>Holy Falcon</color></i></b> at random."
+    }
+   ]
   },
   {
    "card_id": 10571110,
@@ -8525,7 +8826,14 @@
    "keywords": [
     "Ambush"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\nAt the start of your turn, activate a random ability that hasn't been activated yet from the following.\n<ridx=0>1. Increase the cost of all cards in your hand by 1 until the end of the turn.</ridx>\n<ridx=1>2. Give all allied followers on the field -2/-2.</ridx>\n<ridx=2>3. Deal 3 damage to your leader.</ridx>"
+    }
+   ]
   },
   {
    "card_id": 10574120,
@@ -8814,7 +9122,14 @@
    "keywords": [
     "Drain"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Faith",
+     "cost": 0,
+     "text_eng": "This faith's value starts at 0.\n<hr>Whenever an allied follower evolves, increase this faith's value by 1."
+    }
+   ]
   },
   {
    "card_id": 10621110,
@@ -8920,7 +9235,14 @@
    "source_format": "eng_cnl",
    "text": "Gain <b><i>Crest: Majestic Conquest</i></b>.\n<b><color=Keyword>Enhance</color> (3)</b>: Delay the count of your <b><i>Crest: Majestic Conquest</i></b> by 2.",
    "text_chs": "使自己获得『纹章：威风的行军』。\n【<color=Keyword>爆能强化</color>_3】使自己的『纹章：威风的行军』的倒计数+2。",
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nWhenever you play an <b><color=Keyword>Enhance</color><color=Keyword>d</color></b> card, summon a <b><i><color=Keyword>Fearless Soldier</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10623110,
@@ -8988,7 +9310,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Depths of the Eld Sword</color></i></b> to your hand.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Reduce your faith's value by 5 to give it \"Whenever you play an <b><color=Keyword>Enhance</color><color=Keyword>d</color></b> card, give all allied followers on the field +1/+1.\"</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>天剑深渊</color>』加入手牌。\n<hr><ev>【<color=Keyword>进化时</color>】信仰值-5，使自己的信仰获得「自己通过【<color=Keyword>爆能强化</color>】使用卡牌时，使自己的战场上的所有随从+1/+1」。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Faith",
+     "cost": 0,
+     "text_eng": "This faith's value starts at 0.\n<hr>Whenever you play an <b><color=Keyword>Enhance</color><color=Keyword>d</color></b> card, increase this faith's value by 1."
+    }
+   ]
   },
   {
    "card_id": 10631110,
@@ -9147,7 +9476,14 @@
    "keywords": [
     "Drain"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied <b><i><color=Keyword>Crystalspawn</color></i></b> attacks, give it +1/+0."
+    }
+   ]
   },
   {
    "card_id": 10634120,
@@ -9165,7 +9501,14 @@
    "source_format": "eng_cnl",
    "text": "Activates in hand. Whenever an allied <b><i><color=Keyword>Crystalspawn</color></i></b> enters the field, reduce the cost of this card by 1.\n<hr><b><color=Keyword>Fanfare</color></b>: Summon 2 copies of <b><i><color=Keyword>Crystalspawn</color></i></b> and give them <b><color=Keyword>Storm</color></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Add a <b><i><color=Keyword>Depths of the Eld Crystals</color></i></b> to your hand.</ev>",
    "text_chs": "在手牌中发动。自己的『<color=Keyword>天晶魔手</color>』进入战场时，使本卡牌的费用-1。\n<hr>【<color=Keyword>入场曲</color>】召唤2个『<color=Keyword>天晶魔手</color>』，使其获得【<color=Keyword>疾驰</color>】。\n<hr><ev>【<color=Keyword>进化时</color>】将1张『<color=Keyword>天晶深渊</color>』加入手牌。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Faith",
+     "cost": 0,
+     "text_eng": "This faith's value starts at 0.\n<hr>Whenever an allied <b><i><color=Keyword>Crystalspawn</color></i></b> enters the field, increase this faith's value by 1."
+    }
+   ]
   },
   {
    "card_id": 10641110,
@@ -9541,7 +9884,14 @@
     "Bane",
     "Ward"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "alt_modes": [
+    {
+     "type_eng": "Crystallize",
+     "cost": 2,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Prostrating Coward</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10661210,
@@ -9595,7 +9945,14 @@
     "Rush",
     "Bane"
    ],
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crystallize",
+     "cost": 1,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Venerating Dyer</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10662120,
@@ -9647,7 +10004,14 @@
     "Bane",
     "Aura"
    ],
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crystallize",
+     "cost": 1,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Worshipful Crusader</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10663210,
@@ -9702,7 +10066,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Faith",
+     "cost": 0,
+     "text_eng": "This faith's value starts at 0.\n<hr>Whenever an allied amulet is destroyed, increase this faith's value by 1."
+    }
+   ]
   },
   {
    "card_id": 10671110,
@@ -9721,7 +10092,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "alt_modes": [
+    {
+     "type_eng": "Accelerate",
+     "cost": 2,
+     "text_eng": "Summon a <b><i><color=Keyword>Shoddy Plaything</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10671120,
@@ -9771,7 +10149,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Substandard Puppet</color></i></b> and evolve it and this follower.",
    "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>拙劣的人偶</color>』，该随从和本随从进化。",
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Accelerate",
+     "cost": 3,
+     "text_eng": "Summon 2 copies of <b><i><color=Keyword>Substandard Puppet</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10672120,
@@ -9822,7 +10207,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon 2 copies of <b><i><color=Keyword>Ludicrous Ordnance</color></i></b>.\n<hr>At the end of your turn, deal 3 damage split between all enemy followers.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Deal 3 damage split between all enemy followers.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】召唤2个『<color=Keyword>愚劣的兵器</color>』。\n<hr>自己的回合结束时，对对手的战场上的所有随从分配3点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】对对手的战场上的所有随从分配3点伤害。</ev>",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Accelerate",
+     "cost": 4,
+     "text_eng": "Summon a <b><i><color=Keyword>Ludicrous Ordnance</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10673310,
@@ -9973,7 +10365,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Follower</color></b> <b><color=Keyword>Strike</color></b>: Give this follower <b><color=Keyword>Barrier</color></b>. Give the opposing follower \"Can't attack followers or leaders\" and \"At the end of your turn, banish this card.\"\n<b><color=Keyword>Last Words</color></b>: Gain <b><i>Crest: Illamrita, Designated Target</i></b>.",
    "text_chs": "【<color=Keyword>攻击时</color>】若攻击随从，则本随从获得【<color=Keyword>屏障</color>】。使交战对手获得「无法攻击随从或主战者」和「自己的回合结束时，使本随从消失」。\n【<color=Keyword>谢幕曲</color>】使自己获得『纹章：特殊目标·海雷姆哈妮』。",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\n<b><color=Keyword>Last Words</color></b>: Summon an <b><i><color=Keyword>Illamrita, Designated Target</color></i></b> and evolve it. "
+    }
+   ]
   },
   {
    "card_id": 10704120,
@@ -10096,7 +10495,14 @@
    "source_format": "eng_cnl",
    "text": "Restore 1 defense to your leader. <b><color=Keyword>Combo</color> (3)</b> - Gain <b><i>Crest: Minimized Anxiety</i></b>.",
    "text_chs": "回复自己的主战者1点生命值。【<color=Keyword>连击</color>_3】使自己获得『纹章：忧虑缩小』。",
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Last Words</color></b>: Add a <b><i><color=Keyword>Magnified Malice</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10713110,
@@ -10130,7 +10536,14 @@
    "source_format": "eng_cnl",
    "text": "Deal 2 damage to a random enemy follower. <b><color=Keyword>Combo</color> (3)</b> - Gain <b><i>Crest: Magnified Malice</i></b>.",
    "text_chs": "对对手的战场上的随机1个随从造成2点伤害。【<color=Keyword>连击</color>_3】使自己获得『纹章：恶意扩大』。",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Last Words</color></b>: Add a <b><i><color=Keyword>Minimized Anxiety</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10714110,
@@ -10148,7 +10561,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and give it -0/-X. X is this follower's attack. Increase your <b><color=Keyword>Combo</color></b> by 1.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Thestae, Anathema of Distortion</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，使其-0/-X。X为本随从的攻击力。使自己的【<color=Keyword>连击</color>】+1。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：操量的安纳提玛·达斯特迪兹』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\nAt the end of your turn, <b><color=Keyword>Combo</color> (3)</b> - Give all followers in your deck +1/+1."
+    }
+   ]
   },
   {
    "card_id": 10714120,
@@ -10164,7 +10584,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add 2 copies of <b><i><color=Keyword>Deepwood Bounty</color></i></b> to your hand.\n<hr>At the end of your turn, deal X damage split between all enemy followers. X is this follower's attack.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Great Hart of the Glacial Realm</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】将2张『<color=Keyword>森林的奥秘</color>』加入手牌。\n<hr>自己的回合结束时，对对手的战场上的所有随从分配X点伤害。X为本随从的攻击力。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：冰界鹿王』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\nAt the end of your turn, <b><color=Keyword>Combo</color> (3)</b> - Add a <b><i><color=Keyword>Deepwood Bounty</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 10721110,
@@ -10315,7 +10742,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Rally</color> (20)</b> - Gain <b><i>Crest: Gildaria, Anathema of Attunement</i></b>. Evolve this follower.\n<hr>During your turn, whenever another allied follower enters the field, give it <b><color=Keyword>Rush</color></b>.\n<hr><ev>When this follower evolves, summon 2 copies of <b><i><color=Keyword>Steelclad Knight</color></i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】【<color=Keyword>协作</color>_20】使自己获得『纹章：统音的安纳提玛·吉尔达利娅』。本随从进化。\n<hr>自己的其他随从进入战场时，若为自己的回合，则使其获得【<color=Keyword>突进</color>】。\n<hr><ev>本随从进化时，召唤2个『<color=Keyword>铁甲骑士</color>』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (1)</b>\nDuring your turn, whenever an allied follower enters the field, deal 1 damage to the enemy leader."
+    }
+   ]
   },
   {
    "card_id": 10724120,
@@ -10498,7 +10932,14 @@
    "keywords": [
     "Aura"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (1)</b>\nAt the end of your opponent's turn, summon a <b><i><color=Keyword>Lilanthim, Anathema of Predation</color></i></b> and evolve it."
+    }
+   ]
   },
   {
    "card_id": 10734120,
@@ -10675,7 +11116,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Deal 9 damage to all enemy followers.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give your opponent <b><i>Crest: Burnite, Anathema of Ash</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】对对手的战场上的所有随从造成9点伤害。\n<hr><sev>【<color=Keyword>超进化时</color>】使对手获得『纹章：焦灰的安纳提玛·班德奈特』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the start of your turn, deal 2 damage to your leader.\nOnce on each of your turns, when your leader's defense is restored, deal 1 damage to it."
+    }
+   ]
   },
   {
    "card_id": 10744120,
@@ -10694,7 +11142,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the end of your turn, summon a <b><i><color=Keyword>Vastwing Dragon</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10751110,
@@ -11820,7 +12275,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add 2 copies of <b><i><color=Keyword>Mysterian Missile</color></i></b> to your hand.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Reduce the cost of all Mysteria spells in your hand by 1.</ev>\n<sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Tico, Mysterian Spellcrafter</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】将2张『<color=Keyword>玛纳利亚魔弹</color>』加入手牌。\n<hr><ev>【<color=Keyword>进化时</color>】使自己的手牌中的所有玛纳利亚·法术的费用-1。</ev>\n<sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：玛纳利亚文书官·琪可』。</sev>",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever you play a Mysteria spell, deal 1 damage to the enemy leader."
+    }
+   ]
   },
   {
    "card_id": 10833310,
@@ -11926,7 +12388,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Majestic Megalorca</color></i></b> to your hand.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Spirit of Wadatsumi</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>大海虎鲸</color>』加入手牌。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：沧海之精』。</ev>",
-   "rarity": 1
+   "rarity": 1,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied Marine follower enters the field, give it +1/+1."
+    }
+   ]
   },
   {
    "card_id": 10842110,
@@ -12032,7 +12501,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\n<b><color=Keyword>Last Words</color></b>: Add a <b><i><color=Keyword>Drache & Aluzard, Burning Blood</color></i></b> to your hand and set its cost to 2."
+    }
+   ]
   },
   {
    "card_id": 10844120,
@@ -12048,7 +12524,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select 2 cards in your hand and discard them. Deal 4 damage to all enemies.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Draw 3 cards.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】选择自己的2张手牌，舍弃这些手牌。对对手的战场上的所有随从和对手的主战者造成4点伤害。\n<hr><sev>【<color=Keyword>超进化时</color>】抽取3张卡牌。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Accelerate",
+     "cost": 3,
+     "text_eng": "Gain 1 max play point."
+    }
+   ]
   },
   {
    "card_id": 10851110,
@@ -12366,7 +12849,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a random follower that costs 2 or less from your deck and super-evolve it.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Verdilia & Castelle, Sisters</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】召唤随机1个自己的牌组中费用为2或以下的随从，使其超进化。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：飞跃的姐妹·贝尔迪俪亚&卡诗黛儿』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever a super-evolved allied follower attacks a follower, give the allied follower \"Can attack 2 times per turn\" until the end of the turn."
+    }
+   ]
   },
   {
    "card_id": 10864120,
@@ -12382,7 +12872,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select a <b><color=Keyword>Mode</color></b> to activate. Deal 3 damage to this follower.\n<ridx=0>1. Deal 3 damage to all enemy followers.</ridx>\n<ridx=1>2. Deal 3 damage to the enemy leader.</ridx>\n<ridx=2>3. Restore 3 defense to your leader.</ridx>\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Zoe, Dazzling Hope</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】【<color=Keyword>模式</color>】选择1个能力发动。对本随从造成3点伤害。\n<ridx=0>（1）对对手的战场上的所有随从造成3点伤害。</ridx>\n<ridx=1>（2）对对手的主战者造成3点伤害。</ridx>\n<ridx=2>（3）回复自己的主战者3点生命值。</ridx>\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：希望的光彩·莉迪耶尔』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (1)</b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Zoe, Dazzling Hope</color></i></b> and evolve it."
+    }
+   ]
   },
   {
    "card_id": 10871110,
@@ -12570,7 +13067,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "alt_modes": [
+    {
+     "type_eng": "Accelerate",
+     "cost": 1,
+     "text_eng": "Deal 2 damage to a random enemy follower."
+    }
+   ]
   },
   {
    "card_id": 10901310,
@@ -13141,7 +13645,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fuse</color></b>: Cards\nWhenever you <b><color=Keyword>Fuse</color></b> to this card, spend 2 play points to summon an <b><i><color=Keyword>Obsessed Test Subject</color></i></b>.\n<hr><b><color=Keyword>Fanfare</color></b>: Summon 2 copies of <b><i><color=Keyword>Obsessed Test Subject</color></i></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Sephie, Maven Convict</i></b>.</sev>",
    "text_chs": "【<color=Keyword>融合</color>】卡牌\n与本卡牌【<color=Keyword>融合</color>】时，消耗自己2点能量点，召唤1个『<color=Keyword>沉溺的实验体</color>』。\n<hr>【<color=Keyword>入场曲</color>】召唤2个『<color=Keyword>沉溺的实验体</color>』。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：万术的罪人·赛菲』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Once on each of your turns, when an allied <b><i><color=Keyword>Obsessed Test Subject</color></i></b> enters the field, give it <b><color=Keyword>Storm</color></b>."
+    }
+   ]
   },
   {
    "card_id": 10934120,
@@ -13401,7 +13912,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crystallize",
+     "cost": 2,
+     "text_eng": "<b><color=Keyword>Countdown</color> (4)</b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Void Colonel</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 10952120,
@@ -13481,7 +13999,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Do this 3 times: \"<b><color=Keyword>Reanimate</color> (2)</b>.\" Deal 2 damage to all enemy followers.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Istyndet vs. Mitilykket</i></b>.</sev>",
    "text_chs": "【<color=Keyword>入场曲</color>】发动3次【<color=Keyword>亡者召还</color>_2】。对对手的战场上的所有随从造成2点伤害。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：伊斯坦戴德 对 玛尔奇盖特』。</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the end of your turn, if there's an allied card on the field with <b><color=Keyword>Last Words</color></b>, destroy a random allied card with <b><color=Keyword>Last Words</color></b> and a random enemy follower."
+    }
+   ]
   },
   {
    "card_id": 10954120,
@@ -13586,7 +14111,14 @@
    "keywords": [
     "Storm"
    ],
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crystallize",
+     "cost": 1,
+     "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Miraculous Al-mi'raj</color></i></b>.\n<hr><b><color=Keyword>Engage</color> (1)</b>: Advance this amulet's count by 1."
+    }
+   ]
   },
   {
    "card_id": 10962310,
@@ -13653,7 +14185,14 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and destroy it.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Erralde, Signet Convict</i></b>.</ev>",
    "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，破坏该随从。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：神纹的罪人·艾尔拉德』。</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the end of your turn, if there's an allied card on the field with a base cost of 6 or more, deal 1 damage to the enemy leader and restore 1 defense to your leader."
+    }
+   ]
   },
   {
    "card_id": 10964120,
@@ -13822,7 +14361,14 @@
    "keywords": [
     "Bane"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Once on each of your turns, when you play a follower, evolve it."
+    }
+   ]
   },
   {
    "card_id": 10974120,
@@ -13936,7 +14482,14 @@
    "life": 9,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and deal it 9 damage.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Gain <b><i>Crest: Rezeal, Goddess of Nacreheim</i></b>.</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever you play a follower, give it \"<b><color=Keyword>Last Words</color></b>: Summon a copy of this card\" and, until the end of the turn, \"Can't attack followers or leaders.\""
+    }
+   ]
   },
   {
    "card_id": 11011110,
@@ -14032,7 +14585,14 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>. Gain <b><i>Crest: Untamed Testimony</i></b>.",
-   "rarity": 2
+   "rarity": 2,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the start of your turn, summon an <b><i><color=Keyword>Inquiring Mischief</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 11013110,
@@ -14254,7 +14814,14 @@
    "life": 3,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Glittering Gold</color></i></b> to your hand.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Almaelys, Affluent Strategist</i></b>.</ev>\n<sev><b><color=Keyword>Super-Evolve</color></b>: Delay the count of your <b><i>Crest: Almaelys, Affluent Strategist</i></b> by 2.</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the end of your turn, activate an ability in sequence from the following.\n<ridx=0>1. Add a <b><i><color=Keyword>Gilded Blade</color></i></b> to your hand and set its cost to 0.</ridx>\n<ridx=1>2. Add a <b><i><color=Keyword>Gilded Goblet</color></i></b> to your hand and set its cost to 0.</ridx>"
+    }
+   ]
   },
   {
    "card_id": 11031110,
@@ -14376,7 +14943,14 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Add a <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand. Gain <b><i>Crest: Noeinhowell's Interrogation</i></b>.",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever you <b><color=Keyword>Engage</color></b> an amulet, activate an ability that hasn't been activated yet in sequence from the following.\n<ridx=0>1. Deal 3 damage to a random enemy follower.</ridx>\n<ridx=1>2. Restore 2 defense to your leader.</ridx>\n<ridx=2>3. Recover 1 evolution point. Destroy this crest.</ridx>"
+    }
+   ]
   },
   {
    "card_id": 11034110,
@@ -14391,7 +14965,14 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>.\n<hr>Whenever you <b><color=Keyword>Engage</color></b> an amulet, deal 3 damage to a random enemy follower.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Noeinhowell, Hymnodic Detective</i></b>.</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Once on each of your turns, when you <b><color=Keyword>Engage</color></b> an amulet, recover 1 play point."
+    }
+   ]
   },
   {
    "card_id": 11034120,
@@ -14721,7 +15302,14 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "At the end of your turn, gain 2 shadows."
+    }
+   ]
   },
   {
    "card_id": 11061110,
@@ -14844,7 +15432,14 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Select a <b><color=Keyword>Mode</color></b> to activate.\n<ridx=0>1. Deal 4 damage to a random enemy follower. Gain <b><i>Crest: Fruitless Testimony</i></b>.</ridx>\n<ridx=1>2. Summon a <b><i><color=Keyword>Bunnies of Desolation</color></i></b>.</ridx>",
-   "rarity": 3
+   "rarity": 3,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the start of your turn, restore 1 defense to your leader and add a <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand."
+    }
+   ]
   },
   {
    "card_id": 11064110,
@@ -14859,7 +15454,14 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and banish it. Summon a <b><i><color=Keyword>Bunnies of Desolation</color></i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Gain <b><i>Crest: Lapinette, Calamity of Desolation</i></b>.</ev>\n<sev><b><color=Keyword>Super-Evolve</color></b>: Delay the count of your <b><i>Crest: Lapinette, Calamity of Desolation</i></b> by 1.</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (1)</b>\nAt the start of your turn, summon a <b><i><color=Keyword>Bunnies of Desolation</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 11064120,
@@ -15041,7 +15643,14 @@
    "life": 1,
    "source_format": "eng_cnl",
    "text": "Whenever you <b><color=Keyword>Fuse</color></b>, give this follower <b><color=Keyword>Rush</color></b>.\n<b><color=Keyword>Last Words</color></b>: Gain <b><i>Crest: Dimensional Wanderer</i></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give this follower <b><color=Keyword>Storm</color></b>.</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nWhenever you <b><color=Keyword>Fuse</color></b>, advance this crest's count by 1.\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Dimensional Wanderer</color></i></b>."
+    }
+   ]
   },
   {
    "card_id": 90001110,
@@ -16815,6 +17424,397 @@
     {
      "card_id": 90004310,
      "card_name": "Astaroth's Reckoning",
+     "copies": 1
+    }
+   ]
+  },
+  {
+   "deck_name": "Mjerrabaine Deck",
+   "deck_name_chs": "麦哲佩恩牌组",
+   "entries": [
+    {
+     "card_id": 10301110,
+     "card_name": "Apostle of Voracity",
+     "copies": 1
+    },
+    {
+     "card_id": 10301310,
+     "card_name": "Greatness Ascended",
+     "copies": 1
+    },
+    {
+     "card_id": 10302110,
+     "card_name": "Inspirational One",
+     "copies": 1
+    },
+    {
+     "card_id": 10303110,
+     "card_name": "Dogged One",
+     "copies": 1
+    },
+    {
+     "card_id": 10303210,
+     "card_name": "Tablet of Tribulations",
+     "copies": 1
+    },
+    {
+     "card_id": 10304110,
+     "card_name": "Mjerrabaine, Great Manifest",
+     "copies": 1
+    },
+    {
+     "card_id": 10304120,
+     "card_name": "Gilnelise, Voracity Manifest",
+     "copies": 1
+    },
+    {
+     "card_id": 10311110,
+     "card_name": "Devotee of Unkilling",
+     "copies": 1
+    },
+    {
+     "card_id": 10311120,
+     "card_name": "Bearer of the Fairy Blade",
+     "copies": 1
+    },
+    {
+     "card_id": 10311310,
+     "card_name": "Bestial Swipe",
+     "copies": 1
+    },
+    {
+     "card_id": 10312110,
+     "card_name": "Supplicant of Unkilling",
+     "copies": 1
+    },
+    {
+     "card_id": 10312120,
+     "card_name": "Greatwood Warrior",
+     "copies": 1
+    },
+    {
+     "card_id": 10312210,
+     "card_name": "Hamlet of Unkilling",
+     "copies": 1
+    },
+    {
+     "card_id": 10313110,
+     "card_name": "Congregant of Unkilling",
+     "copies": 1
+    },
+    {
+     "card_id": 10313310,
+     "card_name": "Eradicating Arrow",
+     "copies": 1
+    },
+    {
+     "card_id": 10314110,
+     "card_name": "Krulle, Heir to Unkilling",
+     "copies": 1
+    },
+    {
+     "card_id": 10314120,
+     "card_name": "Izudia, Annihilation Manifest",
+     "copies": 1
+    },
+    {
+     "card_id": 10321110,
+     "card_name": "Devotee of Usurpation",
+     "copies": 1
+    },
+    {
+     "card_id": 10321120,
+     "card_name": "Comrade of the Swordmaster",
+     "copies": 1
+    },
+    {
+     "card_id": 10321310,
+     "card_name": "Shield Bash",
+     "copies": 1
+    },
+    {
+     "card_id": 10322110,
+     "card_name": "Supplicant of Usurpation",
+     "copies": 1
+    },
+    {
+     "card_id": 10322120,
+     "card_name": "Peppy Scout",
+     "copies": 1
+    },
+    {
+     "card_id": 10322210,
+     "card_name": "Lair of Usurpation",
+     "copies": 1
+    },
+    {
+     "card_id": 10323110,
+     "card_name": "Congregant of Usurpation",
+     "copies": 1
+    },
+    {
+     "card_id": 10323310,
+     "card_name": "Returning Slash",
+     "copies": 1
+    },
+    {
+     "card_id": 10324110,
+     "card_name": "Sinciro, Heir to Usurpation",
+     "copies": 1
+    },
+    {
+     "card_id": 10324120,
+     "card_name": "Octrice, Hollowness Manifest",
+     "copies": 1
+    },
+    {
+     "card_id": 10331110,
+     "card_name": "Devotee of Truth",
+     "copies": 1
+    },
+    {
+     "card_id": 10331120,
+     "card_name": "Ascetic of Wuxing",
+     "copies": 1
+    },
+    {
+     "card_id": 10331310,
+     "card_name": "Crystal Gazing",
+     "copies": 1
+    },
+    {
+     "card_id": 10332110,
+     "card_name": "Supplicant of Truth",
+     "copies": 1
+    },
+    {
+     "card_id": 10332210,
+     "card_name": "Institute of Truth",
+     "copies": 1
+    },
+    {
+     "card_id": 10332310,
+     "card_name": "Risky Amalgamation",
+     "copies": 1
+    },
+    {
+     "card_id": 10333110,
+     "card_name": "Congregant of Truth",
+     "copies": 1
+    },
+    {
+     "card_id": 10333310,
+     "card_name": "Illusory Conjuration",
+     "copies": 1
+    },
+    {
+     "card_id": 10334110,
+     "card_name": "Velharia, Heir to Truth",
+     "copies": 1
+    },
+    {
+     "card_id": 10334120,
+     "card_name": "Raio, Elimination Manifest",
+     "copies": 1
+    },
+    {
+     "card_id": 10341110,
+     "card_name": "Devotee of Disdain",
+     "copies": 1
+    },
+    {
+     "card_id": 10341120,
+     "card_name": "Snowstorm Dragonewt",
+     "copies": 1
+    },
+    {
+     "card_id": 10341310,
+     "card_name": "Raging Lightning",
+     "copies": 1
+    },
+    {
+     "card_id": 10342110,
+     "card_name": "Supplicant of Disdain",
+     "copies": 1
+    },
+    {
+     "card_id": 10342120,
+     "card_name": "Ocean Rider",
+     "copies": 1
+    },
+    {
+     "card_id": 10342210,
+     "card_name": "Nation of Disdain",
+     "copies": 1
+    },
+    {
+     "card_id": 10343110,
+     "card_name": "Congregant of Disdain",
+     "copies": 1
+    },
+    {
+     "card_id": 10343310,
+     "card_name": "Ferocious Flame",
+     "copies": 1
+    },
+    {
+     "card_id": 10344110,
+     "card_name": "Azurifrit, Heir to Disdain",
+     "copies": 1
+    },
+    {
+     "card_id": 10344120,
+     "card_name": "Galmieux, Ardor Manifest",
+     "copies": 1
+    },
+    {
+     "card_id": 10351110,
+     "card_name": "Devotee of Entwining",
+     "copies": 1
+    },
+    {
+     "card_id": 10351120,
+     "card_name": "Ephemeral Demon Princess",
+     "copies": 1
+    },
+    {
+     "card_id": 10351310,
+     "card_name": "March of the Brutes",
+     "copies": 1
+    },
+    {
+     "card_id": 10352110,
+     "card_name": "Supplicant of Entwining",
+     "copies": 1
+    },
+    {
+     "card_id": 10352120,
+     "card_name": "Spirited Gravekeeper",
+     "copies": 1
+    },
+    {
+     "card_id": 10352210,
+     "card_name": "Castle of Entwining",
+     "copies": 1
+    },
+    {
+     "card_id": 10353110,
+     "card_name": "Congregant of Entwining",
+     "copies": 1
+    },
+    {
+     "card_id": 10353310,
+     "card_name": "Screaming and Loathing",
+     "copies": 1
+    },
+    {
+     "card_id": 10354110,
+     "card_name": "Sham-Nacha, Heir to Entwining",
+     "copies": 1
+    },
+    {
+     "card_id": 10354120,
+     "card_name": "Rulenye & Valnareik",
+     "copies": 1
+    },
+    {
+     "card_id": 10361110,
+     "card_name": "Devotee of Repose",
+     "copies": 1
+    },
+    {
+     "card_id": 10361120,
+     "card_name": "Knight of the Holy Order",
+     "copies": 1
+    },
+    {
+     "card_id": 10361310,
+     "card_name": "Blinding Faith",
+     "copies": 1
+    },
+    {
+     "card_id": 10362110,
+     "card_name": "Supplicant of Repose",
+     "copies": 1
+    },
+    {
+     "card_id": 10362210,
+     "card_name": "Temple of Repose",
+     "copies": 1
+    },
+    {
+     "card_id": 10362220,
+     "card_name": "Winged Lion Statue",
+     "copies": 1
+    },
+    {
+     "card_id": 10363110,
+     "card_name": "Congregant of Repose",
+     "copies": 1
+    },
+    {
+     "card_id": 10363210,
+     "card_name": "Shining Disenchantment",
+     "copies": 1
+    },
+    {
+     "card_id": 10364110,
+     "card_name": "Himeka, Heir to Repose",
+     "copies": 1
+    },
+    {
+     "card_id": 10364120,
+     "card_name": "Marwynn, Despair Manifest",
+     "copies": 1
+    },
+    {
+     "card_id": 10371110,
+     "card_name": "Devotee of Destruction",
+     "copies": 1
+    },
+    {
+     "card_id": 10371120,
+     "card_name": "Supersonic Fighter",
+     "copies": 1
+    },
+    {
+     "card_id": 10371310,
+     "card_name": "Wired Assault",
+     "copies": 1
+    },
+    {
+     "card_id": 10372110,
+     "card_name": "Supplicant of Destruction",
+     "copies": 1
+    },
+    {
+     "card_id": 10372120,
+     "card_name": "Field Scientist",
+     "copies": 1
+    },
+    {
+     "card_id": 10372210,
+     "card_name": "Wasteland of Destruction",
+     "copies": 1
+    },
+    {
+     "card_id": 10373110,
+     "card_name": "Congregant of Destruction",
+     "copies": 1
+    },
+    {
+     "card_id": 10373310,
+     "card_name": "Devastating Soprano",
+     "copies": 1
+    },
+    {
+     "card_id": 10374110,
+     "card_name": "Axia, Heir to Destruction",
+     "copies": 1
+    },
+    {
+     "card_id": 10374120,
+     "card_name": "Lishenna, Melody Manifest",
      "copies": 1
     }
    ]

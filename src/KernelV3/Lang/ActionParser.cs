@@ -2629,9 +2629,25 @@ public sealed class ActionParser
         cur.ExpectWord("replace");
         while (!cur.IsAtEnd && !cur.Current.IsAnyWord("with")) cur.Advance();
         cur.TryMatchAnyWord("with");
+        // 牌组名只到「下一个动作」为止，不能一路吞到句号。
+        //
+        //   "replace your deck with the Apocalypse Deck."
+        //   "replace your deck with the Mjerrabaine Deck and transform
+        //    the Reaper Card at the bottom of your deck into a Victory Card."
+        //
+        // 早先无限吞到 Period，于是第二句的整段
+        // "the Mjerrabaine Deck and transform ... into a Victory Card"
+        // 都被当成牌组名，查表必然失败。
         var deckName = new System.Text.StringBuilder();
         while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
         {
+            // 遇到并列/后续动作就停：牌组名不会含这些动词。
+            if (deckName.Length > 0 && cur.Current.IsAnyWord(
+                    "and", "then", "transform", "give", "deal", "draw",
+                    "summon", "destroy", "banish", "return", "restore",
+                    "discard", "add", "gain"))
+                break;
+
             if (deckName.Length > 0) deckName.Append(' ');
             deckName.Append(cur.Current.Text);
             cur.Advance();

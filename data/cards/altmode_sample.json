@@ -1,0 +1,42 @@
+{
+ "_schema": "reshadow.altmode.sample/1",
+ "_note": "从 data/cards/cards_eng_flat.json 各取一张 Crest / Faith 卡，用于核对 alt_modes 的编译路径。",
+ "cards": [
+  {
+   "card_id": 10114110,
+   "name_eng": "Aria, Lady of the Woods",
+   "type": 1,
+   "class": 1,
+   "cost": 6,
+   "atk": 4,
+   "life": 4,
+   "rarity": 4,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Aria, Lady of the Woods</i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Summon 3 copies of <b><i><color=Keyword>Fairy</color></i></b>.</ev>",
+   "alt_modes": [
+    {
+     "type_eng": "Crest",
+     "cost": 0,
+     "text_eng": "Whenever an allied Pixie follower enters the field, give it <b><color=Keyword>Storm</color></b>."
+    }
+   ]
+  },
+  {
+   "card_id": 10614120,
+   "name_eng": "Sathanid, Eld Lance",
+   "type": 1,
+   "class": 1,
+   "cost": 1,
+   "atk": 1,
+   "life": 1,
+   "rarity": 4,
+   "eng_text": "<b><color=Keyword>Fanfare</color></b>: Reduce your faith's value by 10 to add a <b><i><color=Keyword>Depths of the Eld Lance</color></i></b> to your hand and give your faith \"Whenever an allied follower evolves, deal 1 damage to the enemy leader.\"\n<hr><b><color=Keyword>Drain</color></b>",
+   "alt_modes": [
+    {
+     "type_eng": "Faith",
+     "cost": 0,
+     "text_eng": "This faith's value starts at 0.\n<hr>Whenever an allied follower evolves, increase this faith's value by 1."
+    }
+   ]
+  }
+ ]
+}
