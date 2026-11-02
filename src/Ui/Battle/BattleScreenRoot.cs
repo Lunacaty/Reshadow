@@ -844,10 +844,28 @@ public partial class BattleScreenRoot : Control
             }
 
             case CoreEvent.OnDraw:
-                _seq.Enqueue(new Seq()
-                    .Then(CreateDrawFlyIn())
-                    .Do(RebuildHand));
+            {
+                // 只有我方抽牌才播「飞进手牌区」的动画。
+                // 敌方抽牌玩家看不到手牌，原版也只有牌库数量的变化 ——
+                // 早先不判断归属，敌方每抽一张都在右下角飞一张牌出去，
+                // 看起来像是自己在抽牌。
+                bool isMine = ev.PlayerId < 0 || ev.PlayerId == _ctrl.MyPlayerId;
+
+                if (isMine)
+                {
+                    _seq.Enqueue(new Seq()
+                        .Then(CreateDrawFlyIn())
+                        .Do(RebuildHand));
+                }
+                else
+                {
+                    // 敌方抽牌：只在屏幕右上（敌方牌库计数）给一个轻微提示
+                    _seq.Enqueue(new Seq()
+                        .Do(() => _rightCol?.QueueRedraw())
+                        .Wait(0.12f));
+                }
                 break;
+            }
 
             case CoreEvent.TurnStart:
                 _seq.Enqueue(new Seq()
@@ -1082,19 +1100,34 @@ public partial class BattleScreenRoot : Control
         float trayH = cardH + 14f;
         float trayTop = bottomY - trayH;
 
-        var tray = new Control
+        // 手牌托盘的点击区必须单独一条空白带。
+        //
+        // 早先整个 tray 都是 Stop，但卡片是后加的、又盖在托盘内部
+        // （trayTop + 7），于是整块托盘都被卡片挡住 ——
+        // 玩家点下去命中的永远是卡片，tray.GuiInput 一次都不会触发，
+        // 「点击手牌区放大」这个功能等于不存在。
+        var trayHit = new Control
         {
             Position = new Vector2(trayLeft, trayTop),
-            Size = new Vector2(trayW, trayH),
+            Size = new Vector2(trayW, 9f),
             MouseFilter = MouseFilterEnum.Stop,
         };
-        tray.GuiInput += e =>
+        trayHit.GuiInput += e =>
         {
             if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
             {
                 _handExpanded = !_handExpanded;
                 RebuildHand();
             }
+        };
+        _handLayer.AddChild(trayHit);
+
+        // 托盘本体只做视觉底衬，不拦鼠标，让卡片与上方的可点带各拿各的事件
+        var tray = new Control
+        {
+            Position = new Vector2(trayLeft, trayTop),
+            Size = new Vector2(trayW, trayH),
+            MouseFilter = MouseFilterEnum.Ignore,
         };
         _handLayer.AddChild(tray);
 

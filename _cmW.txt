@@ -1,0 +1,33 @@
+fix: 手牌区点击放大失效 + 敌方抽牌播我方动画 + 补齐 23 张卡图
+
+【手牌区点击放大】
+  托盘本来挂了 GuiInput 切换 _handExpanded，但卡片是后加的、
+  又盖在托盘内部（trayTop + 7），整块托盘全被卡片挡住 ——
+  点下去命中的永远是卡片，tray.GuiInput 一次都不触发。
+  改为：托盘本体 MouseFilter=Ignore 只做底衬，
+  另在卡片上方 9px 留白带放一个可点控件专门切换展开。
+
+【敌方抽牌也播我方动画】
+  case OnDraw 不判断 ev.PlayerId，敌我抽牌都往右下角飞一张牌，
+  看起来像自己在抽。改为只有我方抽牌播飞入动画；
+  敌方抽牌只给右上牌库计数一个轻提示。
+
+【补齐 23 张缺失卡图】
+  pack 声明 982 张，assets 只有 937 张 —— 45 张缺图。
+  其中 23 张从 assets/影之诗素材/01-卡面原画 与
+  extracted_card/Card/MaterialsLow 补齐（统一缩放 1024x1024）。
+  assets/cards 937 -> 960 张。
+
+  仍缺 22 张，素材库里确实没有：
+    · 20 张 110* 开头（较新的超凡世界扩展包，素材包未包含）
+    · 90001210 / 90061140（编号对不上）
+  这些会回落到程序化卡面，不是黑块。
+
+【build 旧数据】
+  上一次 build/assets 是补图之前的副本（937 张），
+  已 rm -rf 后重新同步，现在源码与包内一致（960 张）。
+  同时删掉 build/assets/kernel（47MB）与 art（151MB）——
+  运行时完全不读（glossary.json 硬编码在 Glossary.cs）。
+
+【验证】
+  ALL ENGINE CHECKS PASSED / VM 50-50 / 战斗 UI 31-31 / 完整对局 7-7
