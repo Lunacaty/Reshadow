@@ -374,6 +374,23 @@ public partial class BoardUnitWidget : Control
         };
     }
 
+    /// <summary>多边形的外接矩形。</summary>
+    private static Rect2 OutlineBounds(Vector2[] poly)
+    {
+        float minX = float.MaxValue, minY = float.MaxValue;
+        float maxX = float.MinValue, maxY = float.MinValue;
+
+        foreach (var p in poly)
+        {
+            if (p.X < minX) minX = p.X;
+            if (p.X > maxX) maxX = p.X;
+            if (p.Y < minY) minY = p.Y;
+            if (p.Y > maxY) maxY = p.Y;
+        }
+
+        return new Rect2(minX, minY, maxX - minX, maxY - minY);
+    }
+
     /// <summary>
     /// 求多边形在水平线 y 处的左右边界（扫描线裁剪的核心）。
     ///
@@ -467,7 +484,10 @@ public partial class BoardUnitWidget : Control
 
     private void DrawArtwork(Color clanCol, CardDef def, bool isAmulet)
     {
-        var art = new Rect2(8f, 14f, W - 16f, H - 30f);
+        // 立绘区域必须是**内框的外接矩形**，不能手写常量。
+        // 之前写死 Rect2(8,14,W-16,H-30)，而内框顶点在 y=7 ——
+        // 拱顶那 7px 根本没画立绘，露出底色，看起来就是「上方有黑色缺口」。
+        var art = OutlineBounds(InnerOutline(isAmulet));
 
         var tex = ShadowverseFan.Ui.CardArtLoader.Load(def.CardId);
         if (tex != null)
