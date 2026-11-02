@@ -149,14 +149,23 @@ public partial class BattleVfxDirector : Control
                 case "barrier":
                 case "heal":
                 {
-                    float r = 16f + t * 40f;
+                    // 只画扩散圆环 —— 数字统一交给 DamageFloat。
+                    // 早先这里也 DrawString 了一份数字，于是同一处伤害
+                    // 会叠两个数字（一个跟着特效走、一个独立上飘），
+                    // 看起来就是「糊成一团」。
+                    float r = 18f + t * 44f;
+                    DrawCircle(fx.Pos, r * 0.55f, fx.PrimaryColor with { A = alpha * 0.28f });
                     DrawArc(fx.Pos, r, 0, Mathf.Tau, 32,
-                            fx.PrimaryColor with { A = alpha * 0.85f }, 3f);
-                    Vector2 p = fx.Pos + new Vector2(-18f, -12f - t * 38f);
-                    DrawString(font, p + new Vector2(2f, 2f), fx.Text,
-                               HorizontalAlignment.Left, -1, 26, new Color(0, 0, 0, alpha));
-                    DrawString(font, p, fx.Text, HorizontalAlignment.Left, -1, 26,
-                               fx.PrimaryColor.Lightened(0.25f) with { A = alpha });
+                            fx.PrimaryColor with { A = alpha * 0.90f }, 3.5f);
+
+                    if (fx.Kind == "barrier" && !string.IsNullOrEmpty(fx.Text))
+                    {
+                        Vector2 p = fx.Pos + new Vector2(-32f, -12f - t * 32f);
+                        DrawString(font, p + new Vector2(2f, 2f), fx.Text,
+                                   HorizontalAlignment.Left, -1, 22, new Color(0, 0, 0, alpha));
+                        DrawString(font, p, fx.Text, HorizontalAlignment.Left, -1, 22,
+                                   fx.PrimaryColor.Lightened(0.25f) with { A = alpha });
+                    }
                     break;
                 }
                 case "destroy":

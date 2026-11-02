@@ -7,13 +7,9 @@ namespace ShadowverseFan.Ui.Battle;
 /// <summary>棋子当前的动画变换（全部由 BoardAnimDirector 驱动）。</summary>
 public struct UnitMotion
 {
-    /// <summary>相对座位的像素偏移。入场从下方钻出时给正 Y。</summary>
     public Vector2 Offset;
-    /// <summary>缩放。</summary>
     public float Scale;
-    /// <summary>水平翻面程度：0=正面，1=完整翻过（宽度压到 0 再展开）。</summary>
     public float FlipX;
-    /// <summary>0..1 透明度。</summary>
     public float Alpha;
 
     public static UnitMotion Idle => new()
@@ -31,12 +27,7 @@ public struct UnitMotion
 }
 
 /// <summary>
-/// 战场棋子动画调度器。
-///
-/// 关键设计：动画状态按 **EntityId** 存在这里，而不是挂在控件上。
-/// BattleScreenRoot.Rebuild() 每次都会销毁重建全部棋子控件 ——
-/// 状态若挂在控件上，玩家一操作动画就断在半路。
-/// 控件每帧从 Director 查自己的变换，重建后自然接上。
+/// 战场棋子动画调度器（按 EntityId 存储轨道状态，跨 Rebuild 存活）。
 /// </summary>
 public sealed class BoardAnimDirector
 {
@@ -48,26 +39,34 @@ public sealed class BoardAnimDirector
 
     private readonly Dictionary<long, Track> _tracks = new();
 
-    /// <summary>
-    /// 正在「选攻击目标」的棋子。
-    ///
-    /// 这类棋子要持续上浮 + 上下浮动，表示「已被玩家拿起、等你选对象」。
-    /// 它不影响真实状态，属于纯表现，因此不占表演队列。
-    /// </summary>
     private long _aimingEntity = -1;
     private float _aimPhase;
 
+    /// <summary>
+    /// 无条件动画：玩家按住随从准备攻击选目标时，随从立即上浮并呼吸浮动。
+    ///
+    /// 必须调用 TrackOf 确保轨道存在 —— 早先只写了 _aimingEntity，
+    /// 而 Step 里用 TryGetValue 查轨道；随从入场动画播完后轨道会被清掉，
+    /// TryGetValue 恒为 false，浮动偏移一行都没执行过。
+    /// </summary>
     public void SetAiming(long entityId)
     {
         if (_aimingEntity == entityId) return;
+        ClearAiming();
         _aimingEntity = entityId;
         _aimPhase = 0f;
+        var t = TrackOf(entityId);
+        t.Motion.Offset = new Vector2(0f, -18f);
+        t.Motion.Scale = 1.06f;
+        t.Motion.Alpha = 1f;
     }
 
     public void ClearAiming()
     {
         if (_aimingEntity >= 0 && _tracks.TryGetValue(_aimingEntity, out var t))
-            t.Motion = UnitMotion.Idle;
+        {
+            if (t.Running.Count == 0) t.Motion = UnitMotion.Idle;
+        }
         _aimingEntity = -1;
     }
 
@@ -84,16 +83,18 @@ public sealed class BoardAnimDirector
     public UnitMotion MotionOf(long entityId)
         => _tracks.TryGetValue(entityId, out var t) ? t.Motion : UnitMotion.Idle;
 
-    /// <summary>该棋子是否还在播动画（控件据此决定要不要每帧重绘）。</summary>
     public bool IsAnimating(long entityId)
         => entityId == _aimingEntity
-        || (_tracks.TryGetValue(entityId, out var t) && t.Running.Count > 0);
+        || (_tracks.TryGetValue(entityId, out var t) && (t.Running.Count > 0 || !t.Motion.IsIdle));
 
     public void Clear(long entityId) => _tracks.Remove(entityId);
 
-    public void ClearAll() => _tracks.Clear();
+    public void ClearAll()
+    {
+        _tracks.Clear();
+        _aimingEntity = -1;
+    }
 
-    /// <summary>把一段动画挂到某个棋子上。</summary>
     public void Play(long entityId, Anim anim)
     {
         if (anim == null) return;
@@ -101,15 +102,17 @@ public sealed class BoardAnimDirector
         t.Running.Add(anim);
     }
 
-    /// <summary>每帧推进。</summary>
     public void Step(float dt)
     {
-        // 选目标浮动：独立于一次性动画，持续到 ClearAiming 为止
-        if (_aimingEntity >= 0 && _tracks.TryGetValue(_aimingEntity, out var aiming))
+        // 无条件动画：选目标浮动独立于事件队列，每帧实时更新
+        if (_aimingEntity >= 0)
         {
+            var aiming = TrackOf(_aimingEntity);
             _aimPhase += dt;
-            float bob = Mathf.Sin(_aimPhase * 6.2f) * 5f;
-            aiming.Motion.Offset = new Vector2(0, -18f + bob);
+            float bob = Mathf.Sin(_aimPhase * 6.5f) * 5.5f;
+            aiming.Motion.Offset = new Vector2(0f, -18f + bob);
+            aiming.Motion.Scale = 1.06f;
+            aiming.Motion.Alpha = 1f;
         }
 
         if (_tracks.Count == 0) return;
@@ -119,13 +122,12 @@ public sealed class BoardAnimDirector
         foreach (var kv in _tracks)
         {
             var t = kv.Value;
-            if (t.Running.Count == 0) continue;
-
-            for (int i = t.Running.Count - 1; i >= 0; i--)
+            if (t.Running.Count > 0)
             {
-                if (!t.Running[i].Step(dt))
+                for (int i = t.Running.Count - 1; i >= 0; i--)
                 {
-                    t.Running.RemoveAt(i);
+                    if (!t.Running[i].Step(dt))
+                        t.Running.RemoveAt(i);
                 }
             }
 
@@ -135,7 +137,6 @@ public sealed class BoardAnimDirector
             }
         }
 
-        // 动画播完且回到静止态就清掉轨道，避免字典无限增长
         if (finished != null)
             foreach (var id in finished) _tracks.Remove(id);
     }
@@ -143,39 +144,51 @@ public sealed class BoardAnimDirector
     // ---------------------------------------------------------------- 预设动画
 
     /// <summary>
-    /// 入场：从座位**下方**钻上来。
-    ///
-    /// 起点偏移 = 棋子高度，正好完全藏在座位下沿之外，
-    /// 再配上淡入，看起来就是从地里冒出来。
+    /// 预备入场：随从在后端已入场、但入场动画还在队列中排队时，
+    /// 先设为隐身沉底，防止「第 1 张还在入场、第 3 张已经站在场上」。
     /// </summary>
+    public void PrepareEnter(long entityId, float height = 124f)
+    {
+        var t = TrackOf(entityId);
+        t.Running.Clear();
+        t.Motion = new UnitMotion
+        {
+            Offset = new Vector2(0f, height),
+            Scale = 1f,
+            FlipX = 0f,
+            Alpha = 0f,
+        };
+    }
+
+    /// <summary>入场：从座位下方钻出。</summary>
     public void PlayEnter(long entityId, float height = 124f)
     {
         var t = TrackOf(entityId);
-        t.Motion = UnitMotion.Idle;
         t.Running.Clear();
 
-        Play(entityId, new Anim(0.34f, Ease.OutBack, v =>
+        Play(entityId, new Anim(0.28f, Ease.OutBack, v =>
         {
-            t.Motion.Offset = new Vector2(0, height * (1f - v));
-            t.Motion.Alpha = Mathf.Min(1f, v * 1.8f);
-        }, () => { t.Motion = UnitMotion.Idle; }));
+            if (_aimingEntity == entityId) return;
+            t.Motion.Offset = new Vector2(0f, height * (1f - v));
+            t.Motion.Alpha = Mathf.Clamp(v * 2.0f, 0f, 1f);
+            t.Motion.Scale = 1f;
+        }, () =>
+        {
+            if (_aimingEntity != entityId) t.Motion = UnitMotion.Idle;
+        }));
     }
 
-    /// <summary>
-    /// 离场：破碎成光点。
-    ///
-    /// 棋子本身缩小 + 淡出，同时由 BattleScreenRoot 在该位置放一簇粒子。
-    /// </summary>
+    /// <summary>普通破坏/消失离场：原地缩小、上浮并淡出。</summary>
     public void PlayLeave(long entityId, Action onDone = null)
     {
         var t = TrackOf(entityId);
         t.Running.Clear();
 
-        Play(entityId, new Anim(0.28f, Ease.InCubic, v =>
+        Play(entityId, new Anim(0.26f, Ease.InCubic, v =>
         {
-            t.Motion.Scale = 1f - v * 0.75f;
-            t.Motion.Alpha = 1f - v;
-            t.Motion.Offset = new Vector2(0, -v * 18f);
+            t.Motion.Scale = Mathf.Max(0.15f, 1f - v * 0.75f);
+            t.Motion.Alpha = Mathf.Clamp(1f - v, 0f, 1f);
+            t.Motion.Offset = new Vector2(0f, -v * 20f);
         }, () =>
         {
             t.Motion = UnitMotion.Idle;
@@ -183,63 +196,53 @@ public sealed class BoardAnimDirector
         }));
     }
 
-    /// <summary>
-    /// 进化 / 超进化：快速升空 → 水平翻面 → 砸回来。
-    ///
-    /// 三段合成一条曲线，避免中途被别的动画打断时停在半空。
-    /// </summary>
+    /// <summary>进化 / 超进化（阻塞性）：升空 → 顶点翻面 → 砸落。</summary>
     public void PlayEvolve(long entityId, bool super)
     {
         var t = TrackOf(entityId);
         t.Running.Clear();
 
         float rise = super ? 92f : 74f;
-        Color flash = super ? new Color("C084FC") : new Color("F59E0B");
-        _ = flash;
 
-        Play(entityId, new Anim(0.62f, Ease.Linear, v =>
+        Play(entityId, new Anim(0.58f, Ease.Linear, v =>
         {
+            t.Motion.Alpha = 1f;
             if (v < 0.42f)
             {
-                // ① 升空：先快后慢
                 float k = Ease.OutCubic(v / 0.42f);
-                t.Motion.Offset = new Vector2(0, -rise * k);
+                t.Motion.Offset = new Vector2(0f, -rise * k);
                 t.Motion.FlipX = Ease.InOutCubic(k) * 0.5f;
-                t.Motion.Scale = 1f + 0.06f * k;
+                t.Motion.Scale = 1f + 0.12f * k;
             }
             else if (v < 0.58f)
             {
-                // ② 顶点翻面：宽度压到 0 再张开，看起来是转了 180°
                 float k = (v - 0.42f) / 0.16f;
-                t.Motion.Offset = new Vector2(0, -rise);
+                t.Motion.Offset = new Vector2(0f, -rise);
                 t.Motion.FlipX = 0.5f + k * 0.5f;
-                t.Motion.Scale = 1.06f;
+                t.Motion.Scale = 1.12f;
             }
             else
             {
-                // ③ 砸回来：加速下落 + 落地小幅回弹
                 float k = Ease.InCubic((v - 0.58f) / 0.42f);
-                t.Motion.Offset = new Vector2(0, -rise * (1f - k));
+                t.Motion.Offset = new Vector2(0f, -rise * (1f - k));
                 t.Motion.FlipX = 0f;
-                t.Motion.Scale = 1f + 0.10f * Mathf.Sin(k * Mathf.Pi);
+                t.Motion.Scale = 1f + 0.12f * Mathf.Sin(k * Mathf.Pi);
             }
         }, () => { t.Motion = UnitMotion.Idle; }));
     }
 
-    /// <summary>
-    /// 被超进化随从破坏：先弹向自己的主战者，砸到后再破碎。
-    /// </summary>
+    /// <summary>被超进化随从击杀：高速弹射砸向其所属主战者，撞击后碎裂。</summary>
     public void PlayKnockToLeader(long entityId, Vector2 targetOffset, Action onDone = null)
     {
         var t = TrackOf(entityId);
         t.Running.Clear();
 
-        Play(entityId, new Anim(0.40f, Ease.OutQuint, v =>
+        Play(entityId, new Anim(0.36f, Ease.InQuad, v =>
         {
             t.Motion.Offset = targetOffset * v;
-            t.Motion.Scale = 1f - v * 0.30f;
-            t.Motion.FlipX = v * 0.35f;
-            t.Motion.Alpha = 1f - Mathf.Max(0f, (v - 0.75f) / 0.25f);
+            t.Motion.Scale = 1.05f - v * 0.25f;
+            t.Motion.FlipX = v * 0.25f;
+            t.Motion.Alpha = v < 0.85f ? 1f : Mathf.Clamp((1f - v) / 0.15f, 0f, 1f);
         }, () =>
         {
             t.Motion = UnitMotion.Idle;
@@ -252,33 +255,43 @@ public sealed class BoardAnimDirector
     {
         var t = TrackOf(entityId);
         t.Running.Clear();
+        bool hitFired = false;
 
-        Play(entityId, new Anim(0.34f, Ease.Linear, v =>
+        Play(entityId, new Anim(0.28f, Ease.Linear, v =>
         {
-            if (v < 0.42f)
+            t.Motion.Alpha = 1f;
+            if (v < 0.45f)
             {
-                t.Motion.Offset = targetOffset * Ease.InQuad(v / 0.42f) * 0.82f;
+                t.Motion.Offset = targetOffset * Ease.InQuad(v / 0.45f) * 0.82f;
             }
             else
             {
-                float k = (v - 0.42f) / 0.58f;
+                if (!hitFired)
+                {
+                    hitFired = true;
+                    onHit?.Invoke();
+                }
+                float k = (v - 0.45f) / 0.55f;
                 t.Motion.Offset = targetOffset * 0.82f * (1f - Ease.OutQuad(k));
             }
         }, () =>
         {
+            if (!hitFired) onHit?.Invoke();
             t.Motion = UnitMotion.Idle;
-            onHit?.Invoke();
         }));
     }
 
-    /// <summary>受击抖动（未死亡时）。</summary>
+    /// <summary>受击抖动。</summary>
     public void PlayHitShake(long entityId)
     {
         var t = TrackOf(entityId);
         Play(entityId, new Anim(0.18f, Ease.Linear, v =>
         {
-            float amp = 6f * (1f - v);
-            t.Motion.Offset = new Vector2(Mathf.Sin(v * 46f) * amp, 0);
-        }, () => { t.Motion = UnitMotion.Idle; }));
+            float amp = 7f * (1f - v);
+            t.Motion.Offset = new Vector2(Mathf.Sin(v * 48f) * amp, 0f);
+        }, () =>
+        {
+            if (_aimingEntity != entityId) t.Motion = UnitMotion.Idle;
+        }));
     }
 }

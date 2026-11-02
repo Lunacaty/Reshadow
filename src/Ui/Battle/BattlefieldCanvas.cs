@@ -60,6 +60,34 @@ public partial class BattlefieldCanvas : Control
     /// 屏幕中心却是 (640,360)，差 45px；按屏幕中心摆棋子，
     /// 整排随从就会偏右、且与椭圆对不上。
     /// </summary>
+    /// <summary>
+    /// 我方左下 5 个纹章圆槽：**距窗口底部距离恒定**（上层 154px、下层 102px）。
+    ///
+    /// 早先写死 y=566/618，那是 720p 下的绝对值 —— 窗口一高，
+    /// 纹章区就浮到半空；窗口一矮就被切掉。改用 sz.Y - 常量。
+    /// </summary>
+    public static Vector2[] GetAllyCrestCenters(Vector2 sz)
+    {
+        float h = sz.Y > 0f ? sz.Y : 720f;
+        return new Vector2[]
+        {
+            new(124f, h - 154f), new(178f, h - 154f),
+            new(97f,  h - 102f), new(151f, h - 102f), new(205f, h - 102f),
+        };
+    }
+
+    /// <summary>敌方右上 5 个纹章圆槽：距窗口右缘与顶边距离恒定。</summary>
+    public static Vector2[] GetEnemyCrestCenters(Vector2 sz)
+    {
+        float w = sz.X > 0f ? sz.X : 1280f;
+        float dx = w - 1280f;
+        return new Vector2[]
+        {
+            new(902f + dx, 42f), new(956f + dx, 42f), new(1010f + dx, 42f),
+            new(929f + dx, 92f), new(983f + dx, 92f),
+        };
+    }
+
     public static readonly Vector2 ArenaCenter = new(595f, 352f);
     public const float ArenaRadiusX = 368f;
     public const float ArenaRadiusY = 208f;
@@ -75,28 +103,35 @@ public partial class BattlefieldCanvas : Control
         DrawCircle(new Vector2(sz.X * 0.10f, sz.Y * 0.22f), 300f, new Color("2E4A3A"));
         DrawCircle(new Vector2(sz.X * 0.92f, sz.Y * 0.78f), 280f, new Color("264034"));
 
+        // 按实际视口缩放竞技场，使它与 LayoutBattlefield 摆的棋子对齐
+        float sx = sz.X / 1280f;
+        float sy = sz.Y / 720f;
+
         // 2. 中央暖沙竞技场（外暗内明的对比是这块的灵魂）
-        Vector2 arena = ArenaCenter;
-        DrawEllipse(arena, 470f, 285f, new Color("6E8560") { A = 0.45f });
-        DrawEllipse(arena, 420f, 250f, new Color("C9AE86"));
-        DrawEllipse(arena, 368f, 208f, new Color("E0CCA6"));
-        DrawLine(new Vector2(240f, 330f), new Vector2(950f, 330f),
+        Vector2 arena = new(ArenaCenter.X * sx, ArenaCenter.Y * sy);
+        DrawEllipse(arena, 470f * sx, 285f * sy, new Color("6E8560") { A = 0.45f });
+        DrawEllipse(arena, 420f * sx, 250f * sy, new Color("C9AE86"));
+        DrawEllipse(arena, 368f * sx, 208f * sy, new Color("E0CCA6"));
+        DrawLine(new Vector2(arena.X - 355f * sx, arena.Y - 22f * sy),
+                 new Vector2(arena.X + 355f * sx, arena.Y - 22f * sy),
                  new Color(0.48f, 0.39f, 0.28f, 0.30f), 2.0f);
 
         if (IsDraggingPlayCard)
         {
-            var dropZone = new Rect2(250f, 175f, 700f, 315f);
+            var dropZone = new Rect2(arena.X - 345f * sx, arena.Y - 177f * sy,
+                                     700f * sx, 315f * sy);
             DrawRect(dropZone, new Color(0.0f, 0.90f, 1.0f, 0.13f));
             DrawRect(dropZone, SvWbTheme.AccentCyan, false, 2.5f);
         }
 
         if (Controller?.State == null) return;
 
-        DrawCrestCluster(1, EnemyCrestCenters, font);
-        DrawCrestCluster(0, AllyCrestCenters, font);
+        DrawCrestCluster(1, GetEnemyCrestCenters(sz), font);
+        DrawCrestCluster(0, GetAllyCrestCenters(sz), font);
 
-        DrawZoneCounterBar(1, new Rect2(1042f, 18f, 218f, 34f), true, font);
-        DrawZoneCounterBar(0, new Rect2(68f, 666f, 206f, 34f), false, font);
+        // 敌方信息栏固定右上角；我方信息栏固定在距窗口底部 54px 处
+        DrawZoneCounterBar(1, new Rect2(sz.X - 238f, 18f, 218f, 34f), true, font);
+        DrawZoneCounterBar(0, new Rect2(68f, sz.Y - 54f, 206f, 34f), false, font);
 
         DrawEnemyHandBacks(Controller.Hand(1).Count, new Vector2(265f, 4f), font);
 
