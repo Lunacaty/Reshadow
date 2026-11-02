@@ -101,6 +101,7 @@ public partial class DiyWorkshopView : Control
         // 从现有卡池导入一张真卡：把测试集里的卡拉进工坊看它的四端投影。
         var loadPicker = new OptionButton { CustomMinimumSize = new Vector2(220, 34) };
         SvWbTheme.StyleButton(loadPicker);
+        SvWbTheme.StyleOptionPopup(loadPicker);
         loadPicker.AddItem("📂 加载现有卡牌…", 0);
         var allCards = _store.Catalog.AllCards.Values.OrderBy(c => c.CardId).ToList();
         for (int ci = 0; ci < allCards.Count; ci++)
@@ -133,6 +134,7 @@ public partial class DiyWorkshopView : Control
 
         _packPicker = new OptionButton { CustomMinimumSize = new Vector2(160, 34) };
         SvWbTheme.StyleButton(_packPicker);
+        SvWbTheme.StyleOptionPopup(_packPicker);
         int i = 0;
         foreach (var pid in _store.Catalog.Packs.Keys.OrderBy(x => x, StringComparer.Ordinal))
         {
@@ -341,6 +343,7 @@ public partial class DiyWorkshopView : Control
         _formKindPicker.AddItem("护符", 2);
         _formKindPicker.Selected = fm.Kind == "Spell" ? 1 : fm.Kind == "Amulet" ? 2 : 0;
         SvWbTheme.StyleButton(_formKindPicker);
+        SvWbTheme.StyleOptionPopup(_formKindPicker);
         _endpointHost.AddChild(EditRow("卡种", _formKindPicker));
 
         _formClanPicker = new OptionButton { CustomMinimumSize = new Vector2(160, 32) };
@@ -350,6 +353,7 @@ public partial class DiyWorkshopView : Control
         int ci = Array.IndexOf(clans, fm.Clan);
         _formClanPicker.Selected = ci >= 0 ? ci : 0;
         SvWbTheme.StyleButton(_formClanPicker);
+        SvWbTheme.StyleOptionPopup(_formClanPicker);
         _endpointHost.AddChild(EditRow("职业", _formClanPicker));
 
         // 兵种 / 关键词：文本编辑，逗号分隔

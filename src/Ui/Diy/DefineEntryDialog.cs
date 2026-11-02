@@ -64,6 +64,7 @@ public partial class DefineEntryDialog : Control
         _kindPicker.AddItem("计数器 Counter", 1);
         _kindPicker.AddItem("职业 Clan", 2);
         SvWbTheme.StyleButton(_kindPicker);
+        SvWbTheme.StyleOptionPopup(_kindPicker);
         v.AddChild(Field("类别", _kindPicker));
 
         _engEdit = new LineEdit { CustomMinimumSize = new Vector2(260, 34),

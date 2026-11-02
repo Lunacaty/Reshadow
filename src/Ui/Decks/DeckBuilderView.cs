@@ -190,6 +190,7 @@ public partial class DeckBuilderView : Control
         kindOpt.AddItem("护符", 3);
         kindOpt.AddItem("★含构筑规则", 4);
         SvWbTheme.StyleButton(kindOpt);
+        SvWbTheme.StyleOptionPopup(kindOpt);
         kindOpt.ItemSelected += idx =>
         {
             switch (idx)

@@ -181,6 +181,55 @@ public static class SvWbTheme
     }
 
     /// <summary>
+    /// OptionButton / 任意按钮的**弹出菜单**换肤。
+    ///
+    /// PopupMenu 是独立主题，StyleButton 管不到它 ——
+    /// 不做这一步，下拉展开时会弹出一张系统灰白菜单，
+    /// 和深色界面完全不搭，是第二明显的默认样式残留。
+    /// </summary>
+    public static void StyleOptionPopup(OptionButton picker)
+    {
+        if (picker == null) return;
+        var popup = picker.GetPopup();
+        if (popup == null) return;
+
+        var panel = new StyleBoxFlat
+        {
+            BgColor = new Color("131A29"),
+            BorderColor = new Color("2E3B57"),
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+            BorderWidthLeft = 1, BorderWidthRight = 1,
+            BorderWidthTop = 1, BorderWidthBottom = 1,
+            ShadowColor = new Color(0, 0, 0, 0.55f),
+            ShadowSize = 12,
+            ContentMarginLeft = 6,
+            ContentMarginRight = 6,
+            ContentMarginTop = 6,
+            ContentMarginBottom = 6,
+        };
+        var hover = new StyleBoxFlat
+        {
+            BgColor = new Color("243048"),
+            CornerRadiusTopLeft = 6,
+            CornerRadiusTopRight = 6,
+            CornerRadiusBottomLeft = 6,
+            CornerRadiusBottomRight = 6,
+        };
+        var separator = new StyleBoxLine { Color = new Color("2E3B57"), Thickness = 1 };
+
+        popup.AddThemeStyleboxOverride("panel", panel);
+        popup.AddThemeStyleboxOverride("hover", hover);
+        popup.AddThemeStyleboxOverride("separator", separator);
+        popup.AddThemeColorOverride("font_color", TextSecondary);
+        popup.AddThemeColorOverride("font_hover_color", Colors.White);
+        popup.AddThemeColorOverride("font_disabled_color", TextMuted);
+        popup.AddThemeFontSizeOverride("font_size", 13);
+    }
+
+    /// <summary>
     /// 给滚动容器换上暗色细滚动条。
     ///
     /// 不做这件事，Godot 会给每个 ScrollContainer 画默认的浅灰滚动条 ——

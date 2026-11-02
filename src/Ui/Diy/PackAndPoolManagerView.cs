@@ -119,6 +119,7 @@ public partial class PackAndPoolManagerView : Control
         // 而不是写死只让第一个可编辑、其余只读跳过。
         _poolPicker = new OptionButton { CustomMinimumSize = new Vector2(200, 32) };
         SvWbTheme.StyleButton(_poolPicker);
+        SvWbTheme.StyleOptionPopup(_poolPicker);
         _poolPicker.ItemSelected += idx =>
         {
             var keys = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).ToList();
