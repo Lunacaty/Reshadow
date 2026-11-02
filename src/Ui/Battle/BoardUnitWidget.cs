@@ -111,13 +111,37 @@ public partial class BoardUnitWidget : Control
     /// 加上这笔待播差值，让盾牌显示**受击前**的生命值，
     /// 直到受击动画命中的那一帧才跳变 —— 这就是「动画落后于后端」。
     /// </summary>
-    public int VisualLifeOffset { get; set; }
+    public int VisualLifeOffset
+    {
+        get => _visualLifeOffset;
+        set
+        {
+            if (_visualLifeOffset == value) return;
+            _visualLifeOffset = value;
+            // 必须主动重绘：控件只在「有动画在跑」时每帧 QueueRedraw，
+            // 静止状态下改了血量不重画，盾牌会一直停在旧数字上。
+            QueueRedraw();
+        }
+    }
+
+    private int _visualLifeOffset;
 
     /// <summary>
     /// 视觉进化延迟：后端已进化、但进化翻面动画还在队列里没播时，
     /// 暂不显示金框与进化身材加成。
     /// </summary>
-    public bool HideEvolveVisual { get; set; }
+    public bool HideEvolveVisual
+    {
+        get => _hideEvolveVisual;
+        set
+        {
+            if (_hideEvolveVisual == value) return;
+            _hideEvolveVisual = value;
+            QueueRedraw();
+        }
+    }
+
+    private bool _hideEvolveVisual;
 
     /// <summary>
     /// 接收动画状态。
