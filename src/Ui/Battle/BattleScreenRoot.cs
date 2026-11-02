@@ -182,6 +182,12 @@ public partial class BattleScreenRoot : Control
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
+        // 窗口尺寸变化时重排。
+        // project.godot 设的是 stretch/aspect="expand"，视口会随窗口变大，
+        // 而这里的坐标全是按 1280x720 设计的 —— 不做自适应，
+        // 全屏时我方主战者（y=608）会被推到可视区外，直接看不见。
+        Resized += LayoutBattlefield;
+
         _field = new BattlefieldCanvas { Controller = _ctrl };
         _field.OnCrestClicked += e => _actionPanel.ShowForEntity(e);
         AddChild(_field);
@@ -195,7 +201,6 @@ public partial class BattleScreenRoot : Control
         // 平直边就正好压在屏幕顶沿，拱顶留在屏幕内 108 处。
         //
         // 之前错写成 -FlatEdgeY(-112)，把整个框推出屏幕，只剩半个立绘。
-        _foeLeader.Position = new Vector2(475, -LeaderMedallionWidget.DomeTopY);
         _foeLeader.OnLeaderClicked += () =>
         {
             var ldr = _ctrl.Leader(1);
@@ -209,8 +214,7 @@ public partial class BattleScreenRoot : Control
         _allyLeader.Setup(_ctrl, 0, false);
         // 我方不翻转：平直边在控件内 y=FlatEdgeY(112)，拱顶在 y=DomeTopY(4)。
         // 放到 Y = 720 - FlatEdgeY，平直边正好压在屏幕底沿。
-        _allyLeader.Position = new Vector2(
-            475, GetViewportRect().Size.Y - LeaderMedallionWidget.FlatEdgeY);
+        // 位置由 LayoutBattlefield 统一计算
         _allyLeader.OnLeaderClicked += () =>
         {
             var ldr = _ctrl.Leader(0);
@@ -238,18 +242,15 @@ public partial class BattleScreenRoot : Control
 
         _rightCol = new RightCommandColumnWidget();
         _rightCol.Setup(_ctrl);
-        _rightCol.Position = new Vector2(1035, 115);
         _rightCol.OnEndTurnClicked += () => { _ctrl.EndTurn(); Rebuild(); };
         _rightCol.OnExtraPpClicked += () => { _ctrl.TryUseExtraPp(); Rebuild(); };
         AddChild(_rightCol);
 
         // 棋盘容器（上敌下我，各 5 格）
         _boardFoe = new VBoxContainer { MouseFilter = MouseFilterEnum.Pass };
-        _boardFoe.Position = new Vector2(300, 165);
         AddChild(_boardFoe);
 
         _boardAlly = new VBoxContainer { MouseFilter = MouseFilterEnum.Pass };
-        _boardAlly.Position = new Vector2(300, 350);
         AddChild(_boardAlly);
 
         _handLayer = new Control { MouseFilter = MouseFilterEnum.Pass };
@@ -260,6 +261,11 @@ public partial class BattleScreenRoot : Control
         _overlayLayer = new Control { MouseFilter = MouseFilterEnum.Ignore };
         _overlayLayer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(_overlayLayer);
+
+        // 全部控件建完之后再排一次 —— 早先在创建 _foeLeader 之后立刻调，
+        // 那时 _allyLeader / _boardAlly 都还不存在，等于什么都没排。
+        LayoutBattlefield();
+        CallDeferred(nameof(LayoutBattlefield));
 
         _vfx = new BattleVfxDirector();
         AddChild(_vfx);
@@ -854,19 +860,29 @@ public partial class BattleScreenRoot : Control
         var hand = _ctrl.Hand(0);
         int n = hand.Count;
 
-        float cardW = _handExpanded ? 138f : 88f;
-        float cardH = _handExpanded ? 182f : 116f;
-        float rightEdge = 1266f;
+        // 按实际视口算，不写死 1280x720 的像素值 ——
+        // 否则全屏时手牌会停在屏幕中间而不是底部。
+        var vp = Size;
+        if (vp.X <= 0f || vp.Y <= 0f) vp = GetViewportRect().Size;
+        if (vp.X <= 0f || vp.Y <= 0f) vp = new Vector2(DesignW, DesignH);
 
-        // 缩小态不越过 750（让开主战者拱框 X=475..715）；展开态可到 420。
-        float minLeft = _handExpanded ? 420f : 750f;
+        float sx = vp.X / DesignW;
+
+        float cardW = (_handExpanded ? 138f : 88f) * sx;
+        float cardH = (_handExpanded ? 182f : 116f) * sx;
+        float rightEdge = vp.X - 14f * sx;
+
+        // 缩小态不越过主战者拱框右沿；展开态可以更靠左。
+        float minLeft = (_handExpanded ? 420f : 750f) * sx;
         float maxTrayW = rightEdge - minLeft;
 
         float idealStep = cardW + (_handExpanded ? 6f : 4f);
         float neededW = n <= 0 ? 180f : cardW + (n - 1) * idealStep + 20f;
         float trayW = Mathf.Clamp(neededW, 180f, maxTrayW);
         float trayLeft = rightEdge - trayW;
-        float trayTop = _handExpanded ? 528f : 596f;
+        // 手牌贴着窗口下沿：底边固定，展开时向上长。
+        float bottomY = vp.Y - HandTrayBottomGap;
+        float trayTop = _handExpanded ? bottomY - (cardH + 14f) - 56f : bottomY - (cardH + 14f);
         float trayH = cardH + 14f;
 
         // 手牌区**不画外层矩形**。
@@ -1161,6 +1177,96 @@ public partial class BattleScreenRoot : Control
         }
         Rebuild();
     }
+
+    /// <summary>设计基准分辨率。所有布局常数都按它写。</summary>
+    private const float DesignW = 1280f;
+    private const float DesignH = 720f;
+
+    /// <summary>
+    /// 按实际视口重排全部战场元素。
+    ///
+    /// 设计基准是 1280x720，实际视口可能更大（stretch/aspect="expand"
+    /// 会让视口随窗口变化）。之前在 BuildUi 里写死像素坐标，
+    /// 全屏时我方主战者会被推到可视区外 —— 玩家看不到自己的主战者。
+    ///
+    /// 这里的策略：**横向按宽度缩放、纵向贴边锚定**。
+    /// 主战者/战场永远贴着窗口的上/下沿，中间地带自由伸展，
+    /// 这样任何宽高比下双方主战者都在可视区内。
+    /// </summary>
+    private void LayoutBattlefield()
+    {
+        var vp = Size;
+        if (vp.X <= 0f || vp.Y <= 0f) vp = GetViewportRect().Size;
+        if (vp.X <= 0f || vp.Y <= 0f) vp = new Vector2(DesignW, DesignH);
+
+        // 横向以 1280 为基准等比缩放（左右留白对称）
+        float sx = vp.X / DesignW;
+        float cx = vp.X * 0.5f;
+
+        // ---- 双方主战者：贴着上/下沿、严格水平居中 ----
+        //
+        // LeaderMedallionWidget 的控件宽 240，而拱框中线在控件内 x=120
+        // （FrameL=34 + FrameW/2=86）。所以「把拱框摆到屏幕正中」
+        // 应该用 cx - 120，而不是 cx - 控件宽/2 之外的任何值。
+        // 早先写 cx - 237，整体偏左 117px —— 两个主战者都不在水平中心。
+        const float LeaderHalfW = 120f;
+
+        if (_foeLeader != null)
+        {
+            _foeLeader.Position = new Vector2(
+                cx - LeaderHalfW, -LeaderMedallionWidget.DomeTopY);
+        }
+
+        if (_allyLeader != null)
+        {
+            // 我方主战者：平直边压在**手牌区底沿**，而不是窗口底沿。
+            //
+            // 早先是 vp.Y - FlatEdgeY，于是主战者与手牌之间留出一大片空白；
+            // 玩家截图里那块蓝框区域就是这么来的。
+            // 现在把主战者整体上移到与手牌区底部对齐。
+            float handBottom = vp.Y - HandTrayBottomGap;
+            _allyLeader.Position = new Vector2(
+                cx - LeaderHalfW, handBottom - LeaderMedallionWidget.FlatEdgeY);
+        }
+
+        // ---- 右侧指令列：右下角 ----
+        if (_rightCol != null)
+        {
+            _rightCol.Position = new Vector2(
+                vp.X - RightColumnRightMargin, vp.Y * 0.16f);
+        }
+
+        // ---- 两块棋盘：上下对称分布在上/下主战者之间 ----
+        float boardW = 660f * sx;
+        float boardX = cx - boardW * 0.5f + 40f * sx;
+
+        float topLimit = LeaderMedallionWidget.FlatEdgeY + 24f + 20f;
+        float bottomLimit = (_allyLeader != null ? _allyLeader.Position.Y : vp.Y) - 24f;
+        float span = Mathf.Max(120f, bottomLimit - topLimit);
+
+        // CenterContainer 需要父级有明确宽度才能居中 —— VBoxContainer
+        // 默认按内容撑开，传给子级的是 0 宽，于是「居中」实际上没效果。
+        if (_boardFoe != null)
+        {
+            _boardFoe.Position = new Vector2(boardX, topLimit + span * 0.26f);
+            _boardFoe.Size = new Vector2(boardW, 0);
+            _boardFoe.CustomMinimumSize = new Vector2(boardW, 0);
+        }
+
+        if (_boardAlly != null)
+        {
+            _boardAlly.Position = new Vector2(boardX, topLimit + span * 0.62f);
+            _boardAlly.Size = new Vector2(boardW, 0);
+            _boardAlly.CustomMinimumSize = new Vector2(boardW, 0);
+        }
+
+    }
+
+    /// <summary>手牌区底部与窗口下沿之间的留白。</summary>
+    private const float HandTrayBottomGap = 8f;
+
+    /// <summary>右侧指令列距窗口右沿的距离。</summary>
+    private const float RightColumnRightMargin = 245f;
 
     /// <summary>开发期入口：往双方战场各放几个随从（截图用）。</summary>
     public void SpawnBoardDemo()
