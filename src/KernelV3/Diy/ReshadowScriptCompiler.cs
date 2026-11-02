@@ -1026,6 +1026,7 @@ public sealed class ReshadowScriptCompiler
             "damage_all" or "全体伤害" => ParseDamageAll(p),
             "restore" or "回复" => ParseRestore(p),
             "reveal" or "公开" => ParseReveal(p),
+            "damage_mod" or "伤害修正" => ParseDamageMod(p),
             "draw" or "抽牌" => ParseDraw(p),
             "summon" or "召唤" => ParseSummon(p),
             "crest_gain" or "获得纹章" => ParseCrestGain(p),
@@ -1111,6 +1112,47 @@ public sealed class ReshadowScriptCompiler
     }
 
     /// <summary>reveal(target)：公开一张牌（只影响可见性）。</summary>
+    /// <summary>damage_mod(target, Kind, SourceMask, X[, add])：伤害修正。</summary>
+    private EffectNode ParseDamageMod(Cursor p)
+    {
+        var tgt = ParseTargetOrExpr(p);
+        p.TryChar(',');
+        var kindTok = p.Next();
+        var kind = kindTok switch
+        {
+            "TakenDelta" => DamageAuraKind.TakenDelta,
+            "TakenCap" => DamageAuraKind.TakenCap,
+            "DealtDelta" => DamageAuraKind.DealtDelta,
+            "DealtCap" => DamageAuraKind.DealtCap,
+            _ => DamageAuraKind.TakenDelta,
+        };
+        p.TryChar(',');
+        var maskTok = p.Next();
+        var mask = maskTok switch
+        {
+            "Combat" => DamageSourceMask.Combat,
+            "Ability" => DamageSourceMask.Ability,
+            _ => DamageSourceMask.All,
+        };
+        p.TryChar(',');
+        var amt = ParseNumExpr(p);
+        bool add = false;
+        if (p.TryChar(','))
+        {
+            var flag = p.Next();
+            add = flag == "add";
+        }
+        p.TryChar(')');
+        return new DamageModifierNode
+        {
+            Target = tgt ?? TargetSpec.Self,
+            Kind = kind,
+            SourceMask = mask,
+            Amount = amt ?? NumExpr.Const(0),
+            IsReduction = !add,
+        };
+    }
+
     private EffectNode ParseReveal(Cursor p)
     {
         var tgt = ParseTargetOrExpr(p);
@@ -1455,12 +1497,14 @@ public sealed class ReshadowScriptCompiler
         // 可选的值参数。这里必须 save/restore：如果写的是 ", dur: ThisTurn"
         // 而不是 ", 2"，无条件 TryChar(',') 会把 dur 前面的逗号偷吃掉，
         // 后面的 TryParseDur 就再也找不到它了。
-        int? val = null;
+        // 值参数支持任意表达式，不只常数：
+        // 「可攻击 X 次」「受到伤害不能超过 X」里的 X 可能是动态的。
+        NumExpr valExpr = null;
         var saveVal = p.Save();
         if (p.TryChar(','))
         {
-            val = p.TryInt();
-            if (!val.HasValue) p.Restore(saveVal);
+            valExpr = ParseNumNoDiv(p);
+            if (valExpr == null) p.Restore(saveVal);
         }
 
         // Duration 必须读：限时与永久在 AST 上只差这一个字段。
@@ -1468,7 +1512,7 @@ public sealed class ReshadowScriptCompiler
         return new ModifyKeywordNode
         {
             Target = tgt, Op = KeywordOp.Grant, Keyword = _schema.Keyword(kw),
-            Value = val.HasValue ? NumExpr.Const(val.Value) : null,
+            Value = valExpr,
             Duration = dur,
         };
     }

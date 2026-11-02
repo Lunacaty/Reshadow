@@ -1,0 +1,21 @@
+fix(115): 缺陷 9/10 —— 四端解析补齐 + 动态变量绑定
+
+【缺陷9：脚本端补齐】
+  · damage_mod(<目标>, Kind, SourceMask, X[, add]) 解析
+  · reveal() 解析（此前只有打印，反编译后无法再编译回去）
+  · grant_kw 的带参值改为 ParseNumNoDiv，支持任意表达式
+    （「可攻击 X 次」「受到伤害不能超过 X」的 X 可能动态）
+
+【缺陷10：英文编译器补齐】
+  · ActionParser 增加 case "reveal" → RevealCardNode
+  · EnglishCompiler 识别「X is a random number between A and B」/
+    「from A to B」，绑定为 NumExpr.RandRange(a, b, rollId)
+  · ExtractModePick 改为实例方法，识别 X/Y/Z 变量
+    （「Activate Y random abilities」的 Y 是卡面声明过的变量）
+    并修正返回值 —— 此前 pickExpr 算出来却从未被返回，
+    永远走 NumExpr.Const，动态 pick 形同虚设
+
+【验证】
+  ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 /
+  回归 Combat 16-16 / 测试集效用 12-12 / 完整对局 7-7 /
+  DIY 8-8 / 卡池 22-22 / 战斗 UI 31-31

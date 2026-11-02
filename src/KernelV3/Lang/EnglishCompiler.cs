@@ -1348,7 +1348,7 @@ public sealed class EnglishCompiler
     /// <summary>模式块「Give <目标> N random abilities」的受予者。</summary>
     private TargetSpec modeGrantTarget;
 
-    private static NumExpr ExtractModePick(IReadOnlyList<Token> sent, out ModeDispatchKind kind)
+    private NumExpr ExtractModePick(IReadOnlyList<Token> sent, out ModeDispatchKind kind)
     {
         kind = ModeDispatchKind.Choose;
         if (sent.Count == 0) return null;
@@ -1377,9 +1377,21 @@ public sealed class EnglishCompiler
 
         int n = 1;
         bool sawDigit = false;
+        NumExpr pickExpr = null;
+
         if (i < sent.Count && sent[i].Kind == TokKind.Number)
         {
             n = (int)sent[i].Value;
+            sawDigit = true;
+            i++;
+        }
+        else if (i < sent.Count && sent[i].IsAnyWord("x", "y", "z"))
+        {
+            // "Activate Y random abilities from the following" —— Y 是卡面
+            // 前面声明过的变量（如「Y 为此卡费用」），必须按变量求值，
+            // 否则会退化成恒发 1 个。
+            var vn = sent[i].Text.ToUpperInvariant();
+            if (_variableBindings.TryGetValue(vn, out var bound)) pickExpr = bound;
             sawDigit = true;
             i++;
         }
@@ -1422,6 +1434,8 @@ public sealed class EnglishCompiler
             : sawRandom ? ModeDispatchKind.Random
             : ModeDispatchKind.Choose;
 
+        // 有变量绑定（如 Y = 此卡费用）就用它，否则退到常数。
+        if (pickExpr != null) return pickExpr;
         return NumExpr.Const(sawDigit ? n : 1);
     }
 
@@ -1979,6 +1993,27 @@ public sealed class EnglishCompiler
     {
         var texts = sent.Select(t => t.Text.ToLowerInvariant()).ToList();
         var joined = string.Join(" ", texts);
+
+        // "X is a random number between 2 and 10" / "X is a number from 2 to 10"
+        //
+        // 必须绑成**同作用域锁定的随机数**：卡面会把 X 用在费用、攻击、生命
+        // 三处，每次求值都重掷骰的话三者会各不相同。
+        {
+            bool hasRandom = joined.Contains("random") || joined.Contains("determined randomly");
+            bool hasRange = joined.Contains(" between ") || joined.Contains(" from ");
+            if (hasRandom && hasRange && sent.Count > 0 && sent[0].IsAnyWord("x", "y", "z"))
+            {
+                var nums = sent.Where(t => t.Kind == TokKind.Number).ToList();
+                if (nums.Count >= 2)
+                {
+                    var vn = sent[0].Text.ToUpperInvariant();
+                    int rollId = vn == "X" ? 0 : vn == "Y" ? 1 : 2;
+                    _variableBindings[vn] = NumExpr.RandRange(
+                        nums[0].Value, nums[1].Value, rollId);
+                    return;
+                }
+            }
+        }
 
         // "X, Y, and Z are determined randomly and add up to your faith's value"
         if (joined.Contains("add up to") && joined.Contains("faith"))

@@ -227,6 +227,7 @@ public sealed class ActionParser
             case "super-evolve": return ParseEvolve(cur, true);
             case "select": return ParseSelect(cur);
             case "transform": return ParseTransform(cur);
+            case "reveal": return ParseRevealKeyword(cur);
             case "gain": return ParseGain(cur);
             case "double": return ParseDouble(cur);
             case "increase":
@@ -1892,6 +1893,14 @@ public sealed class ActionParser
     }
 
     // ---------- 计数器 ----------
+
+    /// <summary>Reveal &lt;target&gt;：公开一张牌。</summary>
+    private List<EffectNode> ParseRevealKeyword(TokenCursor cur)
+    {
+        cur.ExpectWord("reveal");
+        var t = _target.TryParse(cur) ?? TargetSpec.Self;
+        return new List<EffectNode> { new RevealCardNode { Target = t } };
+    }
 
     private List<EffectNode> ParseGain(TokenCursor cur)
     {
