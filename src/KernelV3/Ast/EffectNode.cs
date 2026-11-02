@@ -367,6 +367,16 @@ public sealed class DamageModifierNode : EffectNode
     public DurationKind Duration { get; init; } = DurationKind.Permanent;
 }
 
+/// <summary>
+/// 公开一张牌：把手牌里的某张卡亮给对手看。
+///
+/// 只影响可见性，不改动任何数值或区域。
+/// </summary>
+public sealed class RevealCardNode : EffectNode
+{
+    public TargetSpec Target { get; init; } = TargetSpec.Self;
+}
+
 public enum ModeDispatchKind
 {
     Choose = 0,

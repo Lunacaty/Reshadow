@@ -1,0 +1,32 @@
+fix(113 复查): 补齐 immune_effects 五项语义 + RevealCardNode 原语
+
+【immune_effects 之前只拦了伤害】
+  文档要求它覆盖五项：能力伤害、破坏、消失/回手/变身、
+  攻防加减、沉默与关键词剥夺。我原来只做了第一项。
+
+  补齐：
+    · DestroyEntity：能力破坏无效（byRule 规则性收尾例外，
+      否则生命归零也死不了，变成锁局机器）
+    · BanishEntity：能力消失无效
+    · TransformEntity：变身无效
+    · DoModifyStats：immune_effects 下跳过攻防修改
+      （immune_effects_except_stats 按设计放行）
+    · SilenceAll：两种免疫词条都免疫沉默
+      （不拦的话一张沉默就能把免疫本身剥掉，自相矛盾）
+
+  实测：
+    免疫破坏: zone=Board      规则性破坏: zone=Cemetery
+    免疫消失: zone=Board      免疫变身: cardId 未变
+
+【RevealCardNode 原语（专题四原语②）】
+  新增 RevealCardNode + RuntimeEntity.IsRevealed，
+  执行时只标记可见性，不改数值与区域。
+  四端全部注册：Stack / CompileStack / 两个 PrintNode，
+  并在脚本端补上 reveal() 解析，保证反编译后能再编译回去。
+
+  矩阵检查 205/205 通过。
+
+【验证】
+  ALL ENGINE CHECKS PASSED / check_engine 全绿 /
+  VM 50-50 / 文档验收 102-102 / 测试集效用 12-12 /
+  完整对局 7-7 / DIY 8-8 / 卡池 22-22 / 战斗 UI 31-31

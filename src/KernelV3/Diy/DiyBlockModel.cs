@@ -728,6 +728,9 @@ public sealed class DiyBlockCompiler
                     Duration = ParseDuration(b.EnumB),
                 };
 
+            case "act_reveal":
+                return new RevealCardNode { Target = CompileTarget(b.Target) ?? TargetSpec.Self };
+
             case "act_damage_aura":
             {
                 System.Enum.TryParse<DamageAuraKind>(b.EnumA ?? "", out var dk);
@@ -1428,6 +1431,9 @@ public sealed class DiyBlockDecompiler
     {
         switch (n)
         {
+            case RevealCardNode rv:
+                return new Block { Opcode = "act_reveal", Target = Target(rv.Target) };
+
             case DamageModifierNode dm:
                 return new Block
                 {

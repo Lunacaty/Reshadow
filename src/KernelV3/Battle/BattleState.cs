@@ -1581,6 +1581,13 @@ public sealed class BattleState : IVmWorld
         // 卡面写着 Can't be destroyed 也照样一把炸掉。
         if (e.Keywords.Contains(Schema.Keyword("cannot_destroy"))) return;
 
+        // 「不受能力影响」：能力破坏一律无效。
+        // byRule = true 的规则性收尾（生命归零、SBA）不算「能力影响」，
+        // 否则带这个词条的随从会变成永远不死的锁局机器。
+        if (!byRule && (e.Keywords.Contains(Schema.Keyword("immune_effects"))
+                        || e.Keywords.Contains(Schema.Keyword("immune_effects_except_stats"))))
+            return;
+
         // 「以消失替代破坏」：先跑一次离场时触发链。
         // 卡面写 "When this card leaves the field, banish it." 的实体
         // （Ghost 是典型）会在这一步被搬到放逐区；此时它已不在战场，
@@ -1678,6 +1685,11 @@ public sealed class BattleState : IVmWorld
     public void BanishEntity(RuntimeEntity e)
     {
         if (e == null || e.Zone == ZoneRef.Banished) return;
+
+        // 「不受能力影响」：能力消失无效。
+        if (e.Keywords.Contains(Schema.Keyword("immune_effects"))
+            || e.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
+            return;
         // OnLeaveField 由 MoveEntity 统一发一次（它只在「离开战场」时发）。
         // 这里手发会与之叠加成两次，而 OnBanish 反倒一次都没有。
         MoveEntity(e, ZoneRef.Banished, e.PlayerId);
@@ -1950,6 +1962,11 @@ public sealed class BattleState : IVmWorld
     public void TransformEntity(RuntimeEntity e, int intoCardId)
     {
         if (e == null) return;
+
+        // 「不受能力影响」：变身无效。
+        if (e.Keywords.Contains(Schema.Keyword("immune_effects"))
+            || e.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
+            return;
         var d = CardDefOf(intoCardId);
         if (d == null) return;
 

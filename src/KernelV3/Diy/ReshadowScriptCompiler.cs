@@ -1025,6 +1025,7 @@ public sealed class ReshadowScriptCompiler
             "damage" or "伤害" => ParseDamage(p),
             "damage_all" or "全体伤害" => ParseDamageAll(p),
             "restore" or "回复" => ParseRestore(p),
+            "reveal" or "公开" => ParseReveal(p),
             "draw" or "抽牌" => ParseDraw(p),
             "summon" or "召唤" => ParseSummon(p),
             "crest_gain" or "获得纹章" => ParseCrestGain(p),
@@ -1107,6 +1108,13 @@ public sealed class ReshadowScriptCompiler
         p.TryChar(',');
         var amt = ParseNumExpr(p);
         return new RestoreLifeNode { Target = tgt, Amount = amt };
+    }
+
+    /// <summary>reveal(target)：公开一张牌（只影响可见性）。</summary>
+    private EffectNode ParseReveal(Cursor p)
+    {
+        var tgt = ParseTargetOrExpr(p);
+        return new RevealCardNode { Target = tgt ?? TargetSpec.Self };
     }
 
     private EffectNode ParseDraw(Cursor p)
@@ -2393,6 +2401,9 @@ public sealed class ReshadowScriptCompiler
                                + PrintNumOrNa(m.Attack) + "/" + PrintNumOrNa(m.Life)
                                + DurArg(m.Duration) + ")\n";
                 }
+
+            case RevealCardNode rv:
+                return ind + "reveal(" + PrintTargetExpr(rv.Target) + ")\n";
 
             case DamageModifierNode dm:
                 return ind + "damage_aura(" + PrintTargetExpr(dm.Target)

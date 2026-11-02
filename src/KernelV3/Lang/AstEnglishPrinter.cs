@@ -147,6 +147,9 @@ public static class AstEnglishPrinter
                 sb.Append("modifycost " + mc.Op + " " + PrintNum(mc.Value) + " to " + PrintTarget(mc.Target));
                 if (mc.Duration != Ast.DurationKind.Permanent) sb.Append(" dur=" + mc.Duration);
                 break;
+            case RevealCardNode rv:
+                sb.Append("reveal " + PrintTarget(rv.Target));
+                break;
             case DamageModifierNode dm:
                 sb.Append("damageaura " + dm.Kind + " " + dm.SourceMask
                           + " " + (dm.IsReduction ? "reduce" : "add")

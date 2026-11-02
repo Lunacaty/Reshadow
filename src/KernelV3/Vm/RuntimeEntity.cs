@@ -209,6 +209,13 @@ public sealed class RuntimeEntity
     /// </summary>
     public Queue<IReadOnlyList<int>> PreCommittedChoices { get; set; }
 
+    /// <summary>
+    /// 这张牌是否被公开（手牌里显示「👁 公开」标识）。
+    ///
+    /// 纯可见性标记，不参与任何数值或区域判定。
+    /// </summary>
+    public bool IsRevealed { get; set; }
+
     public EntitySnapshot TakeSnapshot() => new()
     {
         EntityId = EntityId,

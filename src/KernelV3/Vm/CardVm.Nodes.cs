@@ -146,6 +146,14 @@ public sealed partial class CardVm
 
     // ---------- 选择 ----------
 
+    /// <summary>公开一张牌：只标记可见性，不改数值与区域。</summary>
+    private bool DoReveal(RevealCardNode n, VmScope scope)
+    {
+        foreach (var t in _eval.Resolve(n.Target, scope))
+            t.IsRevealed = true;
+        return false;
+    }
+
     private bool DoSelect(SelectTargetNode n, VmFrame frame)
     {
         // 只有「**本条指令**刚被玩家选完」才放行。
@@ -283,6 +291,10 @@ public sealed partial class CardVm
 
         foreach (var t in targets)
         {
+            // 「不受能力影响」：完全免疫攻防修改。
+            // 「不受能力影响（攻防变化除外）」：放行，所以只查前者。
+            if (t.Keywords.Contains(Schema.Keyword("immune_effects"))) continue;
+
             // 必须在**每个目标上**求值：翻倍这类表达式的属性读取锚点是 $item，
             // 在循环外求值会让所有目标都取第一个候选的身材。
             var itemScope = scope.Derive();
@@ -391,6 +403,11 @@ public sealed partial class CardVm
                         t.LastWordsRemoved = true;
                     break;
                 case KeywordOp.SilenceAll:
+                    // 「不受能力影响」与「（攻防变化除外）」都免疫沉默。
+                    // 不拦的话，一张沉默就能把免疫词条本身剥掉 —— 自相矛盾。
+                    if (t.Keywords.Contains(Schema.Keyword("immune_effects"))
+                        || t.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
+                        break;
                     t.Keywords.Clear();
                     t.KeywordValues.Clear();
                     t.IsSilenced = true;
