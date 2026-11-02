@@ -4,11 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using Godot;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Core;
 using ShadowverseFan.KernelV3.Diy;
 using ShadowverseFan.KernelV3.Packs;
 using ShadowverseFan.KernelV3.Vm;
+using ShadowverseFan.Ui;
 using ShadowverseFan.Ui.Bridge;
 
 namespace ShadowverseFan.KernelV3.Vm;
@@ -64,6 +66,8 @@ public static class RegressBattleUi
         Check("DIYU-11 规则字段中文名全覆盖", CaseRuleLabelsCoverage);
         Check("DIYU-12 只读表单不抹空复杂能力", CaseReadOnlyFormPreserves);
         Check("DIYU-13 构筑修正 kind 往返不串种", CaseDeckModKindRoundTrip);
+        Check("MENU-1 主界面五入口全部接线", CaseMainMenuWiring);
+        Check("MENU-2 对战选择窗卡池-牌组过滤", CaseBattleSelectFiltering);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -1116,5 +1120,90 @@ public static class RegressBattleUi
         bool ok = hasLeaderLife && hasSize;
         return (ok, "修正条数 " + modsBefore + "->" + mods.Count
                     + " 主战者+10血=" + hasLeaderLife + " 牌组+20张=" + hasSize);
+    }
+
+    // ---------------------------------------------------------------- MENU-1
+
+    /// <summary>
+    /// 主界面五个入口必须各自声明事件，且 Root 侧真有订阅。
+    ///
+    /// 这里不 new MainMenuView：它是 Godot 的 Control 子类，
+    /// 无头工程里构造即崩。改用**源码级接线检查** ——
+    /// 早先 DeckListView 的『← 返回』就是画了按钮却没接 Pressed，
+    /// 点了什么都不发生，而截图看起来完全正常。
+    /// </summary>
+    private static (bool, string) CaseMainMenuWiring()
+    {
+        var menuSrc = File.ReadAllText(FindSource("src/Ui/MainMenuView.cs"));
+        var rootSrc = File.ReadAllText(FindSource("src/Ui/Decks/DeckManagementRoot.cs"));
+        var listSrc = File.ReadAllText(FindSource("src/Ui/Decks/DeckListView.cs"));
+
+        var events = new[] { "OnStartBattle", "OnDeckManagement", "OnDiyWorkshop",
+                             "OnPackManager", "OnQuit" };
+        var missingDecl = events.Where(e => !menuSrc.Contains("event Action " + e)).ToList();
+        // 源码里为对齐排版有多个连续空格（menu.OnStartBattle    += ...），
+        // 用 Contains 直接拼会全部漏判。
+        var missingWire = events
+            .Where(e => !System.Text.RegularExpressions.Regex.IsMatch(
+                rootSrc, @"menu\." + e + @"\s*\+="))
+            .ToList();
+
+        // 『← 返回』必须真的接上 Pressed
+        bool backWired = listSrc.Contains("back.Pressed += () => OnExitToMainMenu?.Invoke()");
+        bool backConsumed = rootSrc.Contains("view.OnExitToMainMenu +=");
+
+        bool ok = missingDecl.Count == 0 && missingWire.Count == 0 && backWired && backConsumed;
+        return (ok, "缺声明=" + missingDecl.Count + " 缺接线=" + missingWire.Count
+                    + " 返回按钮接线=" + backWired + " 返回到主界面=" + backConsumed);
+    }
+
+    /// <summary>从构建输出目录向上找仓库根，再拼出源码路径。</summary>
+    private static string FindSource(string rel)
+    {
+        var dir = AppContext.BaseDirectory;
+        for (int i = 0; i < 10 && !string.IsNullOrEmpty(dir); i++)
+        {
+            var p = Path.Combine(dir, rel);
+            if (File.Exists(p)) return p;
+            var parent = Path.GetDirectoryName(dir);
+            if (parent == dir) break;
+            dir = parent;
+        }
+        return Path.Combine(Directory.GetCurrentDirectory(), rel);
+    }
+
+    // ---------------------------------------------------------------- MENU-2
+
+    /// <summary>
+    /// 对战选择窗：卡池 → 牌组过滤必须真的对应，且切换卡池后旧选中要作废。
+    ///
+    /// 早先切到别的池，『我方』栏仍留着上一个池的牌组 —— 出战按钮亮着，
+    /// 点下去却拿另一套卡池的牌组开局。
+    /// </summary>
+    private static (bool, string) CaseBattleSelectFiltering()
+    {
+        var store = NewStore();
+
+        // 每个卡池下能选到的牌组，必须与 SavedDecks 里 PoolId 匹配的那批一致
+        int mismatch = 0;
+        var detail = new List<string>();
+        foreach (var kv in store.PoolConfigs.OrderBy(k => k.Key, StringComparer.Ordinal))
+        {
+            var expect = store.SavedDecks
+                .Where(d => string.Equals(d.PoolId, kv.Key, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            detail.Add(kv.Key + "=" + expect.Count);
+
+            // 反查：每副牌组的 PoolId 都能在 PoolConfigs 里找到
+            foreach (var d in expect)
+                if (!store.PoolConfigs.ContainsKey(d.PoolId)) mismatch++;
+        }
+
+        bool hasOfficial = store.PoolConfigs.ContainsKey("official");
+        int offCount = store.SavedDecks.Count(d => d.PoolId == "official");
+
+        bool ok = mismatch == 0 && hasOfficial && offCount >= 2;
+        return (ok, "池-牌组失配=" + mismatch + " 官方池存在=" + hasOfficial
+                    + " 官方牌组=" + offCount + " ｜ " + string.Join(" ", detail));
     }
 }

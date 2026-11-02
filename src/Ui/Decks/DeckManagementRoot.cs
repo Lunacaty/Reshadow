@@ -40,7 +40,51 @@ public partial class DeckManagementRoot : Control
             return;
         }
 
-        ShowDeckList();
+        ShowMainMenu();
+    }
+
+    /// <summary>
+    /// 主界面 · Astral Sanctum。
+    ///
+    /// 它是所有流程的中庭：牌组一览、DIY 工坊、卡包管理、开战都从这里进，
+    /// 各自的「← 返回」也回到这里 —— 而不是像早先那样一进来就
+    /// 直接把牌组一览铺在启动画面上。
+    /// </summary>
+    private void ShowMainMenu()
+    {
+        var menu = new MainMenuView();
+        Swap(menu);
+        menu.Boot(_store);
+
+        menu.OnStartBattle    += ShowBattleSelect;
+        menu.OnDeckManagement += ShowDeckList;
+        menu.OnDiyWorkshop    += ShowDiyWorkshop;
+        menu.OnPackManager    += ShowPackManager;
+        menu.OnQuit           += () => GetTree().Quit();
+    }
+
+    /// <summary>对战选择窗：先卡池、再双方牌组，然后直接开局。</summary>
+    private void ShowBattleSelect()
+    {
+        var dlg = new BattleSelectDialog();
+        AddChild(dlg);
+        dlg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        dlg.Boot(_store);
+
+        dlg.OnCancelled += () => dlg.QueueFree();
+        dlg.OnStart += (my, foe) =>
+        {
+            dlg.QueueFree();
+            StartBattle(my, foe);
+        };
+    }
+
+    private void StartBattle(ConstructedDeck my, ConstructedDeck foe)
+    {
+        var view = new Battle.BattleScreenRoot();
+        Swap(view);
+        view.Boot(_store, my, foe);
+        view.OnExitToDecks += ShowMainMenu;
     }
 
     private void Swap(Control next)
@@ -65,6 +109,7 @@ public partial class DeckManagementRoot : Control
     private void ShowDeckList()
     {
         var view = new DeckListView(_store);
+        view.OnExitToMainMenu += ShowMainMenu;
         view.OnCreateDeck += ShowWizard;
         view.OnEditDeck += d => ShowBuilder(d);
         view.OnBattleDeck += d => ShowBattle(d);
@@ -124,6 +169,16 @@ public partial class DeckManagementRoot : Control
         var view = new DeckBuilderView(_store, deck);
         view.OnSaveAndBack += _ => ShowDeckList();
         Swap(view);
+    }
+
+    /// <summary>开发期入口：主界面（截图用）。</summary>
+    public void OpenMainMenuForShot() => ShowMainMenu();
+
+    /// <summary>开发期入口：对战选择窗（截图用）。</summary>
+    public void OpenBattleSelectForShot()
+    {
+        ShowMainMenu();
+        ShowBattleSelect();
     }
 
     /// <summary>开发期入口：直接打开第一副牌组的构筑台（截图用）。</summary>

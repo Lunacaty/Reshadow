@@ -22,6 +22,8 @@ public partial class DevShot : Node
     private bool _battleMulligan;
     private bool _openDiy;
     private bool _openPackMgr;
+    private bool _openMenu;
+    private bool _openBattleSelect;
 
     public override void _Ready()
     {
@@ -38,6 +40,8 @@ public partial class DevShot : Node
             if (a == "--mulligan") { _openBattle = true; _battleMulligan = true; }
             if (a == "--diy") _openDiy = true;
             if (a == "--packmgr") _openPackMgr = true;
+            if (a == "--menu") _openMenu = true;
+            if (a == "--battle-select") _openBattleSelect = true;
         }
         if (_frames <= 0) _frames = 30;
         SetProcess(true);
@@ -54,6 +58,22 @@ public partial class DevShot : Node
             CallDeferred(nameof(OpenDiy));
         else if (_openPackMgr)
             CallDeferred(nameof(OpenPackMgr));
+        else if (_openMenu)
+            CallDeferred(nameof(OpenMenu));
+        else if (_openBattleSelect)
+            CallDeferred(nameof(OpenBattleSelect));
+    }
+
+    private void OpenMenu()
+    {
+        var root = FindRoot();
+        root?.OpenMainMenuForShot();
+    }
+
+    private void OpenBattleSelect()
+    {
+        var root = FindRoot();
+        root?.OpenBattleSelectForShot();
     }
 
     private void OpenDiy()

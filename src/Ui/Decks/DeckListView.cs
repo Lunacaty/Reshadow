@@ -22,6 +22,8 @@ public partial class DeckListView : Control
     public event Action<ConstructedDeck> OnBattleDeck;
     public event Action OnOpenDiyWorkshop;
     public event Action OnOpenPackManager;
+    /// <summary>顶部「← 返回」：回到主界面，而不是什么都不做。</summary>
+    public event Action OnExitToMainMenu;
 
     private readonly GameSessionStore _store;
     private string _poolFilter;
@@ -101,6 +103,7 @@ public partial class DeckListView : Control
 
         var back = new Button { Text = "← 返回" };
         SvWbTheme.StyleButton(back);
+        back.Pressed += () => OnExitToMainMenu?.Invoke();
         row.AddChild(back);
 
         var title = new Label { Text = "牌组一览 / DECKS" };
