@@ -24,6 +24,10 @@ public partial class BoardUnitWidget : Control
 {
     public RuntimeEntity Entity { get; private set; }
 
+    /// <summary>动画调度器（由 BattleScreenRoot 注入，全局共享一份）。</summary>
+    public static BoardAnimDirector Director;
+
+
     public event Action<RuntimeEntity> OnClicked;
     public event Action<RuntimeEntity> OnRightClicked;
     public event Action<RuntimeEntity, Vector2> OnDragAttackStarted;
@@ -50,8 +54,10 @@ public partial class BoardUnitWidget : Control
     private float _pulseTime;
     private bool _dragging;
 
-    private const float W = 96f;
-    private const float H = 124f;
+    public const float UnitW = 96f;
+    public const float UnitH = 124f;
+    private const float W = UnitW;
+    private const float H = UnitH;
 
     /// <summary>设置挂起选择的候选态。</summary>
     public void SetChoiceState(bool isCandidate, bool dimmed)
@@ -84,6 +90,10 @@ public partial class BoardUnitWidget : Control
 
     public override void _Process(double delta)
     {
+        // 有动画在跑就每帧重绘（变换在 _Draw 里应用）。
+        if (Entity != null && Director != null && Director.IsAnimating(Entity.EntityId))
+            QueueRedraw();
+
         // 候选圈需要持续脉动，所以有候选时也必须每帧重绘。
         if (_isCandidate)
         {
@@ -99,6 +109,31 @@ public partial class BoardUnitWidget : Control
     public override void _Draw()
     {
         if (Entity?.Def == null) return;
+
+        // ---- 应用动画变换 ----
+        // 用 DrawSetTransform 而不是改 Position/Scale：
+        // 控件仍占着原有座位与命中框，动画只是绘制层面的偏移，
+        // 不会让「点击判定」和「视觉位置」错位。
+        var m = Director?.MotionOf(Entity.EntityId) ?? UnitMotion.Idle;
+        bool transformed = !m.IsIdle;
+
+        if (transformed)
+        {
+            // FlipX: 0→1 表示水平翻面；用 X 缩放压到 0 再展开来表现
+            float flipScale = Mathf.Abs(Mathf.Cos(Mathf.Pi * m.FlipX));
+
+            var pivot = new Vector2(W * 0.5f, H * 0.5f);
+            DrawSetTransform(
+                pivot + m.Offset,
+                m.FlipX > 0.25f && m.FlipX < 0.75f ? Mathf.Pi : 0f,
+                new Vector2(m.Scale * flipScale, m.Scale));
+            Modulate = new Color(1, 1, 1, Mathf.Clamp(m.Alpha, 0f, 1f));
+        }
+        else
+        {
+            Modulate = Colors.White;
+        }
+
         var def = Entity.Def;
         var font = ThemeDB.FallbackFont;
         Color clanCol = SvWbTheme.ClanColor(def.Clan.IsValid ? def.Clan.Name : null);

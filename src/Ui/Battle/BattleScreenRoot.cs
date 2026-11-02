@@ -33,6 +33,18 @@ public partial class BattleScreenRoot : Control
     private Control _handLayer;
     /// <summary>浮字/粒子等短命特效层：不随 Rebuild 销毁，自己驱动生命周期。</summary>
     private Control _overlayLayer;
+
+    /// <summary>战场动画调度器（全局一份，按 EntityId 存状态）。</summary>
+    private readonly BoardAnimDirector _anims = new();
+
+    /// <summary>
+    /// 本次攻击是否由超进化随从发起。
+    ///
+    /// OnDestroy 事件本身不带「谁打死的」，而 UI 必须在「被超进化随从攻击破坏」
+    /// 时改播击飞动画。所以在 ReleaseAttack 里先记下来，
+    /// 事件消费完就清掉 —— 只对紧接着的那一批破坏生效。
+    /// </summary>
+    private bool _lastHitBySuperEvolved;
     private VBoxContainer _boardAlly;
     private VBoxContainer _boardFoe;
     private Button _pageBtn;
@@ -76,6 +88,7 @@ public partial class BattleScreenRoot : Control
         _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
                                             startInMulligan: true);
         BoardUnitWidget.CurrentController = _ctrl;
+        BoardUnitWidget.Director = _anims;
 
         // 开局前先把游标推到日志末尾。
         // 否则起手抽牌、换牌这些「开局事件」会在第一次 Rebuild 时
@@ -288,6 +301,7 @@ public partial class BattleScreenRoot : Control
         // 跟随插值必须每帧推进：只靠 InputEvent 会在鼠标静止时不更新，
         // 卡就停在半路追不上。
         StepDragFollow((float)delta);
+        _anims.Step((float)delta);
 
         StepOpponentIfNeeded(delta);
         UpdateAimLine();
@@ -479,6 +493,12 @@ public partial class BattleScreenRoot : Control
             : _unitCenters.TryGetValue(attacker.EntityId, out var c) ? c : defenderCenter;
 
         _vfx.PlayAttackLunge(attackerWidget, attackerCenter, defenderCenter);
+
+        // 棋子本体也真的撞过去再弹回（不只是特效层的一个闪光）。
+        // 用 Director 而不是直接给控件做 Tween：攻击结算会立刻 Rebuild，
+        // 控件会被销毁，Tween 打在空中；Director 的偏移按 EntityId 存，
+        // 重建后的新控件会自然接上。
+        _anims.PlayLunge(attacker.EntityId, defenderCenter - attackerCenter);
     }
 
     private void CaptureCenter(long entityId, Control w)
@@ -519,6 +539,7 @@ public partial class BattleScreenRoot : Control
                 case CoreEvent.OnDamaged:
                     _vfx.PlayDamage(pos, ev.Amount);
                     SpawnDamageFloat(pos, ev.Amount, false);
+                    if (ev.Subject.HasValue) _anims.PlayHitShake(ev.Subject.Value.EntityId);
                     break;
                 case CoreEvent.OnHealed:
                     _vfx.PlayHeal(pos, ev.Amount);
@@ -526,6 +547,30 @@ public partial class BattleScreenRoot : Control
                     break;
                 case CoreEvent.OnDestroy:
                     _vfx.PlayDestroy(pos);
+                    {
+                        var center = pos + new Vector2(BoardUnitWidget.UnitW * 0.5f,
+                                                       BoardUnitWidget.UnitH * 0.5f);
+
+                        // 被超进化随从攻击破坏：不直接碎，而是先弹向自己的主战者，
+                        // 砸到之后再碎。这是官方那条「超进化溢伤」的视觉表达。
+                        if (_lastHitBySuperEvolved && ev.Subject.HasValue)
+                        {
+                            var ownLeader = _ctrl.Leader(ev.PlayerId >= 0 ? ev.PlayerId : 1);
+                            Vector2 toward = new(0, ev.PlayerId == 0 ? 210f : -210f);
+                            if (ownLeader != null
+                                && _unitCenters.TryGetValue(ownLeader.EntityId, out var lp))
+                                toward = lp - center;
+
+                            var hitAt = center + toward;
+                            _anims.PlayKnockToLeader(ev.Subject.Value.EntityId, toward, () =>
+                                SpawnBurst(hitAt, 18, 130f, new Color("C084FC"), 0.6f));
+                        }
+                        else
+                        {
+                            SpawnBurst(center, 22, 150f, new Color("93C5FD"), 0.75f);
+                            if (ev.Subject.HasValue) _anims.PlayLeave(ev.Subject.Value.EntityId);
+                        }
+                    }
                     break;
                 case CoreEvent.OnBanish:
                     _vfx.PlayBanish(pos);
@@ -533,20 +578,27 @@ public partial class BattleScreenRoot : Control
                 case CoreEvent.OnEnterField:
                 case CoreEvent.OnSummon:
                     _vfx.PlayEnterField(pos);
+                    SpawnBurst(pos + new Vector2(BoardUnitWidget.UnitW * 0.5f, BoardUnitWidget.UnitH),
+                               10, 90f, new Color("A5B4FC"), 0.45f, -40f, 2.4f);
+                    if (ev.Subject.HasValue) _anims.PlayEnter(ev.Subject.Value.EntityId, BoardUnitWidget.UnitH);
                     break;
                 case CoreEvent.OnTransform:
                     _vfx.PlayTransform(pos);
                     break;
                 case CoreEvent.OnEvolve:
                     _vfx.PlayEvolve(pos, false);
+                    if (ev.Subject.HasValue) _anims.PlayEvolve(ev.Subject.Value.EntityId, false);
                     break;
                 case CoreEvent.OnSuperEvolve:
                     _vfx.PlayEvolve(pos, true);
+                    if (ev.Subject.HasValue) _anims.PlayEvolve(ev.Subject.Value.EntityId, true);
                     break;
             }
         }
 
         _lastEventIdx = log.Count;
+        // 只对刚刚这批破坏生效，之后的事件不该再触发击飞。
+        _lastHitBySuperEvolved = false;
     }
 
     /// <summary>
@@ -556,6 +608,18 @@ public partial class BattleScreenRoot : Control
     /// 如果挂在会随 Rebuild 销毁的容器里，玩家一操作数字就被抹掉了。
     /// 主战者与随从都走这里。
     /// </summary>
+    /// <summary>在指定位置放一簇光点。坐标是全局坐标，这里转成本层局部坐标。</summary>
+    private void SpawnBurst(Vector2 globalPos, int count, float spread, Color tint,
+                            float life = 0.7f, float gravity = 60f, float size = 3.2f)
+    {
+        if (_overlayLayer == null) return;
+        var b = new ParticleBurst();
+        _overlayLayer.AddChild(b);
+        // _overlayLayer 是铺满全屏的 Control，原点与视口一致，
+        // 所以全局坐标可以直接当局部坐标用。
+        b.Setup(globalPos, count, spread, tint, life, gravity, size);
+    }
+
     private void SpawnDamageFloat(Vector2 center, int amount, bool heal)
     {
         if (amount == 0) return;
@@ -583,6 +647,7 @@ public partial class BattleScreenRoot : Control
             && _foeLeader.GetGlobalRect().HasPoint(screenPos))
         {
             PlayLungeBeforeRebuild(atk, _foeLeader.GetGlobalRect().GetCenter());
+            _lastHitBySuperEvolved = atk.IsSuperEvolved;
             _ctrl.TryAttack(atk, foeLeader, out _);
             Rebuild();
             return;
@@ -595,6 +660,7 @@ public partial class BattleScreenRoot : Control
             if (legal.Contains(w.Entity.EntityId))
             {
                 PlayLungeBeforeRebuild(atk, w.GetGlobalRect().GetCenter());
+                _lastHitBySuperEvolved = atk.IsSuperEvolved;
                 _ctrl.TryAttack(atk, w.Entity, out _);
                 Rebuild();
             }
@@ -725,6 +791,10 @@ public partial class BattleScreenRoot : Control
 
             if (shouldPlay)
             {
+                // 打出：卡面先化作粒子消散，再真正把牌打出去。
+                // 粒子起点用跟随卡的当前位置，视觉上「同一张卡」连得上。
+                SpawnBurst(_dragPos, 26, 190f, new Color("FDE68A"), 0.62f, -20f, 3.0f);
+
                 _ctrl.TryPlayCard(card, out _);
                 Rebuild();
             }

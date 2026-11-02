@@ -71,6 +71,7 @@ public static class RegressBattleUi
         Check("BUG-1 清空牌组一次性完成", CaseClearDeck);
         Check("BUG-2 进化叮当天使不卡死", CaseEvolveBellringer);
         Check("BUG-3 操作面板动作都触发战场重画", CaseActionPanelRefresh);
+        Check("ANIM-1 棋子动画调度器状态机", CaseAnimDirector);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -1327,6 +1328,47 @@ public static class RegressBattleUi
         return (ok, "Root 订阅=" + subscribed
                     + " 无直接重建=" + noDirectInvoke
                     + " 有延迟刷新=" + hasDefer);
+    }
+
+    // ---------------------------------------------------------------- ANIM-1
+
+    /// <summary>
+    /// 动画调度器：偏移/缩放/透明度必须能真的推进，且播完自动回到静止态。
+    ///
+    /// 这是整个动画系统唯一能在无头环境里验的部分 ——
+    /// 控件实体跑不起来，但状态机必须对，否则动画会停在半路。
+    /// </summary>
+    private static (bool, string) CaseAnimDirector()
+    {
+        var dir = new ShadowverseFan.Ui.Battle.BoardAnimDirector();
+        const long id = 42L;
+
+        dir.PlayEnter(id, 124f);
+        dir.Step(0.001f);
+        var m0 = dir.MotionOf(id);
+        bool startedBelow = m0.Offset.Y > 100f;
+
+        for (int i = 0; i < 10; i++) dir.Step(0.017f);
+        var m1 = dir.MotionOf(id);
+        bool rising = m1.Offset.Y < m0.Offset.Y;
+
+        for (int i = 0; i < 40; i++) dir.Step(0.017f);
+        bool settled = dir.MotionOf(id).IsIdle;
+
+        dir.PlayEvolve(id, false);
+        for (int i = 0; i < 12; i++) dir.Step(0.017f);
+        var e1 = dir.MotionOf(id);
+        bool airborne = e1.Offset.Y < -20f;
+        bool flipping = e1.FlipX > 0.05f;
+
+        for (int i = 0; i < 60; i++) dir.Step(0.017f);
+        bool evolveSettled = dir.MotionOf(id).IsIdle;
+
+        bool ok = startedBelow && rising && settled && airborne && flipping && evolveSettled;
+        return (ok, "起点在下=" + startedBelow + " 上升=" + rising
+                    + " 入场归位=" + settled
+                    + " 进化升空=" + airborne + " 翻面=" + flipping
+                    + " 进化归位=" + evolveSettled);
     }
 
 }
