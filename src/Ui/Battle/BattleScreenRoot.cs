@@ -36,7 +36,6 @@ public partial class BattleScreenRoot : Control
 
     /// <summary>战场动画调度器（全局一份，按 EntityId 存状态）。</summary>
     private readonly BoardAnimDirector _anims = new();
-    private bool _animBusy;
 
     /// <summary>
     /// 与真实状态有关的演出队列（先进先出）。
@@ -333,17 +332,11 @@ public partial class BattleScreenRoot : Control
         StepDragFollow((float)delta);
         _anims.Step((float)delta);
 
-        // 只在真的有动画时写位置 —— 每帧无条件写会和容器布局互相覆盖。
-        if (_animBusy)
-        {
-            ApplyMotionsToWidgets();
-            _animBusy = false;
-            foreach (var w in BoardUnitsOf(_boardAlly))
-                if (w.Entity != null && _anims.IsAnimating(w.Entity.EntityId)) { _animBusy = true; break; }
-            if (!_animBusy)
-                foreach (var w in BoardUnitsOf(_boardFoe))
-                    if (w.Entity != null && _anims.IsAnimating(w.Entity.EntityId)) { _animBusy = true; break; }
-        }
+        // 每帧都写。ApplyMotion 内部会判断「有没有动画」：
+        // 有动画就把控件从容器摘出来自己管位置，静止态则原样交还布局。
+        // 早先这里加了个 _animBusy 门闩，但它初值是 false，
+        // 导致 ApplyMotionsToWidgets 从来没被调用过 —— 动画一律不显示。
+        ApplyMotionsToWidgets();
 
         // 表演队列：先进先出，一段播完接下一段
         if (_seq.Step((float)delta))
@@ -554,14 +547,49 @@ public partial class BattleScreenRoot : Control
         // 用 Director 而不是直接给控件做 Tween：攻击结算会立刻 Rebuild，
         // 控件会被销毁，Tween 打在空中；Director 的偏移按 EntityId 存，
         // 重建后的新控件会自然接上。
-        _anims.PlayLunge(attacker.EntityId, defenderCenter - attackerCenter);
+        // 延到 Rebuild 之后再播：此刻的控件马上会被 QueueFree，
+        // Director 虽然按 EntityId 存状态，但新控件要等 Rebuild 跑完才建出来。
+        // 用 CallDeferred 让偏移在下一帧生效，那时新控件已经在树上。
+        long aid = attacker.EntityId;
+        Vector2 delta = defenderCenter - attackerCenter;
+        CallDeferred(nameof(StartLunge), aid, delta);
+    }
+
+    /// <summary>开发期入口：制造一次真实伤害，用于验证浮字与受击动画。</summary>
+    public void PlayDamageDemo()
+    {
+        if (_ctrl?.State == null) return;
+
+        // 敌方随从各掉 3 血，我方主战者掉 5 —— 覆盖「随从」与「主战者」两种情形
+        var foeUnits = _ctrl.State.EnumerateZone(ZoneRef.Board, 1).Take(2).ToList();
+        foreach (var u in foeUnits)
+            _ctrl.State.ApplyDamage(u, 3, _ctrl.MyPlayerId);
+
+        _ctrl.State.ApplyDamage(_ctrl.Leader(_ctrl.MyPlayerId), 5, 1);
+
+        Rebuild();
+    }
+
+    private void StartLunge(long entityId, Vector2 delta)
+    {
+        _anims.PlayLunge(entityId, delta);
     }
 
     private void CaptureCenter(long entityId, Control w)
     {
         if (w == null || !IsInstanceValid(w)) return;
         _unitCenters[entityId] = w.GlobalPosition + w.Size * 0.5f;
+        // 同时记下左上角：离场动画要按「棋子原来的框」定位，
+        // 用中心点再减去固定尺寸会忽略控件当前的实际大小。
+        _unitTops[entityId] = w.GlobalPosition;
     }
+
+    /// <summary>棋子的真实左上角（销毁前最后一帧的位置）。</summary>
+    private readonly Dictionary<long, Vector2> _unitTops = new();
+
+    /// <summary>某颗棋子此刻的左上角；找不到就返回 null。</summary>
+    private Vector2? TopOf(EntityRef? r)
+        => r != null && _unitTops.TryGetValue(r.Value.EntityId, out var p) ? p : null;
 
     private Vector2 PosOf(EntityRef? r, int playerId)
     {
@@ -589,7 +617,11 @@ public partial class BattleScreenRoot : Control
             EnqueueEvent(log[i]);
 
         _lastEventIdx = log.Count;
-        // 只对刚刚这批破坏生效，之后的事件不该再触发击飞。
+
+        // 注意：这里**不能**清 _lastHitBySuperEvolved。
+        // 事件是排队播放的，等演出真的播到那一段时，
+        // 这个标志早就被清掉了 —— 击飞永远不触发。
+        // 标志改为在入队时按事件快照捕获（见 EnqueueEvent）。
         _lastHitBySuperEvolved = false;
     }
 
@@ -608,6 +640,10 @@ public partial class BattleScreenRoot : Control
         var pos = PosOf(ev.Subject, ev.PlayerId);
         var center = pos + new Vector2(BoardUnitWidget.UnitW * 0.5f, BoardUnitWidget.UnitH * 0.5f);
         long sid = ev.Subject?.EntityId ?? -1;
+
+        // 入队时就把「是否超进化击杀」快照下来。
+        // 演出是延迟播的，等播到这一段时全局标志早已被清空。
+        bool hitBySuper = _lastHitBySuperEvolved;
 
         switch (ev.Kind)
         {
@@ -632,9 +668,19 @@ public partial class BattleScreenRoot : Control
 
             case CoreEvent.OnDestroy:
             {
-                bool bySuper = _lastHitBySuperEvolved;
+                bool bySuper = hitBySuper;
                 int victimPlayer = ev.PlayerId >= 0 ? ev.PlayerId : 1;
                 var ownLeader = _ctrl.Leader(victimPlayer);
+
+                // 离场动画必须用**这颗棋子原来的框**定位。
+                // 之前用 PosOf()：它读的是中心点缓存，取不到时还会兜底到
+                // 主战者位置 —— 于是随从在莫名其妙的地方碎裂。
+                if (TopOf(ev.Subject) is Vector2 t0)
+                {
+                    pos = t0 + new Vector2(BoardUnitWidget.UnitW * 0.5f,
+                                           BoardUnitWidget.UnitH * 0.5f);
+                    center = pos;
+                }
 
                 if (bySuper && sid >= 0)
                 {
@@ -811,6 +857,8 @@ public partial class BattleScreenRoot : Control
     {
         if (amount == 0) return;
 
+        Godot.GD.Print("[dmgfloat] amount=" + amount + " center=" + center
+                     + " overlay=" + (_overlayLayer != null));
         var f = new DamageFloat();
         _overlayLayer.AddChild(f);
         // 从目标头顶偏上一点浮出
@@ -894,10 +942,11 @@ public partial class BattleScreenRoot : Control
         float neededW = n <= 0 ? 180f : cardW + (n - 1) * idealStep + 20f;
         float trayW = Mathf.Clamp(neededW, 180f, maxTrayW);
         float trayLeft = rightEdge - trayW;
-        // 手牌贴着窗口下沿：底边固定，展开时向上长。
+        // 手牌区**底边固定**，放大时只向上长 —— 两张状态的底部 Y 完全一致。
+        // 早先展开态把 trayTop 额外减去 56，整排手牌会往上跳一段。
         float bottomY = vp.Y - HandTrayBottomGap;
-        float trayTop = _handExpanded ? bottomY - (cardH + 14f) - 56f : bottomY - (cardH + 14f);
         float trayH = cardH + 14f;
+        float trayTop = bottomY - trayH;
 
         // 手牌区**不画外层矩形**。
         // 之前套了一个 Panel 当托盘底板，屏幕上就凭空多出一个暗色方框，
@@ -945,7 +994,9 @@ public partial class BattleScreenRoot : Control
                     && _pending.TryPickBoardOrHandEntity(bound.EntityId))
                     return;
 
-                if (!_handExpanded) { _handExpanded = true; RebuildHand(); return; }
+                // 常态手牌也要能直接拖出去打。
+                // 早先这里先 _handExpanded = true 然后 return，
+                // 等于「第一次点击只是展开手牌」，玩家要点两次才能出牌。
                 _actionPanel.ShowForEntity(bound);
                 if (_ctrl.IsInFuseMode && !ReferenceEquals(_ctrl.FuseBaseCard, bound))
                 {
@@ -986,7 +1037,7 @@ public partial class BattleScreenRoot : Control
             // 起跟条件：越过手牌区上沿**再往外一点**才算。
             // 不给阈值的话，按下瞬间手就在原地，卡会立刻弹起 ——
             // 玩家只是想点一下看效果，却被当成要出牌。
-            const float PLAY_THRESHOLD = 40f;
+            const float PLAY_THRESHOLD = 20f;
             if (!_dragFollow && mm.Position.Y < BattleSessionController.HandZoneTopY - PLAY_THRESHOLD)
                 BeginDragFollow();
             return;

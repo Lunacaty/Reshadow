@@ -64,19 +64,15 @@ public partial class BattleVfxDirector : Control
 
     public void PlayAttackLunge(Control attackerWidget, Vector2 attackerCenter, Vector2 defenderCenter)
     {
-        if (attackerWidget != null && IsInstanceValid(attackerWidget))
-        {
-            Vector2 orig = attackerWidget.Position;
-            Vector2 dir = (defenderCenter - attackerCenter).Normalized();
-            Vector2 lunge = (defenderCenter - attackerCenter) * 0.55f;
-
-            var tw = CreateTween();
-            tw.TweenProperty(attackerWidget, "position", orig - dir * 10f, 0.07f);
-            tw.TweenProperty(attackerWidget, "position", orig + lunge, 0.10f)
-              .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.In);
-            tw.TweenProperty(attackerWidget, "position", orig, 0.16f)
-              .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
-        }
+        // 棋子本体的位移**不在这里做**。
+        //
+        // 早先用 Godot Tween 直接推 attackerWidget.Position，但攻击结算
+        // 紧接着就 Rebuild()，那个控件当场被 QueueFree ——
+        // Tween 绑在失效节点上，一帧都不会播。
+        // 位移改由 BattleScreenRoot 通过 BoardAnimDirector 驱动
+        // （按 EntityId 存，重建后能接上）。
+        //
+        // 这里只负责「命中闪光」这一层纯特效，它与控件生命周期无关。
         Push("slash", defenderCenter, new Color("FDE047"), 0.35f);
     }
 

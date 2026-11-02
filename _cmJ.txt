@@ -1,0 +1,50 @@
+feat: 8 项战场细节全部落实 + 手牌底部固定 + 攻击动画回归
+
+【最关键的根因：动画从来没被驱动过】
+  上一轮我给 _Process 加了个 _animBusy 门闩，但它的初值是 false，
+  于是 ApplyMotionsToWidgets() 一次都没被调用过 ——
+  所有动画（入场/离场/进化/击飞/受击）写了代码但一律不显示。
+  去掉门闩，改为每帧都写（ApplyMotion 内部自己判断有没有动画）。
+  这一条同时修好了 2c/2d/2e/2f/2g。
+
+【1. 非图片卡面棋子重新塑形】
+  没立绘的卡（DIY 卡）原先画成方形黑底，一眼看出「没做」。
+  改为逐行裁切到 InnerOutline，与有立绘的卡外形完全一致。
+  内容用职业色上下渐变 + 同心圆纹样，桌面上一眼可辨职业。
+
+【2. 单颗随从居中】
+  HBoxContainer.Alignment = Center 已生效（容器宽度对齐竞技场），
+  1 颗时自然落在这个宽度正中。
+
+【3. 离场动画位置】
+  原先用 PosOf()，取不到中心点时会兜底到**主战者位置** ——
+  随从在莫名其妙的地方碎裂。
+  改为记下棋子销毁前最后一帧的真实左上角（_unitTops），
+  离场/击飞都按那个框定位。
+
+【4. 超进化击飞】
+  _lastHitBySuperEvolved 在 ConsumeNewEventsToVfx 末尾被清空，
+  但演出是**排队延迟播放**的，播到那一段时标志早没了，击飞永不触发。
+  改为入队时按事件快照捕获（hitBySuper）。
+
+【5. 伤害数字】
+  链路本身完整（OnDamaged → 队列 → SpawnDamageFloat → _overlayLayer），
+  之前不显示是因为上面的 _animBusy 门闩。
+
+【6. 进化翻转不镜像】
+  用 |cos| 横向压缩表现翻转，不是把 Scale.X 取负。
+  朝向始终不变，布局与立绘都保持原样。
+
+【7. 拖拽手感】
+  起跟阈值 40px → 20px；
+  常态手牌可直接拖出（去掉「第一次点击只展开」的 return）。
+
+【8. 选目标浮动】
+  逻辑在 BoardAnimDirector.SetAiming，同样因门闩没生效，现已恢复。
+
+【顺带修回归】
+  · 攻击动画：PlayAttackLunge 用 Godot Tween 推控件位置，
+    而攻击结算紧接着 Rebuild() 把控件 QueueFree —— Tween 绑在失效节点上，
+    一帧都不播。位移改由 BoardAnimDirector 驱动，且 CallDeferred 到
+    Rebuild 之后再起，那时新控件已在树上。
+  · 手牌区放大后底部 Y 轴不再变化（底边固定，只向上长）。

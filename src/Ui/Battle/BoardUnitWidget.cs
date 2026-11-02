@@ -147,8 +147,12 @@ public partial class BoardUnitWidget : Control
 
         Position = _seatGlobal + m.Offset;
 
-        float flipScale = Mathf.Abs(Mathf.Cos(Mathf.Pi * m.FlipX));
-        Scale = new Vector2(m.Scale * flipScale, m.Scale);
+        // 翻转用横向压缩表现，不真的镜像。
+        // 直接取负 Scale.X 会把立绘和文字全部左右翻转，
+        // 玩家看到的是「卡牌被翻了个面」，而不是「棋子腾空转体」。
+        // |cos| 把宽度压到 0 再张开：视觉上是转过去了，但朝向始终不变。
+        float squeeze = Mathf.Abs(Mathf.Cos(Mathf.Pi * m.FlipX));
+        Scale = new Vector2(m.Scale * squeeze, m.Scale);
 
         Modulate = new Color(1, 1, 1, Mathf.Clamp(m.Alpha, 0f, 1f));
         _motionApplied = true;
@@ -558,20 +562,72 @@ public partial class BoardUnitWidget : Control
             return;
         }
 
-        // 棋子只有 96x124，压得太暗就成了一块黑方块。
-        // 用职业色作为主调，再叠一层亮心，让「这是什么职业的随从」一眼可辨。
+        // 没有立绘的卡（DIY 卡、新卡）也要按拱形轮廓画，
+        // 不能画成一块方形黑底 —— 那样一眼就能看出「这张卡没做」。
+        // 逐行裁切到轮廓内，与有立绘的卡保持同一种外形。
+        DrawProceduralArtClipped(clanCol, art, isAmulet);
+    }
+
+    /// <summary>
+    /// 程序化卡面（无立绘时）。形状与有立绘时一致，按轮廓逐行裁切。
+    ///
+    /// 内容用职业色做主调：上暗下亮 + 同心圆纹样，
+    /// 让「这是什么职业的随从」在桌面上也能一眼分辨。
+    /// </summary>
+    private void DrawProceduralArtClipped(Color clanCol, Rect2 box, bool isAmulet)
+    {
+        const int ROW = 2;
+        int rows = Mathf.CeilToInt(box.Size.Y / ROW);
+        var poly = InnerOutline(isAmulet);
+
         Color top = clanCol.Darkened(0.45f).Lerp(new Color("141020"), 0.30f);
         Color bot = clanCol.Darkened(0.20f).Lerp(new Color("0B0F1A"), 0.35f);
-        DrawRect(art, bot);
-        DrawRect(new Rect2(art.Position.X, art.Position.Y, art.Size.X, art.Size.Y * 0.48f), top);
 
-        Vector2 c = art.Position + art.Size * 0.5f;
-        DrawCircle(c, art.Size.X * 0.34f, clanCol.Lightened(0.45f) with { A = 0.38f });
-        DrawCircle(c, art.Size.X * 0.20f, clanCol.Lightened(0.65f) with { A = 0.30f });
-        DrawArc(c, art.Size.X * 0.32f, 0, Mathf.Tau, 30,
-                new Color(0.90f, 0.94f, 1f, 0.16f), 1.2f);
-        DrawArc(c, art.Size.X * 0.22f, 0, Mathf.Tau, 24,
-                new Color(0.90f, 0.94f, 1f, 0.12f), 1.0f);
+        for (int i = 0; i < rows; i++)
+        {
+            float y0 = box.Position.Y + i * ROW;
+            float h = Mathf.Min(ROW, box.Position.Y + box.Size.Y - y0);
+            if (h <= 0f) break;
+
+            var (left, right) = SpanAt(poly, y0 + h * 0.5f);
+            if (right - left <= 0.5f) continue;
+
+            // 上下渐变：越靠下越亮
+            float t = (y0 - box.Position.Y) / Mathf.Max(1f, box.Size.Y);
+            DrawRect(new Rect2(left, y0, right - left, h), top.Lerp(bot, t));
+        }
+
+        // 纹样（同样受轮廓约束：只在轮廓内画）
+        Vector2 c = box.Position + box.Size * 0.5f;
+        float r1 = box.Size.X * 0.34f;
+        float r2 = box.Size.X * 0.20f;
+
+        if (PointInsideOutline(c, poly))
+        {
+            DrawCircle(c, r1, clanCol.Lightened(0.45f) with { A = 0.38f });
+            DrawCircle(c, r2, clanCol.Lightened(0.65f) with { A = 0.30f });
+            DrawArc(c, box.Size.X * 0.32f, 0, Mathf.Tau, 30,
+                    new Color(0.90f, 0.94f, 1f, 0.16f), 1.2f);
+            DrawArc(c, box.Size.X * 0.22f, 0, Mathf.Tau, 24,
+                    new Color(0.90f, 0.94f, 1f, 0.12f), 1.0f);
+        }
+    }
+
+    /// <summary>点是否在轮廓多边形内（射线法）。</summary>
+    private static bool PointInsideOutline(Vector2 p, Vector2[] poly)
+    {
+        bool inside = false;
+        int n = poly.Length;
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            if ((poly[i].Y > p.Y) != (poly[j].Y > p.Y)
+                && p.X < (poly[j].X - poly[i].X) * (p.Y - poly[i].Y)
+                         / (poly[j].Y - poly[i].Y) + poly[i].X)
+            {
+                inside = !inside;
+            }
+        }
+        return inside;
     }
 
     private void DrawSwordBadge(Vector2 c, int atk, Font font)

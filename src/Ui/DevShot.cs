@@ -28,6 +28,7 @@ public partial class DevShot : Node
     private bool _openRarity;
     private bool _battleBoard;
     private Vector2I _resize;
+    private bool _demoDamage;
 
     public override void _Ready()
     {
@@ -57,6 +58,7 @@ public partial class DevShot : Node
             if (a == "--decklist") _openDeckList = true;
             if (a == "--rarity") _openRarity = true;
             if (a == "--board") { _openBattle = true; _battleBoard = true; }
+            if (a == "--demo-damage") _demoDamage = true;
             if (a.StartsWith("--resize="))
             {
                 var parts = a.Substring(9).Split('x');
@@ -133,6 +135,7 @@ public partial class DevShot : Node
         GD.Print("[art] path(10001110)=" + ShadowverseFan.Ui.ContentPaths.CardArtPath(10001110)
                  + " exists=" + System.IO.File.Exists(ShadowverseFan.Ui.ContentPaths.CardArtPath(10001110)));
         root?.OpenBattleForShot(_battleExpanded, _battleBadges, _battleMulligan, _battleBoard);
+        if (_demoDamage) root?.PlayDamageDemoForShot();
     }
 
     private void OpenWizard()

@@ -315,6 +315,12 @@ public partial class DeckManagementRoot : Control
         }
     }
 
+    /// <summary>开发期入口：在战斗界面制造一次伤害（截图用）。</summary>
+    public void PlayDamageDemoForShot()
+    {
+        if (_current is Battle.BattleScreenRoot b) b.PlayDamageDemo();
+    }
+
     /// <summary>开发期入口：直接打开 DIY 造卡工坊（截图用）。</summary>
     public void OpenDiyForShot() => ShowDiyWorkshop();
 
