@@ -110,17 +110,42 @@ public partial class BoardUnitWidget : Control
         {
             if (_motionApplied)
             {
-                Position = seat;
                 Scale = Vector2.One;
                 Modulate = Colors.White;
                 _appliedOffset = Vector2.Zero;
                 _motionApplied = false;
+
+                if (_detached)
+                {
+                    _detached = false;
+                    RemoveFromRoot(this);
+                    if (_host != null && IsInstanceValid(_host)) _host.AddChild(this);
+                    _host = null;
+                }
             }
             return;
         }
 
-        Position = seat + m.Offset;
-        _appliedOffset = m.Offset;
+        // 动画期间必须**脱离容器布局**，否则 Position 每帧都会被
+        // HBoxContainer 重排覆盖，写进去的偏移立刻失效 ——
+        // 表现就是「动画播了但看不见」。
+        //
+        // 做法：把控件从容器摘出来，挂到棋盘容器的父级（BattleScreenRoot），
+        // 坐标换算成全局；动画结束再塞回去、让布局接管。
+        if (!_detached)
+        {
+            _detached = true;
+            _host = GetParent();
+            _seatGlobal = GlobalPosition;
+
+            if (_host != null)
+            {
+                _host.RemoveChild(this);
+                AddToRoot(this);
+            }
+        }
+
+        Position = _seatGlobal + m.Offset;
 
         float flipScale = Mathf.Abs(Mathf.Cos(Mathf.Pi * m.FlipX));
         Scale = new Vector2(m.Scale * flipScale, m.Scale);
@@ -131,7 +156,21 @@ public partial class BoardUnitWidget : Control
 
     private bool _motionApplied;
     private Vector2 _appliedOffset;
+    private bool _detached;
+    private Node _host;
+    private Vector2 _seatGlobal;
 
+
+    private void AddToRoot(Node n)
+    {
+        var root = GetTree()?.CurrentScene;
+        (root ?? GetTree()?.Root)?.AddChild(n);
+    }
+
+    private void RemoveFromRoot(Node n)
+    {
+        n.GetParent()?.RemoveChild(n);
+    }
 
     /// <summary>触发时机能力时调用：播放一圈光效。</summary>
     public void PlayTriggerFlash()

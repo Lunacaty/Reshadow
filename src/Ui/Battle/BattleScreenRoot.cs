@@ -36,6 +36,7 @@ public partial class BattleScreenRoot : Control
 
     /// <summary>战场动画调度器（全局一份，按 EntityId 存状态）。</summary>
     private readonly BoardAnimDirector _anims = new();
+    private bool _animBusy;
 
     /// <summary>
     /// 与真实状态有关的演出队列（先进先出）。
@@ -331,7 +332,18 @@ public partial class BattleScreenRoot : Control
         // 卡就停在半路追不上。
         StepDragFollow((float)delta);
         _anims.Step((float)delta);
-        ApplyMotionsToWidgets();
+
+        // 只在真的有动画时写位置 —— 每帧无条件写会和容器布局互相覆盖。
+        if (_animBusy)
+        {
+            ApplyMotionsToWidgets();
+            _animBusy = false;
+            foreach (var w in BoardUnitsOf(_boardAlly))
+                if (w.Entity != null && _anims.IsAnimating(w.Entity.EntityId)) { _animBusy = true; break; }
+            if (!_animBusy)
+                foreach (var w in BoardUnitsOf(_boardFoe))
+                    if (w.Entity != null && _anims.IsAnimating(w.Entity.EntityId)) { _animBusy = true; break; }
+        }
 
         // 表演队列：先进先出，一段播完接下一段
         if (_seq.Step((float)delta))
