@@ -866,6 +866,21 @@ public partial class BattleScreenRoot : Control
                 break;
             }
 
+            case CoreEvent.OnPlay:
+            {
+                // 敌方出牌：从敌方手牌区飞出一张背面，停 1 秒后消散。
+                // 我方出牌由拖拽本身表现，不需要额外动画。
+                bool isMine = ev.PlayerId < 0 || ev.PlayerId == _ctrl.MyPlayerId;
+                if (!isMine)
+                {
+                    _seq.Enqueue(new Seq()
+                        .Then(CreateEnemyPlayIn())
+                        .Wait(1.0f)
+                        .Then(CreateEnemyPlayOut()));
+                }
+                break;
+            }
+
             case CoreEvent.OnEnterField:
             {
                 // 入队瞬间先将随从设为隐身预备态（Alpha = 0），
@@ -972,6 +987,70 @@ public partial class BattleScreenRoot : Control
                     .Wait(0.58f));
                 break;
         }
+    }
+
+    /// <summary>敌方手牌区中心（顶部约 (265,4) 起的一排牌背）。</summary>
+    private Vector2 EnemyHandAnchor()
+    {
+        var vp = GetEffectiveViewportSize();
+        float sx = vp.X / 1280f;
+        return new Vector2(265f * sx, 48f * (vp.Y / 720f));
+    }
+
+    /// <summary>
+    /// 敌方出牌：一张牌背从敌方手牌区微微抬起并放大。
+    ///
+    /// 敌方手牌是盖着的，所以用牌背表现；停 1 秒由外层 Seq.Wait 负责。
+    /// </summary>
+    private Anim CreateEnemyPlayIn()
+    {
+        if (_overlayLayer == null)
+            return new Anim(0f, Ease.Linear, _ => { });
+
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
+            new Color("1A2438"), SvWbTheme.AccentCyan, 8, 2, 10));
+        panel.Size = new Vector2(72, 100);
+        panel.MouseFilter = MouseFilterEnum.Ignore;
+        panel.ZIndex = 58;
+        panel.Name = "EnemyPlayGhost";
+
+        var from = EnemyHandAnchor();
+        panel.Position = from;
+        panel.Modulate = new Color(1, 1, 1, 0f);
+        _overlayLayer.AddChild(panel);
+
+        var to = from + new Vector2(0f, 56f);
+
+        return new Anim(0.30f, Ease.OutCubic, v =>
+        {
+            if (!IsInstanceValid(panel)) return;
+            panel.Position = from.Lerp(to, v);
+            panel.Scale = Vector2.One * (1f + 0.25f * v);
+            panel.Modulate = new Color(1, 1, 1, v);
+        });
+    }
+
+    /// <summary>敌方出牌第二步：停留结束后向上淡出消散。</summary>
+    private Anim CreateEnemyPlayOut()
+    {
+        if (_overlayLayer == null)
+            return new Anim(0f, Ease.Linear, _ => { });
+
+        var card = _overlayLayer.GetNodeOrNull<PanelContainer>("EnemyPlayGhost");
+        if (card == null || !IsInstanceValid(card))
+            return new Anim(0f, Ease.Linear, _ => { });
+
+        var from = card.Position;
+        var to = from + new Vector2(0f, -26f);
+
+        return new Anim(0.26f, Ease.InCubic, v =>
+        {
+            if (!IsInstanceValid(card)) return;
+            card.Position = from.Lerp(to, v);
+            card.Scale = Vector2.One * (1.25f - 0.25f * v);
+            card.Modulate = new Color(1, 1, 1, 1f - v);
+        }, () => { if (IsInstanceValid(card)) card.QueueFree(); });
     }
 
     private Anim CreateDrawFlyIn()

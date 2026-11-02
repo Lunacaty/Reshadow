@@ -370,7 +370,15 @@ public sealed class TurnRunner
                 _state.WriteCounter(playerId, rallyKey, _state.ReadCounter(playerId, rallyKey) - 1);
 
             // 自身【入场曲】（优先级 10）
-            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            EmitOrEnqueue(vm, new VmEvent
+            {
+                Kind = CoreEvent.OnPlay,
+                Subject = EntityRef.From(card),
+                // PlayerId 必须带上：它不参与触发判定（OnPlay 的判据是
+                // 「打出的这张牌就是本卡」），但前端要靠它区分敌我，
+                // 敌方出牌才播「从敌方手牌飞出一张」的动画。
+                PlayerId = playerId,
+            });
 
             // 协作（Rally）：入场曲**彻底结算完**之后才 +1。
             // 入场曲里含 Select 时会挂起等玩家选 —— 直接写在 StepUntilBlocked() 后面
@@ -393,7 +401,15 @@ public sealed class TurnRunner
             // VM 会挂起等玩家输入。直接写在 StepUntilBlocked() 后面意味着
             // **玩家还没选，法术已经进墓地、shadow 已 +1、魔力增幅已触发**，
             // 甚至手牌里其它卡的魔力增幅会插到这次选择之前结算。
-            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            EmitOrEnqueue(vm, new VmEvent
+            {
+                Kind = CoreEvent.OnPlay,
+                Subject = EntityRef.From(card),
+                // PlayerId 必须带上：它不参与触发判定（OnPlay 的判据是
+                // 「打出的这张牌就是本卡」），但前端要靠它区分敌我，
+                // 敌方出牌才播「从敌方手牌飞出一张」的动画。
+                PlayerId = playerId,
+            });
 
             if (vm != null)
             {
@@ -462,7 +478,15 @@ public sealed class TurnRunner
             // 与普通法术同理，全部排进续体：效果挂了起等选择时，
             // 卡不该提前进墓地，也不该提前把 Def 还原成本体随从 ——
             // 那会让后续的「这张卡是什么」读错。
-            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            EmitOrEnqueue(vm, new VmEvent
+            {
+                Kind = CoreEvent.OnPlay,
+                Subject = EntityRef.From(card),
+                // PlayerId 必须带上：它不参与触发判定（OnPlay 的判据是
+                // 「打出的这张牌就是本卡」），但前端要靠它区分敌我，
+                // 敌方出牌才播「从敌方手牌飞出一张」的动画。
+                PlayerId = playerId,
+            });
 
             if (vm != null)
             {
@@ -505,7 +529,15 @@ public sealed class TurnRunner
 
             // MoveEntity 内部已通过 NotifySummoned 发过 OnEnterField，这里只补 OnPlay。
             _state.MoveEntity(card, ZoneRef.Board, playerId);
-            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnPlay, Subject = EntityRef.From(card) });
+            EmitOrEnqueue(vm, new VmEvent
+            {
+                Kind = CoreEvent.OnPlay,
+                Subject = EntityRef.From(card),
+                // PlayerId 必须带上：它不参与触发判定（OnPlay 的判据是
+                // 「打出的这张牌就是本卡」），但前端要靠它区分敌我，
+                // 敌方出牌才播「从敌方手牌飞出一张」的动画。
+                PlayerId = playerId,
+            });
             vm?.StepUntilBlocked();
         }
 
