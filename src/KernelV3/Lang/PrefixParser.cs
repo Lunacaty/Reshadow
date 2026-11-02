@@ -29,6 +29,14 @@ namespace ShadowverseFan.KernelV3.Lang;
 /// <summary>前缀剥离过程中增量累积的能力规格。</summary>
 public sealed class AbilityHeaderBuilder
 {
+    /// <summary>
+    /// 本句是否存在「交战目标」（被攻击的那颗随从）。
+    ///
+    /// "Follower Strike: If the opposing follower is damaged, destroy it."
+    /// 这里的 it 指向被攻击者，而不是攻击者自己。
+    /// </summary>
+    public bool HasOpposingTarget { get; set; }
+
     public CoreEvent Event = CoreEvent.OnPlay;
     public TargetSpec SubjectFilter;
     public TargetSpec SecondaryFilter;

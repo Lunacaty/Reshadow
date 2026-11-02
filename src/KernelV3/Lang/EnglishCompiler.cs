@@ -443,6 +443,71 @@ public sealed class EnglishCompiler
 
     // ---------- 单段编译 ----------
 
+    /// <summary>
+    /// 递归检查条件表达式里是否引用了 $opposing 槽位。
+    ///
+    /// "Follower Strike: If the opposing follower is damaged, destroy it."
+    /// 条件本身提到了 $opposing，代词语义就应当默认指向它。
+    /// </summary>
+    private static bool MentionsOpposingSlot(BoolExpr e)
+    {
+        switch (e)
+        {
+            case null:
+                return false;
+
+            case AndExpr a:
+                foreach (var it in a.Items)
+                    if (MentionsOpposingSlot(it)) return true;
+                return false;
+
+            case OrExpr o:
+                foreach (var it in o.Items)
+                    if (MentionsOpposingSlot(it)) return true;
+                return false;
+
+            case NotExpr n:
+                return MentionsOpposingSlot(n.Inner);
+
+            case HasStateExpr hs:
+                return IsOpposing(hs.Of);
+
+            case HasKeywordExpr hk:
+                return IsOpposing(hk.Of);
+
+            case HasTraitExpr ht:
+                return IsOpposing(ht.Of);
+
+            case HasClanExpr hc:
+                return IsOpposing(hc.Of);
+
+            case ExistsExpr ex:
+                return IsOpposing(ex.Target);
+
+            case CompareExpr cmp:
+                return RefersToOpposing(cmp.Left) || RefersToOpposing(cmp.Right);
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsOpposing(TargetSpec t)
+        => t != null && t.SourceKind == TargetSourceKind.Slot
+           && t.Slot == TargetSpec.SlotOpposing;
+
+    /// <summary>数值表达式是否引用了 $opposing（例如「数量」类比较）。</summary>
+    private static bool RefersToOpposing(NumExpr n)
+    {
+        if (n == null) return false;
+        if (IsOpposing(n.Of)) return true;
+
+        foreach (var a in n.Args)
+            if (RefersToOpposing(a)) return true;
+
+        return RefersToOpposing(n.Then) || RefersToOpposing(n.Else);
+    }
+
     private List<AbilityDef> CompileSegment(string segment, SectionZone zone = SectionZone.Normal)
     {
         var result = new List<AbilityDef>();
@@ -747,32 +812,55 @@ public sealed class EnglishCompiler
             if (hb.ActiveZone != ActiveZoneScope.Board) segmentZone = hb.ActiveZone;
             else hb.ActiveZone = segmentZone;
 
-            // 代词作用域（R-4 / Stage 4）：
-            // 处于 "When/Whenever <主语> ..." 触发器下时，本句的 it 应指向触发源 $trigger，
-            // 而不是空的 $selected。一旦本句执行了 Select，切回 $selected。
-            _target.DefaultPronounSlot = hb.SubjectFilter != null
-                ? TargetSpec.SlotTrigger
-                : null;
+            // ---- 代词作用域（R-4 / Stage 4）----
+            //
+            // 何时清空 _target 的槽位登记，是这套编译器最容易出错的地方。
+            // 这里有三条互相冲突的需求必须同时满足：
+            //
+            //   ① "Fanfare: Summon a Megalorca." <hr> "Whenever X enters, give it Ward."
+            //      第二句的 it 必须指向新的触发主体 $trigger，
+            //      不能去读第一句留下的 $created（那是个早已死掉的引用）。
+            //      → 新的**显式事件头**要清空。
+            //
+            //   ② "Evolve: Summon 2 copies of Ghost."
+            //      "Super-Evolve: Give them Drain."
+            //      them 指向上一段召出的 Ghost，属于跨能力头的合法引用。
+            //      → Evolve → Super-Evolve 的耦合链**不能**清空。
+            //
+            //   ③ "When you gain this crest, replace your deck with a deck of 40 cards."
+            //      "Select another allied card. If you selected one, destroy it."
+            //      第二句没有事件头，是同一能力内的条件后续句。
+            //      → 无头的后续句**不能**清空。
+            //
+            // 早先这里无条件调用 ResetSlots()，是按句遍历时就清，
+            // 于是只要跨了一个句号，上一句绑定的 $selected / $created 就被抹掉，
+            // 官方卡池里 14 张卡统统报「代词 it 缺少前序绑定」。
+            bool hasInsteadWord = sent.Any(t => t.IsWord("instead"));
 
-            // 新的能力头就是新的作用域：$selected / $created 这类「本句内新产生的目标」
-            // 不得跨能力头继承。
-            //   "Fanfare: Summon a Megalorca."  <hr>  "Whenever X enters, give it Ward."
-            // 若不清，第二条的 it 会去读第一条留下的 $created（那是个早已死掉的引用），
-            // 而正确目标是触发主体 $trigger。
-            // $trigger 本身由上面的 DefaultPronounSlot 重新给出，不受影响。
-            _target.ResetSlots();
-            if (hb.SubjectFilter != null) _target.MarkBound(TargetSpec.SlotTrigger);
+            bool isCoupledSuperEvolve = hb.EventExplicit
+                && hb.Event == CoreEvent.OnSuperEvolve
+                && ((currentAbility?.Trigger?.Event == CoreEvent.OnEvolve)
+                    || (_lastBuiltAbility?.Trigger?.Event == CoreEvent.OnEvolve));
 
-            // 每句开头重置槽位登记（设计3 5.3 ScopeRegister）。
-            // 但同一能力内的后续句要能继承前句的绑定，
-            // 所以只在新能力头出现时清空。
-            // 槽位登记是**卡级**的，不是句级。
-            // 设计3 5.3 的 ScopeRegister 要在整张卡内保留绑定：
-            //   "Evolve: Summon 2 copies of Ghost."
-            //   "Super-Evolve: Give them Drain."        <- them 指向前面召出的 Ghost
-            // 如果每句清空，这类跨能力头的合法引用会被误判成「无前序绑定」。
-            // 只在 Compile() 入口清空一次。
-            if (hb.SubjectFilter != null) _target.MarkBound(TargetSpec.SlotTrigger);
+            if (hb.EventExplicit && !isCoupledSuperEvolve && !hasInsteadWord)
+                _target.ResetSlots();
+
+            // 触发主体优先；没有任何主体时，若本句带交战目标或条件里提到 $opposing，
+            // 就把代词默认槽切到 $opposing（"Follower Strike: ... destroy it"）。
+            if (hb.SubjectFilter != null)
+            {
+                _target.DefaultPronounSlot = TargetSpec.SlotTrigger;
+                _target.MarkBound(TargetSpec.SlotTrigger);
+            }
+            else if (hb.HasOpposingTarget || MentionsOpposingSlot(hb.Condition))
+            {
+                _target.DefaultPronounSlot = TargetSpec.SlotOpposing;
+                _target.MarkBound(TargetSpec.SlotOpposing);
+            }
+            else if (hb.EventExplicit && !isCoupledSuperEvolve && !hasInsteadWord)
+            {
+                _target.DefaultPronounSlot = null;
+            }
 
                 // Countdown (N) 是护符属性：拍下来时为 N，每回合 -1，归零破坏。
                 // 与谢幕曲 / Whenever 等触发完全独立，必须独立成一条能力。
