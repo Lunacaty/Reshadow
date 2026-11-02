@@ -1,0 +1,33 @@
+fix: 112 终审 4 处局部漏改
+
+【漏点 1 主战者视觉血量不重绘】
+  我在 BoardUnitWidget 给 VisualLifeOffset 的 setter 补了 QueueRedraw，
+  却漏了 LeaderMedallionWidget —— 受击销账把值归零时主战者不重画，
+  盾牌数字一直停在受击前。已改为同样的带重绘属性。
+
+【漏点 2 松手出牌判定仍用写死 500f】
+  拖拽开始与高亮都已改用动态 PlayLineY（视口高-220），
+  唯独松手那一刻调的 ShouldPlayOnRelease 内部还在比 HandZoneTopY(500)。
+  1600x900 下把牌拖到战场下半区（Y≈580）蓝框已经亮了，松手却判为不出牌。
+  改为 mb.GlobalPosition.Y < PlayLineY。
+
+【漏点 3 SpawnBoardDemo 顺序颠倒 + 演示随从召唤失调】
+  我写的是「先 Rebuild 再推游标」，但 Rebuild 里的 ConsumeNewEventsToVfx
+  会读到 8 条 OnEnterField，给每颗棋子挂 PrepareEnter(Alpha=0)。
+  之后即使 _anims.Clear() 清了轨道，控件身上的 _motion 缓存仍停在 Alpha=0
+  —— 第 0 帧整排随从全是隐形的。
+  改为**先推游标、清队列、清动画，最后 Rebuild**。
+  SpawnBadgeDemo 同样处理。
+  另外演示随从的 EnteredTurn 设为上一回合，解除召唤失调，
+  否则实机上摸不到「按住随从选目标」那套交互。
+
+【漏点 4 OnAttack 坐标入队时算死】
+  连拍几张随从后立刻排队攻击时，棋子槽位会随前序入场/死亡平移，
+  入队时的坐标等播到时已经不准，冲撞方向会歪甚至打到空位。
+  改为在 .Do() 内部、播放那一刻才取 CenterOf。
+
+【验证】
+  ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 /
+  Combat 16-16 / 完整对局 7-7 / 战斗 UI 31-31
+  实机截图：第 3 帧演示随从全部可见（修复前整排隐形），
+  我方后三张带可攻击绿框；第 8 帧伤害飘字正常。

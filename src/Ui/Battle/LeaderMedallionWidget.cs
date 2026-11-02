@@ -81,7 +81,21 @@ public partial class LeaderMedallionWidget : Control
     /// 视觉血量补偿：后端已扣血但受击动画还没播时，
     /// 盾牌显示受击前的数值，命中那一帧才跳变。
     /// </summary>
-    public int VisualLifeOffset { get; set; }
+    public int VisualLifeOffset
+    {
+        get => _visualLifeOffset;
+        set
+        {
+            if (_visualLifeOffset == value) return;
+            _visualLifeOffset = value;
+            // 与 BoardUnitWidget 同理：控件不是每帧重绘的，
+            // setter 里不主动 QueueRedraw 的话，
+            // 受击销账把值归零时盾牌数字会一直停在旧值上。
+            QueueRedraw();
+        }
+    }
+
+    private int _visualLifeOffset;
 
     public const float DomeTopY = FrameT;
 

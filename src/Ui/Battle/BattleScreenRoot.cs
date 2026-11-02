@@ -674,16 +674,22 @@ public partial class BattleScreenRoot : Control
             {
                 if (sid >= 0 && ev.Object != null)
                 {
-                    Vector2 atkCenter = CenterOf(ev.Subject, ownerPid);
-                    int defPid = ev.Object.Value.Snapshot?.PlayerId ?? (1 - ownerPid);
-                    Vector2 defCenter = CenterOf(ev.Object, defPid);
-                    Vector2 delta = defCenter - atkCenter;
+                    var objRef = ev.Object;
+                    int defPid = objRef.Value.Snapshot?.PlayerId ?? (1 - ownerPid);
 
-                    // 第二层（非阻塞事件动画）：随从冲撞排队执行
+                    // 坐标必须在**播放的那一刻**取，不能在入队时算死。
+                    //
+                    // 连拍几张随从后立刻排队攻击时，棋子的槽位会随
+                    // 前序入场 / 死亡而平移；入队时的坐标等播到时已经不准，
+                    // 冲撞方向会歪，甚至打到空位。
                     _seq.Enqueue(new Seq()
                         .Do(() =>
                         {
-                            _anims.PlayLunge(sid, delta, () => _vfx.PlayAttackLunge(null, atkCenter, defCenter));
+                            Vector2 atkCenter = CenterOf(ev.Subject, ownerPid);
+                            Vector2 defCenter = CenterOf(objRef, defPid);
+                            Vector2 delta = defCenter - atkCenter;
+                            _anims.PlayLunge(sid, delta,
+                                () => _vfx.PlayAttackLunge(null, atkCenter, defCenter));
                         })
                         .Wait(0.26f));
                 }
@@ -1164,8 +1170,12 @@ public partial class BattleScreenRoot : Control
             _field.IsDraggingPlayCard = false;
             _field.QueueRedraw();
 
-            bool shouldPlay = _dragFollow
-                && BattleSessionController.ShouldPlayOnRelease(mb.GlobalPosition.Y, true);
+            // 松手判定必须与拖拽时的高亮用同一条动态线。
+            //
+            // ShouldPlayOnRelease 内部比的是写死的 HandZoneTopY(500f)，
+            // 1600x900 下把牌拖到战场下半区（Y≈580）时蓝框已经亮了，
+            // 松手却判为不出牌。
+            bool shouldPlay = _dragFollow && mb.GlobalPosition.Y < PlayLineY;
             EndDragFollow();
 
             if (shouldPlay)
@@ -1312,6 +1322,11 @@ public partial class BattleScreenRoot : Control
             var e = _ctrl.State.SpawnCard(def.CardId, ZoneRef.Board, 0);
             if (e != null) e.EnteredTurn = _ctrl.State.TurnNumber - 1;
         }
+
+        // 与 SpawnBoardDemo 同理：推游标必须在 Rebuild 之前。
+        _lastEventIdx = _ctrl.State.EventLog.Count;
+        _seq.Clear();
+        _anims.ClearAll();
         Rebuild();
     }
 
@@ -1422,8 +1437,15 @@ public partial class BattleScreenRoot : Control
         var ids = new[] { 10001120, 10001110, 10001130, 10002120 };
         for (int i = 0; i < ids.Length; i++)
         {
-            _ctrl.State.SpawnCard(ids[i], ZoneRef.Board, _ctrl.MyPlayerId);
-            _ctrl.State.SpawnCard(ids[i], ZoneRef.Board, _ctrl.MyPlayerId == 0 ? 1 : 0);
+            // EnteredTurn 设为上一回合，解除召唤失调 ——
+            // 否则演示场面里的随从全都不能攻击，
+            // 实机摸不到「按住随从选目标」那套交互。
+            var ally = _ctrl.State.SpawnCard(ids[i], ZoneRef.Board, _ctrl.MyPlayerId);
+            if (ally != null) ally.EnteredTurn = _ctrl.State.TurnNumber - 1;
+
+            var foe = _ctrl.State.SpawnCard(ids[i], ZoneRef.Board,
+                                            _ctrl.MyPlayerId == 0 ? 1 : 0);
+            if (foe != null) foe.EnteredTurn = _ctrl.State.TurnNumber - 1;
         }
 
         // 演示随从应当**直接就位**，不要排队播入场动画。
@@ -1432,14 +1454,16 @@ public partial class BattleScreenRoot : Control
         // 队列要跑近 3 秒才轮到后面塞进去的 --demo-damage 伤害飘字，
         // 而 DevShot 默认只等几十帧 —— 截图里当然什么都看不到。
         //
-        // 先 Rebuild 让棋子建立，再把事件游标推到队尾、清掉已排的演出。
-        Rebuild();
+        // 顺序很要紧：**先推游标，再 Rebuild**。
+        //
+        // 反过来的话，Rebuild 里的 ConsumeNewEventsToVfx 会读到 8 条
+        // OnEnterField，给每颗棋子挂 PrepareEnter（Alpha=0 隐身）。
+        // 之后即使 _anims.Clear() 清了轨道，控件身上的 _motion 缓存
+        // 仍停在 Alpha=0 —— 第 0 帧整排随从全是隐形的。
         _lastEventIdx = _ctrl.State.EventLog.Count;
         _seq.Clear();
-        foreach (var w in BoardUnitsOf(_boardAlly).Concat(BoardUnitsOf(_boardFoe)))
-            if (w.Entity != null) _anims.Clear(w.Entity.EntityId);
-        _boardAlly?.QueueRedraw();
-        _boardFoe?.QueueRedraw();
+        _anims.ClearAll();
+        Rebuild();
     }
 
     public void SetHandExpanded(bool v) { _handExpanded = v; RebuildHand(); }
