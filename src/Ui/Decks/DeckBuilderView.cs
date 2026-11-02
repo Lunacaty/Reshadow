@@ -283,11 +283,10 @@ public partial class DeckBuilderView : Control
 
         var clear = new Button { Text = "清空" };
         SvWbTheme.StyleButton(clear, customAccent: SvWbTheme.StatusDanger);
-        clear.Pressed += () =>
-        {
-            foreach (var (cid, _) in _vm.WorkingDeck.Cards.ToList())
-                for (int i = 0; i < 60; i++) _vm.RemoveCard(cid);
-        };
+        // 走 ClearAll：内部抑制逐张通知，只在最后刷新一次。
+        // 旧写法是「每张卡循环调用 60 次 RemoveCard」，每次都触发
+        // RefreshAll 全量重建控件，30 张卡就是 1800 次重建 —— 界面卡死。
+        clear.Pressed += () => _vm.ClearAll();
         head.AddChild(clear);
 
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };

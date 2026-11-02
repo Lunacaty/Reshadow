@@ -77,6 +77,31 @@ public partial class TopLeftCardActionPanel : PanelContainer
         root.AddChild(_actionRow);
     }
 
+    /// <summary>
+    /// 延迟到下一帧再重建面板与战场。
+    ///
+    /// 进化在按钮自己的 Pressed 回调里执行，若当场重建，
+    /// 正在派发信号的按钮会被 QueueFree —— 界面卡死。
+    /// </summary>
+    private RuntimeEntity _pendingRefresh;
+
+    private void DeferRefresh(RuntimeEntity entity)
+    {
+        // CallDeferred 只能传 Godot 的 Variant 参数，RuntimeEntity 是纯 C# 对象，
+        // 因此把待刷新实体存在字段里，延迟调用自己不带参数。
+        _pendingRefresh = entity;
+        CallDeferred(nameof(DoRefresh));
+    }
+
+    private void DoRefresh()
+    {
+        var entity = _pendingRefresh;
+        _pendingRefresh = null;
+        if (entity == null) { HidePanel(); return; }
+        ShowForEntity(entity);
+        OnEntityChanged?.Invoke(entity);
+    }
+
     public void ShowForEntity(RuntimeEntity entity)
     {
         if (entity?.Def == null || _ctrl == null) { HidePanel(); return; }
@@ -93,34 +118,42 @@ public partial class TopLeftCardActionPanel : PanelContainer
 
         _effectRich.Text = SvWbTheme.FormatRichCardText(_ctrl.Store.CardPrinter.PrintCard(def));
 
-        foreach (var c in _actionRow.GetChildren()) c.QueueFree();
+        // 不能在按钮自己的 Pressed 回调里销毁按钮本身。
+        // Godot 的信号派发持有当前控件的引用，边派发边 QueueFree
+        // 会把「信号发出者」在回调中途拆掉 —— 表现为点击后整个界面卡死。
+        // 这里延到下一帧再清，回调结束时控件仍然有效。
+        foreach (var c in _actionRow.GetChildren())
+        {
+            _actionRow.RemoveChild(c);
+            c.QueueFree();
+        }
 
         if (_ctrl.CanEvolveUnit(entity))
         {
             var b = new Button { Text = "✦ 进化 (+2/+2)" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentGold);
-            b.Pressed += () => { _ctrl.TryEvolve(entity, false); ShowForEntity(entity); OnEntityChanged?.Invoke(entity); };
+            b.Pressed += () => { if (_ctrl.TryEvolve(entity, false)) DeferRefresh(entity); };
             _actionRow.AddChild(b);
         }
         if (_ctrl.CanSuperEvolveUnit(entity))
         {
             var b = new Button { Text = "★ 超进化 (+3/+3)" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
-            b.Pressed += () => { _ctrl.TryEvolve(entity, true); ShowForEntity(entity); OnEntityChanged?.Invoke(entity); };
+            b.Pressed += () => { if (_ctrl.TryEvolve(entity, true)) DeferRefresh(entity); };
             _actionRow.AddChild(b);
         }
         if (_ctrl.CanEngageUnit(entity, out int cost))
         {
             var b = new Button { Text = $"⚡ 启动 ({cost}费)" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentCyan);
-            b.Pressed += () => { _ctrl.TryEngage(entity); HidePanel(); OnEntityChanged?.Invoke(entity); };
+            b.Pressed += () => { if (_ctrl.TryEngage(entity)) DeferRefresh(entity); };
             _actionRow.AddChild(b);
         }
         if (entity.Zone == ZoneRef.Hand && _ctrl.CanStartFuse(entity))
         {
             var b = new Button { Text = "◆ 进行融合" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
-            b.Pressed += () => { _ctrl.StartFuseMode(entity); ShowForEntity(entity); };
+            b.Pressed += () => { _ctrl.StartFuseMode(entity); DeferRefresh(entity); };
             _actionRow.AddChild(b);
         }
 
@@ -132,12 +165,12 @@ public partial class TopLeftCardActionPanel : PanelContainer
                 Disabled = _ctrl.SelectedFuseMaterials.Count == 0,
             };
             SvWbTheme.StyleButton(ok, isPrimary: true, customAccent: SvWbTheme.StatusValid);
-            ok.Pressed += () => { _ctrl.ConfirmFuse(); ShowForEntity(entity); OnEntityChanged?.Invoke(entity); };
+            ok.Pressed += () => { _ctrl.ConfirmFuse(); DeferRefresh(entity); };
             _actionRow.AddChild(ok);
 
             var cancel = new Button { Text = "取消融合" };
             SvWbTheme.StyleButton(cancel);
-            cancel.Pressed += () => { _ctrl.CancelFuseMode(); ShowForEntity(entity); };
+            cancel.Pressed += () => { _ctrl.CancelFuseMode(); DeferRefresh(entity); };
             _actionRow.AddChild(cancel);
         }
 

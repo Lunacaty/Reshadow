@@ -98,11 +98,44 @@ public sealed class DeckEditorViewModel
         return true;
     }
 
+    /// <summary>
+    /// 批量修改期间抑制 OnStateChanged。
+    ///
+    /// 订阅方是 DeckBuilderView.RefreshAll —— 它会把整副手牌与卡池网格的
+    /// 控件全部销毁重建。逐张调用 RemoveCard 时每次都触发一次全量重建：
+    /// 30 张牌各调 60 次 = 1800 次重建，界面当场卡死。
+    /// 批量操作必须只在结束时通知一次。
+    /// </summary>
+    private bool _suppressNotify;
+
     public void RemoveCard(int cardId)
     {
         int cur = GetCopyCount(cardId);
         if (cur <= 0) return;
         SetCopyCountInternal(cardId, cur - 1);
+        RecalculateProfile();
+        if (!_suppressNotify) OnStateChanged?.Invoke();
+    }
+
+    /// <summary>清空整副牌组：一次性移除，只通知一次。</summary>
+    public void ClearAll()
+    {
+        bool prev = _suppressNotify;
+        _suppressNotify = true;
+        try
+        {
+            // 先把卡号快照下来：SetCopyCountInternal 会改写 Cards 列表。
+            foreach (var (cid, _) in WorkingDeck.Cards.ToList())
+            {
+                int n = GetCopyCount(cid);
+                for (int i = 0; i < n; i++) RemoveCard(cid);
+            }
+        }
+        finally
+        {
+            _suppressNotify = prev;
+        }
+
         RecalculateProfile();
         OnStateChanged?.Invoke();
     }

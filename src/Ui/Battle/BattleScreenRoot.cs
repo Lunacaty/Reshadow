@@ -208,6 +208,15 @@ public partial class BattleScreenRoot : Control
 
         _actionPanel = new TopLeftCardActionPanel();
         _actionPanel.Setup(_ctrl);
+
+        // 左上角面板里点了进化 / 启动 / 融合后，战场必须整体重画。
+        //
+        // 这个事件原先**从未被订阅**：进化成功了、引擎那边数值也变了，
+        // 但界面不动。玩家看到的是「叮当天使进化后卡住了」——
+        // 实际上只要再做一个带 Rebuild() 的操作（出牌、攻击），
+        // 画面立刻正常，进化时抽的牌也才显示出来。
+        _actionPanel.OnEntityChanged += _ => Rebuild();
+
         AddChild(_actionPanel);
 
         // 书页按钮：矢量绘制的鎏金暗蓝方框 + 折角书页，不是文字按钮。

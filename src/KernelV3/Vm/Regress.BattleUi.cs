@@ -68,6 +68,9 @@ public static class RegressBattleUi
         Check("DIYU-13 构筑修正 kind 往返不串种", CaseDeckModKindRoundTrip);
         Check("MENU-1 主界面五入口全部接线", CaseMainMenuWiring);
         Check("MENU-2 对战选择窗卡池-牌组过滤", CaseBattleSelectFiltering);
+        Check("BUG-1 清空牌组一次性完成", CaseClearDeck);
+        Check("BUG-2 进化叮当天使不卡死", CaseEvolveBellringer);
+        Check("BUG-3 操作面板动作都触发战场重画", CaseActionPanelRefresh);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -1184,7 +1187,6 @@ public static class RegressBattleUi
     {
         var store = NewStore();
 
-        // 每个卡池下能选到的牌组，必须与 SavedDecks 里 PoolId 匹配的那批一致
         int mismatch = 0;
         var detail = new List<string>();
         foreach (var kv in store.PoolConfigs.OrderBy(k => k.Key, StringComparer.Ordinal))
@@ -1194,7 +1196,6 @@ public static class RegressBattleUi
                 .ToList();
             detail.Add(kv.Key + "=" + expect.Count);
 
-            // 反查：每副牌组的 PoolId 都能在 PoolConfigs 里找到
             foreach (var d in expect)
                 if (!store.PoolConfigs.ContainsKey(d.PoolId)) mismatch++;
         }
@@ -1206,4 +1207,126 @@ public static class RegressBattleUi
         return (ok, "池-牌组失配=" + mismatch + " 官方池存在=" + hasOfficial
                     + " 官方牌组=" + offCount + " ｜ " + string.Join(" ", detail));
     }
+
+    // ---------------------------------------------------------------- BUG-1
+
+    /// <summary>
+    /// 清空牌组必须一次性完成，不能逐张刷新。
+    ///
+    /// 旧实现是「每张卡循环调用 60 次 RemoveCard」——
+    /// 每次 RemoveCard 都触发 OnStateChanged，订阅方是 RefreshAll，
+    /// 会把整副手牌与卡池网格的控件全部销毁重建。
+    /// 30 张卡就是 1800 次全量重建，界面当场卡死。
+    /// </summary>
+    private static (bool, string) CaseClearDeck()
+    {
+        var store = NewStore();
+        var deck = store.SavedDecks.FirstOrDefault()
+                   ?? store.CreateDeck("all-clans", "Forestcraft", "清空测试");
+        var vm = new DeckEditorViewModel(store, deck);
+
+        // 先塞满
+        var pool = vm.GetFilteredPoolCards().Take(6).ToList();
+        foreach (var c in pool)
+            for (int i = 0; i < 3; i++) vm.TryAddCard(c.CardId, out _);
+        int before = vm.WorkingDeck.Cards.Sum(x => x.count);
+        if (before == 0) return (false, "未能加入任何卡");
+
+        int notified = 0;
+        vm.OnStateChanged += () => notified++;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        vm.ClearAll();
+        sw.Stop();
+
+        int after = vm.WorkingDeck.Cards.Sum(x => x.count);
+
+        // 只应通知一次；卡必须全清空
+        bool ok = after == 0 && notified == 1 && sw.ElapsedMilliseconds < 500;
+        return (ok, "清空前=" + before + " 清空后=" + after
+                    + " 通知次数=" + notified + "(应1)"
+                    + " 耗时=" + sw.ElapsedMilliseconds + "ms");
+    }
+
+    // ---------------------------------------------------------------- BUG-2
+
+    /// <summary>
+    /// 进化叮当天使：引擎侧必须真的进化成功并触发进化时能力。
+    ///
+    /// 这张卡是 Ward + 谢幕曲抽牌 + 进化时抽牌，
+    /// 进化后手牌应 +1 且无挂起 —— 任何一项不满足都说明进化链路断了。
+    /// </summary>
+    private static (bool, string) CaseEvolveBellringer()
+    {
+        var store = NewStore();
+
+        // 必须用官方卡池的牌组：叮当天使(10001120)只在 official-sv 包里。
+        // 用 all-clans 的测试牌组开局，SpawnCard 造出的是 Def==null 的空壳，
+        // 能力一条都不会触发，这条门禁就变成了「验证空壳不会抽牌」。
+        var deck = store.SavedDecks.FirstOrDefault(d => d.DeckId == "official-forest");
+        if (deck == null) return (false, "找不到官方牌组 official-forest");
+
+        var ctrl = new BattleSessionController(store, deck, deck, seed: 11);
+        var st = ctrl.State;
+
+        // 进化解锁回合是第 5 回合（先手），把回合数直接推过去
+        st.TurnNumber = 6;
+        st.WriteCounter(ctrl.MyPlayerId, st.Schema.Counter("ep"), 2);
+
+        var e = st.SpawnCard(10001120, ZoneRef.Board, ctrl.MyPlayerId);
+        if (e == null) return (false, "叮当天使没能上场");
+
+        int hand0 = st.EnumerateZone(ZoneRef.Hand, ctrl.MyPlayerId).Count();
+        int deck0 = st.EnumerateZone(ZoneRef.Deck, ctrl.MyPlayerId).Count();
+        int atk0 = e.Attack, life0 = e.Life;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        bool ok2 = ctrl.TryEvolve(e, false);
+        sw.Stop();
+
+        int hand1 = st.EnumerateZone(ZoneRef.Hand, ctrl.MyPlayerId).Count();
+        bool evolved = e.IsEvolved;
+        bool statUp = e.Attack > atk0 && e.Life > life0;
+        bool drew = hand1 == hand0 + 1;          // 进化时：抽 1 张
+        bool noPending = !ctrl.Runner.IsWaitingForInput;
+        bool fast = sw.ElapsedMilliseconds < 500;
+
+        bool ok = ok2 && evolved && statUp && drew && noPending && fast;
+        return (ok, "牌库=" + deck0 + " 进化成功=" + ok2 + " IsEvolved=" + evolved
+                    + " 身材 " + atk0 + "/" + life0 + "->" + e.Attack + "/" + e.Life
+                    + " 手牌 " + hand0 + "->" + hand1 + "(应+1)"
+                    + " 无挂起=" + noPending + " 耗时=" + sw.ElapsedMilliseconds + "ms");
+    }
+    // ---------------------------------------------------------------- BUG-3
+
+    /// <summary>
+    /// 左上角操作面板的每个动作，事后都必须通知战场重画。
+    ///
+    /// 这里不 new 控件（无头工程里 Godot 节点构造即崩），改查源码级接线：
+    ///   · OnEntityChanged 必须在 BattleScreenRoot 里被订阅；
+    ///   · 面板内每个动作回调都必须走 DeferRefresh（不能直接 ShowForEntity），
+    ///     否则会在按钮自己的 Pressed 回调里销毁按钮本身。
+    ///
+    /// 早先进化成功后界面纹丝不动 —— 玩家看到的是「叮当天使进化后卡住」，
+    /// 实际只要再做一个带 Rebuild() 的操作画面就恢复了。
+    /// </summary>
+    private static (bool, string) CaseActionPanelRefresh()
+    {
+        var panelSrc = File.ReadAllText(FindSource("src/Ui/Battle/TopLeftCardActionPanel.cs"));
+        var rootSrc  = File.ReadAllText(FindSource("src/Ui/Battle/BattleScreenRoot.cs"));
+
+        bool subscribed = rootSrc.Contains("_actionPanel.OnEntityChanged +=");
+
+        // 每个动作按钮的回调里都不该出现「直接 ShowForEntity + Invoke」的组合
+        bool noDirectInvoke = !System.Text.RegularExpressions.Regex.IsMatch(
+            panelSrc, @"Pressed \+= \(\) => \{[^}]*ShowForEntity\(entity\); OnEntityChanged");
+
+        bool hasDefer = panelSrc.Contains("CallDeferred(nameof(DoRefresh))");
+
+        bool ok = subscribed && noDirectInvoke && hasDefer;
+        return (ok, "Root 订阅=" + subscribed
+                    + " 无直接重建=" + noDirectInvoke
+                    + " 有延迟刷新=" + hasDefer);
+    }
+
 }
