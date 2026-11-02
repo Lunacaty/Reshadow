@@ -949,8 +949,15 @@ public sealed class ReshadowScriptCompiler
                 _ => ModeDispatchKind.Choose,
             };
         }
-        int pick = ParseParenInt(p);
-        if (pick <= 0) pick = 1;
+        // 必须支持动态表达式："mode random(prop(cost, $self))" 是
+        // 「随机发动 Y 个能力，Y 为此卡当前费用」这类卡的核心写法。
+        NumExpr pickExpr = null;
+        if (p.TryChar('('))
+        {
+            pickExpr = ParseNumExpr(p);
+            p.TryChar(')');
+        }
+        if (pickExpr == null) pickExpr = NumExpr.Const(1);
 
         var opts = new List<IReadOnlyList<EffectNode>>();
         if (p.TryChar('{'))
@@ -966,7 +973,7 @@ public sealed class ReshadowScriptCompiler
         return new BranchModeNode
         {
             Kind = k,
-            PickCount = NumExpr.Const(pick),
+            PickCount = pickExpr,
             Options = opts,
         };
     }
@@ -1329,6 +1336,39 @@ public sealed class ReshadowScriptCompiler
             p.TryChar(')');
             return ParseArithNoDiv(p, inner);
         }
+        if (t == "rand")
+        {
+            // set_stats(t, rand(2,10,X)/rand(2,10,X)) 需要这一支。
+            // ParseNumNoDiv 是「不吃除法」的版本，rand 内部的逗号
+            // 与外层 A/B 的分隔斜杠互不干扰，但必须在这里也认 rand。
+            p.Next();
+            if (p.TryChar('('))
+            {
+                int lo = 0, hi = 0;
+                var loE = ParseNumNoDiv(p);
+                if (loE?.Op == NumOp.Const) lo = loE.Value;
+                p.TryChar(',');
+                var hiE = ParseNumNoDiv(p);
+                if (hiE?.Op == NumOp.Const) hi = hiE.Value;
+                int rollId = 0;
+                if (p.TryChar(','))
+                {
+                    var idTok = p.Next();
+                    rollId = idTok switch
+                    {
+                        "x" or "X" => 0,
+                        "y" or "Y" => 1,
+                        "z" or "Z" => 2,
+                        _ => int.TryParse(idTok, out var n2) ? n2 : 0,
+                    };
+                }
+                p.TryChar(')');
+                if (hi < lo) hi = lo;
+                return ParseArithNoDiv(p, NumExpr.RandRange(lo, hi, rollId));
+            }
+            return NumExpr.Const(0);
+        }
+
         if (t == "counter")
         {
             p.Next();
@@ -1900,6 +1940,39 @@ public sealed class ReshadowScriptCompiler
         // 注意：这里**不能**再写一个 if (t == "maxgroup") 分支。
         // 上面那条已经把 maxgroup 拦掉了，这一份永远走不到 ——
         // 死代码比缺代码更误导，读的人会以为它才是真正生效的那条。
+
+        // rand(min, max[, X]) —— 同一次结算内锁定的随机整数。
+        // 第三个参数是「变量编号」，同一编号多处引用读到同一个数：
+        //   rand(2, 10, X) 用作费用 / 攻击 / 生命 → 三者相等。
+        if (t == "rand")
+        {
+            p.Next();
+            if (p.TryChar('('))
+            {
+                int lo = 0, hi = 0;
+                var loE = ParseNumNoDiv(p);
+                if (loE?.Op == NumOp.Const) lo = loE.Value;
+                p.TryChar(',');
+                var hiE = ParseNumNoDiv(p);
+                if (hiE?.Op == NumOp.Const) hi = hiE.Value;
+                int rollId = 0;
+                if (p.TryChar(','))
+                {
+                    var idTok = p.Next();
+                    rollId = idTok switch
+                    {
+                        "x" or "X" => 0,
+                        "y" or "Y" => 1,
+                        "z" or "Z" => 2,
+                        _ => int.TryParse(idTok, out var n2) ? n2 : 0,
+                    };
+                }
+                p.TryChar(')');
+                if (hi < lo) hi = lo;
+                return ParseArithTail(p, NumExpr.RandRange(lo, hi, rollId));
+            }
+            return NumExpr.Const(0);
+        }
 
         if (t == "prop")
         {

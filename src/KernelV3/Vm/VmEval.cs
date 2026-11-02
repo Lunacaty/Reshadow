@@ -32,6 +32,28 @@ public sealed class VmEval
             case NumOp.Const:
                 return e.Value;
 
+            case NumOp.RandomRange:
+            {
+                // 同一次结算内锁定：X 被引用三次也只掷一次骰。
+                // 缓存键是 (scope, RollId) —— scope 对应「这一次能力结算」，
+                // RollId 区分 X / Y / Z。
+                int min = e.Value;
+                int max = e.Args != null && e.Args.Count > 0 ? EvalNum(e.Args[0], scope) : min;
+                if (max < min) max = min;
+
+                if (!_rolls.TryGetValue(scope, out var bag))
+                {
+                    bag = new Dictionary<int, int>();
+                    _rolls[scope] = bag;
+                }
+                if (!bag.TryGetValue(e.RollId, out int rolled))
+                {
+                    rolled = _world.Rng.Next(min, max + 1);
+                    bag[e.RollId] = rolled;
+                }
+                return rolled;
+            }
+
             case NumOp.Property:
             {
                 var t = e.Of ?? TargetSpec.Self;
@@ -346,6 +368,9 @@ public sealed class VmEval
     }
 
     private readonly Dictionary<VmScope, Dictionary<int, int[]>> _splits = new();
+
+    /// <summary>同一次结算内锁定的随机数：scope → (RollId → 值)。</summary>
+    private readonly Dictionary<VmScope, Dictionary<int, int>> _rolls = new();
 
     private bool MatchState(RuntimeEntity e, UnitState s) => s switch
     {

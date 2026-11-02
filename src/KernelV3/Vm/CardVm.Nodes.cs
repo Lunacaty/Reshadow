@@ -996,7 +996,11 @@ public sealed partial class CardVm
     {
         var opts = n.Options;
         if (opts == null || opts.Count == 0) return false;
-        int pick = Math.Clamp(_eval.EvalNum(n.PickCount, frame.Scope), 1, opts.Count);
+        // 下限允许 0：PickCount 可能是动态值（"发动 Y 个，Y 为此卡费用"），
+        // 0 费时钳到 1 会凭空多发动一个能力。
+        int pickRaw = _eval.EvalNum(n.PickCount, frame.Scope);
+        int pick = Math.Clamp(pickRaw, 0, opts.Count);
+        if (pick <= 0) return false;
 
         // 「Increase the number of Modes you can select by 1」的光环。
         // mode_count 早就在卡面上编译出来了（ActionParser:177），但运行时从没人读。

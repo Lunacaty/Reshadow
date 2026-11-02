@@ -29,6 +29,16 @@ public enum NumOp
     Cond,
     /// <summary>取最大/最小。</summary>
     Extreme,
+
+    /// <summary>
+    /// 同一次能力结算内**锁定**的随机整数。
+    ///
+    /// "使这张卡的费用变为 X，攻击力变为 X，生命值变为 X，X 为 2~10 的随机数" ——
+    /// 这里的 X 被读取三次，必须是**同一个**数。
+    /// 若每次求值都重新掷骰，费用、攻击、生命会各自变成不同的值。
+    /// RollId 标识「是哪一档变量」（X=0 / Y=1 …），同一帧内同 RollId 复用首次结果。
+    /// </summary>
+    RandomRange,
     /// <summary>区间钳制 clamp(Value, Min, Max)。</summary>
     Clamp,
     /// <summary>计数器当前值（需要 CounterTag）。</summary>
@@ -76,6 +86,21 @@ public sealed class NumExpr
 
     /// <summary>Extreme 时：true 取最大，false 取最小。</summary>
     public bool TakeMax { get; init; }
+
+    /// <summary>
+    /// RandomRange 的「变量编号」：0 = X，1 = Y，2 = Z。
+    /// 同一次结算内同编号只掷一次骰，保证多处引用读到同一个数。
+    /// </summary>
+    public int RollId { get; init; }
+
+    /// <summary>构造一个「同作用域内锁定」的随机整数表达式。</summary>
+    public static NumExpr RandRange(int min, int max, int rollId = 0) => new()
+    {
+        Op = NumOp.RandomRange,
+        Value = min,
+        Args = new[] { Const(max) },
+        RollId = rollId,
+    };
 
     // ---------- 构造快捷方式 ----------
 
