@@ -242,6 +242,7 @@ public partial class DeckBuilderView : Control
         // 卡牌网格
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         pane.AddChild(scroll);
+        SvWbTheme.StyleScroll(scroll);
 
         _cardGrid = new GridContainer { Columns = 4 };
         _cardGrid.AddThemeConstantOverride("h_separation", 8);

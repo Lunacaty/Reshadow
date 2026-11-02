@@ -116,6 +116,7 @@ public partial class BattleSelectDialog : Control
         scroll.SizeFlagsVertical = SizeFlags.ExpandFill;
         scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
         wrap.AddChild(scroll);
+        SvWbTheme.StyleScroll(scroll);
 
         var col = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         col.AddThemeConstantOverride("separation", 6);

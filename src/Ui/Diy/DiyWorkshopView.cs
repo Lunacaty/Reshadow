@@ -202,6 +202,7 @@ public partial class DiyWorkshopView : Control
 
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         pane.AddChild(scroll);
+        SvWbTheme.StyleScroll(scroll);
 
         _endpointHost = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _endpointHost.AddThemeConstantOverride("separation", 6);

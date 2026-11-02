@@ -73,6 +73,7 @@ public partial class DeckListView : Control
             SizeFlagsVertical = SizeFlags.ExpandFill,
         };
         margin.AddChild(scroll);
+        SvWbTheme.StyleScroll(scroll);
 
         _grid = new GridContainer
         {

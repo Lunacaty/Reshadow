@@ -61,6 +61,7 @@ public partial class BattleInfoModal : Control
 
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         root.AddChild(scroll);
+        SvWbTheme.StyleScroll(scroll);
 
         _body = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _body.AddThemeConstantOverride("separation", 6);

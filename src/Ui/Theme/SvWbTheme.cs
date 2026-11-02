@@ -181,6 +181,44 @@ public static class SvWbTheme
     }
 
     /// <summary>
+    /// 给滚动容器换上暗色细滚动条。
+    ///
+    /// 不做这件事，Godot 会给每个 ScrollContainer 画默认的浅灰滚动条 ——
+    /// 在星象深色底上像两条贴上去的白胶带，是「一眼看去仍是默认样式」
+    /// 最明显的残留。项目里 9 个滚动容器原本一个都没处理。
+    /// </summary>
+    public static void StyleScroll(ScrollContainer scroll)
+    {
+        if (scroll == null) return;
+
+        scroll.AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
+
+        // 滚动条是容器内部的 VScrollBar / HScrollBar 子节点，
+        // 主题覆盖必须打到子节点上才生效。
+        ApplyScrollBar(scroll.GetNodeOrNull<VScrollBar>("VScrollBar"));
+        ApplyScrollBar(scroll.GetNodeOrNull<HScrollBar>("HScrollBar"));
+    }
+
+    private static void ApplyScrollBar(ScrollBar bar)
+    {
+        if (bar == null) return;
+
+        bar.AddThemeStyleboxOverride("scroll", new StyleBoxEmpty());
+        bar.AddThemeStyleboxOverride("grabber", ScrollGrabber("2E3B57"));
+        bar.AddThemeStyleboxOverride("grabber_highlight", ScrollGrabber("4A5C82"));
+        bar.AddThemeStyleboxOverride("grabber_pressed", ScrollGrabber(AccentGold.ToHtml(false)));
+    }
+
+    private static StyleBoxFlat ScrollGrabber(string hex) => new()
+    {
+        BgColor = new Color(hex),
+        CornerRadiusTopLeft = 4,
+        CornerRadiusTopRight = 4,
+        CornerRadiusBottomLeft = 4,
+        CornerRadiusBottomRight = 4,
+    };
+
+    /// <summary>
     /// 把 ChineseCardPrinter 输出的纯文本转成带高亮的 BBCode。
     ///
     /// 顺序有讲究：【构筑规则】必须先替换 —— 否则它会被通用的

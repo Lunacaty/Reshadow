@@ -84,6 +84,7 @@ public partial class PackAndPoolManagerView : Control
 
         var packScroll = new ScrollContainer { CustomMinimumSize = new Vector2(0, 110) };
         left.AddChild(packScroll);
+        SvWbTheme.StyleScroll(packScroll);
         _packList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         packScroll.AddChild(_packList);
 
@@ -94,6 +95,7 @@ public partial class PackAndPoolManagerView : Control
 
         var cardScroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         left.AddChild(cardScroll);
+        SvWbTheme.StyleScroll(cardScroll);
         _cardList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         cardScroll.AddChild(_cardList);
 
@@ -139,6 +141,7 @@ public partial class PackAndPoolManagerView : Control
 
         var ruleScroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         right.AddChild(ruleScroll);
+        SvWbTheme.StyleScroll(ruleScroll);
         _ruleList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _ruleList.AddThemeConstantOverride("separation", 3);
         ruleScroll.AddChild(_ruleList);
