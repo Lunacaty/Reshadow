@@ -93,88 +93,30 @@ public partial class BoardUnitWidget : Control
     ///
     /// 由 BoardAnimDirector 每帧驱动（见 BattleScreenRoot._Process）。
     /// </summary>
+    /// <summary>当前动画变换（只读，供 _Draw 应用）。</summary>
+    public UnitMotion Motion => _motion;
+
+    private UnitMotion _motion = UnitMotion.Idle;
+
+    /// <summary>
+    /// 接收动画状态。
+    ///
+    /// **不修改 Position / Scale / 不摘出容器** —— 早先试过「动画期间把控件
+    /// 从容器摘出来自己管位置」，结果灾难性：ApplyMotionsIn 是遍历容器子节点
+    /// 找棋子的，控件一旦摘出就再也遍历不到，收不到「动画结束」的信号，
+    /// 于是永久留在场景根上 —— 玩家看到的就是「打出后随从直接消失」。
+    ///
+    /// 现在只存状态，真正的偏移在 _Draw 里用 DrawSetTransform 应用：
+    /// 控件始终待在容器里，布局、命中框、遍历都不受影响。
+    /// </summary>
     public void ApplyMotion(UnitMotion m)
     {
-        // 座位坐标**永远**由容器布局决定，控件自己不去猜。
-        //
-        // 早先的做法是「第一次进入动画时把当前 Position 记成 _seatPosition」——
-        // 可那一刻容器可能还没完成布局，记下来的是 (0,0) 或上一帧的旧值，
-        // 动画结束后棋子就停在了错误的位置。
-        // 表现是「同一排里只有正在播动画的那张位置歪掉」。
-        //
-        // 现在：座位 = 容器给的布局结果（Position - 已经叠加的偏移），
-        // 每帧都重新对齐，不缓存。
-        Vector2 seat = Position - _appliedOffset;
-
-        if (m.IsIdle)
-        {
-            if (_motionApplied)
-            {
-                Scale = Vector2.One;
-                Modulate = Colors.White;
-                _appliedOffset = Vector2.Zero;
-                _motionApplied = false;
-
-                if (_detached)
-                {
-                    _detached = false;
-                    RemoveFromRoot(this);
-                    if (_host != null && IsInstanceValid(_host)) _host.AddChild(this);
-                    _host = null;
-                }
-            }
-            return;
-        }
-
-        // 动画期间必须**脱离容器布局**，否则 Position 每帧都会被
-        // HBoxContainer 重排覆盖，写进去的偏移立刻失效 ——
-        // 表现就是「动画播了但看不见」。
-        //
-        // 做法：把控件从容器摘出来，挂到棋盘容器的父级（BattleScreenRoot），
-        // 坐标换算成全局；动画结束再塞回去、让布局接管。
-        if (!_detached)
-        {
-            _detached = true;
-            _host = GetParent();
-            _seatGlobal = GlobalPosition;
-
-            if (_host != null)
-            {
-                _host.RemoveChild(this);
-                AddToRoot(this);
-            }
-        }
-
-        Position = _seatGlobal + m.Offset;
-
-        // 翻转用横向压缩表现，不真的镜像。
-        // 直接取负 Scale.X 会把立绘和文字全部左右翻转，
-        // 玩家看到的是「卡牌被翻了个面」，而不是「棋子腾空转体」。
-        // |cos| 把宽度压到 0 再张开：视觉上是转过去了，但朝向始终不变。
-        float squeeze = Mathf.Abs(Mathf.Cos(Mathf.Pi * m.FlipX));
-        Scale = new Vector2(m.Scale * squeeze, m.Scale);
-
-        Modulate = new Color(1, 1, 1, Mathf.Clamp(m.Alpha, 0f, 1f));
-        _motionApplied = true;
+        bool changed = !_motion.Equals(m);
+        _motion = m;
+        if (changed) QueueRedraw();
     }
 
-    private bool _motionApplied;
-    private Vector2 _appliedOffset;
-    private bool _detached;
-    private Node _host;
-    private Vector2 _seatGlobal;
 
-
-    private void AddToRoot(Node n)
-    {
-        var root = GetTree()?.CurrentScene;
-        (root ?? GetTree()?.Root)?.AddChild(n);
-    }
-
-    private void RemoveFromRoot(Node n)
-    {
-        n.GetParent()?.RemoveChild(n);
-    }
 
     /// <summary>触发时机能力时调用：播放一圈光效。</summary>
     public void PlayTriggerFlash()
@@ -206,8 +148,38 @@ public partial class BoardUnitWidget : Control
         if (Entity?.Def == null) return;
 
         var def = Entity.Def;
-        // 动画变换由 BoardUnitWidget.ApplyMotion 写到控件的 Position/Scale 上，
-        // 不在 _Draw 里做 —— 见 ApplyMotion 的注释说明为什么必须如此。
+
+        // ---- 应用动画变换（只影响绘制，不动控件本体）----
+        //
+        // 用 DrawSetTransform：控件仍待在容器里，布局、命中框、
+        // 父级遍历都不受影响；视觉上棋子会偏移/缩放/半透明。
+        // 早先试过改 Position 并摘出容器，结果控件永远收不回来
+        // —— 玩家看到「打出后随从直接消失」。
+        var mo = _motion;
+        bool moved = !mo.IsIdle;
+
+        if (moved)
+        {
+            float squeeze = Mathf.Abs(Mathf.Cos(Mathf.Pi * mo.FlipX));
+
+            // DrawSetTransform 会改变后续绘制的坐标系**原点**。
+            // 为了让下面所有绝对坐标（0..W / 0..H）照旧可用，
+            // 变换必须以控件的左上角为原点、把偏移折算进 origin：
+            //   origin = 控件原点 + 偏移 + (1-s)*中心  ← 让缩放绕中心发生
+            float sxScale = mo.Scale * squeeze;
+            var pivotShift = new Vector2(
+                W * 0.5f * (1f - sxScale),
+                H * 0.5f * (1f - mo.Scale));
+
+            DrawSetTransform(mo.Offset + pivotShift, 0f, new Vector2(sxScale, mo.Scale));
+
+            Modulate = new Color(1, 1, 1, Mathf.Clamp(mo.Alpha, 0f, 1f));
+        }
+        else
+        {
+            DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
+            Modulate = Colors.White;
+        }
         var font = ThemeDB.FallbackFont;
         Color clanCol = SvWbTheme.ClanColor(def.Clan.IsValid ? def.Clan.Name : null);
 
