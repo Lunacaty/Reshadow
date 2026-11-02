@@ -92,6 +92,7 @@ public sealed partial class CardVm
             var controller = scope.ResolvePlayer(Core.ZoneScope.Self);
             var ambushKw = Schema.Keyword("ambush");
             var auraKw = Schema.Keyword("aura");
+            var bsFilter = _world as Battle.BattleState;
             pool = pool.Where(r => {
                 var sn = r.Snapshot;
                 if (sn == null || sn.Zone != ZoneRef.Board) return true;
@@ -102,6 +103,12 @@ public sealed partial class CardVm
                     return false;
 
                 if (sn.PlayerId == controller) return true;   // 己方目标不受限
+
+                // 必须走 HasEffectiveKeyword：潜行/灵气可能是光环授予的，
+                // 直接查 Keywords 会让「当本卡在场时，我方随从获得潜行」失效。
+                if (bsFilter != null && live != null)
+                    return !bsFilter.HasEffectiveKeyword(live, ambushKw)
+                        && !bsFilter.HasEffectiveKeyword(live, auraKw);
                 return !sn.Keywords.Contains(ambushKw) && !sn.Keywords.Contains(auraKw);
             }).ToList();
             if (pool.Count == 0) return new List<RuntimeEntity>();
@@ -214,12 +221,17 @@ public sealed partial class CardVm
         var controller = frame.Scope.ResolvePlayer(Core.ZoneScope.Self);
         var ambushKw = Schema.Keyword("ambush");
         var auraKw = Schema.Keyword("aura");
+        var bsSelK = _world as Battle.BattleState;
         candidates = candidates.Where(c =>
         {
             if (c == null || c.Zone != ZoneRef.Board) return true;
             // 土之印 / Clue 这类「不可点选」的护符与 ResolveOrBlock 保持同一守卫。
             if (_world is Battle.BattleState bsSel && bsSel.IsProtectedAmulet(c)) return false;
             if (c.PlayerId == controller) return true;
+            // 同 ResolveOrBlock：光环授予的潜行/灵气也要算数。
+            if (bsSelK != null)
+                return !bsSelK.HasEffectiveKeyword(c, ambushKw)
+                    && !bsSelK.HasEffectiveKeyword(c, auraKw);
             return !c.Keywords.Contains(ambushKw) && !c.Keywords.Contains(auraKw);
         }).ToList();
 

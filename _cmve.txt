@@ -1,0 +1,22 @@
+fix(115): 目标过滤接入 HasEffectiveKeyword（光环授予的潜行/灵气）
+
+三处目标过滤原来直接查 e.Keywords，光环授予的词条看不见：
+  · CardVm.Nodes.ResolveOrBlock —— 能力选目标的主路径
+  · CardVm.Nodes.DoSelect —— 手选候选池
+  · TurnRunner.HasLegalTargetForSpell —— 法术打出的预检
+
+全部改走 BattleState.HasEffectiveKeyword（自身词条 + 全场 PassiveAura
+的 ModifyKeywordNode(Grant) + 运行时授予，实时求值）。
+
+不改的话，「当本卡在场时，我方随从获得潜行」这类光环对能力选目标
+完全无效 —— 敌方法术照样能点选你的潜行随从。
+
+实测：
+  光环前:   敌方潜行=False
+  光环后:   敌方潜行=True   自身 Keywords=False（确实来自光环）
+  光环离场: 敌方潜行=False
+
+【验证】
+  ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 /
+  回归 Combat 16-16 / 测试集效用 12-12 / 完整对局 7-7 /
+  DIY 8-8 / 卡池 22-22 / 战斗 UI 31-31

@@ -654,7 +654,9 @@ public sealed class TurnRunner
             // 土之印 / Clue 不可被能力点选，预检也要排除。
             if (_state.IsProtectedAmulet(e)) return false;
             if (e.PlayerId == playerId) return true;
-            return !e.Keywords.Contains(ambush) && !e.Keywords.Contains(aura);
+            // 光环授予的潜行/灵气同样算数（与 ResolveOrBlock / DoSelect 保持一致）。
+            return !_state.HasEffectiveKeyword(e, ambush)
+                && !_state.HasEffectiveKeyword(e, aura);
         }).ToList();
         return pool.Count;
     }
