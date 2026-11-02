@@ -76,6 +76,27 @@ public partial class BattleScreenRoot : Control
 
     /// <summary>当前手牌区矩形（全局坐标），由 RebuildHand 更新。</summary>
     private Rect2 _handRect;
+
+    /// <summary>
+    /// 按下瞬间命中的那张手牌。
+    ///
+    /// 缩小态按下会立即展开并重建手牌，此时卡片控件全部换新、位置也变了。
+    /// 在重建**之前**按旧布局算一遍，才能保证拖出来的是玩家真正按住的那张。
+    /// </summary>
+    private RuntimeEntity _pressedCard;
+
+    /// <summary>缩小态下每张手牌的左边界，供按下时的命中判定。</summary>
+    private readonly List<(Rect2 Rect, RuntimeEntity Card)> _handHitRects = new();
+
+    /// <summary>
+    /// 手牌展开/收起的过渡进度：0 = 常态（缩小），1 = 放大。
+    ///
+    /// 早先切换是瞬时的：RebuildHand 一重建，卡片直接从 88x116 跳到 138x182，
+    /// 图标和位置「啪」地换掉，观感很硬。现在用一个缓动把两者插值出来，
+    /// 逻辑等价于 CSS 的 transition。
+    /// </summary>
+    private float _handAnim;
+    private bool _handAnimTarget;
     private RuntimeEntity _attacker;
     private bool _draggingPlay;
     private RuntimeEntity _draggingCard;
@@ -300,6 +321,24 @@ public partial class BattleScreenRoot : Control
             _dragTarget = mp;
             _field.IsDraggingPlayCard = mp.Y < PlayLineY;
             _field.QueueRedraw();
+        }
+
+        // 0. 手牌展开/收起的过渡：每帧逼近目标，变化时重排手牌。
+        //    这就是 CSS transition 的等价物 —— 开关只是一个目标值，
+        //    真正的尺寸/位置由 _handAnim 连续插出来。
+        {
+            float target = _handExpanded ? 1f : 0f;
+            if (Mathf.Abs(_handAnim - target) > 0.001f)
+            {
+                float speed = 6.5f;          // 约 0.15 秒走完
+                _handAnim = Mathf.MoveToward(_handAnim, target, speed * dt);
+                RebuildHand();
+            }
+            else if (_handAnim != target)
+            {
+                _handAnim = target;
+                RebuildHand();
+            }
         }
 
         // 1. 第一层（无条件动画）：手牌拖拽跟随 + 棋子瞄准浮动与轨道推进
@@ -1080,6 +1119,7 @@ public partial class BattleScreenRoot : Control
     {
         if (_handLayer == null || _ctrl == null) return;
         foreach (var c in _handLayer.GetChildren()) c.QueueFree();
+        _handHitRects.Clear();
 
         var hand = _ctrl.Hand(0);
         int n = hand.Count;
@@ -1088,14 +1128,17 @@ public partial class BattleScreenRoot : Control
         float sx = vp.X / DesignW;
 
         // 手牌尺寸与距窗口底部距离（HandTrayBottomGap = 8px）保持恒定，不随窗口宽度纵向膨胀！
-        float cardW = _handExpanded ? 138f : 88f;
-        float cardH = _handExpanded ? 182f : 116f;
+        // 卡片尺寸按过渡进度插值（0=常态 1=放大），
+        // 展开/收起因此是连续变化，而不是瞬间跳变。
+        float t = Ease.OutCubic(Mathf.Clamp(_handAnim, 0f, 1f));
+        float cardW = Mathf.Lerp(88f, 138f, t);
+        float cardH = Mathf.Lerp(116f, 182f, t);
         float rightEdge = vp.X - 14f;
 
-        float minLeft = (_handExpanded ? 420f : 750f) * sx;
+        float minLeft = Mathf.Lerp(750f, 420f, t) * sx;
         float maxTrayW = Mathf.Max(220f, rightEdge - minLeft);
 
-        float idealStep = cardW + (_handExpanded ? 6f : 4f);
+        float idealStep = cardW + Mathf.Lerp(4f, 6f, t);
         float neededW = n <= 0 ? 180f : cardW + (n - 1) * idealStep + 20f;
         float trayW = Mathf.Clamp(neededW, 180f, maxTrayW);
         float trayLeft = rightEdge - trayW;
@@ -1131,6 +1174,7 @@ public partial class BattleScreenRoot : Control
             w.Setup(card.Def, _store.CardPrinter, 0, 3, showCopyPips: false);
             w.Position = new Vector2(startX + i * stepX, trayTop + 7f);
             w.SetCardSize(cardW, cardH);
+            _handHitRects.Add((new Rect2(w.Position, new Vector2(cardW, cardH)), card));
 
             var bound = card;
             w.OnLeftClick += _ =>
@@ -1148,12 +1192,32 @@ public partial class BattleScreenRoot : Control
                     return;
                 }
                 if (IsInputBlocked) return;
-                _draggingCard = bound;
+
+                // 若这次按下发生在「缩小态 → 放大态」那一瞬间，
+                // 用按下时按原布局算出的那张牌，而不是重建后正好压在这个位置的牌。
+                var pressed = _pressedCard;
+                _pressedCard = null;
+                _draggingCard = pressed ?? bound;
                 _draggingPlay = true;
             };
             w.OnRightClick += _ => _actionPanel.ShowForEntity(bound);
             _handLayer.AddChild(w);
         }
+    }
+
+    /// <summary>
+    /// 按当前已布局的手牌矩形做命中判定。
+    ///
+    /// 用登记表而不是遍历控件：控件是 Godot 节点，RebuildHand 之后
+    /// 到下一帧之前位置尚未刷新，直接读 GlobalPosition 会拿到旧值。
+    /// </summary>
+    private RuntimeEntity HitTestHandCard(Vector2 at)
+    {
+        foreach (var (rect, card) in _handHitRects)
+        {
+            if (rect.HasPoint(at)) return card;
+        }
+        return null;
     }
 
     // ---------------------------------------------------------------- 输入
@@ -1184,6 +1248,14 @@ public partial class BattleScreenRoot : Control
         // 在按下时也会触发拖拽，所以必须靠 _draggingPlay 做互斥。
         if (mb.Pressed && !_handExpanded && !_draggingPlay && _handRect.HasPoint(mb.Position))
         {
+            // 按下这一刻必须**先按当前（缩小态）布局**算出命中的是哪张牌。
+            //
+            // 因为 _Input 早于卡片的 GuiInput 执行：等 RebuildHand() 把布局
+            // 换成放大态之后，卡片控件已经是新的一批、位置也全变了，
+            // 卡片自己的回调拿到的 bound 与玩家实际按下的那张对不上 ——
+            // 表现就是「拖出来的不是我按的那张」。
+            _pressedCard = HitTestHandCard(mb.Position);
+
             _handExpanded = true;
             RebuildHand();
             return;
