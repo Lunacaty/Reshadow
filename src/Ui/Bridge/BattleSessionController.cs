@@ -127,8 +127,17 @@ public sealed class BattleSessionController
     }
 
     /// <summary>当前挂起选择的来源实体（弹窗左侧展示「是哪张卡发起的」）。</summary>
+    /// <summary>当前挂起是否可被玩家撤回（预选阶段才可）。</summary>
+    public bool CanCancelPending => Runner.PendingChoice?.CanCancel == true;
+
+    /// <summary>取消发动前预选：卡退回手牌、PP/EP 零消耗。</summary>
+    public bool CancelPendingChoice() => Runner.CancelPendingChoice();
+
     public RuntimeEntity GetPendingSourceEntity()
     {
+        // 预选阶段 VM 还没有帧，来源就是 PreAction.Subject
+        if (Runner.PreAction?.Subject != null) return Runner.PreAction.Subject;
+
         var frames = Runner.Vm?.Frames;
         if (frames == null || frames.Count == 0) return null;
         var srcRef = frames[^1].Scope?.Source;

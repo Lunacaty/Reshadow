@@ -544,6 +544,19 @@ public sealed class MatchRunner
     public bool Evolve(RuntimeEntity e, bool super)
     {
         if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
+
+        // 先校验这次进化本身合法，再做预选 ——
+        // 否则 EP 不够的随从也会弹预选框。
+        bool can = super ? _turns.CanSuperEvolve(_state.ActivePlayer, e)
+                         : _turns.CanEvolve(_state.ActivePlayer, e);
+        if (!can || e == null || e.Zone != ZoneRef.Board
+            || e.PlayerId != _state.ActivePlayer || e.IsEvolved) return false;
+
+        // 「进化时：选择 1 个随从破坏」也要先选后进化，与出牌同理。
+        var actKind = super ? PlayerActionKind.SuperEvolve : PlayerActionKind.Evolve;
+        if (!TryStartPreAction(actKind, e)) return false;
+        if (_preAction != null) { DrainVm(); return true; }
+
         bool ok = _turns.Evolve(_state.ActivePlayer, e, super, _vm);
         DrainVm();
         return ok;
@@ -561,6 +574,11 @@ public sealed class MatchRunner
     public bool EngageAmulet(RuntimeEntity a)
     {
         if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
+
+        // 启动式能力的指向性同样要「先选后启动」。
+        if (!TryStartPreAction(PlayerActionKind.EngageAmulet, a)) return false;
+        if (_preAction != null) { DrainVm(); return true; }
+
         bool ok = _turns.EngageAmulet(_state.ActivePlayer, a, _vm);
         DrainVm();
         return ok;
@@ -641,17 +659,17 @@ public sealed class MatchRunner
         }
 
         // 4. 进化 / 超进化
-        bool canEv = _turns.CanEvolve(p);
-        bool canSep = _turns.CanSuperEvolve(p);
-        if (canEv || canSep)
+        // 必须**逐个随从**调用带 unit 的重载。
+        // 用无参版做外层开关的话，玩家 EP = 0 时整块被跳过 ——
+        // 哪怕随从拿到了 free_evolve，界面上也不会出现进化按钮。
+        foreach (var e in me.Board.ToList())
         {
-            foreach (var e in me.Board.ToList())
-            {
-                if (e?.Def == null || e.Def.Kind != Ast.CardKind.Follower) continue;
-                if (e.IsEvolved) continue;
-                if (canEv) list.Add(new PlayerAction { Kind = PlayerActionKind.Evolve, Subject = e });
-                if (canSep) list.Add(new PlayerAction { Kind = PlayerActionKind.SuperEvolve, Subject = e });
-            }
+            if (e?.Def == null || e.Def.Kind != Ast.CardKind.Follower) continue;
+            if (e.IsEvolved) continue;
+            if (_turns.CanEvolve(p, e))
+                list.Add(new PlayerAction { Kind = PlayerActionKind.Evolve, Subject = e });
+            if (_turns.CanSuperEvolve(p, e))
+                list.Add(new PlayerAction { Kind = PlayerActionKind.SuperEvolve, Subject = e });
         }
 
         // 5. 额外能量点

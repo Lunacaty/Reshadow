@@ -236,7 +236,10 @@ public sealed class CombatResolver
         // 7. 攻击方造成伤害
         if (defender.Zone == ZoneRef.Leader)
         {
-            int dealt = ApplyDamage(defender, atk, attacker.PlayerId, vm);
+            // 必须标成 Combat：否则主战者的「不受战斗伤害 / 战斗减伤 / 上限」
+            // 对随从平 A 完全失效，反而被「不受能力伤害」莫名挡住。
+            int dealt = ApplyDamage(defender, atk, attacker.PlayerId, vm,
+                                    Ast.DamageSourceMask.Combat);
             ApplyDrain(attacker, dealt, vm);
         }
         else if (defender.Zone == ZoneRef.Board)

@@ -1,0 +1,48 @@
+fix(115): 修复 8 处缺陷 —— 预选漏接/打脸来源/免疫覆盖/洗牌
+
+【缺陷1：Evolve / EngageAmulet 漏接预选】
+  原来只有 PlayCard 接了 TryStartPreAction。
+  现在两者都先校验合法性（CanEvolve / CanSuperEvolve），再做预选 ——
+  否则 EP 不够的随从也会弹预选框。
+
+【缺陷2：UI 取消未接】
+  控制器补 CanCancelPending / CancelPendingChoice / GetPendingSourceEntity
+  （预选阶段 VM 没帧，来源取 PreAction.Subject）。
+  前端接右键与「点非候选空白处」取消。
+
+【缺陷3：PreChoiceInspector 四处失真】
+  · 模拟出牌/进化瞬间的上下文（try/finally 严格还原）：
+    pp_at_play / combo+1 / IsEvolved / IsSuperEvolved
+    —— 否则 Enhance / Combo / 进化分支预扫恒假
+  · 排除旁观监听（Trigger.SubjectFilter 非空）与能力级 Condition
+  · IsIrreversible 改用真实判据：
+    抽牌 = MoveZone(Deck→Hand)、发现 = SpawnCard(PoolQuery)、
+    随机目标 = Target.Mode == Random
+  · SelectTargetNode 用 OutSlot 而非 spec.Slot；
+    数量取 spec.Count 钳到候选数；消费答案时绑定进探针作用域
+
+【缺陷4：RevealCardNode / DamageModifierNode 未接 ExecNode】
+  两者都会抛「未知的动作节点」。现已实现：
+  RevealCardNode 只标 IsRevealed；
+  DamageModifierNode 包装成挂在目标身上的 PassiveAura 授予能力，
+  由 QueryDamageModifiers 统一扫描。
+
+【缺陷5：随从打脸漏传 Combat】
+  ApplyDamage 默认是 Ability，打脸没传 Combat，
+  导致主战者的战斗减伤/上限对平 A 完全失效，
+  反而被「不受能力伤害」莫名挡住。已补。
+
+【缺陷6：免疫覆盖不全】
+  immune_effects 之前只拦伤害/破坏/消失/变身/攻防/沉默，
+  这次补上 DoMoveZone（回手/洗回牌组）与 KeywordOp.Remove（剥夺关键词）。
+
+【缺陷7：GetLegalActions 跳过免费进化】
+  外层 if (canEv || canSep) 用的是无参重载，EP=0 时整块被跳过。
+  改为逐个随从用带 unit 的重载。
+
+【缺陷8：往牌组生成卡牌不洗牌】
+  DoSpawn 在 ToZone == Deck 时补 ShuffleZone。
+
+【验证】
+  ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 /
+  测试集效用 12-12 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 / 战斗 UI 31-31

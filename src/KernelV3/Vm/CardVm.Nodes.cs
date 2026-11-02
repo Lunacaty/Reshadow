@@ -26,6 +26,8 @@ public sealed partial class CardVm
 
         switch (node)
         {
+            case RevealCardNode n: return DoReveal(n, scope);
+            case DamageModifierNode n: return DoDamageModifier(n, frame);
             case SelectTargetNode n: return DoSelect(n, frame);
             case DealDamageNode n: return DoDamage(n, frame);
             case RestoreLifeNode n: return DoRestore(n, frame);
@@ -147,6 +149,44 @@ public sealed partial class CardVm
     // ---------- 选择 ----------
 
     /// <summary>公开一张牌：只标记可见性，不改数值与区域。</summary>
+    /// <summary>
+    /// 主动能力里的伤害修正：把这条规则包装成一个挂在目标身上的
+    /// PassiveAura 授予能力，由 QueryDamageModifiers 统一扫描。
+    ///
+    /// 这样「入场曲：直到对手回合结束，使 1 个友方随从受到的伤害 -2」
+    /// 与「当本卡在场时，我方主战者受到的伤害 -2」走同一条求值路径，
+    /// 不需要在伤害管线里为两种来源各写一遍。
+    /// </summary>
+    private bool DoDamageModifier(DamageModifierNode n, VmFrame frame)
+    {
+        var scope = frame.Scope;
+        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected, frame);
+        if (targets == null) return true;   // 已挂起等玩家选
+
+        foreach (var t in targets)
+        {
+            var auraAb = new AbilityDef
+            {
+                Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                Condition = BoolExpr.True,
+                Body = new EffectNode[]
+                {
+                    new DamageModifierNode
+                    {
+                        Target = TargetSpec.Self,
+                        Kind = n.Kind,
+                        SourceMask = n.SourceMask,
+                        Amount = n.Amount,
+                        IsReduction = n.IsReduction,
+                        Duration = n.Duration,
+                    },
+                },
+            };
+            _world.GrantAbility(t, auraAb, n.Duration);
+        }
+        return false;
+    }
+
     private bool DoReveal(RevealCardNode n, VmScope scope)
     {
         foreach (var t in _eval.Resolve(n.Target, scope))
@@ -537,6 +577,18 @@ public sealed partial class CardVm
     private bool DoMoveZone(MoveZoneNode n, VmFrame frame)
     {
         var scope = frame.Scope;
+
+        // 「不受能力影响」：能力移区（回手 / 洗回牌组 / 放逐）一律无效。
+        // 走 Cemetery 的要放行 —— 那是 DestroyEntity 的收尾，
+        // 已在那里按 byRule 做过例外判定。
+        if (n.ToZone != ZoneRef.Cemetery)
+        {
+            var mvTargets = _eval.Resolve(n.Target, scope);
+            if (mvTargets.Count > 0 && mvTargets.All(t0 =>
+                    t0.Keywords.Contains(Schema.Keyword("immune_effects"))
+                    || t0.Keywords.Contains(Schema.Keyword("immune_effects_except_stats"))))
+                return false;
+        }
         // 能力抽牌必须走统一管线：自己 MoveEntity 会绕开 OnDraw 与抽空判负。
         if (IsPlainDraw(n))
         {
@@ -800,6 +852,11 @@ public sealed partial class CardVm
                 carrier.LastCreatedRefs.AddRange(scope.Read(n.OutSlot));
             }
         }
+
+        // 往牌组生成卡牌后必须洗牌：
+        // 「时空掌握者」进化时往牌组洗入 10 张，不洗就全垫在牌库底端。
+        if (n.ToZone == ZoneRef.Deck && created.Count > 0 && _world is Battle.BattleState bsDeck)
+            bsDeck.ShuffleZone(ZoneRef.Deck, scope.ResolvePlayer(n.ToOwner));
 
         return false;
     }

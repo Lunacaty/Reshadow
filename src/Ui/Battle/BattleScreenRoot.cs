@@ -1284,6 +1284,27 @@ public partial class BattleScreenRoot : Control
         }
     }
 
+    /// <summary>该点是否落在某个合法候选（棋子 / 主战者）上。</summary>
+    private bool HitAnyCandidate(Vector2 at)
+    {
+        var pending = _ctrl?.Runner?.PendingChoice;
+        if (pending == null) return false;
+
+        foreach (var id in pending.Candidates)
+        {
+            foreach (var w in BoardUnitsOf(_boardAlly).Concat(BoardUnitsOf(_boardFoe)))
+            {
+                if (w.Entity == null || w.Entity.EntityId != id) continue;
+                if (w.GetGlobalRect().HasPoint(at)) return true;
+            }
+            if (_allyLeader?.Leader?.EntityId == id
+                && _allyLeader.GetGlobalRect().HasPoint(at)) return true;
+            if (_foeLeader?.Leader?.EntityId == id
+                && _foeLeader.GetGlobalRect().HasPoint(at)) return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// 按当前已布局的手牌矩形做命中判定。
     ///
@@ -1311,6 +1332,38 @@ public partial class BattleScreenRoot : Control
             if (!_dragFollow && mm.Position.Y < PlayLineY - PLAY_THRESHOLD)
                 BeginDragFollow();
             return;
+        }
+
+        // ---- 发动前预选：右键或点空白处取消 ----
+        //
+        // 只对 CanCancel 的挂起有效：那意味着卡还没上场、PP/EP 还没扣，
+        // 取消是零成本的。结算中必选（已抽牌 / 已发现）不允许反悔。
+        if (_ctrl != null && _ctrl.CanCancelPending)
+        {
+            if (@event is InputEventMouseButton rmb
+                && rmb.Pressed && rmb.ButtonIndex == MouseButton.Right)
+            {
+                _ctrl.CancelPendingChoice();
+                Rebuild();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
+            if (@event is InputEventMouseButton lmb
+                && lmb.Pressed && lmb.ButtonIndex == MouseButton.Left)
+            {
+                var pc = _ctrl.Runner.PendingChoice;
+                bool onTarget = pc != null && pc.Kind != ChoiceKind.SelectTarget
+                                ? false
+                                : HitAnyCandidate(lmb.GlobalPosition);
+                if (!onTarget)
+                {
+                    _ctrl.CancelPendingChoice();
+                    Rebuild();
+                    GetViewport().SetInputAsHandled();
+                    return;
+                }
+            }
         }
 
         if (@event is not InputEventMouseButton mb || mb.ButtonIndex != MouseButton.Left) return;

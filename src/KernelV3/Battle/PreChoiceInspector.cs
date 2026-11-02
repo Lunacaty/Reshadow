@@ -37,30 +37,79 @@ public static class PreChoiceInspector
     {
         if (state == null || card?.Def?.Abilities == null) return new Result();
 
-        var trigger = kind switch
+        // 模拟出牌 / 进化**那一刻**的上下文，否则条件分支一律判错：
+        //   · PlayCard：pp_at_play 尚未写入、combo 尚未 +1
+        //     → Enhance / Combo 分支预扫时恒为假，该问的不问
+        //   · Evolve / SuperEvolve：随从的 IsEvolved 还是 false
+        //     → HasStateExpr(Evolved, Self) 恒假，进化分支被整段跳过
+        // try/finally 严格还原，保证本方法只读、无副作用。
+        var ppKey = state.Schema.Counter("pp");
+        var ppAtPlayKey = state.Schema.Counter("pp_at_play");
+        var comboKey = state.Schema.Counter("combo");
+        int savedPpAtPlay = state.ReadCounter(card.PlayerId, ppAtPlayKey);
+        int savedCombo = state.ReadCounter(card.PlayerId, comboKey);
+        bool savedEv = card.IsEvolved, savedSep = card.IsSuperEvolved;
+
+        try
         {
-            PlayerActionKind.Evolve => CoreEvent.OnEvolve,
-            PlayerActionKind.SuperEvolve => CoreEvent.OnSuperEvolve,
-            PlayerActionKind.EngageAmulet => CoreEvent.OnEngage,
-            _ => CoreEvent.OnPlay,
-        };
+            if (kind == PlayerActionKind.PlayCard)
+            {
+                state.WriteCounter(card.PlayerId, ppAtPlayKey,
+                                   state.ReadCounter(card.PlayerId, ppKey));
+                state.WriteCounter(card.PlayerId, comboKey, savedCombo + 1);
+            }
+            else if (kind == PlayerActionKind.Evolve) card.IsEvolved = true;
+            else if (kind == PlayerActionKind.SuperEvolve)
+            {
+                card.IsEvolved = true;
+                card.IsSuperEvolved = true;
+            }
 
-        int consumed = 0;
+            var scope = ScopeOf(card);
+            int consumed = 0;
 
-        foreach (var ab in card.Def.Abilities)
-        {
-            if (ab?.Trigger == null || ab.Trigger.Event != trigger) continue;
-            if (ab.Body == null) continue;
+            foreach (var ab in card.Def.Abilities)
+            {
+                if (ab?.Trigger == null || ab.Body == null) continue;
 
-            var prompt = Walk(state, card, ab.Body, answers, ref consumed);
-            if (prompt != null) return new Result { Prompt = prompt, Consumed = consumed };
+                // 只认**自身能力**：SubjectFilter 非空的是旁观监听
+                // （「每当你打出战利品卡时…」的 Trigger.Event 也是 OnPlay），
+                // 把它当自身入场曲预扫会凭空多问一次。
+                if (ab.Trigger.SubjectFilter != null
+                    && !(ab.Trigger.SubjectFilter.SourceKind == TargetSourceKind.Slot
+                         && ab.Trigger.SubjectFilter.Slot == TargetSpec.SlotSelf))
+                    continue;
+
+                bool trigMatch = kind switch
+                {
+                    PlayerActionKind.Evolve => ab.Trigger.Event == CoreEvent.OnEvolve,
+                    // 超进化同时触发 OnEvolve 与 OnSuperEvolve
+                    PlayerActionKind.SuperEvolve => ab.Trigger.Event == CoreEvent.OnEvolve
+                                                 || ab.Trigger.Event == CoreEvent.OnSuperEvolve,
+                    PlayerActionKind.EngageAmulet => ab.Trigger.Event == CoreEvent.OnEngage,
+                    _ => ab.Trigger.Event == CoreEvent.OnPlay,
+                };
+                if (!trigMatch) continue;
+
+                if (!EvalCond(state, card, ab.Condition)) continue;
+
+                var prompt = Walk(state, card, scope, ab.Body, answers, ref consumed);
+                if (prompt != null) return new Result { Prompt = prompt, Consumed = consumed };
+            }
+
+            return new Result { Consumed = consumed };
         }
-
-        return new Result { Consumed = consumed };
+        finally
+        {
+            state.Players[card.PlayerId].Counters[ppAtPlayKey.Id] = savedPpAtPlay;
+            state.Players[card.PlayerId].Counters[comboKey.Id] = savedCombo;
+            card.IsEvolved = savedEv;
+            card.IsSuperEvolved = savedSep;
+        }
     }
 
     private static PendingChoice Walk(
-        BattleState state, RuntimeEntity card,
+        BattleState state, RuntimeEntity card, VmScope scope,
         IReadOnlyList<EffectNode> body,
         IReadOnlyList<IReadOnlyList<int>> answers,
         ref int consumed)
@@ -76,7 +125,7 @@ public static class PreChoiceInspector
                     bool take = EvalCond(state, card, cond.Condition);
                     var branch = take ? cond.Then : cond.Else;
                     if (branch == null || branch.Count == 0) continue;
-                    var sub = Walk(state, card, branch, answers, ref consumed);
+                    var sub = Walk(state, card, scope, branch, answers, ref consumed);
                     if (sub != null) return sub;
                     continue;
                 }
@@ -94,7 +143,7 @@ public static class PreChoiceInspector
                         foreach (var idx in picked)
                         {
                             if (idx < 0 || idx >= n) continue;
-                            var sub = Walk(state, card, bm.Options[idx], answers, ref consumed);
+                            var sub = Walk(state, card, scope, bm.Options[idx], answers, ref consumed);
                             if (sub != null) return sub;
                         }
                         continue;
@@ -122,15 +171,57 @@ public static class PreChoiceInspector
                     var ids = ResolveCands(state, card, spec);
                     if (ids.Count == 0) continue;   // 无合法目标：运行时也直接跳过
 
-                    if (consumed < answers.Count) { consumed++; continue; }
+                    // SelectTargetNode 的槽位在 OutSlot 上，不在 spec.Slot 上；
+                    // 最大可选数量取 spec.Count（钳到实际候选数），不能写死 1。
+                    string slotName = node is SelectTargetNode stn && !string.IsNullOrEmpty(stn.OutSlot)
+                        ? stn.OutSlot
+                        : spec.Slot;
+                    int maxPick = 1;
+                    if (spec.Count != null)
+                    {
+                        try { maxPick = new VmEval(state).EvalNum(spec.Count, scope); }
+                        catch { maxPick = 1; }
+                    }
+                    maxPick = Math.Clamp(maxPick, 1, ids.Count);
 
-                    return NewPrompt(card, ChoiceKind.SelectTarget, ids, 1, 1,
-                                     spec.Slot, "选择目标");
+                    if (consumed < answers.Count)
+                    {
+                        consumed++;
+                        BindAnswer(state, scope, slotName, answers[consumed - 1]);
+                        continue;
+                    }
+
+                    return NewPrompt(card, ChoiceKind.SelectTarget, ids, 1, maxPick,
+                                     slotName, "选择目标");
                 }
             }
         }
 
         return null;
+    }
+
+    /// <summary>把玩家选好的实体 id 绑定进探针作用域，供后续条件求值使用。</summary>
+    private static void BindAnswer(BattleState state, VmScope scope, string slot,
+                                   IReadOnlyList<int> picked)
+    {
+        if (scope == null || picked == null || picked.Count == 0) return;
+        var list = new List<EntityRef>();
+        foreach (var id in picked)
+        {
+            var live = state.GetLive(id, 0);
+            if (live == null)
+            {
+                // EntrySerial 可能不匹配，按 id 扫一遍在场实体
+                foreach (var p in new[] { state.Players[0], state.Players[1] })
+                {
+                    live = p.Board.FirstOrDefault(x => x.EntityId == id)
+                        ?? p.Hand.FirstOrDefault(x => x.EntityId == id);
+                    if (live != null) break;
+                }
+            }
+            if (live != null) list.Add(EntityRef.From(live));
+        }
+        if (list.Count > 0) scope.BindRefs(slot ?? TargetSpec.SlotSelected, list);
     }
 
     private static VmScope ScopeOf(RuntimeEntity card) => new()
@@ -157,15 +248,36 @@ public static class PreChoiceInspector
         };
 
     /// <summary>该节点是否会让玩家看到不可逆信息。</summary>
-    private static bool IsIrreversible(EffectNode node) => node switch
+    private static bool IsIrreversible(EffectNode node)
     {
-        LoopNode => true,
-        BranchModeNode bm => bm.Kind == ModeDispatchKind.Random
-                          || bm.Kind == ModeDispatchKind.RandomUnused,
-        MacroNode m => m.Macro.IsValid && m.Macro.Name != null
-                       && m.Macro.Name.Contains("draw", StringComparison.OrdinalIgnoreCase),
-        _ => false,
-    };
+        switch (node)
+        {
+            case LoopNode:
+                return true;
+
+            // 随机选模式：玩家看不到具体选了哪些，之后的选择不能反悔
+            case BranchModeNode bm:
+                return bm.Kind == ModeDispatchKind.Random
+                    || bm.Kind == ModeDispatchKind.RandomUnused;
+
+            // 抽牌是「牌库 → 手牌」的移区，不是 MacroNode("draw")
+            case MoveZoneNode mv:
+                return mv.ToZone == ZoneRef.Hand && mv.Target != null
+                       && mv.Target.SourceKind == TargetSourceKind.Zone
+                       && mv.Target.Zone == ZoneRef.Deck;
+
+            // 「发现」是带 PoolQuery 的生成，玩家已看到候选
+            case SpawnCardNode sp:
+                return sp.SourceKind == CardSourceKind.PoolQuery;
+
+            default:
+                // 随机目标（"deal 3 damage to a random enemy follower"）
+                // 也是不可逆信息：结果一旦定下就不能装作没问过。
+                var t = ChooseTargetOf(node);
+                if (t != null && t.Mode == SelectMode.Random) return true;
+                return false;
+        }
+    }
 
     /// <summary>取出该节点作用的目标（与 TurnRunner.GetChooseTarget 保持一致）。</summary>
     private static TargetSpec ChooseTargetOf(EffectNode n) => n switch
