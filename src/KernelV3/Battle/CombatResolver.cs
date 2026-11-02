@@ -28,8 +28,15 @@ public sealed class CombatResolver
         _schema = schema ?? state.Schema;
     }
 
+    /// <summary>
+    /// 该实体此刻是否有效持有某个关键词。
+    ///
+    /// 必须走 BattleState.HasEffectiveKeyword 而不是直接查 Keywords：
+    /// 「当本卡在场时，我方所有其他随从获得【守护】」这类光环授予的词条
+    /// 根本不在目标实体的 Keywords 里，直接查会让守护彻底失效。
+    /// </summary>
     private bool Has(RuntimeEntity e, string keyword)
-        => e.Keywords.Contains(_schema.Keyword(keyword));
+        => _state.HasEffectiveKeyword(e, _schema.Keyword(keyword));
 
     /// <summary>攻击是否合法。返回 false 时 reason 说明原因。</summary>
     public bool CanAttack(RuntimeEntity attacker, RuntimeEntity defender, out string reason)

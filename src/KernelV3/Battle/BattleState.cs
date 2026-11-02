@@ -1368,6 +1368,77 @@ public sealed class BattleState : IVmWorld
     /// 否则屏障、超进化免伤、伤害上限全部被绕过。
     /// </summary>
     /// <summary>
+    /// 该实体此刻是否**有效持有**某个关键词。
+    ///
+    /// 三个来源按顺序判定：
+    ///   1. 自身印制/已授予的词条
+    ///   2. 场上或纹章区的 PassiveAura 里 ModifyKeywordNode(Grant) 给他的
+    ///      —— 「当本卡在场时，我方其他随从获得【守护】」必须实时生效，
+    ///         光环源离场或被沉默后立刻失效
+    ///
+    /// 不能只信 MountInnateProperties：它只在出生那一刻跑一次，
+    /// 既不会随光环源离场而撤销，也不会随光环源入场而补上。
+    /// </summary>
+    public bool HasEffectiveKeyword(RuntimeEntity target, SymbolId<KeywordTag> kw)
+    {
+        if (target == null || !kw.IsValid) return false;
+        if (target.Keywords.Contains(kw)) return true;
+        if (target.IsSilenced) return false;
+
+        var eval = new Vm.VmEval(this);
+        for (int pid = 0; pid < 2; pid++)
+        {
+            var sources = new List<RuntimeEntity>();
+            sources.AddRange(Players[pid].Board);
+            sources.AddRange(Players[pid].CrestArea);
+
+            foreach (var src in sources)
+            {
+                if (src?.Def?.Abilities == null || src.IsSilenced) continue;
+                if (src.EntityId == target.EntityId) continue;   // 自身已在上文判过
+
+                var scope = new Vm.VmScope
+                {
+                    Owner = ZoneScope.Self,
+                    Controller = src.PlayerId,
+                    Source = Vm.EntityRef.From(src),
+                };
+
+                foreach (var ab in src.Def.Abilities)
+                {
+                    if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.PassiveAura) continue;
+                    if (ab.Body == null) continue;
+
+                    bool condOk;
+                    try { condOk = ab.Condition == null || eval.EvalBool(ab.Condition, scope); }
+                    catch { condOk = true; }
+                    if (!condOk) continue;
+
+                    foreach (var n in ab.Body)
+                    {
+                        if (n is not Ast.ModifyKeywordNode mk) continue;
+                        if (mk.Op != Ast.KeywordOp.Grant || !mk.Keyword.Equals(kw)) continue;
+                        if (AuraTargets(eval, mk.Target, scope, target)) return true;
+                    }
+                }
+            }
+        }
+
+        // 运行时被授予的光环（挂在自己身上的）
+        foreach (var (ge, gab, _) in _granted.ToList())
+        {
+            if (ge == null || ge.EntityId != target.EntityId) continue;
+            if (gab?.Body == null) continue;
+            foreach (var n in gab.Body)
+                if (n is Ast.ModifyKeywordNode mk2
+                    && mk2.Op == Ast.KeywordOp.Grant && mk2.Keyword.Equals(kw))
+                    return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// 实时枚举对 target 生效的所有伤害修正。
     ///
     /// **绝不缓存成死数字**：光环要「在则有、离场或被沉默立刻无」。
@@ -1581,11 +1652,14 @@ public sealed class BattleState : IVmWorld
         // 卡面写着 Can't be destroyed 也照样一把炸掉。
         if (e.Keywords.Contains(Schema.Keyword("cannot_destroy"))) return;
 
-        // 「不受能力影响」：能力破坏一律无效。
-        // byRule = true 的规则性收尾（生命归零、SBA）不算「能力影响」，
-        // 否则带这个词条的随从会变成永远不死的锁局机器。
-        if (!byRule && (e.Keywords.Contains(Schema.Keyword("immune_effects"))
-                        || e.Keywords.Contains(Schema.Keyword("immune_effects_except_stats"))))
+        // 「不受能力影响」：连能力造成的破坏也免疫，无例外。
+        //
+        // 这里**不需要**给「规则性收尾」开口子：生命归零走的是
+        // DestroyByState（ProcessStateBasedActions 的收尾），
+        // 压根不经过本方法；byRule 目前只有「土之印层数归 0」一处，
+        // 那同样是能力结算的结果，理应一起被免疫。
+        if (e.Keywords.Contains(Schema.Keyword("immune_effects"))
+            || e.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
             return;
 
         // 「以消失替代破坏」：先跑一次离场时触发链。

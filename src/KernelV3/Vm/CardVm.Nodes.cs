@@ -578,16 +578,23 @@ public sealed partial class CardVm
     {
         var scope = frame.Scope;
 
-        // 「不受能力影响」：能力移区（回手 / 洗回牌组 / 放逐）一律无效。
-        // 走 Cemetery 的要放行 —— 那是 DestroyEntity 的收尾，
-        // 已在那里按 byRule 做过例外判定。
-        if (n.ToZone != ZoneRef.Cemetery)
+        // 「不受能力影响」：能力移区（回手 / 洗回牌组 / 放逐 / 破坏）一律无效。
+        // 破坏也在这里拦：DestroyEntity 虽然也拦，但本方法有独立的
+        // 执行分支，两条路径都要守住，否则一条漏了就等于没做。
         {
+            // 逐个目标过滤，不能整批 All() 判定 ——
+            // 「把 3 个敌方随从弹回手牌」里只要有一个不免疫，
+            // All() 就为假，于是免疫的那个也被一起弹走了。
             var mvTargets = _eval.Resolve(n.Target, scope);
-            if (mvTargets.Count > 0 && mvTargets.All(t0 =>
-                    t0.Keywords.Contains(Schema.Keyword("immune_effects"))
-                    || t0.Keywords.Contains(Schema.Keyword("immune_effects_except_stats"))))
-                return false;
+            var kept = new List<RuntimeEntity>();
+            foreach (var t0 in mvTargets)
+            {
+                if (t0.Keywords.Contains(Schema.Keyword("immune_effects"))
+                    || t0.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
+                    continue;
+                kept.Add(t0);
+            }
+            if (mvTargets.Count > 0 && kept.Count == 0) return false;
         }
         // 能力抽牌必须走统一管线：自己 MoveEntity 会绕开 OnDraw 与抽空判负。
         if (IsPlainDraw(n))
@@ -598,6 +605,15 @@ public sealed partial class CardVm
 
         var targets = ResolveOrBlock(n.Target, frame.Scope, n.OutSlot, frame);
         if (targets == null) return true;   // 已挂起等玩家选
+
+        // 免疫目标在这里真正剔除 —— 上面的计数器只是「全免疫就整句跳过」的短路。
+        {
+            var kwIE = Schema.Keyword("immune_effects");
+            var kwIE2 = Schema.Keyword("immune_effects_except_stats");
+            targets = targets.Where(x => !x.Keywords.Contains(kwIE)
+                                      && !x.Keywords.Contains(kwIE2)).ToList();
+        }
+
         var moved = new List<RuntimeEntity>();
         foreach (var t in targets)
         {
