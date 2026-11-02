@@ -95,47 +95,43 @@ public partial class BoardUnitWidget : Control
     /// </summary>
     public void ApplyMotion(UnitMotion m)
     {
-        // 静止态完全不碰控件的 Position/Scale/Modulate ——
-        // 那些由容器布局（CenterContainer / HBoxContainer）负责。
-        // 早先每帧无条件写 Position，会和布局互相覆盖，把棋子挤成白块。
+        // 座位坐标**永远**由容器布局决定，控件自己不去猜。
+        //
+        // 早先的做法是「第一次进入动画时把当前 Position 记成 _seatPosition」——
+        // 可那一刻容器可能还没完成布局，记下来的是 (0,0) 或上一帧的旧值，
+        // 动画结束后棋子就停在了错误的位置。
+        // 表现是「同一排里只有正在播动画的那张位置歪掉」。
+        //
+        // 现在：座位 = 容器给的布局结果（Position - 已经叠加的偏移），
+        // 每帧都重新对齐，不缓存。
+        Vector2 seat = Position - _appliedOffset;
+
         if (m.IsIdle)
         {
             if (_motionApplied)
             {
-                Position = _seatPosition;
+                Position = seat;
                 Scale = Vector2.One;
                 Modulate = Colors.White;
+                _appliedOffset = Vector2.Zero;
                 _motionApplied = false;
             }
             return;
         }
 
-        if (!_motionApplied)
-        {
-            // 首次进入动画：此刻的 Position 就是座位坐标
-            _seatPosition = Position;
-            _motionApplied = true;
-        }
-
-        Position = _seatPosition + m.Offset;
+        Position = seat + m.Offset;
+        _appliedOffset = m.Offset;
 
         float flipScale = Mathf.Abs(Mathf.Cos(Mathf.Pi * m.FlipX));
         Scale = new Vector2(m.Scale * flipScale, m.Scale);
 
         Modulate = new Color(1, 1, 1, Mathf.Clamp(m.Alpha, 0f, 1f));
+        _motionApplied = true;
     }
 
     private bool _motionApplied;
+    private Vector2 _appliedOffset;
 
-    /// <summary>记住容器给这条棋子的座位坐标（布局阶段调用，之后只叠加偏移）。</summary>
-    public void RememberSeat()
-    {
-        _seatPosition = Position;
-        _motionOffset = Vector2.Zero;
-    }
-
-    private Vector2 _seatPosition;
-    private Vector2 _motionOffset;
 
     /// <summary>触发时机能力时调用：播放一圈光效。</summary>
     public void PlayTriggerFlash()

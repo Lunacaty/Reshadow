@@ -52,6 +52,18 @@ public partial class BattlefieldCanvas : Control
         MouseFilter = MouseFilterEnum.Pass;
     }
 
+    /// <summary>
+    /// 中央竞技场椭圆的中心与半轴（设计基准 1280x720 下的局部坐标）。
+    ///
+    /// 布局必须引用这组数字 —— 棋盘、主战者都要对齐到竞技场，
+    /// 而不是对齐到「屏幕正中」。竞技场中心是 (595,352)，
+    /// 屏幕中心却是 (640,360)，差 45px；按屏幕中心摆棋子，
+    /// 整排随从就会偏右、且与椭圆对不上。
+    /// </summary>
+    public static readonly Vector2 ArenaCenter = new(595f, 352f);
+    public const float ArenaRadiusX = 368f;
+    public const float ArenaRadiusY = 208f;
+
     public override void _Draw()
     {
         Vector2 sz = Size;
@@ -64,7 +76,7 @@ public partial class BattlefieldCanvas : Control
         DrawCircle(new Vector2(sz.X * 0.92f, sz.Y * 0.78f), 280f, new Color("264034"));
 
         // 2. 中央暖沙竞技场（外暗内明的对比是这块的灵魂）
-        Vector2 arena = new(595f, 352f);
+        Vector2 arena = ArenaCenter;
         DrawEllipse(arena, 470f, 285f, new Color("6E8560") { A = 0.45f });
         DrawEllipse(arena, 420f, 250f, new Color("C9AE86"));
         DrawEllipse(arena, 368f, 208f, new Color("E0CCA6"));

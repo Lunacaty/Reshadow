@@ -441,16 +441,20 @@ public partial class BattleScreenRoot : Control
 
     private void AddBoardRow(VBoxContainer host, int playerId)
     {
-        // 用 CenterContainer 包一层：随从不足 5 个时整排居中，
-        // 而不是从左往右贴着左边排 —— 原版战场就是这样，
-        // 随从越少越靠中间。
-        var center = new CenterContainer();
-        center.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        host.AddChild(center);
-
-        var row = new HBoxContainer();
+        // 整排居中用 HBoxContainer 自己的 Alignment。
+        //
+        // 之前套了一层 CenterContainer + ExpandFill，实测无效：
+        // 棋子位置打印出来是 0 / 110 / 220 / 330，从容器左边开始排，
+        // 完全没有居中。CenterContainer 在这种嵌套下不会按内容收窄。
+        // HBoxContainer.Alignment = Center 是控件自带的居中，
+        // 不需要父级给宽度参照，直接把整排推到中间。
+        var row = new HBoxContainer
+        {
+            Alignment = BoxContainer.AlignmentMode.Center,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
         row.AddThemeConstantOverride("separation", 14);
-        center.AddChild(row);
+        host.AddChild(row);
 
         foreach (var e in _ctrl.Board(playerId).Take(5))
         {
@@ -508,8 +512,6 @@ public partial class BattleScreenRoot : Control
             w.OnDragAttackReleased += (ent, pos) => ReleaseAttack(pos);
 
             row.AddChild(w);
-            // 记录容器给的座位坐标，之后动画只叠加偏移。
-            w.CallDeferred(nameof(BoardUnitWidget.RememberSeat));
 
             // 记下实体的屏幕中心：事件到来时要往这里播特效。
             var cap = e;
@@ -1178,20 +1180,26 @@ public partial class BattleScreenRoot : Control
         Rebuild();
     }
 
-    /// <summary>设计基准分辨率。所有布局常数都按它写。</summary>
+    /// <summary>设计基准分辨率。战场椭圆的坐标就是在它下面标定的。</summary>
     private const float DesignW = 1280f;
     private const float DesignH = 720f;
+
+    /// <summary>手牌区底部与窗口下沿之间的留白。</summary>
+    private const float HandTrayBottomGap = 8f;
+
+    /// <summary>右侧指令列距窗口右沿的距离。</summary>
+    private const float RightColumnRightMargin = 245f;
 
     /// <summary>
     /// 按实际视口重排全部战场元素。
     ///
-    /// 设计基准是 1280x720，实际视口可能更大（stretch/aspect="expand"
-    /// 会让视口随窗口变化）。之前在 BuildUi 里写死像素坐标，
-    /// 全屏时我方主战者会被推到可视区外 —— 玩家看不到自己的主战者。
+    /// 唯一的对齐基准是**中央竞技场椭圆**（BattlefieldCanvas.ArenaCenter）。
+    /// 早先这里用屏幕中心 vp.X/2，而竞技场中心是 595（设计基准下），
+    /// 两者差 45px —— 整排随从偏右、和椭圆对不上。
     ///
-    /// 这里的策略：**横向按宽度缩放、纵向贴边锚定**。
-    /// 主战者/战场永远贴着窗口的上/下沿，中间地带自由伸展，
-    /// 这样任何宽高比下双方主战者都在可视区内。
+    /// 缩放策略：只按宽度等比。
+    /// 竞技场是椭圆，纵横比固定；按高度缩放会让椭圆变形，
+    /// 而椭圆本身在 _Draw 里是写死尺寸的。
     /// </summary>
     private void LayoutBattlefield()
     {
@@ -1199,74 +1207,66 @@ public partial class BattleScreenRoot : Control
         if (vp.X <= 0f || vp.Y <= 0f) vp = GetViewportRect().Size;
         if (vp.X <= 0f || vp.Y <= 0f) vp = new Vector2(DesignW, DesignH);
 
-        // 横向以 1280 为基准等比缩放（左右留白对称）
         float sx = vp.X / DesignW;
-        float cx = vp.X * 0.5f;
 
-        // ---- 双方主战者：贴着上/下沿、严格水平居中 ----
+        // 竞技场中心在屏幕上的实际位置
+        Vector2 arena = new(
+            BattlefieldCanvas.ArenaCenter.X * sx,
+            BattlefieldCanvas.ArenaCenter.Y * (vp.Y / DesignH));
+
+        // ---- 双方主战者：贴着上/下沿、对齐竞技场中线 ----
         //
-        // LeaderMedallionWidget 的控件宽 240，而拱框中线在控件内 x=120
-        // （FrameL=34 + FrameW/2=86）。所以「把拱框摆到屏幕正中」
-        // 应该用 cx - 120，而不是 cx - 控件宽/2 之外的任何值。
-        // 早先写 cx - 237，整体偏左 117px —— 两个主战者都不在水平中心。
+        // LeaderMedallionWidget 控件宽 240，拱框中线在控件内 x=120
+        // （FrameL 34 + FrameW/2 86）。用竞技场中线而不是屏幕中线。
         const float LeaderHalfW = 120f;
 
         if (_foeLeader != null)
         {
             _foeLeader.Position = new Vector2(
-                cx - LeaderHalfW, -LeaderMedallionWidget.DomeTopY);
+                arena.X - LeaderHalfW, -LeaderMedallionWidget.DomeTopY);
         }
 
         if (_allyLeader != null)
         {
-            // 我方主战者：平直边压在**手牌区底沿**，而不是窗口底沿。
-            //
-            // 早先是 vp.Y - FlatEdgeY，于是主战者与手牌之间留出一大片空白；
-            // 玩家截图里那块蓝框区域就是这么来的。
-            // 现在把主战者整体上移到与手牌区底部对齐。
-            float handBottom = vp.Y - HandTrayBottomGap;
+            // 主战者必须压在窗口底沿、平直边被窗口切掉（与原版一致）。
+            // 之前试过「贴手牌区上沿」，结果主战者被顶到战场中间、压住随从。
             _allyLeader.Position = new Vector2(
-                cx - LeaderHalfW, handBottom - LeaderMedallionWidget.FlatEdgeY);
+                arena.X - LeaderHalfW,
+                vp.Y - LeaderMedallionWidget.FlatEdgeY);
         }
 
-        // ---- 右侧指令列：右下角 ----
+        // ---- 右侧指令列 ----
         if (_rightCol != null)
         {
             _rightCol.Position = new Vector2(
                 vp.X - RightColumnRightMargin, vp.Y * 0.16f);
         }
 
-        // ---- 两块棋盘：上下对称分布在上/下主战者之间 ----
-        float boardW = 660f * sx;
-        float boardX = cx - boardW * 0.5f + 40f * sx;
+        // ---- 两块棋盘：关于竞技场中心上下对称 ----
+        //
+        // 竞技场竖直半轴 208。敌我各占一侧，中心分别在 ±104 处，
+        // 棋子高 124，所以再各让 62 —— 得到的行中心正好落在椭圆内。
+        float boardW = 700f * sx;
+        float boardX = arena.X - boardW * 0.5f;
 
-        float topLimit = LeaderMedallionWidget.FlatEdgeY + 24f + 20f;
-        float bottomLimit = (_allyLeader != null ? _allyLeader.Position.Y : vp.Y) - 24f;
-        float span = Mathf.Max(120f, bottomLimit - topLimit);
+        float rowGap = 96f * (vp.Y / DesignH);
+        float halfUnit = BoardUnitWidget.UnitH * 0.5f * sx;
 
-        // CenterContainer 需要父级有明确宽度才能居中 —— VBoxContainer
-        // 默认按内容撑开，传给子级的是 0 宽，于是「居中」实际上没效果。
         if (_boardFoe != null)
         {
-            _boardFoe.Position = new Vector2(boardX, topLimit + span * 0.26f);
+            _boardFoe.Position = new Vector2(boardX, arena.Y - rowGap - halfUnit);
             _boardFoe.Size = new Vector2(boardW, 0);
             _boardFoe.CustomMinimumSize = new Vector2(boardW, 0);
         }
 
         if (_boardAlly != null)
         {
-            _boardAlly.Position = new Vector2(boardX, topLimit + span * 0.62f);
+            _boardAlly.Position = new Vector2(boardX, arena.Y + rowGap - halfUnit);
             _boardAlly.Size = new Vector2(boardW, 0);
             _boardAlly.CustomMinimumSize = new Vector2(boardW, 0);
         }
 
     }
-
-    /// <summary>手牌区底部与窗口下沿之间的留白。</summary>
-    private const float HandTrayBottomGap = 8f;
-
-    /// <summary>右侧指令列距窗口右沿的距离。</summary>
-    private const float RightColumnRightMargin = 245f;
 
     /// <summary>开发期入口：往双方战场各放几个随从（截图用）。</summary>
     public void SpawnBoardDemo()
