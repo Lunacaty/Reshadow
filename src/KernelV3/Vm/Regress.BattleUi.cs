@@ -73,6 +73,7 @@ public static class RegressBattleUi
         Check("BUG-3 操作面板动作都触发战场重画", CaseActionPanelRefresh);
         Check("ANIM-1 棋子动画调度器状态机", CaseAnimDirector);
         Check("ANIM-2 表演队列先进先出", CaseAnimQueue);
+        Check("BUG-4 战场控件遍历不依赖容器层数", CaseBoardTraversal);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -1413,6 +1414,39 @@ public static class RegressBattleUi
         return (ok, "起始有积压=" + busyAtStart + " 只播A=" + onlyA
                     + " 依次到B=" + thenB + " 顺序=" + string.Join("", order)
                     + " 播完清空=" + drained);
+    }
+
+    // ---------------------------------------------------------------- BUG-4
+
+    /// <summary>
+    /// 战场容器结构不能被写死层数。
+    ///
+    /// 为了让不足 5 个随从时居中，容器从 _board → HBoxContainer
+    /// 变成了 _board → CenterContainer → HBoxContainer。
+    /// 而攻击目标判定里写的是 OfType&lt;HBoxContainer&gt;()，
+    /// 中间多一层就取不到任何棋子 ——
+    /// 表现是「我方随从打不了敌方随从，但能打主战者」，且没有任何报错。
+    ///
+    /// 这里验源码：取棋子的地方必须走深度遍历，不能再写死层数。
+    /// </summary>
+    private static (bool, string) CaseBoardTraversal()
+    {
+        var src = File.ReadAllText(FindSource("src/Ui/Battle/BattleScreenRoot.cs"));
+
+        bool hasDeepWalk = src.Contains("private static IEnumerable<BoardUnitWidget> BoardUnitsOf");
+        bool attackUsesWalk = System.Text.RegularExpressions.Regex.IsMatch(
+            src, @"foreach \(var w in BoardUnitsOf\(_boardFoe\)\)");
+        bool lungeUsesWalk = src.Contains("BoardUnitsOf(_boardAlly)");
+
+        // 反向断言：不该再有写死层数的取法
+        bool noHardcoded = !src.Contains(
+            "_boardFoe.GetChildren().OfType<HBoxContainer>()");
+
+        bool ok = hasDeepWalk && attackUsesWalk && lungeUsesWalk && noHardcoded;
+        return (ok, "深度遍历存在=" + hasDeepWalk
+                    + " 攻击用它=" + attackUsesWalk
+                    + " 冲锋用它=" + lungeUsesWalk
+                    + " 无写死层数=" + noHardcoded);
     }
 
 }

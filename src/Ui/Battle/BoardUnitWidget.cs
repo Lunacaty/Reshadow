@@ -313,8 +313,7 @@ public partial class BoardUnitWidget : Control
     {
         const int ROW = 2;
         int rows = Mathf.CeilToInt(dst.Size.Y / ROW);
-
-        float cx = dst.Position.X + dst.Size.X * 0.5f;
+        var poly = InnerOutline(isAmulet);
 
         for (int i = 0; i < rows; i++)
         {
@@ -322,12 +321,12 @@ public partial class BoardUnitWidget : Control
             float h = Mathf.Min(ROW, dst.Position.Y + dst.Size.Y - y0);
             if (h <= 0f) break;
 
-            // 取该行中线去问轮廓宽度，避免边缘抖动
-            float half = HalfWidthAt(y0 + h * 0.5f, isAmulet);
-            if (half <= 0.5f) continue;
+            // 取该行中线问轮廓边界，避免边缘抖动
+            var (left, right) = SpanAt(poly, y0 + h * 0.5f);
+            if (right - left <= 0.5f) continue;
 
-            float full = half * 2f;
-            float x0 = cx - half;
+            float x0 = left;
+            float full = right - left;
 
             // 对应的源矩形：按比例映射到 src
             float v0 = (y0 - dst.Position.Y) / dst.Size.Y;
@@ -343,36 +342,68 @@ public partial class BoardUnitWidget : Control
     }
 
     /// <summary>
-    /// 轮廓在局部坐标 y 处的半宽。
-    /// 数据来自 ArtClipPolygon：拱顶 (48,8) → 肩 (23,14)/(73,14) → 直身 (9,38)/(87,38)。
+    /// 立绘可绘区域的**外框内沿**多边形。
+    ///
+    /// 必须与 DrawFollowerArch / DrawAmuletFrame 里那个 inner 多边形是同一组坐标 ——
+    /// 之前另写了一条贝塞尔曲线去近似，形状对不上，
+    /// 于是边框和立绘之间露出了一圈底色（看起来就是「立绘比框小一圈」）。
+    /// 现在两边共用这一个定义，永远严丝合缝。
     /// </summary>
-    private static float HalfWidthAt(float y, bool isAmulet)
+    private static Vector2[] InnerOutline(bool isAmulet)
     {
-        float cx = W * 0.5f;
-
         if (isAmulet)
         {
-            // 护符是切角矩形：顶部 9..20 斜切，其余直身
-            if (y < 9f) return 0f;
-            if (y < 20f)
+            return new Vector2[]
             {
-                float t = (y - 9f) / 11f;
-                return Mathf.Lerp(W * 0.5f - 11f, W * 0.5f - 6f, t);
-            }
-            return W * 0.5f - 6f;
+                new(11f, 7f), new(W - 11f, 7f), new(W - 6f, 18f),
+                new(W - 6f, H - 9f), new(6f, H - 9f), new(6f, 18f),
+            };
         }
 
-        const float archTop = 8f, archEnd = 38f;
+        // 与 DrawFollowerArch 的 inner 完全一致，再整体内缩 1px
+        // （描边有宽度，不内缩会让立绘压到描边上）。
+        return new Vector2[]
+        {
+            new(7f, 37f),
+            new(W * 0.24f, 13f),
+            new(W * 0.5f, 7f),
+            new(W * 0.76f, 13f),
+            new(W - 7f, 37f),
+            new(W - 7f, H - 10f),
+            new(7f, H - 10f),
+        };
+    }
 
-        if (y <= archTop) return 0f;
-        if (y >= archEnd) return W * 0.5f - 9f;
+    /// <summary>
+    /// 求多边形在水平线 y 处的左右边界（扫描线裁剪的核心）。
+    ///
+    /// 遍历每条边，凡是跨越 y 的边就求交点，取最小与最大。
+    /// 直接用 inner 多边形算，不再另做近似曲线 —— 形状必然一致。
+    /// </summary>
+    private static (float left, float right) SpanAt(Vector2[] poly, float y)
+    {
+        float min = float.MaxValue, max = float.MinValue;
 
-        // 二次贝塞尔：顶点(0) → 肩(24,6) → 直身(39,30)，取相对中心的半宽
-        float u = (y - archTop) / (archEnd - archTop);
-        float p1 = (cx - W * 0.24f);
-        float p2 = cx - 9f;
-        float q = 2f * (1f - u) * u;
-        return q * p1 + u * u * p2;
+        for (int i = 0; i < poly.Length; i++)
+        {
+            var a = poly[i];
+            var b = poly[(i + 1) % poly.Length];
+
+            // 水平边不参与求交
+            if (Mathf.IsEqualApprox(a.Y, b.Y)) continue;
+
+            float lo = Mathf.Min(a.Y, b.Y);
+            float hi = Mathf.Max(a.Y, b.Y);
+            if (y < lo || y > hi) continue;
+
+            float t = (y - a.Y) / (b.Y - a.Y);
+            float x = a.X + (b.X - a.X) * t;
+
+            if (x < min) min = x;
+            if (x > max) max = x;
+        }
+
+        return min > max ? (0f, 0f) : (min, max);
     }
 
     /// <summary>

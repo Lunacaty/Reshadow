@@ -521,8 +521,7 @@ public partial class BattleScreenRoot : Control
     {
         if (_vfx == null || attacker == null) return;
 
-        var attackerWidget = _boardAlly.GetChildren().OfType<HBoxContainer>()
-            .SelectMany(h => h.GetChildren().OfType<BoardUnitWidget>())
+        var attackerWidget = BoardUnitsOf(_boardAlly)
             .FirstOrDefault(x => x.Entity != null && x.Entity.EntityId == attacker.EntityId);
 
         Vector2 attackerCenter = attackerWidget != null
@@ -645,8 +644,11 @@ public partial class BattleScreenRoot : Control
                     .Then(new Anim(0.26f, Ease.Linear, _ => { if (sid >= 0) _anims.PlayLeave(sid); })));
                 break;
 
+            // 只认 OnEnterField。
+            // 召唤一张卡时内核会**同时**发 OnEnterField 与 OnSummon
+            // （后者是给「召唤时」能力用的语义事件），
+            // 两个都接就会把入场动画播两遍。
             case CoreEvent.OnEnterField:
-            case CoreEvent.OnSummon:
                 _seq.Enqueue(new Seq()
                     .Do(() =>
                     {
@@ -733,6 +735,23 @@ public partial class BattleScreenRoot : Control
     /// 主战者与随从都走这里。
     /// </summary>
     /// <summary>
+    /// 取出某个战场容器里的全部棋子。
+    ///
+    /// 容器结构是 _board → CenterContainer → HBoxContainer → 棋子，
+    /// 以后若再加一层包装也不会因此取空 —— 这里做深度遍历而不是写死层数。
+    /// </summary>
+    private static IEnumerable<BoardUnitWidget> BoardUnitsOf(Node container)
+    {
+        if (container == null) yield break;
+
+        foreach (var child in container.GetChildren())
+        {
+            if (child is BoardUnitWidget w) { yield return w; continue; }
+            foreach (var sub in BoardUnitsOf(child)) yield return sub;
+        }
+    }
+
+    /// <summary>
     /// 把调度器里的运动状态写到每个棋子控件的真实变换上。
     ///
     /// 这是 UI 层的唯一位置真相：控件的 Position 就是它看起来的位置，
@@ -749,11 +768,7 @@ public partial class BattleScreenRoot : Control
     {
         if (container == null || _anims == null) return;
 
-        foreach (var w in container.GetChildren()
-                     .SelectMany(c => c is CenterContainer cc
-                         ? cc.GetChildren().SelectMany(r => r.GetChildren())
-                         : c.GetChildren())
-                     .OfType<BoardUnitWidget>())
+        foreach (var w in BoardUnitsOf(container))
         {
             if (w.Entity == null) continue;
             w.ApplyMotion(_anims.MotionOf(w.Entity.EntityId));
@@ -815,17 +830,19 @@ public partial class BattleScreenRoot : Control
             return;
         }
 
-        foreach (var w in _boardFoe.GetChildren().OfType<HBoxContainer>()
-                     .SelectMany(h => h.GetChildren().OfType<BoardUnitWidget>()))
+        // 棋子现在藏在 CenterContainer → HBoxContainer 里（为了让不足 5 个时居中）。
+        // 之前这里直接 OfType<HBoxContainer>()，中间多一层就取不到任何棋子 ——
+        // 循环一次都不执行，表现为「我方随从打不了敌方随从，但能打主战者」。
+        foreach (var w in BoardUnitsOf(_boardFoe))
         {
+            if (w.Entity == null) continue;
             if (!w.GetGlobalRect().HasPoint(screenPos)) continue;
-            if (legal.Contains(w.Entity.EntityId))
-            {
-                PlayLungeBeforeRebuild(atk, w.GetGlobalRect().GetCenter());
-                _lastHitBySuperEvolved = atk.IsSuperEvolved;
-                _ctrl.TryAttack(atk, w.Entity, out _);
-                Rebuild();
-            }
+            if (!legal.Contains(w.Entity.EntityId)) continue;
+
+            PlayLungeBeforeRebuild(atk, w.GetGlobalRect().GetCenter());
+            _lastHitBySuperEvolved = atk.IsSuperEvolved;
+            _ctrl.TryAttack(atk, w.Entity, out _);
+            Rebuild();
             return;
         }
     }
