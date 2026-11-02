@@ -73,6 +73,9 @@ public partial class BattleScreenRoot : Control
     private readonly HashSet<long> _pendingEvolveVisual = new();
 
     private bool _handExpanded;
+
+    /// <summary>当前手牌区矩形（全局坐标），由 RebuildHand 更新。</summary>
+    private Rect2 _handRect;
     private RuntimeEntity _attacker;
     private bool _draggingPlay;
     private RuntimeEntity _draggingCard;
@@ -1100,29 +1103,11 @@ public partial class BattleScreenRoot : Control
         float trayH = cardH + 14f;
         float trayTop = bottomY - trayH;
 
-        // 手牌托盘的点击区必须单独一条空白带。
+        // 托盘只做视觉底衬。
         //
-        // 早先整个 tray 都是 Stop，但卡片是后加的、又盖在托盘内部
-        // （trayTop + 7），于是整块托盘都被卡片挡住 ——
-        // 玩家点下去命中的永远是卡片，tray.GuiInput 一次都不会触发，
-        // 「点击手牌区放大」这个功能等于不存在。
-        var trayHit = new Control
-        {
-            Position = new Vector2(trayLeft, trayTop),
-            Size = new Vector2(trayW, 9f),
-            MouseFilter = MouseFilterEnum.Stop,
-        };
-        trayHit.GuiInput += e =>
-        {
-            if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
-            {
-                _handExpanded = !_handExpanded;
-                RebuildHand();
-            }
-        };
-        _handLayer.AddChild(trayHit);
-
-        // 托盘本体只做视觉底衬，不拦鼠标，让卡片与上方的可点带各拿各的事件
+        // 展开/收起统一由 _Input 在「手牌区内按下」时处理（见 HandleHandAreaPress）——
+        // 这样无论按在卡片上、卡片间隙还是留白上都能展开，
+        // 不需要在卡片上方另铺一条可点带（那样很难看）。
         var tray = new Control
         {
             Position = new Vector2(trayLeft, trayTop),
@@ -1130,6 +1115,9 @@ public partial class BattleScreenRoot : Control
             MouseFilter = MouseFilterEnum.Ignore,
         };
         _handLayer.AddChild(tray);
+
+        // 记下当前手牌区矩形，供 _Input 判断「按下是否落在手牌区」
+        _handRect = new Rect2(trayLeft, trayTop, trayW, trayH);
 
         if (n == 0) return;
 
@@ -1183,6 +1171,23 @@ public partial class BattleScreenRoot : Control
         }
 
         if (@event is not InputEventMouseButton mb || mb.ButtonIndex != MouseButton.Left) return;
+
+        // ---- 手牌区：按下即展开 ----
+        //
+        // 规则：
+        //   · 常态（未展开）下，在手牌区任意位置按下 → 展开
+        //   · 已经在拖拽手牌时**不打断**（拖拽优先）
+        //   · 已展开状态下按下去不做任何事，交给卡片自己的拖拽逻辑
+        //
+        // 放在这里而不是给卡片加 GuiInput，是因为要覆盖
+        // 「按在卡片间隙/留白上」的情况；同时卡片的 OnLeftClick
+        // 在按下时也会触发拖拽，所以必须靠 _draggingPlay 做互斥。
+        if (mb.Pressed && !_handExpanded && !_draggingPlay && _handRect.HasPoint(mb.Position))
+        {
+            _handExpanded = true;
+            RebuildHand();
+            return;
+        }
 
         if (!mb.Pressed && _draggingPlay && _draggingCard != null)
         {

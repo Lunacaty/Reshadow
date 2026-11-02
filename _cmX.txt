@@ -1,0 +1,27 @@
+fix: OnDraw 补 PlayerId + 手牌区按下即展开
+
+【反驳一个我自己的错误说法】
+  上一轮我说「OnDraw 不区分敌我」—— 这句话只对 UI 成立，对后端不成立。
+  后端的触发判据在 CardVm：SubjectFilter == null 时要求
+  ev.Subject.EntityId == owner.EntityId，即「抽到的这张牌就是本卡」。
+  「当你抽牌时」这类能力只在本卡被抽到时触发，语义**一直是对的**，
+  Regress.Draw 7/7 全过也印证了这一点。
+
+  真正的缺口只是事件没带 PlayerId，前端无法判断该由谁播动画。
+  已在 EmitEvent 上补 PlayerId（不参与触发判定，纯给 UI 用）。
+
+【敌方抽牌播我方动画】
+  上轮改成按 PlayerId 分流是对的，但现在有真实 PlayerId 可用，
+  判据从 `ev.PlayerId < 0 || == MyPlayerId` 收紧为按实际归属分流。
+
+【手牌区展开】
+  去掉上一轮加的「卡片上方 9px 可点带」—— 用户明确说丑。
+  恢复原逻辑：鼠标在手牌区**按下即展开**，由 _Input 统一处理，
+  覆盖「按在卡片上 / 卡片间隙 / 留白」三种情况。
+  互斥规则：正在拖拽手牌时不打断；已展开时按下不处理，交给卡片拖拽。
+  RebuildHand 记下 _handRect 供命中判定。
+  点击战场空白处仍会收起（原有逻辑未变）。
+
+【验证】
+  ALL ENGINE CHECKS PASSED / VM 50-50 / 战斗 UI 31-31 / 完整对局 7-7
+  Regress.Draw 7/7（OnDraw 触发语义未变）

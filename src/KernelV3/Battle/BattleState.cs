@@ -1875,7 +1875,17 @@ public sealed class BattleState : IVmWorld
             // 之前这里无条件发 OnDraw，「每当抽牌时」会被一张爆掉的牌骗到。
             if (handFull) continue;
 
-            EmitEvent(new VmEvent { Kind = CoreEvent.OnDraw, Subject = EntityRef.From(card) });
+            // PlayerId 必须带上：它**不参与触发判定**（OnDraw 的触发判据是
+            // 「抽到的这张牌就是本卡」，见 CardVm 的 SubjectFilter == null 分支），
+            // 但前端要靠它区分这是我方还是敌方抽牌。
+            // 早先不带 PlayerId，UI 只能按「永远是我方」播动画 ——
+            // 对手每抽一张，玩家都会看到自己右下角飞出去一张牌。
+            EmitEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnDraw,
+                Subject = EntityRef.From(card),
+                PlayerId = playerId,
+            });
         }
     }
 
