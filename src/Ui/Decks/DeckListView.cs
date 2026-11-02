@@ -29,6 +29,7 @@ public partial class DeckListView : Control
     private string _poolFilter;
 
     private GridContainer _grid;
+    private ScrollContainer _scrollHost;
     private HBoxContainer _poolTabs;
     private Label _countLabel;
 
@@ -73,34 +74,90 @@ public partial class DeckListView : Control
             SizeFlagsVertical = SizeFlags.ExpandFill,
         };
         margin.AddChild(scroll);
+        _scrollHost = scroll;
         SvWbTheme.StyleScroll(scroll);
 
+        // 网格宽度跟着滚动容器走。
+        // 之前设 ExpandFill 又放在 ScrollContainer 里：ScrollContainer 不约束子项宽度，
+        // 网格按内容撑开，最后一列直接顶到窗口外 —— 三列四列都会裁掉一张。
         _grid = new GridContainer
         {
             Columns = 4,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsHorizontal = SizeFlags.Fill,
         };
         _grid.AddThemeConstantOverride("h_separation", 20);
         _grid.AddThemeConstantOverride("v_separation", 20);
         scroll.AddChild(_grid);
 
+        // 列数按实际可用宽度算。
+        // 写死 4 列时：网格被 ScrollContainer 包着、又设了 ExpandFill，
+        // 宽度不受窗口约束，1280 宽下第 4 张牌组会被窗口右缘裁掉。
+        scroll.Resized += OnViewResized;
+        CallDeferred(nameof(OnViewResized));
+
         BuildPoolTabs();
         Refresh();
+    }
+
+    /// <summary>
+    /// 顶栏分两行。
+    ///
+    /// 早先全塞在一行 HBoxContainer 里：返回 + 标题 + 5 个卡池页签 +
+    /// 3 个操作按钮 + 计数，总宽远超 1280。HBoxContainer 既不换行也不压缩，
+    /// 结果右侧的「卡包/卡池管理」「导入牌组代码」直接被窗口裁掉。
+    ///
+    /// 行一：返回 / 标题 / ←弹性→ / 操作按钮 / 计数
+    /// 行二：赛制卡池页签（数量随 data/pools/ 增长，必须独占一行）
+    /// </summary>
+    private void OnViewResized()
+    {
+        RecomputeColumns();
+        // 列数变了必须重新排一次，否则 GridContainer 仍按旧列数摆位。
+        if (_grid != null) _grid.QueueSort();
+    }
+
+    /// <summary>
+    /// 按当前可用宽度重算网格列数。
+    ///
+    /// 每张牌组卡最小 280 宽，列间距 20，左右外边距各 24。
+    /// 1280 窗口下只能放 4 列（1920 下 6 列），写死列数必然在不同窗口宽度下出错。
+    /// </summary>
+    private void RecomputeColumns()
+    {
+        if (_grid == null) return;
+
+        const float CARD_W = 300f, H_GAP = 20f, MARGIN = 56f;
+
+        // 用滚动容器的实际宽度，不用本视图的 Size ——
+        // 视图在 _Ready 阶段 Size 仍是 0，按 0 算会永远得到默认列数。
+        float avail = _scrollHost != null && _scrollHost.Size.X > 0
+            ? _scrollHost.Size.X - MARGIN
+            : 1280f - MARGIN;
+        int cols = Math.Max(1, (int)((avail + H_GAP) / (CARD_W + H_GAP)));
+
+        // 实际卡宽 280 + 条纹/描边会略微撑开，按 300 估一个安全档，
+        // 宁可少一列也不让最右侧那张被窗口裁掉一半。
+
+        if (_grid.Columns != cols) _grid.Columns = cols;
     }
 
     private Control BuildTopBar()
     {
         var bar = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(0, 64),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
         bar.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             SvWbTheme.BgPanel, SvWbTheme.BorderSubtle, 0, 0, 4));
 
+        var col = new VBoxContainer();
+        col.AddThemeConstantOverride("separation", 8);
+        bar.AddChild(col);
+
+        // ---------------- 行一 ----------------
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 16);
-        bar.AddChild(row);
+        row.AddThemeConstantOverride("separation", 12);
+        col.AddChild(row);
 
         var back = new Button { Text = "← 返回" };
         SvWbTheme.StyleButton(back);
@@ -108,18 +165,11 @@ public partial class DeckListView : Control
         row.AddChild(back);
 
         var title = new Label { Text = "牌组一览 / DECKS" };
-        title.AddThemeFontSizeOverride("font_size", 24);
+        title.AddThemeFontSizeOverride("font_size", 22);
         title.AddThemeColorOverride("font_color", SvWbTheme.TextPrimary);
         row.AddChild(title);
 
-        // 赛制卡池过滤页签：从 data/pools/*.pool.json 动态生成。
-        // 写死「全部/标准/高费」会让新增卡池在 UI 上永远看不见。
-        _poolTabs = new HBoxContainer();
-        _poolTabs.AddThemeConstantOverride("separation", 6);
-        row.AddChild(_poolTabs);
-
-        var spacer = new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        row.AddChild(spacer);
+        row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
         var diyBtn = new Button { Text = "🛠 DIY 造卡工坊" };
         SvWbTheme.StyleButton(diyBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
@@ -140,6 +190,24 @@ public partial class DeckListView : Control
         _countLabel.AddThemeFontSizeOverride("font_size", 13);
         _countLabel.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
         row.AddChild(_countLabel);
+
+        // ---------------- 行二 ----------------
+        // 赛制卡池页签：从 data/pools/*.pool.json 动态生成。
+        // 写死「全部/标准/高费」会让新增卡池在 UI 上永远看不见；
+        // 而数量会随卡池增加而增长，所以必须独占一行并允许横向滚动。
+        var tabScroll = new ScrollContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0, 44),
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Auto,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        SvWbTheme.StyleScroll(tabScroll);
+        col.AddChild(tabScroll);
+
+        _poolTabs = new HBoxContainer();
+        _poolTabs.AddThemeConstantOverride("separation", 6);
+        tabScroll.AddChild(_poolTabs);
 
         return bar;
     }
@@ -301,7 +369,10 @@ public partial class DeckListView : Control
                 {
                     Text = "◆ " + DeckEditorViewModel.DisplayName(d),
                     ClipText = true,
-                    SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                    // 不能 ExpandFill：三张卡名各自撑一份最小宽，
+                    // 会把整个网格单元顶到 430+，右边那张牌组卡被窗口裁掉。
+                    SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
+                    CustomMinimumSize = new Vector2(72, 0),
                 };
                 chip.AddThemeFontSizeOverride("font_size", 10);
                 chip.AddThemeColorOverride("font_color", SvWbTheme.TextSecondary);
@@ -323,18 +394,27 @@ public partial class DeckListView : Control
         var spacer = new Control { SizeFlagsVertical = SizeFlags.ExpandFill };
         outer.AddChild(spacer);
 
-        // 下部：状态徽章 + 操作按钮
-        var bottom = new HBoxContainer();
-        bottom.AddThemeConstantOverride("separation", 6);
-        outer.AddChild(bottom);
+        // 下部：状态徽章 + 操作按钮。
+        //
+        // 这一行原本是 HBox + 弹性垫片，6 个元素（状态/垫片/出战/编辑/复制/删除）
+        // 的最小宽度加起来把整张牌组卡撑到 433 宽 —— 远超设定的 280，
+        // 三列就要 1339，右缘被窗口裁掉。
+        //
+        // 改成两行：状态单独一行，四个按钮一行且尺寸收紧。
+        var statusRow = new HBoxContainer();
+        outer.AddChild(statusRow);
 
         bool ok = profile.IsValid;
         var status = Tag(
             ok ? $"✔ {total} / {profile.MaxDeckSize} 可出战"
                : $"⚠ {total} / {profile.MaxDeckSize} 未完成",
             ok ? SvWbTheme.StatusValid : SvWbTheme.StatusWarn);
-        bottom.AddChild(status);
+        statusRow.AddChild(status);
+        statusRow.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
+        var bottom = new HBoxContainer();
+        bottom.AddThemeConstantOverride("separation", 4);
+        outer.AddChild(bottom);
         bottom.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
         // 【⚔ 出战】：带这副牌组直接进战斗桌面。
@@ -344,17 +424,21 @@ public partial class DeckListView : Control
         {
             Text = "⚔ 出战",
             Disabled = !ok,
+            CustomMinimumSize = new Vector2(72, 34),
         };
+        battleBtn.AddThemeFontSizeOverride("font_size", 13);
         SvWbTheme.StyleButton(battleBtn, isPrimary: true, customAccent: SvWbTheme.AccentGold);
         battleBtn.Pressed += () => OnBattleDeck?.Invoke(deck);
         bottom.AddChild(battleBtn);
 
-        var editBtn = new Button { Text = "编辑" };
+        var editBtn = new Button { Text = "编辑", CustomMinimumSize = new Vector2(52, 34) };
+        editBtn.AddThemeFontSizeOverride("font_size", 13);
         SvWbTheme.StyleButton(editBtn, isPrimary: true);
         editBtn.Pressed += () => OnEditDeck?.Invoke(deck);
         bottom.AddChild(editBtn);
 
-        var dupBtn = new Button { Text = "复制" };
+        var dupBtn = new Button { Text = "复制", CustomMinimumSize = new Vector2(52, 34) };
+        dupBtn.AddThemeFontSizeOverride("font_size", 13);
         SvWbTheme.StyleButton(dupBtn);
         dupBtn.Pressed += () =>
         {
