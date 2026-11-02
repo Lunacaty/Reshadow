@@ -314,8 +314,8 @@ public sealed class PrefixParser
         ("super evolve",   CoreEvent.OnSuperEvolve,   "manual_evolve"),
         ("super-evolve",   CoreEvent.OnSuperEvolve,   "manual_evolve"),
         ("strike",         CoreEvent.OnAttack,        null),
-        ("follower strike",CoreEvent.OnAttack,        null),
-        ("clash",          CoreEvent.OnClash,         null),
+        ("follower strike",CoreEvent.OnAttack,        "follower_strike"),
+        ("clash",          CoreEvent.OnClash,         "clash"),
         ("on spellboost",  CoreEvent.OnSpellboost,    null),
         ("on evolve",      CoreEvent.OnEvolve,        null),
         ("engage",         CoreEvent.OnEngage,        null),
@@ -419,6 +419,27 @@ public sealed class PrefixParser
             // 牌组/手牌里的能力永远不会触发。
             if (condFlag == "zone_hand") b.ActiveZone = ActiveZoneScope.Hand;
             if (condFlag == "zone_deck") b.ActiveZone = ActiveZoneScope.Deck;
+
+            // 「交战类」两类头要额外记录**存在交战目标**这个事实：
+            //   "Follower Strike: If the opposing follower is damaged, destroy it."
+            //   "Clash: ..."
+            // 没有这个标记，后面的 it 会被解析成 $trigger（攻击者自己），
+            // 于是「若被攻击者受伤则破坏它」变成「若攻击者受伤则破坏攻击者」。
+            if (condFlag == "follower_strike" || condFlag == "clash")
+            {
+                b.HasOpposingTarget = true;
+            }
+
+            // Follower Strike 还隐含「攻击目标是随从，不是主战者」。
+            if (condFlag == "follower_strike")
+            {
+                b.Condition = BoolExpr.And(b.Condition,
+                    BoolExpr.Not(new HasStateExpr
+                    {
+                        State = UnitState.AttackedLeaderLastTurn,
+                        Of = TargetSpec.Self,
+                    }));
+            }
 
             // 【奥义 / 解放奥义】：条件头，不是事件头。
             //   Skybound Art        -> 奥义槽 >= 10

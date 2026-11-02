@@ -576,7 +576,7 @@ public sealed class ActionParser
             cur.Advance();
             amount = ParseNumExpr(cur);
             cur.TryMatchAnyWord("damage", "damage,");
-            target = TargetSpec.Previous;
+            target = _target.ResolvePronounTarget();
         }
         else
         {
@@ -1064,7 +1064,7 @@ public sealed class ActionParser
         if (cur.MatchPhrase("last", "words"))
             return new List<EffectNode>
             {
-                new ModifyKeywordNode { Target = TargetSpec.Previous, Op = KeywordOp.Remove, Keyword = _lex.Keyword("last words") },
+                new ModifyKeywordNode { Target = _target.ResolvePronounTarget(), Op = KeywordOp.Remove, Keyword = _lex.Keyword("last words") },
             };
         bool isKwWord2 = false;
         foreach (var kk in KnownKeywords) if (cur.Current.IsWord(kk)) { isKwWord2 = true; break; }
@@ -2027,7 +2027,7 @@ public sealed class ActionParser
         }
         else if (cur.MatchPhrase("its", "cost") || cur.MatchPhrase("their", "costs")
                  || cur.MatchPhrase("their", "cost"))
-            target = TargetSpec.Previous;
+            target = _target.ResolvePronounTarget();
 
         cur.TryMatchAnyWord("by");
         var amt = ParseNumExpr(cur);
@@ -2083,7 +2083,7 @@ public sealed class ActionParser
             var cv = ParseNumExpr(cur);
             return new List<EffectNode>
             {
-                new ModifyCostNode { Target = TargetSpec.Previous, Op = CostModOp.Set, Value = cv },
+                new ModifyCostNode { Target = _target.ResolvePronounTarget(), Op = CostModOp.Set, Value = cv },
             };
         }
 
@@ -2102,7 +2102,7 @@ public sealed class ActionParser
             {
                 new ModifyStatsNode
                 {
-                    Target = TargetSpec.Previous,
+                    Target = _target.ResolvePronounTarget(),
                     Op = StatModOp.Set,
                     Attack = atkV,
                     Life = lifeV,
@@ -2125,7 +2125,7 @@ public sealed class ActionParser
             {
                 new ModifyStatsNode
                 {
-                    Target = TargetSpec.Previous,
+                    Target = _target.ResolvePronounTarget(),
                     Op = StatModOp.Set,
                     Attack = sn.StartsWith("attack") ? attrV : null,
                     Life = (sn.StartsWith("defense") || sn.StartsWith("life")) ? attrV : null,
@@ -2141,7 +2141,7 @@ public sealed class ActionParser
             var statName = cur.Current.Text;
             cur.Advance();
             cur.TryMatchAnyWord("of");
-            var tgt = _target.TryParse(cur) ?? TargetSpec.Previous;
+            var tgt = _target.TryParse(cur) ?? _target.ResolvePronounTarget();
             cur.TryMatchAnyWord("to");
             var v2 = ParseNumExpr(cur);
             return new List<EffectNode>
@@ -2172,7 +2172,7 @@ public sealed class ActionParser
             }
             return new List<EffectNode>
             {
-                new ModifyStatsNode { Target = TargetSpec.Previous, Op = StatModOp.Set, Attack = av, Life = lv },
+                new ModifyStatsNode { Target = _target.ResolvePronounTarget(), Op = StatModOp.Set, Attack = av, Life = lv },
             };
         }
 
@@ -2218,7 +2218,7 @@ public sealed class ActionParser
         else if (cur.Current.IsAnyWord("it", "them"))
         {
             cur.Advance();
-            target = TargetSpec.Previous;
+            target = _target.ResolvePronounTarget();
         }
         else
         {
@@ -2529,7 +2529,7 @@ public sealed class ActionParser
                 cur.Advance();
                 while (!cur.IsAtEnd && !cur.Current.IsAnyWord("from")) cur.Advance();
                 cur.TryMatchAnyWord("from");
-                var tgt = _target.TryParse(cur) ?? TargetSpec.Previous;
+                var tgt = _target.TryParse(cur) ?? _target.ResolvePronounTarget();
                 return new List<EffectNode> { new ModifyKeywordNode { Target = tgt, Op = KeywordOp.SilenceAll } };
             }
             return new List<EffectNode>();
@@ -2539,7 +2539,7 @@ public sealed class ActionParser
             cur.Advance(); cur.Advance();
             while (!cur.IsAtEnd && !cur.Current.IsAnyWord("from")) cur.Advance();
             cur.TryMatchAnyWord("from");
-            var lt = _target.TryParse(cur) ?? TargetSpec.Previous;
+            var lt = _target.TryParse(cur) ?? _target.ResolvePronounTarget();
             return new List<EffectNode>
             {
                 new ModifyKeywordNode { Target = lt, Op = KeywordOp.Remove, Keyword = _lex.Keyword("last words") },
@@ -2551,7 +2551,7 @@ public sealed class ActionParser
             cur.Advance();
             while (!cur.IsAtEnd && !cur.Current.IsAnyWord("from")) cur.Advance();
             cur.TryMatchAnyWord("from");
-            var tgt = _target.TryParse(cur) ?? TargetSpec.Previous;
+            var tgt = _target.TryParse(cur) ?? _target.ResolvePronounTarget();
             return new List<EffectNode>
             {
                 new ModifyKeywordNode
@@ -2758,8 +2758,16 @@ public sealed class ActionParser
     {
         cur.ExpectWord("activate");
 
-        // "activate all of them instead" —— 对已选中的护符逐个启动其 Engage 能力。
-        // 之前是 MacroNode 占位，运行时 ExpandMacro 返回空 -> 什么也不做。
+        // "activate all of them instead" —— 两处语义要分开：
+        //
+        //   ① 模式抉择卡（"Select a Mode to activate. ... Activate all of them instead."）
+        //      them 指「上面列出的所有选项」，是元声明，不是一个实体集合，
+        //      由 MetaModeWeaver 消费。这里给一个全体槽位占位即可。
+        //   ② 护符启动（"activate all of them"）才对已选中的护符逐个 InvokeAbility。
+        //
+        // 早先两处都调 ResolvePronounTarget()，但 MatchPhrase 已经把 them
+        // 消费掉了，此刻没有任何绑定可读 —— StrictPronounCheck 当场抛错，
+        // 三张 Mode 卡（10771310 / 10912310 / 10962310）全部编译失败。
         if (cur.MatchPhrase("all", "of", "them", "instead"))
             return new List<EffectNode>
             {

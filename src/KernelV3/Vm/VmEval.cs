@@ -602,6 +602,18 @@ public sealed class VmEval
         {
             case TargetSourceKind.Slot:
                 pool = new List<EntityRef>(scope.Read(t.Slot));
+
+                // $created 跨能力域回退：
+                //   "<ev>Evolve: Summon 2 Ghosts.</ev>" -> "<sev>Super-Evolve: Give them Drain.</sev>"
+                // 两条能力各有独立 VmScope，前者的 $created 在后者里是空的。
+                // 但源实体（这张卡）身上留了一份召唤结果，回退读它即可。
+                if (pool.Count == 0 && t.Slot == TargetSpec.SlotCreated && scope.Source != null)
+                {
+                    var srcRef = scope.Source.Value;
+                    var carrier = _world.GetLive(srcRef.EntityId, srcRef.EntrySerial);
+                    if (carrier != null && carrier.LastCreatedRefs.Count > 0)
+                        pool.AddRange(carrier.LastCreatedRefs);
+                }
                 // $self 未显式绑定时回退到 Source —— 引擎自动语义
                 if (pool.Count == 0 && t.Slot == TargetSpec.SlotSelf && scope.Source != null)
                     pool.Add(scope.Source.Value);

@@ -90,6 +90,55 @@ public sealed class TargetParser
     }
 
     /// <summary>尝试从 cursor 当前位置解析一个目标。解析不了返回 null（cursor 不动）。</summary>
+    /// <summary>
+    /// 统一代词解析入口：it / them / its / their 都走这里。
+    ///
+    /// 优先级（设计3 5.3 ScopeRegister）：
+    ///   $selected → $created → $counter → $self → $opposing → 触发器初始值
+    ///
+    /// 为什么必须统一：早先 its / their 写死返回 $selected，
+    /// 于是 "Draw a follower and set its cost to 0" 里的 its
+    /// 指向空的 $selected 而不是刚抽到的 $created —— 那张牌减不了费。
+    /// </summary>
+    public TargetSpec ResolvePronounTarget()
+    {
+        string pronSlot;
+
+        if (BoundSlots.Contains(TargetSpec.SlotSelected))
+            pronSlot = TargetSpec.SlotSelected;
+        else if (BoundSlots.Contains(TargetSpec.SlotCreated))
+            pronSlot = TargetSpec.SlotCreated;
+        else if (BoundSlots.Contains(TargetSpec.SlotCounter))
+            pronSlot = TargetSpec.SlotCounter;
+        else if (BoundSlots.Contains(TargetSpec.SlotSelf))
+            pronSlot = TargetSpec.SlotSelf;
+        else if (BoundSlots.Contains(TargetSpec.SlotOpposing))
+            pronSlot = TargetSpec.SlotOpposing;
+        else if (DefaultPronounSlot != null)
+            pronSlot = DefaultPronounSlot;
+        else if (StrictPronounCheck)
+        {
+            // 强制校验：代词必须有前序绑定（设计3 5.3）。
+            //
+            // 这条**不能放宽**。「Fanfare: Give it Ward.」这种没有前置
+            // Select/Summon 的句子必须当场报错，否则它会静默绑到空槽位，
+            // 卡在对局里表现为「打出去什么都不发生」—— 比编译失败更难查。
+            throw new LangException(
+                "代词 it 缺少前序绑定：本句既没有 Select，也没有 Summon / Add / Draw 或触发器主体");
+        }
+        else
+        {
+            pronSlot = TargetSpec.SlotSelected;
+        }
+
+        return new TargetSpec
+        {
+            SourceKind = TargetSourceKind.Slot,
+            Slot = pronSlot,
+            Mode = SelectMode.All,
+        };
+    }
+
     public TargetSpec TryParse(TokenCursor cur)
     {
         int start = cur.Position;
@@ -237,62 +286,30 @@ public sealed class TargetParser
             // and defense and give it +1/+0」里的 it 指本卡，不指触发源）。
             // 之前的实现让 DefaultPronounSlot 无条件最高优先，
             // 于是 BoundSlots 的 $selected / $created 分支永远走不到。
-            string pronSlot;
-            if (BoundSlots.Contains(TargetSpec.SlotSelected))
-            {
-                pronSlot = TargetSpec.SlotSelected;
-            }
-            else if (BoundSlots.Contains(TargetSpec.SlotCreated))
-            {
-                pronSlot = TargetSpec.SlotCreated;
-            }
-            // $counter 与 $self 也必须排在 DefaultPronounSlot **之前**：
-            //   "Whenever you Engage a Clue amulet, swap this follower's attack
-            //    and defense and give it +1/+0."
-            // 前半句登记了 $self，但如果触发器槽位（$trigger，指向 Clue 护符）
-            // 排在前面，后半句的 it 就会去给没有攻防的护符加 +1/+0。
-            // 同理 "Reduce your faith's value by 10 to give it ..." 里的 it
-            // 指被操作的计数器（$counter），不能被触发器截胡。
-            else if (BoundSlots.Contains(TargetSpec.SlotCounter))
-            {
-                pronSlot = TargetSpec.SlotCounter;
-            }
-            else if (BoundSlots.Contains(TargetSpec.SlotSelf))
-            {
-                // "Evolve this follower and give it +1/+0"
-                // "Remove Ward from this follower. Give it Intimidate."
-                // "swap this follower's attack and defense and give it +1/+0"
-                // 这里的 it 指本卡自身。
-                pronSlot = TargetSpec.SlotSelf;
-            }
-            else if (DefaultPronounSlot != null)
-            {
-                pronSlot = DefaultPronounSlot;
-            }
-            else if (StrictPronounCheck)
-            {
-                // 强制校验：代词必须有前序绑定，否则直接报错（设计3 5.3）。
-                // 只在整卡编译时启用：单句语料是被强行切开的，
-                // "Super-Evolve: Give them Drain." 单独存在时没有前文的 Summon。
-                throw new LangException(
-                    "代词 it 缺少前序绑定：本句既没有 Select，也没有 Summon / Add / Draw 或触发器主体");
-            }
-            else
-            {
-                pronSlot = TargetSpec.SlotSelected;
-            }
-
-            return new TargetSpec
-            {
-                SourceKind = TargetSourceKind.Slot,
-                Slot = pronSlot,
-                Mode = SelectMode.All,
-            };
+            return ResolvePronounTarget();
         }
+        // "activate all of them instead" / "use all of them"：
+        // 这是模式抉择的元声明，them 指「上面的所有选项」，不是一个实体集合。
+        // 交给 MetaModeWeaver 处理，这里返回一个占位的自指目标即可 ——
+        // 若走到代词解析，StrictPronounCheck 会当场报错（模式句本来就没有前置绑定）。
         if (cur.Current.IsAnyWord("them"))
         {
+            // "activate all of them instead"：这是模式抉择的元声明，
+            // them 指「上面列出的所有选项」，不是一个实体集合。
+            // 必须在 Advance 之前判断，否则 Peek 的基准已经越过了 them。
+            bool isAllOfThem = cur.Peek(-2).IsWord("all") && cur.Peek(-1).IsWord("of");
+
             cur.Advance();
-            return new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = TargetSpec.SlotSelected, Mode = SelectMode.All };
+
+            if (isAllOfThem)
+                return new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Slot,
+                    Slot = TargetSpec.SlotSelected,
+                    Mode = SelectMode.All,
+                };
+
+            return ResolvePronounTarget();
         }
         if (cur.Current.IsAnyWord("its", "their"))
         {
@@ -302,7 +319,11 @@ public sealed class TargetParser
             // "if its cost is 4" 里的 cost 是条件要读的属性，
             // 被这里吃掉后，条件层只剩 "is 4"，
             // 只能盲猜一个默认属性（Life），于是费用变成生命值。
-            return new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = TargetSpec.SlotSelected, Mode = SelectMode.All };
+            //
+            // 走统一解析而不是写死 $selected：
+            //   "Draw a follower and set its cost to 0." 里的 its 应指向 $created
+            //   （刚抽到的那张牌），写死 $selected 会让这张牌减不了费。
+            return ResolvePronounTarget();
         }
         if (cur.Current.IsAnyWord("itself"))
         {
@@ -345,6 +366,29 @@ public sealed class TargetParser
         }
         else if (cur.Current.IsAnyWord("all"))
         {
+            // "activate all of them instead" —— 模式抉择的元声明。
+            //
+            // them 指的是上面列出的**所有选项**，不是一个实体集合。
+            // 若照常吞掉 all 再让 of them 往下走，them 会掉进代词解析，
+            // 而模式句本来就没有前置绑定，StrictPronounCheck 当场报错 ——
+            // 三张 Mode 卡（10771310 / 10912310 / 10962310）就是这么挂的。
+            //
+            // 直接在这里整体消费掉，交给 MetaModeWeaver 处理。
+            if (cur.Peek().IsWord("of") && cur.Peek(2).IsAnyWord("them", "them."))
+            {
+                cur.Advance();          // all
+                cur.Advance();          // of
+                cur.Advance();          // them
+                cur.TryMatchAnyWord("instead");
+
+                return new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Slot,
+                    Slot = TargetSpec.SlotSelected,
+                    Mode = SelectMode.All,
+                };
+            }
+
             cur.Advance();
             mode = SelectMode.All;
             // 记下「全体」是原文明确写的。后置的 another/other 只排除自身，

@@ -500,6 +500,14 @@ public sealed class BattleState : IVmWorld
     {
         if (playerId < 0 || playerId > 1) return 0;
 
+        // Rally (N) 的计数器名在两侧不一致：
+        //   编译期（EnglishCompiler）写的是 "match_play"
+        //   运行期（TurnRunner / MatchRunner / 本类）累加的是 "rally"
+        // 于是全卡池所有 Rally (N) 条件在运行时永远读到 0、永不满足。
+        // 这里做别名转发，而不是去改 AST 打印字符串（那会打翻一批文档验收断言）。
+        if (counter.IsValid && string.Equals(counter.Name, "match_play", StringComparison.Ordinal))
+            counter = Schema.Counter("rally");
+
         // 信仰值住在信仰实体身上，不在玩家身上。
         // 这样做的好处：信仰占纹章区一格、同名唯一、而且可以单独被授予能力，
         // 同时不会被「纹章造成伤害」这类效果误伤。

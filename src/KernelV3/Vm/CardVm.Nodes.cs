@@ -727,7 +727,49 @@ public sealed partial class CardVm
             }
             if (e != null) created.Add(e);
         }
-        scope.Bind(n.OutSlot, created);
+        // ---- $created 的写入策略 ----
+        //
+        // 连续两个 SpawnCardNode 来自同一个句子：
+        //   "Summon an Enhanced Puppet and Puppet."
+        //   "Enhance (7): Give them Storm."
+        // 第二个会覆盖第一个的 $created，于是 Give them 只作用到第二只。
+        //
+        // 判据：上一条指令也是 SpawnCardNode。此时**追加**而不是覆盖。
+        var frame = _frames?.Count > 0 ? _frames[^1] : null;
+        bool consecutive = frame != null && frame.Ip > 0
+                           && frame.Ip - 1 < frame.Code.Count
+                           && frame.Code[frame.Ip - 1] is SpawnCardNode;
+
+        if (consecutive)
+        {
+            var merged = new List<RuntimeEntity>(scope.Read(n.OutSlot).Count);
+            foreach (var r in scope.Read(n.OutSlot))
+            {
+                var prev = _world.GetLive(r.EntityId, r.EntrySerial);
+                if (prev != null) merged.Add(prev);
+            }
+            merged.AddRange(created);
+            scope.Bind(n.OutSlot, merged);
+        }
+        else
+        {
+            scope.Bind(n.OutSlot, created);
+
+            // 同时把「这次召唤了什么」记在源实体上，
+            // 供跨能力域的 them/it 回指（Evolve 召唤 -> Super-Evolve 强化）。
+            if (scope.Source != null)
+            {
+                var srcRef = scope.Source.Value;
+                var carrier = _world.GetLive(srcRef.EntityId, srcRef.EntrySerial);
+                if (carrier != null)
+                {
+                    carrier.LastCreatedRefs.Clear();
+                    foreach (var e in created)
+                        carrier.LastCreatedRefs.Add(EntityRef.From(e));
+                }
+            }
+        }
+
         return false;
     }
 

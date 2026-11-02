@@ -819,8 +819,22 @@ public static class ConditionCompiler
         }
 
         // "the opposing follower is damaged"
+        //
+        // Of 必须指向 $opposing（被攻击的那颗随从），
+        // 而不是 $trigger —— 在 OnAttack 下 $trigger 是攻击者自己，
+        // 于是 "If the opposing follower is damaged, destroy it"
+        // 会检查「攻击者是否受伤」并破坏攻击者。
         if (c.MatchPhrase("the", "opposing", "follower", "is", "damaged"))
-            return new HasStateExpr { State = UnitState.Damaged, Of = TargetSpec.Trigger };
+            return new HasStateExpr
+            {
+                State = UnitState.Damaged,
+                Of = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Slot,
+                    Slot = TargetSpec.SlotOpposing,
+                    Mode = SelectMode.All,
+                },
+            };
 
         // "this follower's defense is N or less" / "your leader's defense is N or less"
         {

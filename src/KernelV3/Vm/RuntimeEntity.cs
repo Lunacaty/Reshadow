@@ -72,6 +72,21 @@ public sealed class EntitySnapshot
 /// <summary>运行时实体。</summary>
 public sealed class RuntimeEntity
 {
+    /// <summary>
+    /// 本实体最近一次通过 SpawnCard 生成的实体引用。
+    ///
+    /// 用途：同一张卡跨能力域的 them/it 回指。
+    ///   "&lt;ev&gt;Evolve: Summon 2 copies of Ghost.&lt;/ev&gt;"
+    ///   "&lt;sev&gt;Super-Evolve: Give them Drain.&lt;/sev&gt;"
+    /// 超进化时 OnEvolve 与 OnSuperEvolve 是两个事件、各自新建 VmScope，
+    /// 前者的 $created 在后者里是空的 —— 幽灵拿不到 Drain。
+    /// 把召唤结果留一份在源实体上，VmEval 解析 $created 时回退到这里。
+    ///
+    /// 同时解决「Summon A and B」时后一个覆盖前一个的问题：
+    /// 连续 SpawnCardNode 要**追加**而不是覆盖。
+    /// </summary>
+    public List<EntityRef> LastCreatedRefs { get; } = new();
+
     public int EntityId { get; init; }
     public int EntrySerial { get; set; }
     public Ast.CardDef Def { get; set; }

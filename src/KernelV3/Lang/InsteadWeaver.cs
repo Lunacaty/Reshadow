@@ -71,6 +71,15 @@ public static class InsteadWeaver
         var prevDmg = prevBody.OfType<DealDamageNode>().FirstOrDefault();
         var prevRestore = prevBody.OfType<RestoreLifeNode>().FirstOrDefault();
 
+        // 进化透镜：'Super-evolve them instead' 必须继承前一句的群体目标。
+        //
+        //   "Fanfare: Skybound Art - Evolve all unevolved allied followers on the field."
+        //   "Super Skybound Art - Super-evolve them instead."
+        //
+        // 没有这一支，替代句的 EvolveNode.Target 是空的（them 解析不出群体），
+        // 超奥义分支就变成「只超进化本卡」。
+        var prevEvolve = prevBody.OfType<EvolveNode>().FirstOrDefault();
+
         var result = new List<EffectNode>();
         foreach (var n in thenBody)
         {
@@ -92,6 +101,21 @@ public static class InsteadWeaver
                         ToZone = sp.ToZone,
                         Count = sp.Count,          // 数量用替代句的
                         OutSlot = sp.OutSlot,
+                    });
+                    break;
+
+                // 替代句的 EvolveNode 若目标为空 / 省略 / 仍是槽位引用，
+                // 就用前一句的目标（通常是 Select all ... 得出的 $selected）。
+                case EvolveNode ev when prevEvolve != null
+                    && (ev.Target == null
+                        || (ev.Target.SourceKind == TargetSourceKind.Slot
+                            && ev.Target.Slot == TargetSpec.SlotSelf)
+                        || ev.Target.SourceKind == TargetSourceKind.Slot):
+                    result.Add(new EvolveNode
+                    {
+                        Target = prevEvolve.Target,
+                        IsSuperEvolve = ev.IsSuperEvolve,
+                        If = ev.If,
                     });
                     break;
 

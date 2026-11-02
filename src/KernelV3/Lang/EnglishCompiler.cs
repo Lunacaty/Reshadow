@@ -1049,6 +1049,90 @@ public sealed class EnglishCompiler
                 continue;
             }
 
+            // ---- 带条件的后续句也要并进来（不是新的 AbilityDef）----
+            //
+            //   "Select another allied card on the field.
+            //    If you selected one, destroy it and deal 2 damage ..."
+            //   "Add a Fairy to your hand. Combo (3) - Give it Bane."
+            //   "Select an enemy follower and deal it 3 damage.
+            //    Rally (10) - Give it ..."
+            //   "At the end of your turn, if this follower is unevolved, ...
+            //    If this follower is evolved, ..."
+            //
+            // 这些第二句带的是**条件门控**（If / Combo / Rally），不是新的触发时机。
+            // 若让它们各自成为一条 AbilityDef：
+            //   · 同一张卡的不同 AbilityDef 各有独立 VmScope，
+            //     第一句选中的 $selected 在第二条里是空的 —— destroy it 什么都破坏不了；
+            //   · 第二句没有事件头，Trigger 会退化成默认的 OnPlay，
+            //     超进化能力 / 回合结束能力直接变成入场曲。
+            //
+            // 所以必须并进当前能力的 Body，用 ConditionalNode 包住条件。
+            bool isEnhanceHead = hb.Costs.Any(c => c.Kind == CostKind.UsePp);
+            bool isInstead = hasInsteadWord;
+            bool onlyGateCosts = hb.Costs.All(c =>
+                c.Kind == CostKind.TurnPlayCount || c.Kind == CostKind.MatchPlayCount);
+
+            if (!hb.EventExplicit
+                && !isEnhanceHead
+                && !isInstead
+                && onlyGateCosts
+                && currentAbility != null
+                && currentAbility.Trigger != null
+                && currentAbility.Trigger.Event != CoreEvent.PassiveAura)
+            {
+                // 若当前能力身上还挂着第一句的句首 If 条件，
+                // 先把已有 Body 包进 ConditionalNode，再把 Condition 复位 ——
+                // 否则第二句的条件会盖在整体上，两个 if 变成嵌套而非并列。
+                //
+                // AbilityDef.Condition 是 init-only，不能就地赋值，
+                // 只能重建一条并把 result 里的旧引用换掉。
+                var prevCond = currentAbility.Condition;
+                bool prevHasRealCond = prevCond != null && !(prevCond is ConstBoolExpr);
+
+                var bodyList = (List<EffectNode>)currentAbility.Body;
+                if (prevHasRealCond && bodyList.Count > 0)
+                {
+                    var wrapped = new List<EffectNode>
+                    {
+                        new ConditionalNode
+                        {
+                            Condition = prevCond,
+                            Then = bodyList.ToList(),
+                        },
+                    };
+                    bodyList.Clear();
+                    bodyList.AddRange(wrapped);
+
+                    var rebuilt = new AbilityDef
+                    {
+                        Trigger = currentAbility.Trigger,
+                        Condition = BoolExpr.True,
+                        Costs = currentAbility.Costs,
+                        Body = currentAbility.Body,
+                        HasFuse = currentAbility.HasFuse,
+                    };
+                    int at = result.IndexOf(currentAbility);
+                    if (at >= 0) result[at] = rebuilt;
+                    currentAbility = rebuilt;
+                    _lastBuiltAbility = rebuilt;
+                }
+
+                var followCond = AndCosts(hb.Condition, hb.Costs);
+                if (followCond == null || followCond is ConstBoolExpr)
+                {
+                    bodyList.AddRange(body);
+                }
+                else
+                {
+                    bodyList.Add(new ConditionalNode
+                    {
+                        Condition = followCond,
+                        Then = body.ToList(),
+                    });
+                }
+                continue;
+            }
+
             // 无头独立段落要分两种时机：
             //   "Deal 4 damage to all enemy followers."   → OnPlay（动作句，打出时结算一次）
             //   "Can't be destroyed by abilities."        → PassiveAura（常驻修正）
