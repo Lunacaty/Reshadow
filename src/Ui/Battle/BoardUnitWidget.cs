@@ -24,8 +24,16 @@ public partial class BoardUnitWidget : Control
 {
     public RuntimeEntity Entity { get; private set; }
 
-    /// <summary>动画调度器（由 BattleScreenRoot 注入，全局共享一份）。</summary>
-    public static BoardAnimDirector Director;
+    /// <summary>
+    /// 本棋子所属战斗界面的动画调度器。
+    ///
+    /// **不能是 static**：截图模式与正常流程都可能各建一个 BattleScreenRoot，
+    /// static 会被后建的那个覆盖，导致棋子查 A 实例的状态、
+    /// 而驱动在 B 实例里跑 —— 动画表现为「播得极慢或不动」。
+    /// </summary>
+    private BoardAnimDirector _director;
+
+    public void BindDirector(BoardAnimDirector d) => _director = d;
 
 
     public event Action<RuntimeEntity> OnClicked;
@@ -128,7 +136,7 @@ public partial class BoardUnitWidget : Control
     public override void _Process(double delta)
     {
         // 有动画在跑就每帧重绘（变换在 _Draw 里应用）。
-        if (Entity != null && Director != null && Director.IsAnimating(Entity.EntityId))
+        if (Entity != null && _director != null && _director.IsAnimating(Entity.EntityId))
             QueueRedraw();
 
         // 候选圈需要持续脉动，所以有候选时也必须每帧重绘。

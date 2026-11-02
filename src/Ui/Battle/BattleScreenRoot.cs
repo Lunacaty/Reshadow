@@ -98,7 +98,6 @@ public partial class BattleScreenRoot : Control
         _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
                                             startInMulligan: true);
         BoardUnitWidget.CurrentController = _ctrl;
-        BoardUnitWidget.Director = _anims;
 
         // 开局前先把游标推到日志末尾。
         // 否则起手抽牌、换牌这些「开局事件」会在第一次 Rebuild 时
@@ -464,6 +463,7 @@ public partial class BattleScreenRoot : Control
         foreach (var e in _ctrl.Board(playerId).Take(5))
         {
             var w = new BoardUnitWidget();
+            w.BindDirector(_anims);
             bool canAtk = playerId == 0 && _ctrl.CanAttackWith(e);
             bool selected = _actionPanel.BoundEntity != null
                             && _actionPanel.BoundEntity.EntityId == e.EntityId;
@@ -729,8 +729,8 @@ public partial class BattleScreenRoot : Control
             case CoreEvent.OnDraw:
                 // 抽牌：卡从屏幕右侧飞进手牌区。
                 _seq.Enqueue(new Seq()
-                    .Do(() => PlayDrawFlyIn())
-                    .Then(new Anim(0.26f, Ease.Linear, _ => { })));
+                    .Then(CreateDrawFlyIn())
+                    .Do(RebuildHand));
                 break;
 
             case CoreEvent.TurnStart:
@@ -766,10 +766,18 @@ public partial class BattleScreenRoot : Control
         }
     }
 
-    /// <summary>抽牌动画：一张卡背从右缘飞向手牌区。</summary>
-    private void PlayDrawFlyIn()
+    /// <summary>
+    /// 抽牌动画：一张卡背从右缘飞向手牌区。
+    ///
+    /// **本身不 enqueue** —— 早先它内部又 _seq.Enqueue 了一段，
+    /// 而调用它的地方本身就是队列里的一段：每播到抽牌就再塞一段，
+    /// 队列永远清不空，_seq.Busy 恒为真，后面的动画一段都播不出来。
+    /// 现在直接把动画对象返回，由调用方当作本段的一部分。
+    /// </summary>
+    private Anim CreateDrawFlyIn()
     {
-        if (_overlayLayer == null) return;
+        if (_overlayLayer == null)
+            return new Anim(0.01f, Ease.Linear, _ => { });
 
         var card = new PanelContainer();
         card.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
@@ -783,14 +791,12 @@ public partial class BattleScreenRoot : Control
         var from = card.Position;
         var to = new Vector2(1120f, 610f);
 
-        _seq.Enqueue(new Seq()
-            .Then(new Anim(0.26f, Ease.OutCubic, v =>
-            {
-                if (!IsInstanceValid(card)) return;
-                card.Position = from.Lerp(to, v);
-                card.Modulate = new Color(1, 1, 1, 1f - Mathf.Max(0f, (v - 0.7f) / 0.3f));
-            }, () => { if (IsInstanceValid(card)) card.QueueFree(); }))
-            .Do(RebuildHand));
+        return new Anim(0.26f, Ease.OutCubic, v =>
+        {
+            if (!IsInstanceValid(card)) return;
+            card.Position = from.Lerp(to, v);
+            card.Modulate = new Color(1, 1, 1, 1f - Mathf.Max(0f, (v - 0.7f) / 0.3f));
+        }, () => { if (IsInstanceValid(card)) card.QueueFree(); });
     }
 
     /// <summary>
@@ -828,7 +834,9 @@ public partial class BattleScreenRoot : Control
     {
         ApplyMotionsIn(_boardAlly);
         ApplyMotionsIn(_boardFoe);
+
     }
+
 
     private void ApplyMotionsIn(Node container)
     {

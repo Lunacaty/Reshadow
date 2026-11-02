@@ -39,7 +39,7 @@ public sealed class Seq
         // 用 0.001 的话，第一帧只消耗 0.001 的一部分，
         // 下一帧还会再 Step 一次 —— OnUpdate 触发两次，动作重复执行。
         bool fired = false;
-        _steps.Add(new Anim(0.0001f, Ease.Linear, _ =>
+        _steps.Add(new Anim(0f, Ease.Linear, _ =>
         {
             if (fired) return;
             fired = true;
@@ -61,23 +61,52 @@ public sealed class Seq
             _gap = 0f;
         }
 
+        // 本帧剩余可用时间。每完成一段就扣掉它消耗的部分。
+        float remain = dt;
+
         while (_steps.Count > 0)
         {
             var a = _steps[0];
 
-            // 已经播完的直接出队并**不要再 Step** ——
+            // 已经播完的直接出队。不能再 Step ——
             // Anim.Step 在 Elapsed 达到 Duration 时会再调一次 OnUpdate，
             // 而瞬时动作的 OnUpdate 就是 Do 的内容，会重复触发。
-            if (!a.Finished)
+            if (a.Finished)
             {
-                float consume = Mathf.Min(dt, Mathf.Max(0f, a.Duration - a.Elapsed));
-                bool alive = a.Step(consume);
-                dt -= consume;
-                if (alive) return true;
+                _steps.RemoveAt(0);
+                continue;
             }
 
+            float left = Mathf.Max(0f, a.Duration - a.Elapsed);
+
+            // 关键：剩余时间不够播完本段，就只消耗「本帧剩下的全部时间」，
+            // 然后返回、等下帧继续。
+            //
+            // 早先写的是 consume = Min(remain, left) 且 remain 不足时直接
+            // return true，看起来没问题；但当 remain 恰好为 0 时，
+            // consume = 0、Anim.Step(0) 返回「未完成」、remain 一分不减，
+            // 循环虽然退出了，下一帧又从头来 —— 队列表现为永远 Busy，
+            // 后面的动画一段都播不出来。
+            if (remain < left)
+            {
+                // 本帧时间不足以播完本段：消耗掉剩余时间，本帧结束。
+                // 必须真的把 remain 用掉，否则 Elapsed 不增加，
+                // 下一帧进来 remain 又是同样的值 —— 队列永久卡在这一段。
+                a.Step(remain);
+                return true;
+            }
+
+            bool alive = a.Step(left);
+            remain -= left;
+
+            if (alive) return true;
+
             _steps.RemoveAt(0);
-            if (dt <= 0f) return _steps.Count > 0 || _gap > 0f;
+
+            // 剩下的时间继续给下一段；如果没有了，就本帧到此为止，
+            // 但队列还有内容，仍要报告 Busy。
+            if (remain <= 0.0001f)
+                return _steps.Count > 0 || _gap > 0f;
         }
 
         return false;

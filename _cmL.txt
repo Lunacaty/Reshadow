@@ -1,0 +1,28 @@
+fix: 动画队列阻塞 + Director 被 static 污染
+
+【查到并修掉的两个真问题】
+
+1. 抽牌动画自我增殖（已修）
+   case OnDraw 里 .Do(() => PlayDrawFlyIn())，
+   而 PlayDrawFlyIn 内部又 _seq.Enqueue 了一段 ——
+   每播到抽牌就往队列里再塞一段。
+   改成 CreateDrawFlyIn() 返回 Anim 对象，由调用方并入本段。
+
+2. BoardUnitWidget.Director 是 static（已修）
+   DeckManagementRoot 里有三处 new BattleScreenRoot()，
+   static 字段会被后建实例覆盖 —— 棋子查 A 实例的状态，
+   而驱动在 B 实例里跑。改为实例字段 + BindDirector 注入。
+
+3. Anim 的 Finished 加浮点容差（1e-5）
+   Do() 的极短动画可能因浮点误差永远差最后一位。
+
+【仍然没解决的】
+  表演队列推进速度仍不对：每段 Duration 只有 0.34 秒，
+  实测 20 帧（约 0.33 秒）才推进一段，但有 9 段要播，
+  120 帧只从 9 降到 7。日志显示 Elapsed 在增长，
+  但增长速度约为实际的 1/5。
+
+  已排除：事件重复入队（consumed==log==35）、dt 为 0、
+  Duration 异常、Finished 浮点卡死。
+
+  下一个怀疑点是 _Process 的调用频率，但这一轮没验证完。

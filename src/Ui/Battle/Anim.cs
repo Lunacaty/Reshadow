@@ -18,9 +18,13 @@ public sealed class Anim
     public Action<float> OnUpdate { get; }
     public Action OnDone { get; private set; }
 
-    public bool Finished => Elapsed >= Duration;
+    /// <summary>浮点误差容忍：Elapsed 与 Duration 相差小于 1e-5 就算播完，
+    /// 否则 0.0001f 这类极短动画可能永远差最后一位、队列卡死。</summary>
+    public bool Finished => Elapsed >= Duration - 1e-5f;
     public float T => Duration <= 0f ? 1f : Mathf.Clamp(Elapsed / Duration, 0f, 1f);
     public float Value => Curve(T);
+    public string Debug => "dur=" + Duration.ToString("F4")
+        + " el=" + Elapsed.ToString("F4") + " done=" + Finished;
 
     public Anim(float duration, Func<float, float> curve, Action<float> onUpdate, Action onDone = null)
     {
