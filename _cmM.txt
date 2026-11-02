@@ -1,0 +1,35 @@
+docs: 64 号文档按模块拆成 8 册 + 记录战场动画问题（108）
+
+【拆分理由】
+  早先是单份「仓库完整代码」，140+ 文件 2.5 MB。
+  发给别人看时对方往往只关心某一个模块（比如只想看英文编译器怎么写的），
+  却被迫接收整个仓库。按模块拆开后可以按需分发。
+
+【分册（同一份代码只出现在一册里）】
+  64-A  AST            src/KernelV3/Ast                      6 文件  46 KB
+  64-B  英文编译器      src/KernelV3/Lang                    18 文件 578 KB
+  64-C  游戏引擎        Core + Battle + Vm(生产) + Packs      32 文件 474 KB
+  64-D  前端 UI         src/Ui + scenes + project.godot      44 文件 456 KB
+  64-E  DIY 系统        src/KernelV3/Diy                      5 文件 279 KB
+  64-F  工具与数据      tools + data 配置                    17 文件 761 KB
+  64-G  测试与门禁      Regress* / DocAcceptance / .et        33 文件 679 KB
+  64-H  附录            README + docs/_attach                4 条目  205 KB
+  总览   64-总览.md     目录 + 各册统计 + 适合发给谁
+
+  已用脚本核对：**重复收录 0 个**，去重后共 159 个文件条目。
+
+【构建脚本改动】
+  · 拆成 build() 函数 + 统一 COMMON 排除表，避免各册重复写排除项
+  · 总览改为 python tools/make_toc.py 生成 ——
+    之前用 grep -c 统计多文件会输出「文件名:计数」多行，
+    塞进 markdown 表格变成错乱的 0\n0
+  · 删掉旧的 64-仓库完整代码与数据.md / 64b-引擎源码精简版.md
+
+【108 · 战场动画问题记录】
+  如实记录本轮六项全部未达预期，以及已修的 6 个 bug：
+  抽牌动画自我增殖、Director 被 static 污染、控件被摘出容器收不回、
+  DrawSetTransform 原点语义、攻击动画用 Tween 推位置、超进化标志提前清空。
+
+  未解决：表演队列推进速度只有实际的 1/5。
+  已排除事件重复入队、dt 为 0、Duration 异常、浮点卡死。
+  下一个怀疑方向是 _Process 的实际调用频率，但未验证完。
