@@ -1,0 +1,40 @@
+feat: 表演队列（先进先出）+ 选目标浮动 + 抽牌动画 + 终局排队
+
+【核心：把「布局重建」与「演出」分开】
+  Rebuild() 只负责把控件摆到当前状态的位置；
+  真正「发生了什么」由 AnimQueue 排队，一段播完再播下一段。
+
+  为什么必须排队：攻击结算、掉血、抽牌、进化、终局如果同时涌上来，
+  画面糊成一团，玩家看不出谁造成了什么、先后顺序如何。
+
+【三条操作约束（按用户要求）】
+  ① 纯表现操作**不受限**：拖手牌、选攻击目标、看卡面，
+     这些不改变对局状态，队列播放期间照常可用；
+  ② 选攻击目标时棋子**上浮 18px 并循环上下浮动 5px**，
+     表示「已被玩家拿起、等你选对象」——这是纯表现，不占队列；
+  ③ 有 choose 挂起时玩家无法操作：必须等演出播到那张卡
+     并选完对象才能继续。InputLocked = 队列忙 || 有挂起。
+
+【事件 → 队列】
+  ConsumeNewEventsToVfx 不再「立即全播」，改为逐事件 EnqueueEvent：
+    OnDamaged  → 特效 + 浮字 + 抖动，0.16s
+    OnHealed   → 特效 + 绿色浮字
+    OnDestroy  → 破碎粒子 / 超进化则弹向主战者再碎（0.40s + 0.28s）
+    OnEnterField / OnSummon → 钻出 + 尘埃，0.34s
+    OnDraw     → **卡背从屏幕右缘飞进手牌区**（新增），0.26s
+    OnEvolve / OnSuperEvolve → 升空翻面砸回，0.62s
+    OnTransform → 变身特效
+
+【终局提示也排队】
+  RefreshOverlays 里，_ctrl.IsFinished 且 _seq.Busy 时直接 return ——
+  致命一击的动画没播完，胜负窗绝不盖上来。
+
+【门禁抓到一个真 bug】
+  ANIM-2 第一次跑出「顺序=ABBCC」：Do() 的瞬时动作被触发两次。
+  根因是瞬时动作 Duration=0.001，第一帧只消耗一部分，
+  下一帧再 Step 时 Elapsed 已满，Anim.Step 会**再调一次 OnUpdate**。
+  实际游戏里表现为打击特效、破坏粒子各放两遍。
+  已加 fired 守卫 + Finished 直接出队不重 Step。
+
+新增 ANIM-2 门禁（战斗 UI 29 → 30）：
+  起始有积压=True 只播A=True 依次到B=True 顺序=ABC 播完清空=True

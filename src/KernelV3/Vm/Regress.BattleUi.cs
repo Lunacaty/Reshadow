@@ -72,6 +72,7 @@ public static class RegressBattleUi
         Check("BUG-2 进化叮当天使不卡死", CaseEvolveBellringer);
         Check("BUG-3 操作面板动作都触发战场重画", CaseActionPanelRefresh);
         Check("ANIM-1 棋子动画调度器状态机", CaseAnimDirector);
+        Check("ANIM-2 表演队列先进先出", CaseAnimQueue);
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
@@ -1369,6 +1370,49 @@ public static class RegressBattleUi
                     + " 入场归位=" + settled
                     + " 进化升空=" + airborne + " 翻面=" + flipping
                     + " 进化归位=" + evolveSettled);
+    }
+
+    // ---------------------------------------------------------------- ANIM-2
+
+    /// <summary>
+    /// 表演队列必须严格先进先出，且一段播完才播下一段。
+    ///
+    /// 这是玩家看得见「因果」的前提：攻击 → 掉血 → 破坏 → 抽牌
+    /// 如果同时涌上来，画面糊成一团，玩家分不清谁造成了什么。
+    /// </summary>
+    private static (bool, string) CaseAnimQueue()
+    {
+        var q = new ShadowverseFan.Ui.Battle.AnimQueue();
+        var order = new List<string>();
+
+        ShadowverseFan.Ui.Battle.Seq Mk(string tag, float dur)
+            => new ShadowverseFan.Ui.Battle.Seq()
+                .Do(() => order.Add(tag))
+                .Then(new ShadowverseFan.Ui.Battle.Anim(dur, ShadowverseFan.Ui.Battle.Ease.Linear, _ => { }));
+
+        q.Enqueue(Mk("A", 0.20f));
+        q.Enqueue(Mk("B", 0.20f));
+        q.Enqueue(Mk("C", 0.20f));
+
+        bool busyAtStart = q.Busy;
+
+        // 推进 0.1s：只应播到 A
+        for (int i = 0; i < 6; i++) q.Step(0.016f);
+        bool onlyA = order.Count == 1 && order[0] == "A";
+
+        // 推进到 A 结束多一点：应开始 B，但还没到 C
+        for (int i = 0; i < 8; i++) q.Step(0.016f);
+        bool thenB = order.Count == 2 && order[1] == "B";
+
+        // 把剩下的都推完
+        for (int i = 0; i < 60; i++) q.Step(0.016f);
+        bool allInOrder = order.Count == 3 && order[2] == "C";
+        bool drained = !q.Busy;
+
+        bool ok = busyAtStart && onlyA && thenB && allInOrder && drained;
+        return (ok, "起始有积压=" + busyAtStart + " 只播A=" + onlyA
+                    + " 依次到B=" + thenB + " 顺序=" + string.Join("", order)
+                    + " 播完清空=" + drained);
     }
 
 }

@@ -38,6 +38,16 @@ public partial class BattleScreenRoot : Control
     private readonly BoardAnimDirector _anims = new();
 
     /// <summary>
+    /// 与真实状态有关的演出队列（先进先出）。
+    ///
+    /// 玩家在队列播放期间仍可自由操作 —— 拖手牌、选攻击目标、看卡面，
+    /// 这些都是纯表现，不改变对局状态。
+    /// 但攻击结算、掉血、抽牌、进化、终局这些**会改变状态**的演出
+    /// 必须一段播完再播下一段，否则多个结果会糊在一起。
+    /// </summary>
+    private readonly AnimQueue _seq = new();
+
+    /// <summary>
     /// 本次攻击是否由超进化随从发起。
     ///
     /// OnDestroy 事件本身不带「谁打死的」，而 UI 必须在「被超进化随从攻击破坏」
@@ -133,6 +143,14 @@ public partial class BattleScreenRoot : Control
         }
 
         // ② 终局
+        //
+        // 结算窗必须排在所有表演之后 —— 否则致命一击的动画还没播完，
+        // 胜负结果就盖上来，玩家根本看不清最后一击发生了什么。
+        if (_ctrl.IsFinished && _seq.Busy)
+        {
+            return;
+        }
+
         if (_ctrl.IsFinished)
         {
             if (_result == null || !IsInstanceValid(_result))
@@ -303,6 +321,14 @@ public partial class BattleScreenRoot : Control
         StepDragFollow((float)delta);
         _anims.Step((float)delta);
 
+        // 表演队列：先进先出，一段播完接下一段
+        if (_seq.Step((float)delta))
+        {
+            // 队列在动时战场每帧都要重画（动画在 _Draw 里应用）
+            _boardAlly?.QueueRedraw();
+            _boardFoe?.QueueRedraw();
+        }
+
         StepOpponentIfNeeded(delta);
         UpdateAimLine();
     }
@@ -452,6 +478,9 @@ public partial class BattleScreenRoot : Control
 
             w.OnDragAttackStarted += (ent, pos) =>
             {
+                // 选目标阶段：棋子稍微上浮并持续上下浮动，表示「已被拿起」。
+                // 这一步**不改变任何状态**，所以不进表演队列。
+                _anims.SetAiming(ent.EntityId);
                 _attacker = ent;
                 _field.IsDraggingAttack = true;
                 _field.AttackDragStart = pos;
@@ -530,75 +559,149 @@ public partial class BattleScreenRoot : Control
         var log = _ctrl.State.EventLog;
 
         for (int i = _lastEventIdx; i < log.Count; i++)
-        {
-            var ev = log[i];
-            var pos = PosOf(ev.Subject, ev.PlayerId);
-
-            switch (ev.Kind)
-            {
-                case CoreEvent.OnDamaged:
-                    _vfx.PlayDamage(pos, ev.Amount);
-                    SpawnDamageFloat(pos, ev.Amount, false);
-                    if (ev.Subject.HasValue) _anims.PlayHitShake(ev.Subject.Value.EntityId);
-                    break;
-                case CoreEvent.OnHealed:
-                    _vfx.PlayHeal(pos, ev.Amount);
-                    SpawnDamageFloat(pos, ev.Amount, true);
-                    break;
-                case CoreEvent.OnDestroy:
-                    _vfx.PlayDestroy(pos);
-                    {
-                        var center = pos + new Vector2(BoardUnitWidget.UnitW * 0.5f,
-                                                       BoardUnitWidget.UnitH * 0.5f);
-
-                        // 被超进化随从攻击破坏：不直接碎，而是先弹向自己的主战者，
-                        // 砸到之后再碎。这是官方那条「超进化溢伤」的视觉表达。
-                        if (_lastHitBySuperEvolved && ev.Subject.HasValue)
-                        {
-                            var ownLeader = _ctrl.Leader(ev.PlayerId >= 0 ? ev.PlayerId : 1);
-                            Vector2 toward = new(0, ev.PlayerId == 0 ? 210f : -210f);
-                            if (ownLeader != null
-                                && _unitCenters.TryGetValue(ownLeader.EntityId, out var lp))
-                                toward = lp - center;
-
-                            var hitAt = center + toward;
-                            _anims.PlayKnockToLeader(ev.Subject.Value.EntityId, toward, () =>
-                                SpawnBurst(hitAt, 18, 130f, new Color("C084FC"), 0.6f));
-                        }
-                        else
-                        {
-                            SpawnBurst(center, 22, 150f, new Color("93C5FD"), 0.75f);
-                            if (ev.Subject.HasValue) _anims.PlayLeave(ev.Subject.Value.EntityId);
-                        }
-                    }
-                    break;
-                case CoreEvent.OnBanish:
-                    _vfx.PlayBanish(pos);
-                    break;
-                case CoreEvent.OnEnterField:
-                case CoreEvent.OnSummon:
-                    _vfx.PlayEnterField(pos);
-                    SpawnBurst(pos + new Vector2(BoardUnitWidget.UnitW * 0.5f, BoardUnitWidget.UnitH),
-                               10, 90f, new Color("A5B4FC"), 0.45f, -40f, 2.4f);
-                    if (ev.Subject.HasValue) _anims.PlayEnter(ev.Subject.Value.EntityId, BoardUnitWidget.UnitH);
-                    break;
-                case CoreEvent.OnTransform:
-                    _vfx.PlayTransform(pos);
-                    break;
-                case CoreEvent.OnEvolve:
-                    _vfx.PlayEvolve(pos, false);
-                    if (ev.Subject.HasValue) _anims.PlayEvolve(ev.Subject.Value.EntityId, false);
-                    break;
-                case CoreEvent.OnSuperEvolve:
-                    _vfx.PlayEvolve(pos, true);
-                    if (ev.Subject.HasValue) _anims.PlayEvolve(ev.Subject.Value.EntityId, true);
-                    break;
-            }
-        }
+            EnqueueEvent(log[i]);
 
         _lastEventIdx = log.Count;
         // 只对刚刚这批破坏生效，之后的事件不该再触发击飞。
         _lastHitBySuperEvolved = false;
+    }
+
+    /// <summary>
+    /// 把一个事件排进表演队列。
+    ///
+    /// 每个事件 = 一段 Seq，播完才播下一段。这是「先进先出」的落点：
+    /// 攻击结算、掉血、抽牌、进化、终局都必须按发生顺序逐个演出，
+    /// 同时涌上来会糊成一团，玩家看不出因果。
+    ///
+    /// 每段开头先 RebuildBoard —— 让**控件位置**立刻对上新的真实状态，
+    /// 再用动画解释「是怎么变成这样的」。顺序反了会看到残影。
+    /// </summary>
+    private void EnqueueEvent(VmEvent ev)
+    {
+        var pos = PosOf(ev.Subject, ev.PlayerId);
+        var center = pos + new Vector2(BoardUnitWidget.UnitW * 0.5f, BoardUnitWidget.UnitH * 0.5f);
+        long sid = ev.Subject?.EntityId ?? -1;
+
+        switch (ev.Kind)
+        {
+            case CoreEvent.OnDamaged:
+            {
+                var seq = new Seq()
+                    .Do(() => { _vfx.PlayDamage(pos, ev.Amount); SpawnDamageFloat(pos, ev.Amount, false); })
+                    .Then(new Anim(0.16f, Ease.Linear, v =>
+                    {
+                        if (sid >= 0) _anims.PlayHitShake(sid);
+                    }))
+                    .Wait(0.06f);
+                _seq.Enqueue(seq);
+                break;
+            }
+
+            case CoreEvent.OnHealed:
+                _seq.Enqueue(new Seq()
+                    .Do(() => { _vfx.PlayHeal(pos, ev.Amount); SpawnDamageFloat(pos, ev.Amount, true); })
+                    .Wait(0.12f));
+                break;
+
+            case CoreEvent.OnDestroy:
+            {
+                bool bySuper = _lastHitBySuperEvolved;
+                int victimPlayer = ev.PlayerId >= 0 ? ev.PlayerId : 1;
+                var ownLeader = _ctrl.Leader(victimPlayer);
+
+                if (bySuper && sid >= 0)
+                {
+                    Vector2 toward = new(0, victimPlayer == 0 ? 210f : -210f);
+                    if (ownLeader != null && _unitCenters.TryGetValue(ownLeader.EntityId, out var lp))
+                        toward = lp - center;
+                    var hitAt = center + toward;
+
+                    _seq.Enqueue(new Seq()
+                        .Do(() => { _vfx.PlayDestroy(pos); _anims.PlayKnockToLeader(sid, toward); })
+                        .Then(new Anim(0.40f, Ease.Linear, _ => { }))
+                        .Do(() => SpawnBurst(hitAt, 18, 130f, new Color("C084FC"), 0.6f))
+                        .Then(new Anim(0.28f, Ease.InCubic, _ => { })));
+                }
+                else
+                {
+                    _seq.Enqueue(new Seq()
+                        .Do(() => { _vfx.PlayDestroy(pos); SpawnBurst(center, 22, 150f, new Color("93C5FD"), 0.75f); })
+                        .Then(new Anim(0.30f, Ease.Linear, _ => { if (sid >= 0) _anims.PlayLeave(sid); })));
+                }
+                break;
+            }
+
+            case CoreEvent.OnBanish:
+                _seq.Enqueue(new Seq()
+                    .Do(() => { _vfx.PlayBanish(pos); SpawnBurst(center, 18, 140f, new Color("A78BFA"), 0.6f); })
+                    .Then(new Anim(0.26f, Ease.Linear, _ => { if (sid >= 0) _anims.PlayLeave(sid); })));
+                break;
+
+            case CoreEvent.OnEnterField:
+            case CoreEvent.OnSummon:
+                _seq.Enqueue(new Seq()
+                    .Do(() =>
+                    {
+                        _vfx.PlayEnterField(pos);
+                        SpawnBurst(pos + new Vector2(BoardUnitWidget.UnitW * 0.5f, BoardUnitWidget.UnitH),
+                                   10, 90f, new Color("A5B4FC"), 0.45f, -40f, 2.4f);
+                        if (sid >= 0) _anims.PlayEnter(sid, BoardUnitWidget.UnitH);
+                    })
+                    .Then(new Anim(0.34f, Ease.Linear, _ => { })));
+                break;
+
+            case CoreEvent.OnDraw:
+                // 抽牌：卡从屏幕右侧飞进手牌区。
+                _seq.Enqueue(new Seq()
+                    .Do(() => PlayDrawFlyIn())
+                    .Then(new Anim(0.26f, Ease.Linear, _ => { })));
+                break;
+
+            case CoreEvent.OnTransform:
+                _seq.Enqueue(new Seq()
+                    .Do(() => _vfx.PlayTransform(pos))
+                    .Wait(0.16f));
+                break;
+
+            case CoreEvent.OnEvolve:
+                _seq.Enqueue(new Seq()
+                    .Do(() => { _vfx.PlayEvolve(pos, false); if (sid >= 0) _anims.PlayEvolve(sid, false); })
+                    .Then(new Anim(0.62f, Ease.Linear, _ => { })));
+                break;
+
+            case CoreEvent.OnSuperEvolve:
+                _seq.Enqueue(new Seq()
+                    .Do(() => { _vfx.PlayEvolve(pos, true); if (sid >= 0) _anims.PlayEvolve(sid, true); })
+                    .Then(new Anim(0.62f, Ease.Linear, _ => { })));
+                break;
+        }
+    }
+
+    /// <summary>抽牌动画：一张卡背从右缘飞向手牌区。</summary>
+    private void PlayDrawFlyIn()
+    {
+        if (_overlayLayer == null) return;
+
+        var card = new PanelContainer();
+        card.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
+            new Color("1A2438"), SvWbTheme.AccentCyan, 8, 2, 10));
+        card.Size = new Vector2(64, 88);
+        card.Position = new Vector2(1300f, 596f);
+        card.MouseFilter = MouseFilterEnum.Ignore;
+        card.ZIndex = 57;
+        _overlayLayer.AddChild(card);
+
+        var from = card.Position;
+        var to = new Vector2(1120f, 610f);
+
+        _seq.Enqueue(new Seq()
+            .Then(new Anim(0.26f, Ease.OutCubic, v =>
+            {
+                if (!IsInstanceValid(card)) return;
+                card.Position = from.Lerp(to, v);
+                card.Modulate = new Color(1, 1, 1, 1f - Mathf.Max(0f, (v - 0.7f) / 0.3f));
+            }, () => { if (IsInstanceValid(card)) card.QueueFree(); }))
+            .Do(RebuildHand));
     }
 
     /// <summary>
@@ -634,8 +737,18 @@ public partial class BattleScreenRoot : Control
     {
         _field.IsDraggingAttack = false;
         _field.QueueRedraw();
+        _anims.ClearAiming();
 
         if (_attacker == null) return;
+
+        // 队列忙 / 有挂起时不允许真正攻击：取消这次拖拽，不消耗随从。
+        if (InputLocked)
+        {
+            _attacker = null;
+            RebuildBoards();
+            return;
+        }
+
         var atk = _attacker;
         _attacker = null;
 
@@ -755,6 +868,17 @@ public partial class BattleScreenRoot : Control
 
     // ---------------------------------------------------------------- 输入
 
+    /// <summary>
+    /// 是否应当拦住玩家的「会改变状态」的操作。
+    ///
+    /// 两条：
+    ///   ① 表演队列还在播 —— 先看清上一个结果再操作；
+    ///   ② 有 choose 挂起 —— 必须先把这张卡的选项选完。
+    ///
+    /// 注意：**选攻击目标**不受此限（那是纯表现，不改状态）。
+    /// </summary>
+    private bool InputLocked => _seq.Busy || _ctrl?.IsWaitingForInput == true;
+
     public override void _Input(InputEvent @event)
     {
         // 鼠标移动：更新跟随时目标点（真正的插值在 _Process 里做，
@@ -776,6 +900,18 @@ public partial class BattleScreenRoot : Control
 
         if (!mb.Pressed && _draggingPlay && _draggingCard != null)
         {
+            // 队列忙时不允许真正打出：先放下，等演出播完再操作。
+            if (InputLocked)
+            {
+                _draggingPlay = false;
+                _draggingCard = null;
+                _field.IsDraggingPlayCard = false;
+                _field.QueueRedraw();
+                EndDragFollow();
+                RebuildHand();
+                return;
+            }
+
             _draggingPlay = false;
             var card = _draggingCard;
             _draggingCard = null;

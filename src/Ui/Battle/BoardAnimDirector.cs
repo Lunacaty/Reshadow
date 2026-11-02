@@ -48,6 +48,29 @@ public sealed class BoardAnimDirector
 
     private readonly Dictionary<long, Track> _tracks = new();
 
+    /// <summary>
+    /// 正在「选攻击目标」的棋子。
+    ///
+    /// 这类棋子要持续上浮 + 上下浮动，表示「已被玩家拿起、等你选对象」。
+    /// 它不影响真实状态，属于纯表现，因此不占表演队列。
+    /// </summary>
+    private long _aimingEntity = -1;
+    private float _aimPhase;
+
+    public void SetAiming(long entityId)
+    {
+        if (_aimingEntity == entityId) return;
+        _aimingEntity = entityId;
+        _aimPhase = 0f;
+    }
+
+    public void ClearAiming()
+    {
+        if (_aimingEntity >= 0 && _tracks.TryGetValue(_aimingEntity, out var t))
+            t.Motion = UnitMotion.Idle;
+        _aimingEntity = -1;
+    }
+
     private Track TrackOf(long id)
     {
         if (!_tracks.TryGetValue(id, out var t))
@@ -63,7 +86,8 @@ public sealed class BoardAnimDirector
 
     /// <summary>该棋子是否还在播动画（控件据此决定要不要每帧重绘）。</summary>
     public bool IsAnimating(long entityId)
-        => _tracks.TryGetValue(entityId, out var t) && t.Running.Count > 0;
+        => entityId == _aimingEntity
+        || (_tracks.TryGetValue(entityId, out var t) && t.Running.Count > 0);
 
     public void Clear(long entityId) => _tracks.Remove(entityId);
 
@@ -80,6 +104,14 @@ public sealed class BoardAnimDirector
     /// <summary>每帧推进。</summary>
     public void Step(float dt)
     {
+        // 选目标浮动：独立于一次性动画，持续到 ClearAiming 为止
+        if (_aimingEntity >= 0 && _tracks.TryGetValue(_aimingEntity, out var aiming))
+        {
+            _aimPhase += dt;
+            float bob = Mathf.Sin(_aimPhase * 6.2f) * 5f;
+            aiming.Motion.Offset = new Vector2(0, -18f + bob);
+        }
+
         if (_tracks.Count == 0) return;
 
         List<long> finished = null;
@@ -97,7 +129,7 @@ public sealed class BoardAnimDirector
                 }
             }
 
-            if (t.Running.Count == 0 && t.Motion.IsIdle)
+            if (t.Running.Count == 0 && t.Motion.IsIdle && kv.Key != _aimingEntity)
             {
                 (finished ??= new List<long>()).Add(kv.Key);
             }
