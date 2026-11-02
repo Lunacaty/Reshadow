@@ -100,6 +100,11 @@ public sealed class Glossary
         g.Add("damage_cap", "受到伤害上限");
         g.Add("free_evolve", "无需进化点即可进化");
         g.Add("free_super_evolve", "无需超进化点即可超进化");
+        g.Add("immune_damage", "不受任何伤害");
+        g.Add("immune_combat_damage", "不受战斗伤害");
+        g.Add("immune_ability_damage", "不受能力伤害");
+        g.Add("immune_effects", "不受能力影响");
+        g.Add("immune_effects_except_stats", "不受能力影响（攻防变化除外）");
         g.Add("attack_limit", "攻击力上限");
 
         // ---------- 机制 ----------

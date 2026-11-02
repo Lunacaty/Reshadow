@@ -728,6 +728,21 @@ public sealed class DiyBlockCompiler
                     Duration = ParseDuration(b.EnumB),
                 };
 
+            case "act_damage_aura":
+            {
+                System.Enum.TryParse<DamageAuraKind>(b.EnumA ?? "", out var dk);
+                System.Enum.TryParse<DamageSourceMask>(b.EnumB ?? "", out var dsm);
+                if (dsm == DamageSourceMask.None) dsm = DamageSourceMask.All;
+                return new DamageModifierNode
+                {
+                    Target = CompileTarget(b.Target) ?? TargetSpec.Self,
+                    Kind = dk,
+                    SourceMask = dsm,
+                    Amount = CompileNumber(b.Number),
+                    IsReduction = b.EnumC != "0",
+                };
+            }
+
             case "act_grant_kw":
                 return new ModifyKeywordNode
                 {
@@ -1413,6 +1428,17 @@ public sealed class DiyBlockDecompiler
     {
         switch (n)
         {
+            case DamageModifierNode dm:
+                return new Block
+                {
+                    Opcode = "act_damage_aura",
+                    Target = Target(dm.Target),
+                    EnumA = dm.Kind.ToString(),
+                    EnumB = dm.SourceMask.ToString(),
+                    EnumC = dm.IsReduction ? "1" : "0",
+                    Number = Num(dm.Amount),
+                };
+
             case SelectTargetNode st:
                 return new Block { Opcode = "act_select", Text = st.OutSlot, Target = Target(st.Target) };
 

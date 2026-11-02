@@ -1,0 +1,44 @@
+feat(113 专题三): 伤害来源分类 + 实时光环 + 五档绝对免疫
+
+【伤害来源分类】
+  新增 DamageSourceMask（Combat / Ability），
+  CombatResolver.ApplyDamage 增加 source 参数，
+  交战伤害标记为 Combat，其余默认 Ability。
+  这是「不受战斗伤害」「能力伤害不能超过 X」的前提。
+
+【实时光环（绝不缓存成死数字）】
+  新增 DamageModifierNode：
+    TakenDelta / TakenCap / DealtDelta / DealtCap
+    + SourceMask + 动态 NumExpr + IsReduction
+
+  BattleState.QueryDamageModifiers 每次结算都重新扫全场的
+  PassiveAura（Board + CrestArea）与运行时授予的光环，
+  按当时的局面求值 X。
+  放在 PassiveAura 能力体里 = 在场即生效、离场即消失；
+  放在 Fanfare/Evolve 里 = 挂到目标身上的限时修正。
+
+  实测（-2 减伤光环作用到我方主战者）：
+    光环在场: 打5点 -> 掉 3
+    光环离场: 打5点 -> 掉 5   ← 立即失效
+
+【五档绝对免疫】
+  注册 immune_damage / immune_combat_damage / immune_ability_damage /
+         immune_effects / immune_effects_except_stats（GameSchema + Glossary）
+  ApplyDamage 按 SourceMask 精确拦截。
+
+  实测：
+    普通:                               2 -> -1（-3）
+    immune_damage:                     -1 -> -1（不变）
+    immune_ability_damage + 能力伤害:   -1 -> -1（不变）
+    immune_ability_damage + 战斗伤害:   -1 -> -4（-3）
+
+【四端补齐】
+  DamageModifierNode 在 check_matrix.py 要求的四个落点全部注册：
+    DiyBlockModel.Stack（AST→Block）/ CompileStack（Block→AST）
+    AstEnglishPrinter.PrintNode / ReshadowScriptCompiler.PrintNode
+  矩阵检查 201/201 通过。
+
+【验证】
+  ALL ENGINE CHECKS PASSED / check_matrix 201-201 / VM 50-50 /
+  文档验收 102-102 / 测试集效用 12-12 / 完整对局 7-7 /
+  DIY 8-8 / 卡池 22-22 / 战斗 UI 31-31

@@ -2394,6 +2394,12 @@ public sealed class ReshadowScriptCompiler
                                + DurArg(m.Duration) + ")\n";
                 }
 
+            case DamageModifierNode dm:
+                return ind + "damage_aura(" + PrintTargetExpr(dm.Target)
+                       + ", " + dm.Kind + ", " + dm.SourceMask
+                       + ", " + PrintNumExpr(dm.Amount)
+                       + (dm.IsReduction ? "" : ", add") + ")\n";
+
             case ModifyKeywordNode k:
                 if (k.Op == KeywordOp.SilenceAll) return ind + "silence(" + PrintTargetExpr(k.Target) + ")\n";
                 if (k.Op == KeywordOp.Remove) return ind + "remove_kw(" + PrintTargetExpr(k.Target) + ", " + k.Keyword.Name + ")\n";

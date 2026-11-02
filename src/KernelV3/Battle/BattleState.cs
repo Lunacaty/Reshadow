@@ -1367,6 +1367,183 @@ public sealed class BattleState : IVmWorld
     /// 统一伤害管线。能力伤害必须走这里，
     /// 否则屏障、超进化免伤、伤害上限全部被绕过。
     /// </summary>
+    /// <summary>
+    /// 实时枚举对 target 生效的所有伤害修正。
+    ///
+    /// **绝不缓存成死数字**：光环要「在则有、离场或被沉默立刻无」。
+    /// 每次结算伤害都重新扫全场的 PassiveAura，并按当时的局面求值 X。
+    /// </summary>
+    public IEnumerable<(Ast.DamageModifierNode Node, Vm.VmScope Scope)> QueryDamageModifiers(
+        RuntimeEntity target)
+    {
+        if (target == null) yield break;
+        var eval = new Vm.VmEval(this);
+
+        for (int pid = 0; pid < 2; pid++)
+        {
+            var sources = new List<RuntimeEntity>();
+            sources.AddRange(Players[pid].Board);
+            sources.AddRange(Players[pid].CrestArea);
+
+            foreach (var src in sources)
+            {
+                if (src?.Def?.Abilities == null || src.IsSilenced) continue;
+
+                var scope = new Vm.VmScope
+                {
+                    Owner = ZoneScope.Self,
+                    Controller = src.PlayerId,
+                    Source = Vm.EntityRef.From(src),
+                };
+
+                foreach (var ab in src.Def.Abilities)
+                {
+                    if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.PassiveAura) continue;
+                    if (ab.Body == null) continue;
+
+                    bool condOk;
+                    try { condOk = ab.Condition == null || eval.EvalBool(ab.Condition, scope); }
+                    catch { condOk = true; }
+                    if (!condOk) continue;
+
+                    foreach (var n in ab.Body)
+                    {
+                        if (n is not Ast.DamageModifierNode dm) continue;
+                        if (AuraTargets(eval, dm.Target, scope, target)) yield return (dm, scope);
+                    }
+                }
+            }
+        }
+
+        // 运行时被授予的光环（「使某个随从获得…」）
+        foreach (var (ge, gab, _) in _granted.ToList())
+        {
+            if (ge == null || ge.EntityId != target.EntityId) continue;
+            if (target.IsSilenced) continue;
+            if (gab?.Trigger == null || gab.Trigger.Event != CoreEvent.PassiveAura) continue;
+            if (gab.Body == null) continue;
+
+            var scope = new Vm.VmScope
+            {
+                Owner = ZoneScope.Self,
+                Controller = target.PlayerId,
+                Source = Vm.EntityRef.From(target),
+            };
+            foreach (var n in gab.Body)
+                if (n is Ast.DamageModifierNode dm2 && AuraTargets(eval, dm2.Target, scope, target))
+                    yield return (dm2, scope);
+        }
+    }
+
+    private bool AuraTargets(Vm.VmEval eval, Ast.TargetSpec spec, Vm.VmScope scope, RuntimeEntity target)
+    {
+        if (spec == null) return false;
+        try
+        {
+            foreach (var r in eval.ResolveRef(spec, scope))
+                if (r.EntityId == target.EntityId) return true;
+        }
+        catch { return false; }
+        return false;
+    }
+
+    /// <summary>结算「受到伤害」侧的修正（上限优先于增减）。</summary>
+    public int ApplyTakenModifiers(RuntimeEntity target, int amount, Ast.DamageSourceMask source)
+    {
+        if (target == null || amount <= 0) return amount;
+        var eval = new Vm.VmEval(this);
+        int dealt = amount;
+
+        var mods = QueryDamageModifiers(target).ToList();
+
+        // 先应用增减
+        foreach (var (dm, scope) in mods)
+        {
+            if (dm.Kind != Ast.DamageAuraKind.TakenDelta) continue;
+            if ((dm.SourceMask & source) == 0) continue;
+            int x;
+            try { x = eval.EvalNum(dm.Amount, scope); } catch { continue; }
+            dealt = dm.IsReduction ? dealt - x : dealt + x;
+            if (dealt <= 0) return 0;
+        }
+
+        // 再应用上限（取最严格的那个）
+        foreach (var (dm, scope) in mods)
+        {
+            if (dm.Kind != Ast.DamageAuraKind.TakenCap) continue;
+            if ((dm.SourceMask & source) == 0) continue;
+            int x;
+            try { x = eval.EvalNum(dm.Amount, scope); } catch { continue; }
+            if (x < 0) x = 0;
+            if (dealt > x) dealt = x;
+        }
+
+        return Math.Max(0, dealt);
+    }
+
+    /// <summary>结算「造成伤害」侧的修正。currentTarget 用于找出伤害来源实体。</summary>
+    public int ApplyDealtModifiers(int sourcePlayerId, RuntimeEntity currentTarget, int amount,
+                                   Ast.DamageSourceMask source)
+    {
+        if (amount <= 0) return amount;
+        var eval = new Vm.VmEval(this);
+        int dealt = amount;
+
+        for (int pid = 0; pid < 2; pid++)
+        {
+            var sources = new List<RuntimeEntity>();
+            sources.AddRange(Players[pid].Board);
+            sources.AddRange(Players[pid].CrestArea);
+
+            foreach (var src in sources)
+            {
+                if (src?.Def?.Abilities == null || src.IsSilenced) continue;
+
+                var scope = new Vm.VmScope
+                {
+                    Owner = ZoneScope.Self,
+                    Controller = src.PlayerId,
+                    Source = Vm.EntityRef.From(src),
+                };
+
+                foreach (var ab in src.Def.Abilities)
+                {
+                    if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.PassiveAura) continue;
+                    if (ab.Body == null) continue;
+
+                    bool condOk;
+                    try { condOk = ab.Condition == null || eval.EvalBool(ab.Condition, scope); }
+                    catch { condOk = true; }
+                    if (!condOk) continue;
+
+                    foreach (var n in ab.Body)
+                    {
+                        if (n is not Ast.DamageModifierNode dm) continue;
+                        if ((dm.SourceMask & source) == 0) continue;
+                        // 「造成伤害」侧限定在来源玩家自己的随从
+                        if (src.PlayerId != sourcePlayerId) continue;
+
+                        int x;
+                        try { x = eval.EvalNum(dm.Amount, scope); } catch { continue; }
+
+                        if (dm.Kind == Ast.DamageAuraKind.DealtDelta)
+                        {
+                            dealt = dm.IsReduction ? dealt - x : dealt + x;
+                            if (dealt <= 0) return 0;
+                        }
+                        else if (dm.Kind == Ast.DamageAuraKind.DealtCap)
+                        {
+                            if (x < 0) x = 0;
+                            if (dealt > x) dealt = x;
+                        }
+                    }
+                }
+            }
+        }
+
+        return Math.Max(0, dealt);
+    }
+
     public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId)
     {
         if (target == null || amount <= 0) return;

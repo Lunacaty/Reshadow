@@ -140,6 +140,15 @@ public sealed class GameSchema
         // 免点数进化。持有这些关键词的随从，即使 EP / SEP 为 0 也能手动进化，
         // 且进化时不扣点。
         "free_evolve", "free_super_evolve",
+
+        // 绝对免疫家族（一代经典）。五个正交词条：
+        //   immune_damage              不受任何伤害
+        //   immune_combat_damage       不受战斗伤害
+        //   immune_ability_damage      不受能力伤害
+        //   immune_effects             不受能力影响（含破坏/消失/变身/沉默/剥夺关键词）
+        //   immune_effects_except_stats 同上，但放行攻防加减
+        "immune_damage", "immune_combat_damage", "immune_ability_damage",
+        "immune_effects", "immune_effects_except_stats",
     };
 
     /// <summary>构造一份装好内置词条的 schema。</summary>

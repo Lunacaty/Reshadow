@@ -147,6 +147,13 @@ public static class AstEnglishPrinter
                 sb.Append("modifycost " + mc.Op + " " + PrintNum(mc.Value) + " to " + PrintTarget(mc.Target));
                 if (mc.Duration != Ast.DurationKind.Permanent) sb.Append(" dur=" + mc.Duration);
                 break;
+            case DamageModifierNode dm:
+                sb.Append("damageaura " + dm.Kind + " " + dm.SourceMask
+                          + " " + (dm.IsReduction ? "reduce" : "add")
+                          + " " + PrintNum(dm.Amount)
+                          + " to " + PrintTarget(dm.Target));
+                if (dm.Duration != Ast.DurationKind.Permanent) sb.Append(" dur=" + dm.Duration);
+                break;
             case ModifyKeywordNode k:
                 sb.Append("keyword " + k.Op + " " + k.Keyword.Name
                           + (k.Value != null ? "(" + PrintNum(k.Value) + ")" : "")

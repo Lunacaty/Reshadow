@@ -320,6 +320,53 @@ public sealed class LoopNode : EffectNode
 // "未激活"状态的载体是**源实体**上的位掩码计数器 mode_activated_mask，
 // 而不是玩家级计数器：同一张卡的两个实例各有各的进度，互不干扰。
 // 见 CardVm.ActivationMaskKey / ResolveActivationOwner。
+/// <summary>伤害来源分类：区分「战斗伤害」与「能力伤害」。</summary>
+[Flags]
+public enum DamageSourceMask
+{
+    None = 0,
+    /// <summary>随从主动攻击与反击交换的伤害。</summary>
+    Combat = 1 << 0,
+    /// <summary>法术、入场曲、谢幕曲、超进化击飞溢出等能力伤害。</summary>
+    Ability = 1 << 1,
+    All = Combat | Ability,
+}
+
+/// <summary>伤害修正的种类。</summary>
+public enum DamageAuraKind
+{
+    /// <summary>受到的伤害 +X / -X（减伤时 IsReduction = true）。</summary>
+    TakenDelta,
+    /// <summary>受到的伤害不能超过 X；X = 0 即不受该类伤害。</summary>
+    TakenCap,
+    /// <summary>造成的伤害 +X / -X。</summary>
+    DealtDelta,
+    /// <summary>造成的伤害不能超过 X。</summary>
+    DealtCap,
+}
+
+/// <summary>
+/// 伤害修正与护盾节点。
+///
+/// 放在 Trigger.Event == PassiveAura 的能力体里就是「在场即生效、离场即消失」的光环；
+/// 放在 Fanfare / Evolve 里则是挂到目标身上的限时修正。
+/// </summary>
+public sealed class DamageModifierNode : EffectNode
+{
+    /// <summary>受保护或受限制的目标。</summary>
+    public TargetSpec Target { get; init; } = TargetSpec.Self;
+    public DamageAuraKind Kind { get; init; }
+    public DamageSourceMask SourceMask { get; init; } = DamageSourceMask.All;
+
+    /// <summary>动态数值表达式（可以是 Const(3)，也可以是「己方战场随从数」）。</summary>
+    public NumExpr Amount { get; init; } = NumExpr.Const(0);
+
+    /// <summary>TakenDelta / DealtDelta：true 表示减伤，false 表示增伤。</summary>
+    public bool IsReduction { get; init; } = true;
+
+    public DurationKind Duration { get; init; } = DurationKind.Permanent;
+}
+
 public enum ModeDispatchKind
 {
     Choose = 0,

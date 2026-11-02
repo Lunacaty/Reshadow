@@ -1,3 +1,4 @@
+using ShadowverseFan.KernelV3.Ast;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -248,9 +249,11 @@ public sealed class CombatResolver
             bool attackerHadBarrier = Has(attacker, "barrier");
 
             // 8. 被攻击方反击
-            int dealtToDefender = ApplyDamage(defender, atk, attacker.PlayerId, vm);
+            int dealtToDefender = ApplyDamage(defender, atk, attacker.PlayerId, vm,
+                                               Ast.DamageSourceMask.Combat);
             ApplyDrain(attacker, dealtToDefender, vm);
-            int dealtToAttacker = ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm);
+            int dealtToAttacker = ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm,
+                                               Ast.DamageSourceMask.Combat);
             // 【虹吸 Drain】只在「主动发动攻击造成伤害」时回血。
             // 被攻击方的反击不触发它自己的 Drain（官方定义）。
             // 之前这里也调了 ApplyDrain(defender, ...)，
@@ -320,11 +323,40 @@ public sealed class CombatResolver
         else { _state.EventLog.Add(ev); vm.EnqueueEvent(ev); }
     }
 
-    public int ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId, CardVm vm = null)
+    public int ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId,
+                           CardVm vm = null,
+                           DamageSourceMask source = DamageSourceMask.Ability)
     {
         if (target == null || amount <= 0) return 0;
 
         if (target.IsSuperEvolved && _state.ActivePlayer == target.PlayerId) return 0;
+
+        // ---- 绝对免疫：按伤害来源精确拦截 ----
+        //
+        // 「不受任何伤害」永远生效；
+        // 「不受战斗伤害」「不受能力伤害」只拦对应来源。
+        // immune_effects 蕴含免疫能力伤害，但战斗伤害照常。
+        var kwImmuneAll = _schema.Keyword("immune_damage");
+        var kwImmuneCombat = _schema.Keyword("immune_combat_damage");
+        var kwImmuneAbility = _schema.Keyword("immune_ability_damage");
+        var kwImmuneEffects = _schema.Keyword("immune_effects");
+        var kwImmuneEffectsXS = _schema.Keyword("immune_effects_except_stats");
+
+        if (target.Keywords.Contains(kwImmuneAll)) return 0;
+        if ((source & DamageSourceMask.Combat) != 0
+            && target.Keywords.Contains(kwImmuneCombat)) return 0;
+        if ((source & DamageSourceMask.Ability) != 0
+            && (target.Keywords.Contains(kwImmuneAbility)
+                || target.Keywords.Contains(kwImmuneEffects)
+                || target.Keywords.Contains(kwImmuneEffectsXS))) return 0;
+
+        // ---- 动态伤害修正（光环 + 挂载）----
+        //
+        // 先算「造成伤害」侧（由来源实体决定），再算「受到伤害」侧（由目标决定）。
+        // 全部实时扫描，不缓存 —— 光环源离场或被沉默后立刻失效。
+        amount = _state.ApplyDealtModifiers(sourcePlayerId, target, amount, source);
+        amount = _state.ApplyTakenModifiers(target, amount, source);
+        if (amount <= 0) return 0;
 
         var bonusKey = _schema.Keyword("damage_taken_bonus");
         if (target.KeywordValues.TryGetValue(bonusKey, out var bonus)) amount += bonus;
