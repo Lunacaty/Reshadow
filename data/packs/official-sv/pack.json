@@ -779,6 +779,21 @@
    "rarity": 2
   },
   {
+   "card_id": 10052120,
+   "name_eng": "Amorous Necromancer",
+   "name_chs": "多情的唤灵师",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Abysscraft",
+   "traits": [],
+   "cost": 4,
+   "attack": 5,
+   "life": 4,
+   "source_format": "eng_cnl",
+   "text": "<ev><b><color=Keyword>Evolve</color></b>: Summon 2 copies of <b><i><color=Keyword>Ghost</color></i></b>.</ev>\n<sev><b><color=Keyword>Super-Evolve</color></b>: Give them <b><color=Keyword>Drain</color></b>.</sev>",
+   "text_chs": "<ev>【<color=Keyword>进化时</color>】召唤2个『<color=Keyword>怨灵</color>』。</ev>\n<sev>【<color=Keyword>超进化时</color>】使其获得【<color=Keyword>虹吸</color>】。</sev>"
+  },
+  {
    "card_id": 10052310,
    "name_eng": "Soul Predation",
    "name_chs": "捕食灵魂",
@@ -3805,6 +3820,21 @@
    "rarity": 2
   },
   {
+   "card_id": 10223110,
+   "name_eng": "Rosé, Princess Knight",
+   "name_chs": "剑士公主·萝泽",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Swordcraft",
+   "traits": [],
+   "cost": 3,
+   "attack": 3,
+   "life": 2,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Enhance</color> (5)</b>: Draw a Swordcraft follower that costs 2 or less and set its cost to 0.\n<hr><b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Follower</color></b> <b><color=Keyword>Strike</color></b>: If the opposing follower is damaged, destroy it.",
+   "text_chs": "【<color=Keyword>爆能强化</color>_5】抽取1张费用为2或以下的皇家护卫·随从，使其费用变为0。\n<hr>【<color=Keyword>突进</color>】\n【<color=Keyword>攻击时</color>】若攻击受伤的随从，则破坏交战对手。"
+  },
+  {
    "card_id": 10223120,
    "name_eng": "Prim, Princess's Picnic",
    "name_chs": "假日中的王女·普莉姆",
@@ -5868,6 +5898,21 @@
    "rarity": 1
   },
   {
+   "card_id": 10372110,
+   "name_eng": "Supplicant of Destruction",
+   "name_chs": "破坏的祈祷者",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Portalcraft",
+   "traits": [],
+   "cost": 2,
+   "attack": 2,
+   "life": 2,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Fanfare</color></b>: Select another allied card on the field. If you selected one, destroy it and deal 2 damage to a random enemy follower.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Replicate the effects of this card's <b><color=Keyword>Fanfare</color></b> ability.</ev>",
+   "text_chs": "【<color=Keyword>入场曲</color>】选择自己的战场上的1张其他卡牌，若成功选择，则破坏该卡牌。对对手的战场上的随机1个随从造成2点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】发动与【<color=Keyword>入场曲</color>】相同的能力。</ev>"
+  },
+  {
    "card_id": 10372120,
    "name_eng": "Field Scientist",
    "name_chs": "现场工程师",
@@ -5882,6 +5927,21 @@
    "text": "<b><color=Keyword>Fanfare</color></b>: Select a card in your hand and discard it. Draw 3 cards.",
    "text_chs": "【<color=Keyword>入场曲</color>】选择自己的1张手牌，舍弃该手牌。抽取3张卡牌。",
    "rarity": 2
+  },
+  {
+   "card_id": 10372210,
+   "name_eng": "Wasteland of Destruction",
+   "name_chs": "破坏的荒野",
+   "kind": 2,
+   "is_token": false,
+   "clan": "Portalcraft",
+   "traits": [],
+   "cost": 2,
+   "attack": 0,
+   "life": 0,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Fanfare</color></b>: Select another allied card on the field. If you selected one, destroy it and draw 2 cards.\n<hr><b><color=Keyword>Last Words</color></b>: Draw a card.",
+   "text_chs": "【<color=Keyword>入场曲</color>】选择自己的战场上的1张其他卡牌，若成功选择，则破坏该卡牌。抽取2张卡牌。\n<hr>【<color=Keyword>谢幕曲</color>】抽取1张卡牌。"
   },
   {
    "card_id": 10373110,
@@ -6357,6 +6417,36 @@
    "text": "Select a <b><color=Keyword>Mode</color></b> to activate.\n<ridx=0>1. Give the leftmost allied Swordcraft follower on the field \"Can attack 2 times per turn.\"</ridx>\n<ridx=1>2. Give all allied Swordcraft followers on the field +1/+1 and <b><color=Keyword>Barrier</color></b>.</ridx>\n<ridx=2>3. Recover 2 play points and 1 evolution point.</ridx>\n<ridx=3>4. Restore 6 defense to your leader.</ridx>",
    "text_chs": "【<color=Keyword>模式</color>】选择1个能力发动。\n<ridx=0>（1）使自己的战场上的从左起的1个皇家护卫·随从获得「1回合可以攻击2次」。</ridx>\n<ridx=1>（2）使自己的战场上的所有皇家护卫·随从+1/+1且获得【<color=Keyword>屏障</color>】。</ridx>\n<ridx=2>（3）回复自己2点能量点。回复自己1点进化点。</ridx>\n<ridx=3>（4）回复自己的主战者6点生命值。</ridx>",
    "rarity": 3
+  },
+  {
+   "card_id": 10424110,
+   "name_eng": "Zeta & Bea, Crimson and Blue",
+   "name_chs": "真红与群青·塞达&贝阿朵丽丝",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Swordcraft",
+   "traits": [],
+   "cost": 4,
+   "attack": 3,
+   "life": 2,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Zeta & Bea, Crimson and Blue</color></i></b>.\n<b><color=Keyword>Enhance</color> (6)</b>: Give it <b><color=Keyword>Bane</color></b> and this follower <b><color=Keyword>Storm</color></b>.\n<hr><b><color=Keyword>Rush</color></b>",
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>真红与群青·塞达&贝阿朵丽丝</color>』。\n【<color=Keyword>爆能强化</color>_6】使其获得【<color=Keyword>毁灭</color>】。本随从获得【<color=Keyword>疾驰</color>】。\n<hr>【<color=Keyword>突进</color>】"
+  },
+  {
+   "card_id": 10424120,
+   "name_eng": "Seofon, Leader of the Eternals",
+   "name_chs": "十天众统领·希耶提",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Swordcraft",
+   "traits": [],
+   "cost": 4,
+   "attack": 4,
+   "life": 3,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Skybound Art</color></b> - Evolve all unevolved allied followers on the field. <b><color=Keyword>Super Skybound Art</color></b> - Super-evolve them instead.",
+   "text_chs": "【<color=Keyword>入场曲</color>】【<color=Keyword>奥义</color>】使自己的战场上的所有进化前的随从进化。【<color=Keyword>解放奥义</color>】改为超进化。"
   },
   {
    "card_id": 10431110,
@@ -7917,6 +8007,21 @@
    "rarity": 3
   },
   {
+   "card_id": 10544110,
+   "name_eng": "Erntz, Governing Justice",
+   "name_chs": "约束的《正义》·伊兰翠",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Dragoncraft",
+   "traits": [],
+   "cost": 10,
+   "attack": 8,
+   "life": 8,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Ward</color></b>\nAt the end of your turn, if this follower is unevolved, deal 8 damage to 2 random enemy followers and restore 8 defense to your leader. If this follower is evolved, deal 8 damage to the enemy leader.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Remove <b><color=Keyword>Ward</color></b> from this follower. Give it <b><color=Keyword>Intimidate</color></b>.</ev>",
+   "text_chs": "【<color=Keyword>守护</color>】\n自己的回合结束时，若本随从为进化前，则对对手的战场上的随机2个随从造成8点伤害。回复自己的主战者8点生命值。若为进化后，则对对手的主战者造成8点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】本随从失去【<color=Keyword>守护</color>】。本随从获得【<color=Keyword>威慑</color>】。</ev>"
+  },
+  {
    "card_id": 10544120,
    "name_eng": "Yube, Crestpetal",
    "name_chs": "波摇花·夕夜",
@@ -8269,6 +8374,21 @@
     "Rush"
    ],
    "rarity": 4
+  },
+  {
+   "card_id": 10571110,
+   "name_eng": "Marionette Master",
+   "name_chs": "舞台缔造者",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Portalcraft",
+   "traits": [],
+   "cost": 4,
+   "attack": 3,
+   "life": 3,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Fanfare</color></b>: Summon an <b><i><color=Keyword>Enhanced Puppet</color></i></b> and <b><i><color=Keyword>Puppet</color></i></b>.\n<b><color=Keyword>Enhance</color> (7)</b>: Give them <b><color=Keyword>Storm</color></b>.",
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>改良型·悬丝傀儡</color>』和1个『<color=Keyword>悬丝傀儡</color>』。\n【<color=Keyword>爆能强化</color>_7】使其获得【<color=Keyword>疾驰</color>】。"
   },
   {
    "card_id": 10571120,
@@ -8730,6 +8850,23 @@
    "text": "<b><color=Keyword>Fanfare</color></b>: Select a card in your hand and return it to deck. Draw 2 Swordcraft followers.",
    "text_chs": "【<color=Keyword>入场曲</color>】选择自己的1张手牌，使其返回牌组。抽取2张皇家护卫·随从。",
    "rarity": 1
+  },
+  {
+   "card_id": 10621310,
+   "name_eng": "Advent of the Eld Sword",
+   "name_chs": "天剑授予",
+   "kind": 3,
+   "is_token": false,
+   "clan": "Swordcraft",
+   "traits": [
+    "Encroacher"
+   ],
+   "cost": 5,
+   "attack": 0,
+   "life": 0,
+   "source_format": "eng_cnl",
+   "text": "Summon 3 copies of <b><i><color=Keyword>Fearless Soldier</color></i></b>.\n<b><color=Keyword>Enhance</color> (7)</b>: Give them +2/+2.",
+   "text_chs": "召唤3个『<color=Keyword>勇烈的士兵</color>』。\n【<color=Keyword>爆能强化</color>_7】使其+2/+2。"
   },
   {
    "card_id": 10622110,
@@ -9315,6 +9452,21 @@
    "text": "Select an enemy follower on the field, banish it, and summon an exact copy of it.",
    "text_chs": "选择对手的战场上的1个随从，使其消失，召唤对应数量的复制随从。",
    "rarity": 2
+  },
+  {
+   "card_id": 10653110,
+   "name_eng": "Deprived Destroyer",
+   "name_chs": "渴命的破坏者",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Abysscraft",
+   "traits": [],
+   "cost": 5,
+   "attack": 3,
+   "life": 3,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Fanfare</color></b>: Select another allied follower on the field. If you selected one, destroy it and evolve this follower.\n<hr><ev>When this follower evolves, summon a <b><i><color=Keyword>Bat</color></i></b> and evolve it.</ev>",
+   "text_chs": "【<color=Keyword>入场曲</color>】选择自己的战场上的1个其他随从，若成功选择，则破坏该随从。本随从进化。\n<hr><ev>本随从进化时，召唤1个『<color=Keyword>蝙蝠</color>』，使其进化。</ev>"
   },
   {
    "card_id": 10653310,
@@ -10047,6 +10199,23 @@
    "rarity": 1
   },
   {
+   "card_id": 10721310,
+   "name_eng": "Measured Attunement",
+   "name_chs": "敌我的调律",
+   "kind": 3,
+   "is_token": false,
+   "clan": "Swordcraft",
+   "traits": [
+    "Anathema"
+   ],
+   "cost": 1,
+   "attack": 0,
+   "life": 0,
+   "source_format": "eng_cnl",
+   "text": "Select an enemy follower on the field and deal it 3 damage. <b><color=Keyword>Rally</color> (10)</b> - Give it \"Can't attack followers or leaders\" until the end of your opponent's turn.",
+   "text_chs": "选择对手的战场上的1个随从，对其造成3点伤害。【<color=Keyword>协作</color>_10】对手的回合结束前，使其获得「无法攻击随从或主战者」。"
+  },
+  {
    "card_id": 10722110,
    "name_eng": "Sharp-Eared Operative",
    "name_chs": "听略谍报兵",
@@ -10629,6 +10798,21 @@
    "text": "Summon a <b><i><color=Keyword>Ghost</color></i></b>, <b><i><color=Keyword>Bat</color></i></b>, and <b><i><color=Keyword>Skeleton</color></i></b> and evolve them.",
    "text_chs": "召唤1个『<color=Keyword>怨灵</color>』和1个『<color=Keyword>蝙蝠</color>』和1个『<color=Keyword>骸骨士兵</color>』，使其进化。",
    "rarity": 2
+  },
+  {
+   "card_id": 10753110,
+   "name_eng": "Beastmaster Bones",
+   "name_chs": "骸骨驯兽师",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Abysscraft",
+   "traits": [],
+   "cost": 7,
+   "attack": 3,
+   "life": 4,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Rotting Zombie</color></i></b> and <b><i><color=Keyword>Skeleton</color></i></b>.\n<hr>Whenever an allied Departed follower enters the field, give it <b><color=Keyword>Storm</color></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Select another allied follower on the field. If you selected one, destroy it and a random enemy follower.</sev>",
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>腐臭的僵尸</color>』和1个『<color=Keyword>骸骨士兵</color>』。\n<hr>自己的亡者·随从进入战场时，使其获得【<color=Keyword>疾驰</color>】。\n<hr><sev>【<color=Keyword>超进化时</color>】选择自己的战场上的1个其他随从，若成功选择，则破坏该随从。破坏对手的战场上的随机1个随从。</sev>"
   },
   {
    "card_id": 10753310,
@@ -12526,6 +12710,21 @@
    "rarity": 1
   },
   {
+   "card_id": 10912110,
+   "name_eng": "Leafshadow Assassin",
+   "name_chs": "根延潜伏者",
+   "kind": 1,
+   "is_token": false,
+   "clan": "Forestcraft",
+   "traits": [],
+   "cost": 2,
+   "attack": 2,
+   "life": 2,
+   "source_format": "eng_cnl",
+   "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Fairy</color></i></b> to your hand. <b><color=Keyword>Combo</color> (3)</b> - Give it <b><color=Keyword>Bane</color></b>.",
+   "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>妖精</color>』加入手牌。【<color=Keyword>连击</color>_3】使其获得【<color=Keyword>毁灭</color>】。"
+  },
+  {
    "card_id": 10912120,
    "name_eng": "Primate Plotters",
    "name_chs": "温泉度假猴",
@@ -14089,6 +14288,20 @@
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select a <b><color=Keyword>Mode</color></b> to activate.\n<ridx=0>1. <b><color=Keyword>Earth Rite</color> (1)</b> - Deal 2 damage to a random enemy follower.</ridx>\n<ridx=1>2. Gain 2 earth sigils.</ridx>",
    "rarity": 1
+  },
+  {
+   "card_id": 11031310,
+   "name_eng": "Atelier Relocation",
+   "name_chs": "Atelier Relocation",
+   "kind": 3,
+   "is_token": false,
+   "clan": "Runecraft",
+   "traits": [],
+   "cost": 4,
+   "attack": 0,
+   "life": 0,
+   "source_format": "eng_cnl",
+   "text": "Summon 3 copies of <b><i><color=Keyword>Clay Golem</color></i></b>.\n<b><color=Keyword>Enhance</color> (8)</b>: Give them <b><color=Keyword>Storm</color></b>."
   },
   {
    "card_id": 11032110,

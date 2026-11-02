@@ -837,12 +837,25 @@ public sealed class EnglishCompiler
             // 官方卡池里 14 张卡统统报「代词 it 缺少前序绑定」。
             bool hasInsteadWord = sent.Any(t => t.IsWord("instead"));
 
+            // Evolve → Super-Evolve 是**跨段落**的耦合对：
+            //   "<ev>Evolve: Summon 2 copies of Ghost.</ev>"
+            //   "<sev>Super-Evolve: Give them Drain.</sev>"
+            // 两段各走一次 CompileSegment，currentAbility 在第二段开头还是 null，
+            // 所以必须看 _lastBuiltAbility（跨段保留）才能接上。
             bool isCoupledSuperEvolve = hb.EventExplicit
                 && hb.Event == CoreEvent.OnSuperEvolve
                 && ((currentAbility?.Trigger?.Event == CoreEvent.OnEvolve)
                     || (_lastBuiltAbility?.Trigger?.Event == CoreEvent.OnEvolve));
 
-            if (hb.EventExplicit && !isCoupledSuperEvolve && !hasInsteadWord)
+            // 保守兜底：即便上一段是别的触发（例如 '<ev>' 尚未编译完），
+            // 只要当前段是 Super-Evolve 且已有任何前序绑定，就保留槽位。
+            // "Give them Drain" 依赖的正是上一段召唤出的 Ghost。
+            bool keepSlotsForSuperEvolve = hb.EventExplicit
+                && hb.Event == CoreEvent.OnSuperEvolve
+                && _target.BoundSlots.Count > 0;
+
+            if (hb.EventExplicit && !isCoupledSuperEvolve && !keepSlotsForSuperEvolve
+                && !hasInsteadWord)
                 _target.ResetSlots();
 
             // 触发主体优先；没有任何主体时，若本句带交战目标或条件里提到 $opposing，
