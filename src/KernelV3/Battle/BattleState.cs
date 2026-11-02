@@ -1756,6 +1756,7 @@ public sealed class BattleState : IVmWorld
         e.KeywordValues.Clear();
         e.Counters.Clear();
         e.TempModifiers.Clear();
+        e.LastCreatedRefs.Clear();
         e.IsEvolved = false;
         e.IsSuperEvolved = false;
         e.IsSilenced = false;

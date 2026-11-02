@@ -629,6 +629,10 @@ public sealed partial class CardVm
         // 再留着 LastFieldDef 会让它在下次离场时拿旧卡面的能力去响应事件。
         t.LastFieldDef = null;
 
+        // 旧的召唤引用同样不能留：回手后再上场是另一条生命周期，
+        // 残留的 $created 会让 Super-Evolve 的 them 指向上一次对局里的实体。
+        t.LastCreatedRefs.Clear();
+
         var def = t.Def;
         t.Attack = def?.BaseAttack ?? t.Attack;
         t.Life = def?.BaseLife ?? t.Life;
@@ -754,19 +758,21 @@ public sealed partial class CardVm
         else
         {
             scope.Bind(n.OutSlot, created);
+        }
 
-            // 同时把「这次召唤了什么」记在源实体上，
-            // 供跨能力域的 them/it 回指（Evolve 召唤 -> Super-Evolve 强化）。
-            if (scope.Source != null)
+        // 无论单次还是连续召唤，都把当前 $created 槽位同步到源实体上。
+        //
+        // 早先这段只写在 else 分支里，于是「Summon A and B」的第二只
+        // 不会进 LastCreatedRefs —— 后续 "Give them Storm" 少喂一只。
+        // 跨能力域的 them/it 回指（Evolve 召唤 -> Super-Evolve 强化）也依赖它。
+        if (scope.Source != null && n.OutSlot == TargetSpec.SlotCreated)
+        {
+            var srcRef = scope.Source.Value;
+            var carrier = _world.GetLive(srcRef.EntityId, srcRef.EntrySerial);
+            if (carrier != null)
             {
-                var srcRef = scope.Source.Value;
-                var carrier = _world.GetLive(srcRef.EntityId, srcRef.EntrySerial);
-                if (carrier != null)
-                {
-                    carrier.LastCreatedRefs.Clear();
-                    foreach (var e in created)
-                        carrier.LastCreatedRefs.Add(EntityRef.From(e));
-                }
+                carrier.LastCreatedRefs.Clear();
+                carrier.LastCreatedRefs.AddRange(scope.Read(n.OutSlot));
             }
         }
 

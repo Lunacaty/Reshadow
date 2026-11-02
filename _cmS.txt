@@ -1,0 +1,55 @@
+fix(111): 补齐 4 个运行时静默 Bug
+
+Gemini 审查 20c6a36 后指出 4 处遗漏，逐条核实并修复。
+
+【缺陷 1（严重）：ParseAndAllTargets 漏传 isDestroy】
+  10753110 骸骨驯兽师「destroy it and a random enemy follower」
+  的第二个目标 IsDestroy 恒为 false，运行时走 MoveEntity 而非 DestroyEntity ——
+  被炸的随从**不触发谢幕曲、不加墓场、不进破坏池**，
+  且无视「无法被能力破坏」与超进化免死；中文还会渲染成「舍弃」。
+
+  修：ParseAndAllTargets 增加 isDestroy 参数并透传；
+  解析失败时 cur.Seek(save) 回退游标（此前吃掉 and 后不回退，
+  "and evolve this follower" 这类并列动作会丢掉后半句）。
+
+  实测：两个 MoveZoneNode 现在都是 IsDestroy=True。
+
+【缺陷 2（中危）：CompileSegment 末尾误清 _lastBuiltAbility】
+  我在 CompileSegment 结尾加了 _lastBuiltAbility = null;
+  但它的用途恰恰是**跨段落**记忆上一条能力 ——
+  <ev>/<sev> 两段各走一次 CompileSegment，第二段靠它识别
+  「上一段是 OnEvolve」才不清槽位。清空后判据恒 false。
+
+  我当时没找到真凶，反而加了个过宽的 keepSlotsForSuperEvolve 兜底
+  （只要 BoundSlots 非空就保留），会让 Fanfare 的槽位泄漏进 Super-Evolve。
+
+  修：删掉 CompileSegment 末尾的清空（CompileCore 入口处那次保留即可）；
+  删掉 keepSlotsForSuperEvolve，判据只认「上一段确实是 OnEvolve」。
+
+【缺陷 3（中危）：合并条件后续句时洗掉进化域条件】
+  在 <ev>/<sev> 段内，第一句的 Condition 本来就带着
+  HasStateExpr(Evolved/SuperEvolved, Self) 的进化域门槛。
+  我判 prevHasRealCond 只看「不是 ConstBoolExpr」，于是把它当句首 If 下沉包裹，
+  并把外层能力重建成 BoolExpr.True —— **整个进化域门槛被洗掉**，
+  Super-Evolve 变成无条件触发。
+
+  修：与 AndZone(zone, BoolExpr.True) 基准比对，只有额外条件才下沉；
+  外层重建时保留 zoneBaseCond 而非 BoolExpr.True。
+
+  实测：10753110 的 OnSuperEvolve 条件现在是
+    (true and is SuperEvolved(slot:$self))  —— 门槛保住了。
+
+【缺陷 4（低危）：两处收口】
+  · ActionParser 第 139 行 EvolveNode 槽位登记写死 $self，
+    改为按 IsSelfTarget 区分 $self / $selected
+    （"Super-evolve them instead" 的 it 才指得回群体）。
+  · DoSpawn 的 LastCreatedRefs 同步只写在 else 分支，
+    连续召唤（Summon A and B）时第二只没记进去 → 
+    移到 if/else 之后，统一按 scope.Read(n.OutSlot) 同步。
+    并在 ResetToPrintedValues / TransformEntity 各补 LastCreatedRefs.Clear()，
+    防止回手或变身后残留旧引用。
+
+【验证】
+  ALL ENGINE CHECKS PASSED（含 check_ast_traps）
+  VM 50-50 / 文档验收 102-102 / 完整对局 7-7 / 战斗 UI 31-31
+  official Ok=True 错误=0 卡数=982

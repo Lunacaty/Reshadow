@@ -847,15 +847,12 @@ public sealed class EnglishCompiler
                 && ((currentAbility?.Trigger?.Event == CoreEvent.OnEvolve)
                     || (_lastBuiltAbility?.Trigger?.Event == CoreEvent.OnEvolve));
 
-            // 保守兜底：即便上一段是别的触发（例如 '<ev>' 尚未编译完），
-            // 只要当前段是 Super-Evolve 且已有任何前序绑定，就保留槽位。
-            // "Give them Drain" 依赖的正是上一段召唤出的 Ghost。
-            bool keepSlotsForSuperEvolve = hb.EventExplicit
-                && hb.Event == CoreEvent.OnSuperEvolve
-                && _target.BoundSlots.Count > 0;
-
-            if (hb.EventExplicit && !isCoupledSuperEvolve && !keepSlotsForSuperEvolve
-                && !hasInsteadWord)
+            // 注意：这里**不能**再加「Super-Evolve 段只要 BoundSlots 非空就保留」的兜底。
+            // 那样 Fanfare 的旧槽位会泄漏进 Super-Evolve：
+            //   "Fanfare: Summon X."  ...  "Super-Evolve: Give them Drain."
+            // them 会错误指向 Fanfare 召出的东西。
+            // 判据只认「上一段确实是 OnEvolve」这一条。
+            if (hb.EventExplicit && !isCoupledSuperEvolve && !hasInsteadWord)
                 _target.ResetSlots();
 
             // 触发主体优先；没有任何主体时，若本句带交战目标或条件里提到 $opposing，
@@ -1099,11 +1096,25 @@ public sealed class EnglishCompiler
                 //
                 // AbilityDef.Condition 是 init-only，不能就地赋值，
                 // 只能重建一条并把 result 里的旧引用换掉。
+                // 判据必须与「当前段的基准进化域条件」对比，而不是简单看
+                // 「不是 ConstBoolExpr」——
+                //
+                // 只要在 <ev> / <sev> 段内，第一句的 Condition 就已经是
+                //     AndZone(zone, AndCosts(null, []))
+                // 即 HasStateExpr(SuperEvolved, Self) 之类的进化域门槛。
+                // 若把它当成「第一句自带的句首 If」下沉包裹，
+                // 再把外层能力重建成 BoolExpr.True，整个进化域门槛就被洗掉了 ——
+                // 「Super-Evolve: ...」会变成无条件触发。
+                //
+                // 只有当第一句**除了进化域本身之外**还额外挂着条件时，才需要下沉。
+                var zoneBaseCond = AndZone(zone, BoolExpr.True);
                 var prevCond = currentAbility.Condition;
-                bool prevHasRealCond = prevCond != null && !(prevCond is ConstBoolExpr);
+                bool prevHasExtraCond = prevCond != null
+                    && !(prevCond is ConstBoolExpr)
+                    && AstEnglishPrinter.PrintBool(prevCond) != AstEnglishPrinter.PrintBool(zoneBaseCond);
 
                 var bodyList = (List<EffectNode>)currentAbility.Body;
-                if (prevHasRealCond && bodyList.Count > 0)
+                if (prevHasExtraCond && bodyList.Count > 0)
                 {
                     var wrapped = new List<EffectNode>
                     {
@@ -1119,7 +1130,8 @@ public sealed class EnglishCompiler
                     var rebuilt = new AbilityDef
                     {
                         Trigger = currentAbility.Trigger,
-                        Condition = BoolExpr.True,
+                        // 保留进化域基准条件，绝不能写成 BoolExpr.True
+                        Condition = zoneBaseCond,
                         Costs = currentAbility.Costs,
                         Body = currentAbility.Body,
                         HasFuse = currentAbility.HasFuse,
@@ -1215,7 +1227,14 @@ public sealed class EnglishCompiler
 
         // 段内累积状态不得跨段：漏清会让下一段的档位并进上一张卡的变身表。
         _fuseTiers.Clear();
-        _lastBuiltAbility = null;
+
+        // _lastBuiltAbility **不能在此清空**。
+        // 它的用途就是跨段落记忆上一条落盘的能力：
+        //   <ev> Evolve: Summon 2 copies of Ghost. </ev>
+        //   <sev> Super-Evolve: Give them Drain. </sev>
+        // 两段各走一次 CompileSegment，第二段开头靠它才能识别
+        // 「上一段是 OnEvolve」从而不清槽位。
+        // 整张卡的复位在 CompileCore 入口处做（那才是正确的生命周期起点）。
 
         return result;
     }

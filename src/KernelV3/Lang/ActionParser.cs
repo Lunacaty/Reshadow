@@ -136,7 +136,14 @@ public sealed class ActionParser
                         case SpawnCardNode: _target.MarkBound(TargetSpec.SlotCreated); break;
                         // "Evolve this follower" / "Remove Ward from this follower"
                         // 「本卡」也是可绑定来源，后续的 it 指向它。
-                        case EvolveNode: _target.MarkBound(TargetSpec.SlotSelf); break;
+                        // 进化目标可能是本卡，也可能是前句选中的群体：
+                        //   "Evolve this follower and give it +1/+0"        -> $self
+                        //   "Super-evolve them instead"                     -> $selected
+                        // 写死 $self 会让后者的 it 指回本卡。
+                        case EvolveNode evo when IsSelfTarget(evo.Target):
+                            _target.MarkBound(TargetSpec.SlotSelf); break;
+                        case EvolveNode:
+                            _target.MarkBound(TargetSpec.SlotSelected); break;
                         // 不能写 `ms.Target == TargetSpec.Self`：TargetSpec 是 class、
                         // 未重载 ==，而 TargetSpec.Self 是 `=> new()` 属性 ——
                         // 每次访问都是新实例，引用比较恒为 false，等于这段判断从未生效。
@@ -1605,7 +1612,7 @@ public sealed class ActionParser
         }
         ConsumeDestination(cur);
         var moveNodes = new List<EffectNode> { new MoveZoneNode { Target = target, ToZone = to, IsDestroy = isDestroy } };
-        moveNodes.AddRange(ParseAndAllTargets(cur, to));
+        moveNodes.AddRange(ParseAndAllTargets(cur, to, isDestroy));
         return moveNodes;
     }
 
@@ -2453,16 +2460,30 @@ public sealed class ActionParser
 
     /// <summary>消费 "to your hand" / "to the field" 这类收尾短语。</summary>
     /// <summary>"and all followers" / "and all enemy copies of it" 这类并列全体目标。</summary>
-    private List<EffectNode> ParseAndAllTargets(TokenCursor cur, ZoneRef to)
+    /// <summary>
+    /// "destroy it and a random enemy follower" 里的第二个及后续目标。
+    ///
+    /// isDestroy 必须透传：否则第二个目标构造出的 MoveZoneNode.IsDestroy 恒为 false，
+    /// 运行时走 MoveEntity 而不是 DestroyEntity ——
+    /// 被炸的随从不触发谢幕曲、不加墓场、不进破坏池，
+    /// 且无视「无法被能力破坏」与超进化免死。
+    /// 中文打印还会渲染成「破坏该目标。舍弃敌方战场的随机1个随从。」
+    /// </summary>
+    private List<EffectNode> ParseAndAllTargets(TokenCursor cur, ZoneRef to, bool isDestroy = false)
     {
         var nodes = new List<EffectNode>();
         while (cur.Current.IsWord("and"))
         {
+            int save = cur.Position;
             cur.Advance();
             var t = _target.TryParse(cur);
             if (t == null) { cur.TryMatchAnyWord("all"); t = _target.TryParse(cur); }
-            if (t == null) break;
-            nodes.Add(new MoveZoneNode { Target = t, ToZone = to });
+
+            // 解析不出目标就把游标退回去：
+            // 否则 "and evolve this follower" 这类并列动作里的 and 被吃掉，
+            // 后面的动词跟着丢，整句只剩前半段。
+            if (t == null) { cur.Seek(save); break; }
+            nodes.Add(new MoveZoneNode { Target = t, ToZone = to, IsDestroy = isDestroy });
         }
         return nodes;
     }
