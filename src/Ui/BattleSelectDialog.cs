@@ -214,13 +214,17 @@ public partial class BattleSelectDialog : Control
         b.AddThemeFontSizeOverride("font_size", 13);
         if (active)
         {
-            var box = SvWbTheme.MakePanelBox(
-                new Color(accent.R * 0.25f, accent.G * 0.25f, accent.B * 0.25f, 0.92f),
-                accent, 8, 2, 10);
+            // 选中态：深底 + 该强调色的边光与辉光，文字同色提亮。
+            // 不再用「accent 分通道乘 0.25」那种算法 —— 它会把金色压成污浊橄榄褐。
+            var accentLit = SvWbTheme.Brighten(accent, 1.15f);
+            var box = SvWbTheme.ButtonBox(new Color("1A2438"), accentLit, 2, 14, accentLit);
             b.AddThemeStyleboxOverride("normal", box);
             b.AddThemeStyleboxOverride("hover", box);
             b.AddThemeStyleboxOverride("pressed", box);
-            b.AddThemeColorOverride("font_color", new Color("FFFFFF"));
+            b.AddThemeStyleboxOverride("focus", box);
+            b.AddThemeColorOverride("font_color", SvWbTheme.Brighten(accent, 2.0f));
+            b.AddThemeColorOverride("font_hover_color", Colors.White);
+            b.MouseDefaultCursorShape = CursorShape.PointingHand;
         }
         else
         {

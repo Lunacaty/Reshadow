@@ -171,6 +171,9 @@ public partial class DeckManagementRoot : Control
         Swap(view);
     }
 
+    /// <summary>开发期入口：牌组一览（截图用）。</summary>
+    public void OpenDeckListForShot() => ShowDeckList();
+
     /// <summary>开发期入口：主界面（截图用）。</summary>
     public void OpenMainMenuForShot() => ShowMainMenu();
 

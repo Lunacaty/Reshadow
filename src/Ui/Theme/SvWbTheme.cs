@@ -1,3 +1,4 @@
+using System;
 using System.Text.RegularExpressions;
 using Godot;
 
@@ -90,25 +91,93 @@ public static class SvWbTheme
         };
     }
 
-    /// <summary>为 Button 一键挂载超凡世界风格的四态。</summary>
+    /// <summary>
+    /// 为 Button 挂载超凡世界风格的完整状态集。
+    ///
+    /// 三个不再犯的错误：
+    ///   1. 填充色不能按 accent 的分通道乘系数（旧写法 accent.R*0.22 等），
+    ///      那会把金色 F59E0B 压成污浊的橄榄褐 —— 既不亮也不像金。
+    ///      现在填充统一用深海军蓝，强调色只出现在**描边与辉光**上，
+    ///      整组按钮因此共享同一种材质感，靠边光区分主次。
+    ///   2. 必须覆盖 focus —— Godot 默认主题会给获得焦点的按钮画一圈
+    ///      系统蓝方框，这就是「一眼看上去还是默认样式」的主因。
+    ///   3. 按下态不能只加深，还要把描边换成金色，给一个明确的点击反馈。
+    /// </summary>
     public static void StyleButton(Button btn, bool isPrimary = false, Color? customAccent = null)
     {
-        Color accent = customAccent ?? (isPrimary ? AccentCyan : BorderSubtle);
-        Color bgNorm = isPrimary
-            ? new Color(accent.R * 0.22f, accent.G * 0.28f, accent.B * 0.35f, 0.95f)
-            : BgSurface;
-        Color bgHov = isPrimary
-            ? new Color(accent.R * 0.35f, accent.G * 0.42f, accent.B * 0.50f, 1.0f)
-            : BgHover;
+        Color accent = customAccent ?? (isPrimary ? AccentGold : BorderSubtle);
+        bool lit = isPrimary || customAccent.HasValue;
 
-        btn.AddThemeStyleboxOverride("normal", MakePanelBox(bgNorm, accent, 6, isPrimary ? 2 : 1, 3));
-        btn.AddThemeStyleboxOverride("hover", MakePanelBox(bgHov, AccentCyan, 6, 2, 6));
-        btn.AddThemeStyleboxOverride("pressed", MakePanelBox(BgPressed, AccentGold, 6, 2, 2));
-        btn.AddThemeStyleboxOverride("disabled", MakePanelBox(new Color("0F1420"), new Color("1E2638"), 6, 1, 0));
-        btn.AddThemeColorOverride("font_color", TextPrimary);
+        // 深海军蓝底：比 BgSurface 更沉，让描边与文字浮起来
+        Color fill       = new("141C2E");
+        Color fillHover  = new("1E2A42");
+        Color fillPress  = new("0B1120");
+        Color fillDis    = new("0F1420");
+
+        Color border     = lit ? accent : new Color("2A3652");
+        Color borderHov  = lit ? Brighten(accent, 1.35f) : AccentCyan;
+        Color borderPrs  = AccentGold;
+
+        btn.AddThemeStyleboxOverride("normal",
+            ButtonBox(fill, border, lit ? 2 : 1, lit ? 6 : 0, lit ? accent : null));
+        btn.AddThemeStyleboxOverride("hover",
+            ButtonBox(fillHover, borderHov, 2, 12, borderHov));
+        btn.AddThemeStyleboxOverride("pressed",
+            ButtonBox(fillPress, borderPrs, 2, 2, null));
+        btn.AddThemeStyleboxOverride("disabled",
+            ButtonBox(fillDis, new Color("1B2436"), 1, 0, null));
+        // 关键：不覆盖会露出 Godot 默认的焦点蓝框
+        btn.AddThemeStyleboxOverride("focus",
+            ButtonBox(fillHover, borderHov, 2, 10, borderHov));
+
+        btn.AddThemeColorOverride("font_color", lit ? Brighten(accent, 1.9f) : TextPrimary);
         btn.AddThemeColorOverride("font_hover_color", Colors.White);
+        btn.AddThemeColorOverride("font_pressed_color", new Color("FDE68A"));
+        btn.AddThemeColorOverride("font_focus_color", Colors.White);
         btn.AddThemeColorOverride("font_disabled_color", TextMuted);
         btn.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
+    }
+
+    /// <summary>把颜色朝白色提亮（factor &gt; 1 变亮，&lt; 1 变暗）。</summary>
+    public static Color Brighten(Color c, float factor)
+        => new(Math.Min(1f, c.R * factor), Math.Min(1f, c.G * factor), Math.Min(1f, c.B * factor), c.A);
+
+    /// <summary>
+    /// 按钮专用的圆角盒。
+    ///
+    /// glow 非空时给一层同色柔和外发光 —— 主按钮因此有「被点亮」的感觉，
+    /// 而次按钮保持干净无光，主次一眼可分。
+    /// </summary>
+    public static StyleBoxFlat ButtonBox(Color bg, Color border, int borderWidth,
+                                        int glow, Color? glowColor)
+    {
+        return new StyleBoxFlat
+        {
+            BgColor = bg,
+            BorderColor = border,
+            CornerRadiusTopLeft = 10,
+            CornerRadiusTopRight = 10,
+            CornerRadiusBottomLeft = 10,
+            CornerRadiusBottomRight = 10,
+            BorderWidthLeft = borderWidth,
+            BorderWidthRight = borderWidth,
+            BorderWidthTop = borderWidth,
+            BorderWidthBottom = borderWidth,
+
+            // 顶部一道更亮的描边，模拟光源从上方打下来
+            AntiAliasing = true,
+
+            ShadowColor = glowColor.HasValue
+                ? new Color(glowColor.Value.R, glowColor.Value.G, glowColor.Value.B, 0.38f)
+                : new Color(0, 0, 0, 0.40f),
+            ShadowSize = glow,
+            ShadowOffset = new Vector2(0, 1),
+
+            ContentMarginLeft = 18,
+            ContentMarginRight = 18,
+            ContentMarginTop = 10,
+            ContentMarginBottom = 10,
+        };
     }
 
     /// <summary>

@@ -24,6 +24,7 @@ public partial class DevShot : Node
     private bool _openPackMgr;
     private bool _openMenu;
     private bool _openBattleSelect;
+    private bool _openDeckList;
 
     public override void _Ready()
     {
@@ -42,6 +43,7 @@ public partial class DevShot : Node
             if (a == "--packmgr") _openPackMgr = true;
             if (a == "--menu") _openMenu = true;
             if (a == "--battle-select") _openBattleSelect = true;
+            if (a == "--decklist") _openDeckList = true;
         }
         if (_frames <= 0) _frames = 30;
         SetProcess(true);
@@ -62,12 +64,20 @@ public partial class DevShot : Node
             CallDeferred(nameof(OpenMenu));
         else if (_openBattleSelect)
             CallDeferred(nameof(OpenBattleSelect));
+        else if (_openDeckList)
+            CallDeferred(nameof(OpenDeckList));
     }
 
     private void OpenMenu()
     {
         var root = FindRoot();
         root?.OpenMainMenuForShot();
+    }
+
+    private void OpenDeckList()
+    {
+        var root = FindRoot();
+        root?.OpenDeckListForShot();
     }
 
     private void OpenBattleSelect()
