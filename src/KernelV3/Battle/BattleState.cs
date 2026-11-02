@@ -1371,20 +1371,15 @@ public sealed class BattleState : IVmWorld
     {
         if (target == null || amount <= 0) return;
 
-        // CombatResolver 的伤害管线只负责数值与屏障，它的 vm 参数在这里是 null ——
-        // 也就是说能力伤害过去既不进 EventLog、也不进触发队列，
-        // 「当受到伤害时」对任何能力伤害一律失明。
-        // 由这里补发一条 OnDamaged：EventLog 与触发队列都拿得到，
-        // 而战斗伤害走 CombatResolver 自己的 vm 通道，不会重复。
-        int dealt = new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId);
-        if (dealt <= 0) return;   // 屏障吸收 / 超进化免伤：没有伤害就没有受伤事件
-
-        EmitEvent(new VmEvent
-        {
-            Kind = CoreEvent.OnDamaged,
-            Subject = EntityRef.From(target),
-            Amount = dealt,
-        });
+        // OnDamaged 由 CombatResolver.ApplyDamage 内部统一通过 EmitOrEnqueue 发出，
+        // 这里**绝不能再发一次**。
+        //
+        // 早先这里补发过一条，理由是「CombatResolver 的 vm 参数为 null，
+        // 能力伤害既不进 EventLog 也不进触发队列」。但那个问题真正的修法
+        // 是让 CombatResolver 改走 _state.EmitEvent —— 已经做了。
+        // 之后再补发就是双发：界面上叠两个伤害数字，
+        // 所有「受到伤害时」的能力也会触发两次。
+        new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId);
     }
 
     /// <summary>IVmWorld 接口实现：能力破坏，受保护拦截。</summary>
@@ -1620,8 +1615,22 @@ public sealed class BattleState : IVmWorld
         // 与 DestroyEntity 同一条规矩：快照已拍（记的是护符卡种），才开始还原。
         RestoreOriginalDef(e);
 
-        EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
-        EmitEvent(new VmEvent { Kind = CoreEvent.OnDestroy, Subject = EntityRef.From(e) });
+        EmitEvent(new VmEvent
+        {
+            Kind = CoreEvent.OnLeaveField,
+            Subject = EntityRef.From(e),
+            PlayerId = owner,
+        });
+        EmitEvent(new VmEvent
+        {
+            Kind = CoreEvent.OnDestroy,
+            Subject = EntityRef.From(e),
+            PlayerId = owner,
+            // 生命归零这条路径同样要带超击飞标记。
+            // 超进化随从把敌方随从打到 <=0 时走的就是
+            // ProcessStateBasedActions(bySuperEvolved) -> DestroyByState。
+            KnockedBackBySuperEvolve = bySuperEvolved,
+        });
     }
 
     // ---------- 生成 / 变形 / 授予 ----------

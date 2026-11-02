@@ -77,6 +77,12 @@ public partial class LeaderMedallionWidget : Control
     private const float FrameCx = FrameL + FrameW * 0.5f;   // 120 —— 拱框中线
 
     /// <summary>拱顶在控件内的 y（翻转前）。</summary>
+    /// <summary>
+    /// 视觉血量补偿：后端已扣血但受击动画还没播时，
+    /// 盾牌显示受击前的数值，命中那一帧才跳变。
+    /// </summary>
+    public int VisualLifeOffset { get; set; }
+
     public const float DomeTopY = FrameT;
 
     /// <summary>平直边在控件内的 y（翻转前）。</summary>
@@ -145,7 +151,8 @@ public partial class LeaderMedallionWidget : Control
         for (int i = 0; i < sp.Length; i++) spi[i] = shield + (sp[i] - shield) * 0.82f;
         DrawColoredPolygon(spi, new Color("991B1B"));
 
-        string life = Leader.Life.ToString();
+        int shownLife = Math.Max(0, Leader.Life + VisualLifeOffset);
+        string life = shownLife.ToString();
         var lsz = font.GetStringSize(life, HorizontalAlignment.Left, -1, 22);
         DrawString(font, new Vector2(shield.X - lsz.X * 0.5f, shield.Y + 8f), life,
                    HorizontalAlignment.Left, -1, 22, Colors.White);

@@ -386,7 +386,22 @@ public sealed class BattleSessionController
     // ---------------------------------------------------------------- 拖拽判定
 
     /// <summary>手牌区上沿：松手位置高于这条线才算「拖到战场」。</summary>
+    /// <summary>
+    /// 出牌判定线的基准值（720p 下）。
+    ///
+    /// 真正的判定必须用 HandZoneTopYFor(视口高) —— 手牌区锚在窗口底部，
+    /// 判定线也必须跟着走。窗口拉到 1080 时手牌在 Y≈950，
+    /// 却要拖到 Y&lt;500（屏幕上半截）才能打出，手感完全错乱。
+    /// 这个常量保留给无视口上下文的调用方与既有门禁。
+    /// </summary>
     public const float HandZoneTopY = 500f;
+
+    /// <summary>出牌判定线距窗口底部的恒定距离（720 - 500 = 220）。</summary>
+    public const float HandZoneBottomGap = 220f;
+
+    /// <summary>按实际视口高度算出的出牌判定线。</summary>
+    public static float HandZoneTopYFor(float viewportHeight)
+        => viewportHeight > 0f ? viewportHeight - HandZoneBottomGap : HandZoneTopY;
 
     /// <summary>
     /// 拖拽松手时是否应当打出这张牌。

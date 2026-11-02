@@ -55,6 +55,23 @@ public partial class BattleScreenRoot : Control
     private readonly Dictionary<long, RuntimeEntity> _lastBoardEntities = new();
     private readonly Dictionary<long, BoardUnitWidget> _dyingProxies = new();
 
+    /// <summary>
+    /// 未播伤害账本：entityId -> 需要**补回去**的生命值。
+    ///
+    /// 后端伤害立即结算，但受击动画还排在 _seq 里。若不记账，
+    /// Rebuild 出来的棋子当场就显示扣完血的数值 ——
+    /// 玩家看到的是「还没被打，盾牌先掉」。
+    /// 账上记为正值，_Draw 用它加回可见血量；
+    /// 等 _seq 真正播到那一段 OnDamaged 时才销账，盾牌与飘字同帧跳变。
+    /// </summary>
+    private readonly Dictionary<long, int> _pendingLifeDelta = new();
+
+    /// <summary>
+    /// 未播进化账本：后端已进化但翻面动画还在排队时，
+    /// 暂时隐藏金框与进化身材加成。
+    /// </summary>
+    private readonly HashSet<long> _pendingEvolveVisual = new();
+
     private bool _handExpanded;
     private RuntimeEntity _attacker;
     private bool _draggingPlay;
@@ -235,6 +252,8 @@ public partial class BattleScreenRoot : Control
         AddChild(_vfx);
 
         _actionPanel = new TopLeftCardActionPanel();
+        // 左上角面板的进化/超进化/启动/融合按钮同样受阻塞门禁约束。
+        _actionPanel.IsInputBlocked = () => IsInputBlocked;
         _actionPanel.Setup(_ctrl);
         _actionPanel.OnEntityChanged += _ => Rebuild();
         AddChild(_actionPanel);
@@ -276,7 +295,7 @@ public partial class BattleScreenRoot : Control
         {
             var mp = GetGlobalMousePosition();
             _dragTarget = mp;
-            _field.IsDraggingPlayCard = mp.Y < BattleSessionController.HandZoneTopY;
+            _field.IsDraggingPlayCard = mp.Y < PlayLineY;
             _field.QueueRedraw();
         }
 
@@ -305,6 +324,17 @@ public partial class BattleScreenRoot : Control
 
         StepOpponentIfNeeded(delta);
         UpdateAimLine();
+    }
+
+    /// <summary>出牌判定线：距窗口底部恒定 220px，随视口高度走。</summary>
+    private float PlayLineY
+    {
+        get
+        {
+            var vp = Size;
+            if (vp.Y <= 0f) vp = GetViewportRect().Size;
+            return BattleSessionController.HandZoneTopYFor(vp.Y);
+        }
     }
 
     private void UpdateAimLine()
@@ -663,6 +693,11 @@ public partial class BattleScreenRoot : Control
             case CoreEvent.OnDamaged:
             {
                 int dmg = ev.Amount;
+
+                // 先在账上记一笔「已扣但还没播」的血量，让盾牌维持受击前的数值。
+                if (sid >= 0 && dmg > 0)
+                    _pendingLifeDelta[sid] = _pendingLifeDelta.GetValueOrDefault(sid) + dmg;
+
                 _seq.Enqueue(new Seq()
                     .Do(() =>
                     {
@@ -670,6 +705,15 @@ public partial class BattleScreenRoot : Control
                         _vfx.PlayDamage(c, dmg);
                         if (dmg > 0) SpawnDamageFloat(c, dmg, false);
                         if (sid >= 0) _anims.PlayHitShake(sid);
+
+                        // 播到这一帧才销账：盾牌数字与伤害飘字同帧跳变。
+                        if (sid >= 0 && dmg > 0)
+                        {
+                            int left = _pendingLifeDelta.GetValueOrDefault(sid) - dmg;
+                            if (left > 0) _pendingLifeDelta[sid] = left;
+                            else _pendingLifeDelta.Remove(sid);
+                            ApplyMotionsToWidgets();
+                        }
                     })
                     .Wait(0.18f));
                 break;
@@ -678,12 +722,25 @@ public partial class BattleScreenRoot : Control
             case CoreEvent.OnHealed:
             {
                 int heal = ev.Amount;
+
+                // 治疗同理但方向相反：显示治疗前的血量，播到该段才补上。
+                if (sid >= 0 && heal > 0)
+                    _pendingLifeDelta[sid] = _pendingLifeDelta.GetValueOrDefault(sid) - heal;
+
                 _seq.Enqueue(new Seq()
                     .Do(() =>
                     {
                         Vector2 c = CenterOf(ev.Subject, ownerPid);
                         _vfx.PlayHeal(c, heal);
                         if (heal > 0) SpawnDamageFloat(c, heal, true);
+
+                        if (sid >= 0 && heal > 0)
+                        {
+                            int left = _pendingLifeDelta.GetValueOrDefault(sid) + heal;
+                            if (left < 0) _pendingLifeDelta[sid] = left;
+                            else _pendingLifeDelta.Remove(sid);
+                            ApplyMotionsToWidgets();
+                        }
                     })
                     .Wait(0.16f));
                 break;
@@ -807,6 +864,10 @@ public partial class BattleScreenRoot : Control
             // 第三层（阻塞性动画）：进化与超进化标记 MarkBlocking(true)！
             // 一旦进入队列，IsInputBlocked 立即为 true，玩家必须等待进化动画播完才能继续操作！
             case CoreEvent.OnEvolve:
+                // 后端已结算 +2/+2，但翻面动画还排在队列里。
+                // 先挂进「未播进化」账本，棋子保持进化前的外框与身材。
+                if (sid >= 0) _pendingEvolveVisual.Add(sid);
+
                 _seq.Enqueue(new Seq()
                     .MarkBlocking(true)
                     .Do(() =>
@@ -814,12 +875,20 @@ public partial class BattleScreenRoot : Control
                         Vector2 c = CenterOf(ev.Subject, ownerPid);
                         _vfx.PlayEvolve(c, false);
                         SpawnBurst(c, 26, 170f, new Color("F59E0B"), 0.65f, -30f, 3.2f);
-                        if (sid >= 0) _anims.PlayEvolve(sid, false);
+                        if (sid >= 0)
+                        {
+                            // 翻面开始的这一刻才切换成进化态：金框与身材同帧到位。
+                            _pendingEvolveVisual.Remove(sid);
+                            ApplyMotionsToWidgets();
+                            _anims.PlayEvolve(sid, false);
+                        }
                     })
                     .Wait(0.58f));
                 break;
 
             case CoreEvent.OnSuperEvolve:
+                if (sid >= 0) _pendingEvolveVisual.Add(sid);
+
                 _seq.Enqueue(new Seq()
                     .MarkBlocking(true)
                     .Do(() =>
@@ -827,7 +896,12 @@ public partial class BattleScreenRoot : Control
                         Vector2 c = CenterOf(ev.Subject, ownerPid);
                         _vfx.PlayEvolve(c, true);
                         SpawnBurst(c, 32, 200f, new Color("C084FC"), 0.70f, -40f, 3.5f);
-                        if (sid >= 0) _anims.PlayEvolve(sid, true);
+                        if (sid >= 0)
+                        {
+                            _pendingEvolveVisual.Remove(sid);
+                            ApplyMotionsToWidgets();
+                            _anims.PlayEvolve(sid, true);
+                        }
                     })
                     .Wait(0.58f));
                 break;
@@ -877,8 +951,20 @@ public partial class BattleScreenRoot : Control
         foreach (var kv in _dyingProxies)
         {
             if (IsInstanceValid(kv.Value))
+            {
                 kv.Value.ApplyMotion(_anims.MotionOf(kv.Key));
+                kv.Value.VisualLifeOffset = _pendingLifeDelta.GetValueOrDefault(kv.Key, 0);
+                kv.Value.HideEvolveVisual = _pendingEvolveVisual.Contains(kv.Key);
+            }
         }
+
+        // 主战者的盾牌同样要延后跳变
+        if (_allyLeader?.Leader != null)
+            _allyLeader.VisualLifeOffset =
+                _pendingLifeDelta.GetValueOrDefault(_allyLeader.Leader.EntityId, 0);
+        if (_foeLeader?.Leader != null)
+            _foeLeader.VisualLifeOffset =
+                _pendingLifeDelta.GetValueOrDefault(_foeLeader.Leader.EntityId, 0);
     }
 
     private void ApplyMotionsIn(Node container)
@@ -888,6 +974,11 @@ public partial class BattleScreenRoot : Control
         {
             if (w.Entity == null) continue;
             w.ApplyMotion(_anims.MotionOf(w.Entity.EntityId));
+
+            // 视觉血量 / 进化延迟：账本上是「已扣但未播」的部分
+            w.VisualLifeOffset = _pendingLifeDelta.GetValueOrDefault(w.Entity.EntityId, 0);
+            w.HideEvolveVisual = _pendingEvolveVisual.Contains(w.Entity.EntityId);
+
             if (w.Size.X > 0 && w.GlobalPosition.X > 1f)
             {
                 _unitTops[w.Entity.EntityId] = w.GlobalPosition;
@@ -1047,7 +1138,7 @@ public partial class BattleScreenRoot : Control
             _dragTarget = mm.Position;
 
             const float PLAY_THRESHOLD = 20f;
-            if (!_dragFollow && mm.Position.Y < BattleSessionController.HandZoneTopY - PLAY_THRESHOLD)
+            if (!_dragFollow && mm.Position.Y < PlayLineY - PLAY_THRESHOLD)
                 BeginDragFollow();
             return;
         }
@@ -1123,7 +1214,7 @@ public partial class BattleScreenRoot : Control
         _dragPos = _dragPos.Lerp(_dragTarget, Mathf.Clamp(k, 0f, 1f));
         _dragGhost.Position = _dragPos - new Vector2(75f, 99f);
 
-        float inHand = Mathf.Clamp((BattleSessionController.HandZoneTopY - _dragPos.Y) / 120f, 0f, 1f);
+        float inHand = Mathf.Clamp((PlayLineY - _dragPos.Y) / 120f, 0f, 1f);
         _dragGhost.Scale = Vector2.One * (0.96f + 0.10f * inHand);
     }
 
@@ -1185,6 +1276,8 @@ public partial class BattleScreenRoot : Control
         _unitCenters.Clear();
         _unitTops.Clear();
         _lastBoardEntities.Clear();
+        _pendingLifeDelta.Clear();
+        _pendingEvolveVisual.Clear();
         foreach (var p in _dyingProxies.Values)
             if (IsInstanceValid(p)) p.QueueFree();
         _dyingProxies.Clear();
@@ -1332,7 +1425,21 @@ public partial class BattleScreenRoot : Control
             _ctrl.State.SpawnCard(ids[i], ZoneRef.Board, _ctrl.MyPlayerId);
             _ctrl.State.SpawnCard(ids[i], ZoneRef.Board, _ctrl.MyPlayerId == 0 ? 1 : 0);
         }
+
+        // 演示随从应当**直接就位**，不要排队播入场动画。
+        //
+        // 这是截图工具的场面布置，不是真实对局：8 个随从各播 0.34 秒入场，
+        // 队列要跑近 3 秒才轮到后面塞进去的 --demo-damage 伤害飘字，
+        // 而 DevShot 默认只等几十帧 —— 截图里当然什么都看不到。
+        //
+        // 先 Rebuild 让棋子建立，再把事件游标推到队尾、清掉已排的演出。
         Rebuild();
+        _lastEventIdx = _ctrl.State.EventLog.Count;
+        _seq.Clear();
+        foreach (var w in BoardUnitsOf(_boardAlly).Concat(BoardUnitsOf(_boardFoe)))
+            if (w.Entity != null) _anims.Clear(w.Entity.EntityId);
+        _boardAlly?.QueueRedraw();
+        _boardFoe?.QueueRedraw();
     }
 
     public void SetHandExpanded(bool v) { _handExpanded = v; RebuildHand(); }

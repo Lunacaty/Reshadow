@@ -322,13 +322,33 @@ public partial class BattlefieldCanvas : Control
         if (@event is not InputEventMouseButton mb || !mb.Pressed) return;
         if (mb.ButtonIndex != MouseButton.Left) return;
 
-        for (int i = 0; i < AllyCrestCenters.Length; i++)
+        // 命中判定必须用与绘制同一套动态坐标。
+        //
+        // 早先 _Draw 走 GetAllyCrestCenters(sz)（贴窗口底部），
+        // 而这里还是写死的 AllyCrestCenters（y=566/618）——
+        // 窗口一拉高，纹章画在底部、判定却留在半空，点上去毫无反应。
+        Vector2 sz = Size;
+        if (sz.X <= 0 || sz.Y <= 0) return;
+
+        if (TryHitCrest(mb.Position, GetAllyCrestCenters(sz), 0)) return;
+        TryHitCrest(mb.Position, GetEnemyCrestCenters(sz), 1);
+    }
+
+    /// <summary>命中某个纹章圆槽就派发事件并吃掉这次点击。</summary>
+    private bool TryHitCrest(Vector2 at, Vector2[] centers, int playerId)
+    {
+        for (int i = 0; i < centers.Length; i++)
         {
-            if (mb.Position.DistanceTo(AllyCrestCenters[i]) > 22f) continue;
-            var crests = Controller?.Crests(0);
-            if (crests != null && i < crests.Count) OnCrestClicked?.Invoke(crests[i]);
-            AcceptEvent();
-            return;
+            if (at.DistanceTo(centers[i]) > 22f) continue;
+
+            var crests = Controller?.Crests(playerId);
+            if (crests != null && i < crests.Count && crests[i] != null)
+            {
+                OnCrestClicked?.Invoke(crests[i]);
+                AcceptEvent();
+                return true;
+            }
         }
+        return false;
     }
 }

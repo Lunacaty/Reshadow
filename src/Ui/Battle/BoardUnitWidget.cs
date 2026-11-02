@@ -107,6 +107,19 @@ public partial class BoardUnitWidget : Control
     private UnitMotion _motion = UnitMotion.Idle;
 
     /// <summary>
+    /// 视觉血量补偿：后端已扣血、但受击动画还在 _seq 排队未播时，
+    /// 加上这笔待播差值，让盾牌显示**受击前**的生命值，
+    /// 直到受击动画命中的那一帧才跳变 —— 这就是「动画落后于后端」。
+    /// </summary>
+    public int VisualLifeOffset { get; set; }
+
+    /// <summary>
+    /// 视觉进化延迟：后端已进化、但进化翻面动画还在队列里没播时，
+    /// 暂不显示金框与进化身材加成。
+    /// </summary>
+    public bool HideEvolveVisual { get; set; }
+
+    /// <summary>
     /// 接收动画状态。
     ///
     /// **不修改 Position / Scale / 不摘出容器** —— 早先试过「动画期间把控件
@@ -155,6 +168,15 @@ public partial class BoardUnitWidget : Control
     {
         if (Entity?.Def == null) return;
 
+        // 处于 PrepareEnter 隐身预备态（已入场但入场动画还在排队）时
+        // 完全不绘制任何内容。只把 Modulate 设成透明不够 ——
+        // 自绘内容在 _Draw 里，光靠 Modulate 仍会因为残留帧而闪一下。
+        if (_motion.Alpha <= 0.001f)
+        {
+            Modulate = new Color(1, 1, 1, 0f);
+            return;
+        }
+
         var def = Entity.Def;
 
         // ---- 应用动画变换（只影响绘制，不动控件本体）----
@@ -200,15 +222,34 @@ public partial class BoardUnitWidget : Control
 
         if (def.Kind == CardKind.Follower)
         {
-            DrawSwordBadge(new Vector2(16f, H - 22f), Entity.Attack, font);
-            DrawShieldBadge(new Vector2(W - 16f, H - 22f), Entity.Life, font);
+            // 进化动画还没播时，身材要显示**进化前**的数值。
+            // 后端已经结算完 +2/+2（或 +3/+3），但翻面动画还排在队列里，
+            // 提前显示会让玩家看到「卡还没翻，身材先涨」。
+            int evoAtk = 0, evoLife = 0;
+            if (HideEvolveVisual && (Entity.IsEvolved || Entity.IsSuperEvolved))
+            {
+                var rules = CurrentController?.State?.Rules;
+                evoAtk = Entity.IsSuperEvolved
+                    ? (rules?.SuperEvolveBonusAttack ?? 3)
+                    : (rules?.EvolveBonusAttack ?? 2);
+                evoLife = Entity.IsSuperEvolved
+                    ? (rules?.SuperEvolveBonusLife ?? 3)
+                    : (rules?.EvolveBonusLife ?? 2);
+            }
+
+            int shownAtk = Math.Max(0, Entity.Attack - evoAtk);
+            // VisualLifeOffset 是**已扣但未播**的伤害，符号为正表示「补回去」。
+            int shownLife = Math.Max(0, Entity.Life + VisualLifeOffset - evoLife);
+
+            DrawSwordBadge(new Vector2(16f, H - 22f), shownAtk, font);
+            DrawShieldBadge(new Vector2(W - 16f, H - 22f), shownLife, font);
         }
 
         DrawAbilityBadge(new Vector2(W * 0.5f, H - 12f), font);
 
         if (isAmulet) DrawCountdown(def, font);
 
-        if (Entity.IsEvolved || Entity.IsSuperEvolved)
+        if (!HideEvolveVisual && (Entity.IsEvolved || Entity.IsSuperEvolved))
         {
             Color glow = Entity.IsSuperEvolved ? SvWbTheme.AccentPurple : SvWbTheme.AccentGold;
             DrawRect(new Rect2(0, 0, W, H), glow, false, 3f);

@@ -161,11 +161,15 @@ public sealed class CombatResolver
                 vm.EnqueueContinuation(() =>
                 {
                     if (attacker.Zone != ZoneRef.Board || defender.Zone != ZoneRef.Board) return;
-                    vm.EnqueueEvent(new VmEvent
+                    // 必须走 EmitOrEnqueue：这条是**被攻击方**的交战事件。
+                    // 漏改会绕过 EventLog，前端读不到防守方的 Clash，
+                    // 「交战时」的防守方演出与能力触发全都不响应。
+                    EmitOrEnqueue(vm, new VmEvent
                     {
                         Kind = CoreEvent.OnClash,
                         Subject = EntityRef.From(defender),
                         Object = EntityRef.From(attacker),
+                        PlayerId = defender.PlayerId,
                     });
                 });
             }

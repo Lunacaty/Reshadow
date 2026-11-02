@@ -20,6 +20,16 @@ public partial class TopLeftCardActionPanel : PanelContainer
     private BattleSessionController _ctrl;
     private RuntimeEntity _bound;
 
+    /// <summary>
+    /// 由 BattleScreenRoot 注入的阻塞门禁判定。
+    ///
+    /// 三层动画架构里，进化/超进化属于「阻塞段」——
+    /// 演出没播完之前玩家不该改状态。左上角弹窗最初没有查这个门禁，
+    /// 于是当场上有阻塞动画时，玩家仍能从这里强行点进化，
+    /// 后端立刻结算而演出还排着队，视觉与状态彻底脱节。
+    /// </summary>
+    public Func<bool> IsInputBlocked { get; set; }
+
     private Label _nameLbl;
     private Label _metaLbl;
     private RichTextLabel _effectRich;
@@ -102,6 +112,9 @@ public partial class TopLeftCardActionPanel : PanelContainer
         OnEntityChanged?.Invoke(entity);
     }
 
+    /// <summary>当前是否处于阻塞状态（进化演出 / Choose 挂起 / 终局）。</summary>
+    private bool Blocked => IsInputBlocked != null && IsInputBlocked();
+
     public void ShowForEntity(RuntimeEntity entity)
     {
         if (entity?.Def == null || _ctrl == null) { HidePanel(); return; }
@@ -132,28 +145,28 @@ public partial class TopLeftCardActionPanel : PanelContainer
         {
             var b = new Button { Text = "✦ 进化 (+2/+2)" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentGold);
-            b.Pressed += () => { if (_ctrl.TryEvolve(entity, false)) DeferRefresh(entity); };
+            b.Pressed += () => { if (Blocked) return; if (_ctrl.TryEvolve(entity, false)) DeferRefresh(entity); };
             _actionRow.AddChild(b);
         }
         if (_ctrl.CanSuperEvolveUnit(entity))
         {
             var b = new Button { Text = "★ 超进化 (+3/+3)" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
-            b.Pressed += () => { if (_ctrl.TryEvolve(entity, true)) DeferRefresh(entity); };
+            b.Pressed += () => { if (Blocked) return; if (_ctrl.TryEvolve(entity, true)) DeferRefresh(entity); };
             _actionRow.AddChild(b);
         }
         if (_ctrl.CanEngageUnit(entity, out int cost))
         {
             var b = new Button { Text = $"⚡ 启动 ({cost}费)" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentCyan);
-            b.Pressed += () => { if (_ctrl.TryEngage(entity)) DeferRefresh(entity); };
+            b.Pressed += () => { if (Blocked) return; if (_ctrl.TryEngage(entity)) DeferRefresh(entity); };
             _actionRow.AddChild(b);
         }
         if (entity.Zone == ZoneRef.Hand && _ctrl.CanStartFuse(entity))
         {
             var b = new Button { Text = "◆ 进行融合" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
-            b.Pressed += () => { _ctrl.StartFuseMode(entity); DeferRefresh(entity); };
+            b.Pressed += () => { if (Blocked) return; _ctrl.StartFuseMode(entity); DeferRefresh(entity); };
             _actionRow.AddChild(b);
         }
 

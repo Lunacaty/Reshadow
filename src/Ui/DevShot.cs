@@ -32,14 +32,6 @@ public partial class DevShot : Node
 
     public override void _Ready()
     {
-        // 截图前可改视口尺寸，用于验证不同宽高比下的布局。
-        if (_resize.X > 0 && _resize.Y > 0)
-        {
-            // 只改窗口尺寸：stretch 模式是 canvas_items + expand，
-            // 视口会自动跟着窗口走，布局的 Resized 回调随即触发。
-            GetWindow().Size = _resize;
-        }
-
         foreach (var a in OS.GetCmdlineUserArgs())
         {
             if (a.StartsWith("--shot=")) _path = a.Substring(7);
@@ -66,6 +58,15 @@ public partial class DevShot : Node
                     int.TryParse(parts[0], out var rw) ? rw : 1280,
                     int.TryParse(parts[1], out var rh) ? rh : 720);
             }
+        }
+
+        // 必须在解析完 --resize= 之后再应用窗口尺寸。
+        // 早先这段写在参数解析之前，_resize 还是零值 —— --resize 永远不生效。
+        if (_resize.X > 0 && _resize.Y > 0)
+        {
+            // stretch 模式是 canvas_items + expand，
+            // 视口会自动跟着窗口走，布局的 Resized 回调随即触发。
+            GetWindow().Size = _resize;
         }
         if (_frames <= 0) _frames = 30;
         SetProcess(true);
