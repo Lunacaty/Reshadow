@@ -74,12 +74,41 @@ public static class PoolConfigLoader
             foreach (var x in ep.EnumerateArray())
                 if (x.ValueKind == JsonValueKind.String) enabled.Add(x.GetString() ?? "");
 
+        // 具名牌组：归属卡池配置（.pool.json 的 named_decks）。
+        var namedDecks = new List<NamedDeckRawDef>();
+        if (r.TryGetProperty("named_decks", out var nds) && nds.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var nd in nds.EnumerateArray())
+            {
+                var entries = new List<NamedDeckEntryRaw>();
+                if (nd.TryGetProperty("entries", out var es) && es.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var e in es.EnumerateArray())
+                    {
+                        entries.Add(new NamedDeckEntryRaw
+                        {
+                            CardId = I(e, "card_id", 0),
+                            CardName = S(e, "card_name"),
+                            Copies = I(e, "copies", 1),
+                        });
+                    }
+                }
+                namedDecks.Add(new NamedDeckRawDef
+                {
+                    DeckName = S(nd, "deck_name"),
+                    DeckNameChs = S(nd, "deck_name_chs"),
+                    Entries = entries,
+                });
+            }
+        }
+
         return new CardPoolConfig
         {
             PoolId = S(r, "pool_id") is { Length: > 0 } pid ? pid : "standard",
             Name = S(r, "name") is { Length: > 0 } nm ? nm : "标准卡池",
             Rules = rules,
             EnabledPackIds = enabled,
+            NamedDecks = namedDecks,
         };
     }
 

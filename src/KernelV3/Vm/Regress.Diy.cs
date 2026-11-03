@@ -118,7 +118,10 @@ public static partial class Regress
                 zh, "【[^】]*(曲|时|启动|融合|结晶|激奏|纹章|信仰|场|牌|回合|阶段)[^】]*】");
             // 「每当…时，」也是合法的触发头（旁观型与玩家级事件的官方写法），
             // 只认【】会让这类正确渲染被判成没标签。
-            if (anyLabel || zh.Contains("每当")) labelled++;
+            // 法术例外：法术的打出效果**没有触发头**，卡面直接印效果正文
+            // （官方从不给法术印【入场曲】），所以它们本来就不该有标签。
+            if (c.Def.Kind == ShadowverseFan.KernelV3.Ast.CardKind.Spell) labelled++;
+            else if (anyLabel || zh.Contains("每当")) labelled++;
         }
 
         // ---- 定点断言：这几处是「渲染器盲区」的高发地带，必须逐条盯住 ----

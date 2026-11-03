@@ -1,0 +1,34 @@
+        // ================= 第 3 步：具名牌组跨包解析 =================
+        // 归属顺序：卡池 config.NamedDecks 主导，卡包里的旧定义只作为向后兼容回落。
+        // 同名时卡池覆盖卡包 —— 同一个牌组名在不同赛制下可以配不同卡表。
+        var allRawDecks = new Dictionary<string, NamedDeckRawDef>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pack in packs)
+            foreach (var nd in pack.NamedDecks ?? new List<NamedDeckRawDef>())
+                if (!string.IsNullOrWhiteSpace(nd.DeckName)) allRawDecks[nd.DeckName] = nd;
+
+        foreach (var nd in config.NamedDecks ?? new List<NamedDeckRawDef>())
+            if (!string.IsNullOrWhiteSpace(nd.DeckName)) allRawDecks[nd.DeckName] = nd;
+
+        foreach (var nd in allRawDecks.Values)
+        {
+            var entries = new List<DeckEntry>();
+            foreach (var e in nd.Entries)
+            {
+                int resolvedId = e.CardId;
+                if (resolvedId <= 0 && !string.IsNullOrEmpty(e.CardName))
+                    lexicon.TryGetCardId(e.CardName, out resolvedId);
+
+                if (resolvedId <= 0 || !cardOwnerPack.ContainsKey(resolvedId))
+                {
+                    res.Errors.Add("卡池 [" + config.PoolId + "] 的具名牌组《" + nd.DeckName + "》引用了卡片 '"
+                                   + (string.IsNullOrEmpty(e.CardName) ? e.CardId.ToString() : e.CardName)
+                                   + "'，但该卡片不在当前卡池已启用的卡包中！");
+                    continue;
+                }
+                entries.Add(new DeckEntry(resolvedId, e.Copies));
+            }
+            deckDefs.Register(nd.DeckName, entries);
+            if (!string.IsNullOrEmpty(nd.DeckNameChs))
+                res.Glossary[nd.DeckName] = nd.DeckNameChs;
+        }
+        if (res.Errors.Count > 0) return res;

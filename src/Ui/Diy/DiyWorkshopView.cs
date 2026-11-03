@@ -322,17 +322,24 @@ public partial class DiyWorkshopView : Control
         AddEndpointTab(tabs, "③ AST 语法树端", DiyEndpointKind.Script);
         AddEndpointTab(tabs, "④ 官方英文", DiyEndpointKind.EnglishCnl);
 
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        pane.AddChild(scroll);
-        SvWbTheme.StyleScroll(scroll);
+        // 不再给 _endpointHost 套外层 ScrollContainer：
+        // 三栏（调色盘 / 画布 / 属性检视器）在 BlockTreeEditorWidget 内部各自独立滚动，
+        // 右栏必须钉死在视口右侧。再套一层总滚动，画布滚到底部时
+        // 属性面板会跟着滚出视野，玩家改属性还得拉回顶部。
+        var hostBox = new VBoxContainer
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        pane.AddChild(hostBox);
 
-        // 禁掉横向滚动：右栏一旦出现水平滚动条，说明有控件被最小宽度撑破了，
-        // 那是 Bug 不是需求 —— 应该让它纵向滚，而不是让玩家左右拖。
-        scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
-
-        _endpointHost = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _endpointHost = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
         _endpointHost.AddThemeConstantOverride("separation", 6);
-        scroll.AddChild(_endpointHost);
+        hostBox.AddChild(_endpointHost);
 
         var bar = new PanelContainer { CustomMinimumSize = new Vector2(0, 46) };
         bar.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(

@@ -63,6 +63,9 @@ public sealed class AbilityHeaderBuilder
     /// <summary>这是 Evolve: / Super-Evolve: 冒号头，只认玩家手动花费 EP/SEP 的进化。</summary>
     public bool ManualEvolveOnly;
 
+    /// <summary>真正的【入场曲】冒号头。法术的 OnPlay 不算。</summary>
+    public bool IsFanfare;
+
     public TriggerSpec BuildTrigger() => new()
     {
         Event = Event,
@@ -73,6 +76,7 @@ public sealed class AbilityHeaderBuilder
         DuringTurn = DuringTurn,
         MaxTriggersPerTurn = MaxTriggersPerTurn,
         ManualEvolveOnly = ManualEvolveOnly,
+        IsFanfare = IsFanfare,
     };
 }
 
@@ -414,6 +418,11 @@ public sealed class PrefixParser
             if (condFlag == "manual_evolve")
                 b.ManualEvolveOnly = true;
 
+            // 只有真正写了「Fanfare:」冒号头才算入场曲。
+            // 法术无头祈使句虽然也是 OnPlay，但 IsFanfare 必须保持 false。
+            if (string.Equals(head, "fanfare", StringComparison.OrdinalIgnoreCase))
+                b.IsFanfare = true;
+
             // "Activates in hand / in deck"：能力在哪个区域监听。
             // 之前这两个头都不设 ActiveZone，于是全部默认在 Board，
             // 牌组/手牌里的能力永远不会触发。
@@ -546,8 +555,9 @@ public sealed class PrefixParser
             else if (cur.MatchWord("summon")) { b.Event = CoreEvent.OnSummon; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchWord("attack")) { b.Event = CoreEvent.OnAttack; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
             else if (cur.MatchWord("evolve")) { b.Event = CoreEvent.OnEvolve; b.EventExplicit = true; b.SubjectFilter = TargetSpec.Self; }
-            // "play or Fuse a Loot card" —— play 后面可能跟 or <动词>
-            else if (needSkipToComma(cur)) { b.Event = CoreEvent.OnPlay; b.EventExplicit = true; }
+            // 删掉了原来的 needSkipToComma 兜底：那条分支会把任何不认识的
+            // 前缀粗暴当成「入场曲」，让语法错误伪装成编译成功。
+            // 认不出来就必须退回，交给调用方继续尝试别的解析路径。
             else { cur.Seek(save); return false; }
 
             ConsumeDelimiter(cur);

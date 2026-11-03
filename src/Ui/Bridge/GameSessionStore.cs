@@ -587,7 +587,45 @@ public sealed class GameSessionStore
             sb.Append(i < props.Count - 1 ? ",\n" : "\n");
         }
 
-        sb.Append("  }\n");
+        sb.Append("  },\n");
+
+        // 具名牌组归属卡池：写回时必须原样带上，否则保存一次卡池规则
+        // 就会把 .pool.json 里的 named_decks 整段抹掉。
+        sb.Append("  \"named_decks\": [");
+        var nds = cfg.NamedDecks ?? new List<NamedDeckRawDef>();
+        if (nds.Count == 0) sb.Append("],\n");
+        else
+        {
+            sb.Append('\n');
+            for (int i = 0; i < nds.Count; i++)
+            {
+                var nd = nds[i];
+                sb.Append("    {\n");
+                sb.Append("      \"deck_name\": ").Append(JsonStr(nd.DeckName)).Append(",\n");
+                sb.Append("      \"deck_name_chs\": ").Append(JsonStr(nd.DeckNameChs ?? "")).Append(",\n");
+                sb.Append("      \"entries\": [");
+                var es = nd.Entries ?? new List<NamedDeckEntryRaw>();
+                if (es.Count == 0) sb.Append("]\n");
+                else
+                {
+                    sb.Append('\n');
+                    for (int k = 0; k < es.Count; k++)
+                    {
+                        var e = es[k];
+                        sb.Append("        { \"card_id\": ").Append(e.CardId)
+                          .Append(", \"card_name\": ").Append(JsonStr(e.CardName ?? ""))
+                          .Append(", \"copies\": ").Append(e.Copies).Append(" }")
+                          .Append(k < es.Count - 1 ? ",\n" : "\n");
+                    }
+                    sb.Append("      ]\n");
+                }
+                sb.Append("    }").Append(i < nds.Count - 1 ? ",\n" : "\n");
+            }
+            sb.Append("  ],\n");
+        }
+
+        // 末尾补一个无害字段收尾，保证上一段逗号合法。
+        sb.Append("  \"_rev\": \"reshadow\"\n");
         sb.Append("}\n");
 
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));

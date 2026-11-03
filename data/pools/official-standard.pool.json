@@ -13,5 +13,51 @@
   "min_deck_size": 40,
   "max_deck_size": 40,
   "max_copies": 3
- }
+ },
+ "named_decks": [
+  {
+   "deck_name": "Apocalypse Deck",
+   "deck_name_chs": "启示录牌组",
+   "entries": [
+    {
+     "card_name": "Silent Rider",
+     "copies": 2
+    },
+    {
+     "card_name": "Servant of Cocytus",
+     "copies": 2
+    },
+    {
+     "card_name": "Demon of Purgatory",
+     "copies": 3
+    },
+    {
+     "card_name": "Astaroth's Reckoning",
+     "copies": 3
+    }
+   ]
+  },
+  {
+   "deck_name": "deck of 40 cards",
+   "deck_name_chs": "40张牌的牌组",
+   "entries": [
+    {
+     "card_name": "Fairy",
+     "copies": 10
+    },
+    {
+     "card_name": "Bat",
+     "copies": 10
+    },
+    {
+     "card_name": "Knight",
+     "copies": 10
+    },
+    {
+     "card_name": "Guardian Golem",
+     "copies": 10
+    }
+   ]
+  }
+ ]
 }

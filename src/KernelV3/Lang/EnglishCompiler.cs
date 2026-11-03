@@ -122,6 +122,17 @@ public sealed class EnglishCompiler
                 Costs = a0.Costs, Body = a0.Body, HasFuse = true,
             };
         }
+        // 黑洞封堵（主卡级）：原文有实义词，却编译出 0 条能力且 0 报错，
+        // 说明有整句被当成状态短语或空分支静默吞掉了。必须报出来。
+        // 排除纯融合材料声明（「Fuse: ...」本身不产出能力，是合法情况）。
+        if (r.Errors.Count == 0 && r.Abilities.Count == 0 && !_sawFuseDecl
+            && !string.IsNullOrWhiteSpace(text))
+        {
+            string plain = text.Trim();
+            r.Errors.Add("[静默丢弃] 原文非空但产出了 0 条能力：["
+                         + (plain.Length > 120 ? plain.Substring(0, 120) + "…" : plain) + "]");
+        }
+
         _actions.CrestDefResolver = null;
         return r;
     }
@@ -234,6 +245,19 @@ public sealed class EnglishCompiler
 
             // 官方 alt 段不会自引用，这里不再传 altModes，避免无限递归。
             var sub = new EnglishCompiler(_lex).Compile(textEng);
+
+            // 黑洞封堵：子卡（纹章/信仰/激奏/结晶）的编译错误以前被整段丢弃，
+            // 结果卡面上写着效果，游戏里纹章是空壳，且没有任何报警。
+            foreach (var subErr in sub.Errors)
+                r.Errors.Add("[" + typeEng + "] " + subErr);
+
+            // 原文非空、无报错、却产出 0 条能力 —— 这是「静默丢弃」，必须暴露。
+            if (sub.Errors.Count == 0 && sub.Abilities.Count == 0
+                && !string.IsNullOrWhiteSpace(textEng))
+            {
+                r.Errors.Add("[" + typeEng + "] 静默丢弃警告：子卡原文非空但编译出了 0 条能力！原文：["
+                             + (textEng.Length > 120 ? textEng.Substring(0, 120) + "…" : textEng) + "]");
+            }
             var def = new Ast.CardDef
             {
                 // 纹章 / 信仰是**独立实体**，CardId 留 0，运行期按名字合成号段

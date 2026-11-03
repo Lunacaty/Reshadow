@@ -18,6 +18,16 @@ public sealed class TriggerSpec
     public Core.CoreEvent Event { get; init; } = Core.CoreEvent.OnPlay;
 
     /// <summary>
+    /// 这是不是真正的【入场曲】（Fanfare）。
+    ///
+    /// 关键区别：随从/护符写了 `Fanfare:` 冒号头才算入场曲；
+    /// 法术从手牌施放时触发的同样是 OnPlay，但**不是入场曲** ——
+    /// 既不该在卡面印「【入场曲】」，也不受「入场曲能力不发动」类光环影响。
+    /// 以前两者混为一谈，导致所有法术都被印成【入场曲】。
+    /// </summary>
+    public bool IsFanfare { get; init; }
+
+    /// <summary>
     /// 第二个可触发的事件。用于「Whenever you play **or Fuse** a Loot card」
     /// 这类一句话里并列两个事件的写法：主语与效果完全相同，只差事件种类。
     /// 拆成两条能力会让效果执行两次（同一张牌打出时既算 play 又算 fuse 以外的重复）。

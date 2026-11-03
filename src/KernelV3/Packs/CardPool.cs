@@ -27,6 +27,15 @@ public sealed class CardPoolConfig
     public string Name { get; init; } = "标准卡池";
     public MatchRules Rules { get; init; } = MatchRules.CreateStandard();
     public List<string> EnabledPackIds { get; init; } = new();
+
+    /// <summary>
+    /// 具名牌组归属**卡池**（不是卡包）。
+    ///
+    /// 理由：具名牌组（如 Apocalypse Deck）是赛制环境级别的规则资产，
+    /// 成员卡常常跨多个卡包，同一个牌组名在不同卡池里可能配不同的卡表。
+    /// 放在 pack.json 里会让卡包与跨包卡强耦合，卡池配置器也管不到它。
+    /// </summary>
+    public List<NamedDeckRawDef> NamedDecks { get; init; } = new();
 }
 
 /// <summary>编译并校验通过后的卡池运行时环境。</summary>
@@ -306,29 +315,39 @@ public static class CardPoolBuilder
         lexicon.Build();
 
         // ================= 第 3 步：具名牌组跨包解析 =================
+        // 归属顺序：卡池 config.NamedDecks 主导，卡包里的旧定义只作为向后兼容回落。
+        // 同名时卡池覆盖卡包 —— 同一个牌组名在不同赛制下可以配不同卡表。
+        var allRawDecks = new Dictionary<string, NamedDeckRawDef>(StringComparer.OrdinalIgnoreCase);
         foreach (var pack in packs)
-        {
-            foreach (var nd in pack.NamedDecks)
-            {
-                var entries = new List<DeckEntry>();
-                foreach (var e in nd.Entries)
-                {
-                    int resolvedId = e.CardId;
-                    if (resolvedId <= 0 && !string.IsNullOrEmpty(e.CardName))
-                        lexicon.TryGetCardId(e.CardName, out resolvedId);
+            foreach (var nd in pack.NamedDecks ?? new List<NamedDeckRawDef>())
+                if (!string.IsNullOrWhiteSpace(nd.DeckName)) allRawDecks[nd.DeckName] = nd;
 
-                    if (resolvedId <= 0 || !cardOwnerPack.ContainsKey(resolvedId))
-                    {
-                        res.Errors.Add("跨包依赖缺失：卡包 [" + pack.PackId + "] 的具名牌组《" + nd.DeckName
-                                       + "》引用了卡片 '"
-                                       + (string.IsNullOrEmpty(e.CardName) ? e.CardId.ToString() : e.CardName)
-                                       + "'，但该卡片不在当前卡池的任何已启用卡包中！");
-                        continue;
-                    }
-                    entries.Add(new DeckEntry(resolvedId, e.Copies));
+        foreach (var nd in config.NamedDecks ?? new List<NamedDeckRawDef>())
+            if (!string.IsNullOrWhiteSpace(nd.DeckName)) allRawDecks[nd.DeckName] = nd;
+
+        foreach (var nd in allRawDecks.Values)
+        {
+            var entries = new List<DeckEntry>();
+            foreach (var e in nd.Entries)
+            {
+                int resolvedId = e.CardId;
+                if (resolvedId <= 0 && !string.IsNullOrEmpty(e.CardName))
+                    lexicon.TryGetCardId(e.CardName, out resolvedId);
+
+                if (resolvedId <= 0 || !cardOwnerPack.ContainsKey(resolvedId))
+                {
+                    // 保持「跨包依赖缺失」这个前缀：门禁与外部工具都按它分类。
+                    res.Errors.Add("跨包依赖缺失：卡池 [" + config.PoolId + "] 的具名牌组《" + nd.DeckName + "》引用了卡片 '"
+                                   + (string.IsNullOrEmpty(e.CardName) ? e.CardId.ToString() : e.CardName)
+                                   + "'，但该卡片不在当前卡池已启用的卡包中！");
+                    continue;
                 }
-                deckDefs.Register(nd.DeckName, entries);
+                entries.Add(new DeckEntry(resolvedId, e.Copies));
             }
+            deckDefs.Register(nd.DeckName, entries);
+            // 具名牌组的中文名进术语表，卡面打印时才能显示中文而不是英文牌组名。
+            if (!string.IsNullOrEmpty(nd.DeckNameChs))
+                glossary.Add(nd.DeckName, nd.DeckNameChs);
         }
         if (res.Errors.Count > 0) return res;
 

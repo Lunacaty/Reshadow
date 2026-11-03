@@ -91,23 +91,65 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     private void Refresh()
     {
         ClearSelf();
+        SizeFlagsVertical = SizeFlags.ExpandFill;
+        SizeFlagsHorizontal = SizeFlags.ExpandFill;
         AddThemeConstantOverride("separation", 6);
         AddTitle();
         AddChild(BuildScopeTabs());
 
-        var wb = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        var wb = new HBoxContainer
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
         wb.AddThemeConstantOverride("separation", 8);
         AddChild(wb);
 
+        // ① 左栏：调色盘（独立纵向滚动）
         wb.AddChild(BuildPaletteColumn());
 
-        _canvasCol = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, ClipContents = true };
-        _canvasCol.AddThemeConstantOverride("separation", 4);
-        wb.AddChild(_canvasCol);
+        // ② 中栏：积木画布（独立纵向滚动，禁横向）
+        var canvasScroll = new ScrollContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        SvWbTheme.StyleScroll(canvasScroll);
+        wb.AddChild(canvasScroll);
 
-        _inspectorCol = new VBoxContainer { CustomMinimumSize = new Vector2(250, 0) };
+        _canvasCol = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            ClipContents = true,
+        };
+        _canvasCol.AddThemeConstantOverride("separation", 4);
+        canvasScroll.AddChild(_canvasCol);
+
+        // ③ 右栏：属性检视器 —— 钉死在视口右侧，绝不随中间画布滚走。
+        // 早先三栏共用同一个外层 ScrollContainer，滚到底部点积木时
+        // 属性面板停在画布顶部（Y=0）早已滚出视野，逼玩家再拉回顶部。
+        var inspectorPanel = new PanelContainer
+        {
+            CustomMinimumSize = new Vector2(265, 0),
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
+        inspectorPanel.AddThemeStyleboxOverride("panel",
+            SvWbTheme.MakePanelBox(SvWbTheme.BgSurface, new Color(1, 1, 1, 0.10f), 8, 1, 6));
+        wb.AddChild(inspectorPanel);
+
+        var inspScroll = new ScrollContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        SvWbTheme.StyleScroll(inspScroll);
+        inspectorPanel.AddChild(inspScroll);
+
+        _inspectorCol = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _inspectorCol.AddThemeConstantOverride("separation", 4);
-        wb.AddChild(_inspectorCol);
+        inspScroll.AddChild(_inspectorCol);
 
         RedrawCanvas();
         RedrawInspector();

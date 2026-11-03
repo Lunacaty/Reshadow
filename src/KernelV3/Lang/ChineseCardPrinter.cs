@@ -59,13 +59,14 @@ public sealed class ChineseCardPrinter
         if (card.AccelerateDef != null)
         {
             sb.Append("【激奏】").Append(card.AccelerateDef.BaseCost).Append('；');
-            sb.Append(PrintAbilities(card.AccelerateDef.Abilities));
+            // 激奏本质是「作为法术打出」，不能印成【入场曲】。
+            sb.Append(PrintAbilities(card.AccelerateDef.Abilities, CardKind.Spell));
             sb.Append("\n----------\n");
         }
         if (card.CrystallizeDef != null)
         {
             sb.Append("【结晶】").Append(card.CrystallizeDef.BaseCost).Append('；');
-            sb.Append(PrintAbilities(card.CrystallizeDef.Abilities));
+            sb.Append(PrintAbilities(card.CrystallizeDef.Abilities, CardKind.Amulet));
             sb.Append("\n----------\n");
         }
 
@@ -92,7 +93,8 @@ public sealed class ChineseCardPrinter
 
         foreach (var ab in actives)
         {
-            var line = PrintAbility(ab);
+            // 必须把卡种传下去：法术的 OnPlay 不是【入场曲】。
+            var line = PrintAbility(ab, card.Kind);
             if (!string.IsNullOrEmpty(line)) sb.Append(line).Append('\n');
         }
 
@@ -100,18 +102,19 @@ public sealed class ChineseCardPrinter
         if (card.CrestDef != null)
         {
             sb.Append('\n').Append("【关联纹章：").Append(CardZh(card.CrestDef.Name)).Append("】\n");
-            sb.Append(PrintAbilities(card.CrestDef.Abilities)).Append('\n');
+            // 纹章是常驻的护符式实体，不继承本卡的卡种。
+            sb.Append(PrintAbilities(card.CrestDef.Abilities, CardKind.Amulet)).Append('\n');
         }
         if (card.FaithDef != null)
         {
             sb.Append('\n').Append("【关联信仰：").Append(CardZh(card.FaithDef.Name)).Append("】\n");
-            sb.Append(PrintAbilities(card.FaithDef.Abilities)).Append('\n');
+            sb.Append(PrintAbilities(card.FaithDef.Abilities, CardKind.Amulet)).Append('\n');
         }
 
         return sb.ToString().TrimEnd();
     }
 
-    public string PrintAbilities(IReadOnlyList<AbilityDef> abilities)
+    public string PrintAbilities(IReadOnlyList<AbilityDef> abilities, CardKind kind = CardKind.Follower)
     {
         if (abilities == null || abilities.Count == 0) return "";
         var sb = new StringBuilder();
@@ -124,7 +127,7 @@ public sealed class ChineseCardPrinter
                 if (pl.Length > 0) sb.Append(pl).Append('\n');
                 continue;
             }
-            var line = PrintAbility(ab);
+            var line = PrintAbility(ab, kind);
             if (!string.IsNullOrEmpty(line)) sb.Append(line).Append('\n');
         }
         return sb.ToString().TrimEnd();
@@ -219,7 +222,7 @@ public sealed class ChineseCardPrinter
         return sb.ToString().TrimEnd();
     }
 
-    public string PrintAbility(AbilityDef ab)
+    public string PrintAbility(AbilityDef ab, CardKind kind = CardKind.Follower)
     {
         if (ab == null) return "";
         var sb = new StringBuilder();
@@ -229,7 +232,7 @@ public sealed class ChineseCardPrinter
         var cond = StripEvolveDomain(ab.Condition, ab.Trigger, out string domainPrefix);
         if (!string.IsNullOrEmpty(domainPrefix)) sb.Append(domainPrefix);
 
-        sb.Append(TriggerHeader(ab.Trigger));
+        sb.Append(TriggerHeader(ab.Trigger, kind));
 
         if (ab.Costs != null && ab.Costs.Count > 0)
             sb.Append(CostsText(ab.Costs));
@@ -245,9 +248,16 @@ public sealed class ChineseCardPrinter
 
     // ---------------------------------------------------------------- 触发头
 
-    private string TriggerHeader(TriggerSpec trig)
+    private string TriggerHeader(TriggerSpec trig, CardKind kind = CardKind.Follower)
     {
         if (trig == null) return "";
+
+        // 法术从手牌施放触发的也是 OnPlay，但它**不是【入场曲】**：
+        // 卡面上法术从不印【入场曲】，只印效果正文。
+        // 以前不分卡种，所有法术都被印成了入场曲。
+        bool isSpellCast = kind == CardKind.Spell
+                           && trig.Event == CoreEvent.OnPlay
+                           && trig.SubjectFilter == null;
 
         // 旁观型触发必须写出「谁」触发的。
         // 只写事件会让卡面变成「【进入战场时】给予该卡牌【疾驰】效果」这种无头苍蝇 ——
@@ -278,6 +288,9 @@ public sealed class ChineseCardPrinter
             string verb = EventVerbZh(trig.Event, trig.SecondaryEvent);
             return "每当我方进行" + verb + "时，";
         }
+        // 法术的打出效果没有触发头，直接印正文。
+        if (isSpellCast) return "";
+
         string head = trig.Event switch
         {
             CoreEvent.OnPlay => "【入场曲】",
