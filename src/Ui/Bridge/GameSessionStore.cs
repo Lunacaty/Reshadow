@@ -303,6 +303,11 @@ public sealed class GameSessionStore
             SourceFormat = "reshadow_script",
             Text = scriptText ?? "",
             DeckModifiers = card.DeckModifiers ?? new(),
+            // 稀有度与常驻关键词必须带上：漏了它们，保存一张 DIY 卡
+            // 会让这张卡（以及重写后的整个 cards 段）的稀有度归零。
+            Rarity = card.Rarity,
+            Keywords = (card.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+                       .Select(k => k.Name).ToList(),
         };
 
         int existing = pack.Cards.FindIndex(c => c.CardId == card.CardId);
@@ -365,6 +370,9 @@ public sealed class GameSessionStore
             sb.Append("      \"cost\": ").Append(c.Cost).Append(",\n");
             sb.Append("      \"attack\": ").Append(c.Attack).Append(",\n");
             sb.Append("      \"life\": ").Append(c.Life).Append(",\n");
+            // rarity：漏写这一行会把整个卡包里所有卡的稀有度清空。
+            if (c.Rarity > 0)
+                sb.Append("      \"rarity\": ").Append(c.Rarity).Append(",\n");
             sb.Append("      \"source_format\": ").Append(JsonStr(c.SourceFormat ?? "eng_cnl")).Append(",\n");
 
             if (c.DeckModifiers != null && c.DeckModifiers.Count > 0)

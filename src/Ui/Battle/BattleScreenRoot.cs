@@ -219,8 +219,21 @@ public partial class BattleScreenRoot : Control
     private void RemoteSubmitChoice(int choiceId, int[] selected) { if (_remoteClient != null) _ = _remoteClient.SubmitChoice(choiceId, selected); }
 
 
+    /// <summary>最近一帧远端快照。网络线程只写它，主线程取走消费。</summary>
+    private ShadowverseFan.KernelV3.Net.NetStateSnapshot _latestRemoteSnap;
+
     private void OnRemoteSnapshot(ShadowverseFan.KernelV3.Net.NetStateSnapshot snap)
     {
+        // ReceiveLoop 跑在 Task.Run 的后台线程。直接在这里动 Godot 场景树
+        // （Rebuild 会增删控件）属于跨线程操作，轻则闪烁重则崩溃。
+        // 只暂存，切回主线程再应用。
+        _latestRemoteSnap = snap;
+        CallDeferred(MethodName.ApplyRemoteSnapshotOnMainThread);
+    }
+
+    private void ApplyRemoteSnapshotOnMainThread()
+    {
+        var snap = _latestRemoteSnap;
         if (_ctrl == null || snap == null) return;
         _ctrl.ApplyRemoteSnapshot(snap);
         Rebuild();
@@ -1738,7 +1751,8 @@ public partial class BattleScreenRoot : Control
                 // 只有「选目标」才存在「点空白 = 取消」的语义。
                 // 选模式、多选确认这些都必须点到具体控件上，
                 // 点空白不取消，否则玩家永远没机会做选择。
-                var pc = _ctrl.Runner.PendingChoice;
+                // 客机模式本地不跑 VM，Runner 里永远空；必须读远端快照带来的那一份。
+                var pc = _ctrl.EffectivePendingChoice;
                 bool onTarget = pc != null && pc.Kind == ChoiceKind.SelectTarget
                                 && HitAnyCandidate(lmb.GlobalPosition);
                 if (pc != null && pc.Kind == ChoiceKind.SelectTarget && !onTarget)

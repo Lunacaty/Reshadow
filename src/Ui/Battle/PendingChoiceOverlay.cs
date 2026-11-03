@@ -387,7 +387,6 @@ public partial class PendingChoiceOverlay : Control
 
         _modalContent = new PanelContainer
         {
-            Position = new Vector2(140, 92),
             Size = new Vector2(1000, 490),
             Visible = !_peekingField,
         };
@@ -407,13 +406,18 @@ public partial class PendingChoiceOverlay : Control
         _peekBtn = new Button
         {
             Text = _peekingField ? "↩ 返回选择窗口" : "👁 查看战场",
-            Position = new Vector2(1010, 42),
+
             Size = new Vector2(130, 38),
             CustomMinimumSize = new Vector2(130, 38),
         };
         SvWbTheme.StyleButton(_peekBtn, isPrimary: true, customAccent: SvWbTheme.AccentCyan);
         _peekBtn.Pressed += () => { _peekingField = !_peekingField; RefreshState(); };
         AddChild(_peekBtn);
+
+        // 不再写死 (140,92) / (1010,42)：那两个坐标是按 1280x720 算的，
+        // 全屏下弹窗会跑到左上、按钮会飘到屏幕中间。
+        SvWbTheme.KeepCentered(this, _modalContent, new Vector2(1000, 490), new Vector2(0, -16));
+        SvWbTheme.KeepCentered(this, _peekBtn, new Vector2(130, 38), new Vector2(435, -295));
     }
 
     private void ToggleModalItem(PendingChoice p, int val)

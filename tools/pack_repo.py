@@ -150,6 +150,24 @@ RE_XML_TAG_ONLY = re.compile(
     r'^\s*///\s*</?(summary|param|returns|remarks|para|list|item|typeparam|'
     r'seealso|see|exception|inheritdoc|code|example|value)\b[^>]*/?>\s*$')
 
+# 行内 XML 标签：<summary>文字</summary> 这种整行都在时，
+# RE_XML_TAG_ONLY 匹配不到（不是「只有标签」），标签就留在文档里白占地方。
+# 这里统一把它们剥掉，只留下文字内容。
+RE_XML_INLINE = re.compile(
+    r'</?(?:summary|param|returns|remarks|para|list|item|typeparam|'
+    r'seealso|see|exception|inheritdoc|code|example|value)\b[^>]*/?>')
+
+
+def strip_xml_tags(line):
+    """剥掉一行里的行内 XML 标签，保留文字。"""
+    if "<" not in line:
+        return line
+    stripped = RE_XML_INLINE.sub("", line).rstrip()
+    # 剥完只剩 // / /// 的，说明本来就没内容，直接丢弃。
+    if stripped.strip() in ("//", "///"):
+        return None
+    return stripped
+
 
 def slim_cs_comments(body):
     """压缩 .cs 的注释，在不改变可读性主干的前提下减体积。
@@ -230,7 +248,18 @@ def slim_cs_comments(body):
                 ded.append(x)
         out.extend(ded)
         i = j
-    return "\n".join(out)
+
+    # 最后统一剥掉行内 XML 标签（<summary>文字</summary> / <see cref="X"/> 等）。
+    # 放在最后一步是因为上面的「首尾成对保留」逻辑需要先看到原始行，
+    # 先剥标签会让末行判定失真。
+    cleaned = []
+    for x in out:
+        if RE_XML_INLINE.search(x):
+            x = strip_xml_tags(x)
+            if x is None:
+                continue
+        cleaned.append(x)
+    return "\n".join(cleaned)
 
 
 def build_tree(paths):

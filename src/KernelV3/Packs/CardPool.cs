@@ -494,6 +494,12 @@ public static class CardPoolBuilder
                 CrystallizeDef = astDef.CrystallizeDef,
                 CrestDef = astDef.CrestDef,
                 FaithDef = astDef.FaithDef,
+                // 这四项缺一不可：PackId 为空会让 EnumerateCollectibleCards
+                // 按 EnabledPackIds 过滤时把这张卡整个丢掉，构筑台里根本找不到。
+                PackId = pack.PackId,
+                IsToken = c.IsToken,
+                Rarity = c.Rarity,
+                SourceText = c.Text,
             };
         }
         if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))

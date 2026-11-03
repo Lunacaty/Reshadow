@@ -1,0 +1,35 @@
+fix(128): 客机视角归一化 + 快照词条/挂起选择 + 稀有度保留 + 最后 3 处固定坐标
+
+【隐患1 联机客机视角】三处实机断路：
+  ① 视角颠倒：房主是 Player 0、客机是 Player 1，但客机本地 MyPlayerId 写死 0，
+     且 UI 固定把 Players[0] 画在下方。结果客机看到的是「下方一排暗牌、
+     上方是自己的真手牌」，轮到谁都判断反。
+     修复：ApplyRemoteSnapshot 做视角归一化 —— 本地永远 0=我方、1=敌方，
+     EntityId 保持原样，客机上行 PlayCard(entityId) 依旧精确命中。
+  ② MaterializeEntity 漏拷 Keywords/Traits/Counters ——
+     客机看不到守护外框、必杀图标、护符吟唱倒计时。已补。
+  ③ ApplyRemoteSnapshot 没读 snap.Pending —— 客机永远弹不出选择框。
+     新增 RemotePendingChoice + EffectivePendingChoice，UI 改读后者；
+     IsWaitingForInput 也纳入远端挂起。
+  ④ ReceiveLoop 在后台线程直接调 Rebuild 增删 Godot 控件（跨线程）。
+     改为暂存快照 + CallDeferred 切回主线程。
+
+实测：服务端 P0 手牌 5 张全隐藏、P1 手牌 4 张可见；
+客机本地 P0(我方) 4 张有卡号、P1(敌方) 5 张无卡面。视角正确。
+
+【隐患2 稀有度与 PackId】
+  SaveCardIntoPack 的 CardRawEntry 漏 Rarity/Keywords，
+  SerializePacket 漏写 "rarity" —— 保存一张 DIY 卡会把整个卡包的
+  稀有度清空。两处都补上。
+  CardPool 的 ast_json 分支漏 PackId/IsToken/Rarity/SourceText ——
+  PackId 为空会让 EnumerateCollectibleCards 按 EnabledPackIds 过滤时
+  把这张卡整个丢掉，构筑台里找不到。已补齐。
+
+【隐患3 最后 3 处 1280x720 固定坐标】
+  MainMenuView 标题栏(1280 宽)与底栏(28,690)/(1180,690) 改跟随视口；
+  MulliganOverlay 的 (1280f - totalW) 改用视口宽度；
+  PendingChoiceOverlay 的 (140,92)/(1010,42) 改 KeepCentered。
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 四端矩阵 211-211 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 /
+UI 3-3 / 战斗 UI 31-31 / 逐卡矩阵 31-32（既有测试集自造卡）

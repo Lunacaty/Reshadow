@@ -97,7 +97,9 @@ public partial class MulliganOverlay : Control
         int n = hand.Count;
         const float cardW = 168f, cardH = 222f, gap = 24f;
         float totalW = n * cardW + Math.Max(0, n - 1) * gap;
-        float startX = (1280f - totalW) * 0.5f;
+        // 跟随视口宽度居中：写死 1280 会让全屏下的起手牌偏在左边。
+        var mvp = Size.X > 0 ? Size : GetViewportRect().Size;
+        float startX = (mvp.X - totalW) * 0.5f;
         const float baseY = 230f;
 
         for (int i = 0; i < n; i++)

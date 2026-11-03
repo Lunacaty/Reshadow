@@ -43,7 +43,16 @@ public partial class MainMenuView : Control
         AddChild(box);
         box.SetAnchorsPreset(LayoutPreset.TopLeft);
         box.Position = new Vector2(0, 96);
-        box.Size = new Vector2(1280, 0);
+        // 标题栏宽度跟随视口：写死 1280 会让全屏下大标题偏在左半屏。
+        void LayoutTitle()
+        {
+            if (!IsInstanceValid(box)) return;
+            var vp = Size.X > 0 ? Size : GetViewportRect().Size;
+            box.Position = new Vector2(0, Mathf.Max(40f, vp.Y * 0.12f));
+            box.Size = new Vector2(vp.X, 0);
+        }
+        Resized += LayoutTitle;
+        LayoutTitle();
         box.AddThemeConstantOverride("separation", 6);
         box.MouseFilter = MouseFilterEnum.Ignore;
 
@@ -140,7 +149,6 @@ public partial class MainMenuView : Control
         var stat = new Label { Text = cards + " 张卡 · " + decks + " 副牌组" };
         AddChild(stat);
         stat.SetAnchorsPreset(LayoutPreset.BottomLeft);
-        stat.Position = new Vector2(28, 690);
         stat.AddThemeFontSizeOverride("font_size", 12);
         stat.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
         stat.MouseFilter = MouseFilterEnum.Ignore;
@@ -148,7 +156,20 @@ public partial class MainMenuView : Control
         var ver = new Label { Text = "v1.0", HorizontalAlignment = HorizontalAlignment.Right };
         AddChild(ver);
         ver.SetAnchorsPreset(LayoutPreset.BottomRight);
-        ver.Position = new Vector2(1180, 690);
+        ver.AddThemeFontSizeOverride("font_size", 12);
+        ver.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+        ver.MouseFilter = MouseFilterEnum.Ignore;
+
+        // 底栏跟随视口底部：写死 690 在全屏下会悬在屏幕半腰。
+        void LayoutFooter()
+        {
+            if (!IsInstanceValid(stat) || !IsInstanceValid(ver)) return;
+            var vp = Size.X > 0 ? Size : GetViewportRect().Size;
+            stat.Position = new Vector2(28f, vp.Y - 32f);
+            ver.Position = new Vector2(vp.X - 100f, vp.Y - 32f);
+        }
+        Resized += LayoutFooter;
+        LayoutFooter();
         ver.Size = new Vector2(72, 0);
         ver.AddThemeFontSizeOverride("font_size", 12);
         ver.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);

@@ -73,18 +73,36 @@ public sealed class BattleSessionController
     /// 隐藏卡（IsHidden / CardId == -1）用一张占位卡面填充：
     /// 客机的内存里根本不存在对手的真实卡号，这是防读牌的最后一道。
     /// </summary>
+    /// <summary>远端权威端推过来的挂起选择（客机模式专用）。</summary>
+    public PendingChoice RemotePendingChoice { get; private set; }
+
+    /// <summary>
+    /// 当前生效的挂起选择：客机优先读远端快照带来的那一份。
+    /// UI 一律读这个属性，不直接碰 Runner.PendingChoice ——
+    /// 客机本地根本不跑 VM，Runner 里永远是空的。
+    /// </summary>
+    public PendingChoice EffectivePendingChoice => RemotePendingChoice ?? Runner.PendingChoice;
+
+
     public void ApplyRemoteSnapshot(ShadowverseFan.KernelV3.Net.NetStateSnapshot snap)
     {
         if (snap == null || State == null) return;
 
-        State.ActivePlayer = snap.ActivePlayer;
+        // ★ 视角归一化：本地 UI 永远以 0 = 我方（屏幕下方）、1 = 敌方（屏幕上方）。
+        // 本机在权威端若是 Player 1（客机），则把权威端的 1 映射到本地 0。
+        // EntityId 一律保持原样 —— 客机上行 PlayCard(entityId) 仍旧精确命中。
+        int me = snap.ViewerPlayerId is 0 or 1 ? snap.ViewerPlayerId : 0;
+        int MapPid(int serverPid) => serverPid < 0 ? serverPid : (serverPid == me ? 0 : 1);
+
+        State.ActivePlayer = MapPid(snap.ActivePlayer);
         State.TurnNumber = snap.TurnNumber;
 
-        for (int pid = 0; pid < 2 && pid < snap.Players.Length; pid++)
+        for (int serverPid = 0; serverPid < 2 && serverPid < snap.Players.Length; serverPid++)
         {
-            var dto = snap.Players[pid];
+            var dto = snap.Players[serverPid];
             if (dto == null) continue;
-            var p = State.Players[pid];
+            int localPid = MapPid(serverPid);
+            var p = State.Players[localPid];
 
             p.Deck.Clear();
             p.Hand.Clear();
@@ -95,34 +113,60 @@ public sealed class BattleSessionController
 
             // 牌库只发张数：补等量的占位，让界面上的张数正确，
             // 但没有任何真实卡号可读。
-            for (int i = 0; i < dto.DeckCount; i++) p.Deck.Add(PlaceholderEntity(pid, ZoneRef.Deck));
-            for (int i = 0; i < dto.CemeteryCount; i++) p.Cemetery.Add(PlaceholderEntity(pid, ZoneRef.Cemetery));
-            for (int i = 0; i < dto.BanishedCount; i++) p.Banished.Add(PlaceholderEntity(pid, ZoneRef.Banished));
+            for (int i = 0; i < dto.DeckCount; i++) p.Deck.Add(PlaceholderEntity(localPid, ZoneRef.Deck));
+            for (int i = 0; i < dto.CemeteryCount; i++) p.Cemetery.Add(PlaceholderEntity(localPid, ZoneRef.Cemetery));
+            for (int i = 0; i < dto.BanishedCount; i++) p.Banished.Add(PlaceholderEntity(localPid, ZoneRef.Banished));
 
             if (dto.Leader != null)
-                p.Leader = MaterializeEntity(dto.Leader, pid, ZoneRef.Leader) ?? p.Leader;
+                p.Leader = MaterializeEntity(dto.Leader, localPid, ZoneRef.Leader) ?? p.Leader;
 
             foreach (var e in dto.Board)
             {
-                var made = MaterializeEntity(e, pid, ZoneRef.Board);
+                var made = MaterializeEntity(e, localPid, ZoneRef.Board);
                 if (made != null) p.Board.Add(made);
             }
             foreach (var e in dto.Crests)
             {
-                var made = MaterializeEntity(e, pid, ZoneRef.CrestArea);
+                var made = MaterializeEntity(e, localPid, ZoneRef.CrestArea);
                 if (made != null) p.CrestArea.Add(made);
             }
             foreach (var e in dto.Hand)
             {
-                var made = MaterializeEntity(e, pid, ZoneRef.Hand);
+                var made = MaterializeEntity(e, localPid, ZoneRef.Hand);
                 if (made != null) p.Hand.Add(made);
             }
 
             p.EpUnlocked = dto.EpUnlocked;
             p.SepUnlocked = dto.SepUnlocked;
+            p.ManualEvolvedThisTurn = dto.ManualEvolvedThisTurn;
+            p.UsedEarlyExtraPp = dto.UsedEarlyExtraPp;
+            p.UsedLateExtraPp = dto.UsedLateExtraPp;
+            p.UsedExtraPpThisTurn = dto.UsedExtraPpThisTurn;
 
             foreach (var kv in dto.Counters ?? new System.Collections.Generic.Dictionary<string, int>())
-                State.WriteCounter(pid, State.Schema.Counter(kv.Key), kv.Value);
+                State.WriteCounter(localPid, State.Schema.Counter(kv.Key), kv.Value);
+        }
+
+        // 还原挂起选择：客机打出一张需要选目标/选模式/发现的牌时，
+        // 权威端把 Pending 发过来，不还原就永远弹不出选择框。
+        if (snap.Pending != null)
+        {
+            System.Enum.TryParse<ChoiceKind>(snap.Pending.Kind, true, out var ck);
+            RemotePendingChoice = new PendingChoice
+            {
+                ChoiceId = snap.Pending.ChoiceId,
+                PlayerId = MapPid(snap.Pending.PlayerId),
+                Kind = ck,
+                MinSelect = snap.Pending.MinSelect,
+                MaxSelect = snap.Pending.MaxSelect,
+                CanCancel = snap.Pending.CanCancel,
+                Prompt = snap.Pending.Prompt ?? "",
+                Candidates = snap.Pending.Candidates ?? new System.Collections.Generic.List<int>(),
+            };
+        }
+        else
+        {
+            RemotePendingChoice = null;
         }
     }
 
@@ -173,6 +217,16 @@ public sealed class BattleSessionController
             FusedThisTurn = d.FusedThisTurn,
             IsFaith = d.IsFaith,
         };
+
+        // 关键词 / 兵种 / 计数器：快照里已经发过来了，不还原的话
+        // 客机画面上看不到守护外框、必杀图标，也看不到护符的吟唱倒计时。
+        foreach (var kw in d.Keywords ?? new System.Collections.Generic.List<string>())
+            if (!string.IsNullOrEmpty(kw)) e.Keywords.Add(State.Schema.Keyword(kw));
+        foreach (var tr in d.Traits ?? new System.Collections.Generic.List<string>())
+            if (!string.IsNullOrEmpty(tr)) e.Traits.Add(State.Schema.Trait(tr));
+        foreach (var kv in d.Counters ?? new System.Collections.Generic.Dictionary<string, int>())
+            if (!string.IsNullOrEmpty(kv.Key)) e.Counters[State.Schema.Counter(kv.Key)] = kv.Value;
+
         return e;
     }
 
@@ -295,7 +349,9 @@ public sealed class BattleSessionController
     // ---------------------------------------------------------------- 回合状态
 
     public bool IsMyTurn => State.ActivePlayer == MyPlayerId;
-    public bool IsWaitingForInput => Runner.IsWaitingForInput;
+    // 客机模式本地不跑 VM，Runner 里永远不是「等待输入」；
+    // 真正在等选目标是权威端，靠远端快照的 Pending 体现。
+    public bool IsWaitingForInput => RemotePendingChoice != null || Runner.IsWaitingForInput;
     public bool IsFinished => Runner.Phase == MatchPhase.Finished;
     public int Winner => Runner.Winner();
 
