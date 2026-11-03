@@ -446,37 +446,13 @@ public partial class DiyWorkshopView : Control
         _endpointHost.AddChild(hint);
 
         var tree = new BlockTreeEditorWidget();
-        tree.Build(_ctrl.BlockModel, _store.CardPrinter, editable: true,
-                   onAddAction: hat => AddActionBlock(hat),
-                   onRemoveAction: blk => RemoveActionBlock(blk),
-                   onMoveAction: (blk, dir) => MoveActionBlock(blk, dir));
+        // 先绑控制器再 Build：三栏工作台的调色盘、全树增删改、
+        // 孔位镶嵌器全部要经控制器落盘并重编译。
+        tree.BindController(_ctrl);
+        tree.Build(_ctrl.BlockModel, _store.CardPrinter, editable: true);
         _endpointHost.AddChild(tree);
     }
 
-    /// <summary>
-    /// 积木编辑统一走控制器 —— 逻辑在 DiyWorkshopController 里才能被门禁覆盖。
-    /// 视图只负责把「第几顶帽子」翻译成索引传过去。
-    /// </summary>
-    private void AddActionBlock(Block hat)
-    {
-        int idx = _ctrl.BlockModel?.Hats?.IndexOf(hat) ?? -1;
-        if (idx < 0) return;
-        _ctrl.AddActionBlock(idx);
-        RefreshAll();
-    }
-
-    private void RemoveActionBlock(Block blk)
-    {
-        // 按索引定位：CompileFromBlocks 会重建模型，旧对象找不到
-        if (TryLocate(blk, out int hi, out int si)) _ctrl.RemoveActionAt(hi, si);
-        RefreshAll();
-    }
-
-    private void MoveActionBlock(Block blk, int dir)
-    {
-        if (TryLocate(blk, out int hi, out int si)) _ctrl.MoveActionBlock(hi, si, dir);
-        RefreshAll();
-    }
 
     private bool TryLocate(Block blk, out int hatIndex, out int slotIndex)
     {

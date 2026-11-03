@@ -2,160 +2,763 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Diy;
 using ShadowverseFan.KernelV3.Lang;
+using ShadowverseFan.Ui.Bridge;
 using ShadowverseFan.Ui.Theme;
 
 namespace ShadowverseFan.Ui.Diy;
 
 /// <summary>
-/// Scratch 五彩几何积木树的可视化编辑器。
+/// Scratch 五彩几何积木树的可视化编辑器（三栏工作台）。
 ///
 /// 形状与颜色都按 Block.Shape 走，不统一成一个灰框 ——
 /// 「事件帽 / 控制流夹 / 动作块 / 目标胶囊 / 条件六角」这套形状语言
 /// 正是积木端存在的理由；退化成文字列表就等于砍掉了这一端。
+///
+/// 三栏：左调色盘（按色分类点击插入）｜中画布（焦点容器 + 全树操作）
+/// ｜右孔位镶嵌器（Target / Number / Condition 三套递归编辑器）。
 /// </summary>
 public partial class BlockTreeEditorWidget : VBoxContainer
 {
     private static Color ShapeColor(BlockShape s) => s switch
     {
-        BlockShape.Hat   => new Color("D97706"),  // 琥珀金：事件帽
-        BlockShape.C     => new Color("DB2777"),  // 玫红：控制流夹
-        BlockShape.Stack => new Color("2563EB"),  // 宝石蓝：动作块
-        BlockShape.Pill  => new Color("059669"),  // 翡翠绿：目标/数值胶囊
-        BlockShape.Hex   => new Color("7C3AED"),  // 奥术紫：布尔条件
+        BlockShape.Hat   => new Color("D97706"),
+        BlockShape.C     => new Color("DB2777"),
+        BlockShape.Stack => new Color("2563EB"),
+        BlockShape.Pill  => new Color("059669"),
+        BlockShape.Hex   => new Color("7C3AED"),
         _                => new Color("475569"),
     };
 
     private bool _editable;
-    private Action<Block> _onAddAction;
-    private Action<Block> _onRemoveAction;
-    private Action<Block, int> _onMoveAction;
+    private DiyWorkshopController _ctrl;
+    private ChineseCardPrinter _printer;
+    private CardBlockWorkspace _ws;
 
-    /// <summary>
-    /// 构建积木树。
-    ///
-    /// editable=true 时每颗动作块右侧出现 [▲][▼][🗑]，事件帽下出现 [＋添加动作] ——
-    /// 积木端如果只能看不能改，那它就只是一张示意图，不是编辑器。
-    /// </summary>
+    private int _scopeTab;
+    private List<Block> _insertList;
+    private Block _selected;
+
+    private VBoxContainer _canvasCol;
+    private VBoxContainer _inspectorCol;
+
     public void Build(CardBlockWorkspace ws, ChineseCardPrinter printer,
                       bool editable = false,
                       Action<Block> onAddAction = null,
                       Action<Block> onRemoveAction = null,
                       Action<Block, int> onMoveAction = null)
     {
+        _ws = ws;
+        _printer = printer;
         _editable = editable;
-        _onAddAction = onAddAction;
-        _onRemoveAction = onRemoveAction;
-        _onMoveAction = onMoveAction;
-        foreach (var c in GetChildren()) c.QueueFree();
+
+        ClearSelf();
         AddThemeConstantOverride("separation", 6);
         if (ws == null) return;
 
-        var head = new Label { Text = "卡牌积木树：" + (ws.Name ?? "") };
+        if (!_editable)
+        {
+            AddTitle();
+            BuildReadOnly(ws);
+            return;
+        }
+
+        EnsureInsertList();
+        Refresh();
+    }
+
+    public void BindController(DiyWorkshopController ctrl) => _ctrl = ctrl;
+
+    private void ClearSelf()
+    {
+        foreach (var c in GetChildren())
+        {
+            RemoveChild(c);
+            c.QueueFree();
+        }
+    }
+
+    private void AddTitle()
+    {
+        var head = new Label { Text = "卡牌积木树：" + (_ws?.Name ?? "") };
         head.AddThemeFontSizeOverride("font_size", 14);
         head.AddThemeColorOverride("font_color", new Color("FEF08A"));
         AddChild(head);
+    }
 
-        if (ws.DeckModBlocks != null && ws.DeckModBlocks.Count > 0)
-        {
-            var dmTitle = new Label { Text = "构筑期修正积木" };
-            dmTitle.AddThemeFontSizeOverride("font_size", 12);
-            dmTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentPurple);
-            AddChild(dmTitle);
-            foreach (var b in ws.DeckModBlocks) AddChild(BlockLeaf(b, 0));
-        }
+    private void Refresh()
+    {
+        ClearSelf();
+        AddThemeConstantOverride("separation", 6);
+        AddTitle();
+        AddChild(BuildScopeTabs());
 
-        if (ws.Keywords != null && ws.Keywords.Count > 0)
-        {
-            AddChild(BlockBox(BlockShape.Pill,
-                "关键词：" + string.Join("、", ws.Keywords), null));
-        }
+        var wb = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        wb.AddThemeConstantOverride("separation", 8);
+        AddChild(wb);
 
-        if (ws.Hats != null && ws.Hats.Count > 0)
+        wb.AddChild(BuildPaletteColumn());
+
+        _canvasCol = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _canvasCol.AddThemeConstantOverride("separation", 4);
+        wb.AddChild(_canvasCol);
+
+        _inspectorCol = new VBoxContainer { CustomMinimumSize = new Vector2(300, 0) };
+        _inspectorCol.AddThemeConstantOverride("separation", 4);
+        wb.AddChild(_inspectorCol);
+
+        RedrawCanvas();
+        RedrawInspector();
+    }
+
+    private void EnsureInsertList()
+    {
+        if (_insertList != null) return;
+        var root = _ctrl?.RootListOf(_scopeTab);
+        if (root == null) root = ScopeRootFallback();
+        _insertList = root;
+        _ctrl?.SetActiveInsertList(root);
+    }
+
+    private List<Block> ScopeRootFallback() => _scopeTab switch
+    {
+        1 => _ws?.CrestHats,
+        2 => _ws?.FaithHats,
+        3 => _ws?.AccelerateHats,
+        4 => _ws?.CrystallizeHats,
+        5 => _ws?.DeckModBlocks,
+        _ => _ws?.Hats,
+    };
+
+    private Control BuildScopeTabs()
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 6);
+        var labels = new[]
         {
-            var hatTitle = new Label { Text = "能力积木（事件帽）" };
-            hatTitle.AddThemeFontSizeOverride("font_size", 12);
-            hatTitle.AddThemeColorOverride("font_color", new Color("FBBF24"));
-            AddChild(hatTitle);
-            foreach (var h in ws.Hats)
+            "本体能力 (" + (_ws?.Hats?.Count ?? 0) + ")",
+            "关联纹章 (" + (_ws?.CrestHats?.Count ?? 0) + ")",
+            "关联信仰 (" + (_ws?.FaithHats?.Count ?? 0) + ")",
+            "激奏" + ((_ws?.AccelerateCost ?? -1) >= 0 ? " (" + _ws.AccelerateCost + "费)" : ""),
+            "结晶" + ((_ws?.CrystallizeCost ?? -1) >= 0 ? " (" + _ws.CrystallizeCost + "费)" : ""),
+            "构筑与词条",
+        };
+        for (int i = 0; i < labels.Length; i++)
+        {
+            int tab = i;
+            var b = new Button { Text = labels[i], CustomMinimumSize = new Vector2(0, 32) };
+            SvWbTheme.StyleButton(b, isPrimary: _scopeTab == tab);
+            b.Pressed += () =>
             {
-                AddChild(BlockLeaf(h, 0));
-                if (_editable && _onAddAction != null)
+                _scopeTab = tab;
+                _insertList = null;
+                _selected = null;
+                EnsureInsertList();
+                Refresh();
+            };
+            row.AddChild(b);
+        }
+        return row;
+    }
+
+    private static readonly (string Title, (string Op, string Label)[] Items)[] Palette =
+    {
+        ("事件帽", new[]
+        {
+            ("hat_self_event", "自身时机帽"),
+            ("hat_watch_event", "旁观监听帽"),
+            ("hat_passive", "常驻光环帽"),
+        }),
+        ("控制流", new[]
+        {
+            ("c_if_else", "如果…否则…"),
+            ("c_repeat", "重复 N 次"),
+            ("c_for_each", "遍历每个目标"),
+            ("c_mode", "模式抉择 / 随机"),
+        }),
+        ("伤害 / 回复", new[]
+        {
+            ("act_damage", "造成伤害"),
+            ("act_split_damage", "分配伤害"),
+            ("act_restore", "回复生命"),
+            ("act_full_restore", "完全回复"),
+            ("act_damage_aura", "减伤 / 上限光环"),
+        }),
+        ("抽牌 / 召唤", new[]
+        {
+            ("act_draw", "抽取卡牌"),
+            ("act_summon", "召唤到战场"),
+            ("act_add_hand", "生成加入手牌"),
+            ("act_copy", "复制目标卡牌"),
+            ("act_discover", "从卡池发现"),
+            ("act_reanimate", "亡者召还"),
+            ("act_gain_crest", "获得纹章"),
+            ("act_reveal", "公开手牌"),
+            ("act_replace_deck", "替换整副牌组"),
+        }),
+        ("解场 / 移区", new[]
+        {
+            ("act_select", "显式选择目标"),
+            ("act_destroy", "破坏目标"),
+            ("act_banish", "消失目标"),
+            ("act_discard", "舍弃手牌"),
+            ("act_bounce", "返回手牌"),
+            ("act_return_deck", "洗回牌组"),
+            ("act_transform", "使目标变身"),
+        }),
+        ("身材 / 费用 / 词条", new[]
+        {
+            ("act_buff", "攻防增减"),
+            ("act_set_stats", "设定攻防"),
+            ("act_swap_stats", "交换攻防"),
+            ("act_mod_cost", "修改费用"),
+            ("act_grant_kw", "给予关键词"),
+            ("act_remove_kw", "移除关键词"),
+            ("act_silence", "沉默目标"),
+        }),
+        ("进化 / 计数 / 赋能力", new[]
+        {
+            ("act_evolve", "使目标进化"),
+            ("act_super_evolve", "使目标超进化"),
+            ("act_mod_counter", "修改计数器"),
+            ("act_grant_entity_ability", "赋予子能力"),
+            ("act_grant_ability", "赋予常驻能力"),
+            ("act_invoke", "复刻时机能力"),
+            ("act_deck_mod", "构筑规则修正"),
+        }),
+    };
+
+    private Control BuildPaletteColumn()
+    {
+        var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(215, 460) };
+        SvWbTheme.StyleScroll(scroll);
+        var col = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        col.AddThemeConstantOverride("separation", 3);
+        scroll.AddChild(col);
+
+        foreach (var (title, items) in Palette)
+        {
+            var h = new Label { Text = title };
+            h.AddThemeFontSizeOverride("font_size", 12);
+            h.AddThemeColorOverride("font_color", new Color("FDE68A"));
+            col.AddChild(h);
+            foreach (var (op, label) in items)
+            {
+                var b = new Button
                 {
-                    var addBtn = new Button { Text = "＋ 添加动作块", CustomMinimumSize = new Vector2(130, 26) };
-                    SvWbTheme.StyleButton(addBtn, customAccent: new Color("2563EB"));
-                    var boundHat = h;
-                    addBtn.Pressed += () => _onAddAction(boundHat);
-                    AddChild(addBtn);
-                }
+                    Text = "+ " + label,
+                    CustomMinimumSize = new Vector2(0, 26),
+                    SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                };
+                string captured = op;
+                SvWbTheme.StyleButton(b, customAccent: ShapeColor(DiyBlockModel.ShapeOf(captured)));
+                b.Pressed += () => InsertBlock(captured);
+                col.AddChild(b);
+            }
+        }
+        return scroll;
+    }
+
+    private void InsertBlock(string opcode)
+    {
+        if (_ctrl == null) return;
+        EnsureInsertList();
+        if (!_ctrl.InsertBlock(opcode, _scopeTab)) return;
+        _ws = _ctrl.BlockModel;
+        Refresh();
+    }
+
+    private void RedrawCanvas()
+    {
+        if (_canvasCol == null) return;
+        foreach (var c in _canvasCol.GetChildren())
+        {
+            _canvasCol.RemoveChild(c);
+            c.QueueFree();
+        }
+
+        var root = _ctrl?.RootListOf(_scopeTab) ?? ScopeRootFallback() ?? new List<Block>();
+
+        var bar = new HBoxContainer();
+        var focusLbl = new Label
+        {
+            Text = _insertList == null ? "插入点：未指定" : "插入点：动作序列（" + _insertList.Count + " 项）",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        focusLbl.AddThemeFontSizeOverride("font_size", 11);
+        focusLbl.AddThemeColorOverride("font_color", new Color("7DD3FC"));
+        bar.AddChild(focusLbl);
+
+        var toRoot = new Button { Text = "设为域根", CustomMinimumSize = new Vector2(0, 26) };
+        SvWbTheme.StyleButton(toRoot);
+        toRoot.Pressed += () =>
+        {
+            _insertList = root;
+            _ctrl?.SetActiveInsertList(root);
+            RedrawCanvas();
+        };
+        bar.AddChild(toRoot);
+        _canvasCol.AddChild(bar);
+
+        if (root.Count == 0)
+        {
+            var hint = new Label { Text = "（此能力域为空：从左侧调色盘点「事件帽」开始）", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            hint.AddThemeFontSizeOverride("font_size", 11);
+            hint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+            _canvasCol.AddChild(hint);
+            return;
+        }
+
+        foreach (var b in root.ToList()) _canvasCol.AddChild(RenderBlock(b, 0));
+    }
+
+    private Control RenderBlock(Block blk, int depth)
+    {
+        if (blk == null) return new Control();
+
+        var wrap = new VBoxContainer();
+        wrap.AddThemeConstantOverride("separation", 3);
+
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 4);
+        wrap.AddChild(row);
+
+        var box = BlockBox(blk.Shape, BuildLabel(blk), null, depth);
+        box.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        box.MouseFilter = Control.MouseFilterEnum.Stop;
+        box.GuiInput += e =>
+        {
+            if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
+            {
+                _selected = blk;
+                RedrawInspector();
+                box.AcceptEvent();
+            }
+        };
+        row.AddChild(box);
+
+        if (_editable && _ctrl != null)
+        {
+            var up = new Button { Text = "▲", CustomMinimumSize = new Vector2(26, 26) };
+            SvWbTheme.StyleButton(up);
+            var c1 = blk;
+            up.Pressed += () => { _ctrl.MoveBlockInTree(c1, -1); _ws = _ctrl.BlockModel; Refresh(); };
+            row.AddChild(up);
+
+            var down = new Button { Text = "▼", CustomMinimumSize = new Vector2(26, 26) };
+            SvWbTheme.StyleButton(down);
+            var c2 = blk;
+            down.Pressed += () => { _ctrl.MoveBlockInTree(c2, 1); _ws = _ctrl.BlockModel; Refresh(); };
+            row.AddChild(down);
+
+            var cp = new Button { Text = "+", CustomMinimumSize = new Vector2(26, 26) };
+            SvWbTheme.StyleButton(cp);
+            var c3 = blk;
+            cp.Pressed += () => { _ctrl.DuplicateBlockInTree(c3); _ws = _ctrl.BlockModel; Refresh(); };
+            row.AddChild(cp);
+
+            var del = new Button { Text = "x", CustomMinimumSize = new Vector2(26, 26) };
+            SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
+            var c4 = blk;
+            del.Pressed += () =>
+            {
+                _ctrl.RemoveBlockFromTree(c4);
+                if (ReferenceEquals(_selected, c4)) _selected = null;
+                _ws = _ctrl.BlockModel;
+                Refresh();
+            };
+            row.AddChild(del);
+        }
+
+        AddSubList(wrap, blk.Stacks, "Then", depth);
+        AddSubList(wrap, blk.ElseStacks, "Else", depth);
+
+        if (blk.Branches != null)
+        {
+            for (int i = 0; i < blk.Branches.Count; i++)
+            {
+                var br = blk.Branches[i];
+                var head = new HBoxContainer();
+                var lbl = new Label
+                {
+                    Text = "分支 " + (i + 1) + "（" + (br?.Count ?? 0) + " 项）",
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                };
+                lbl.AddThemeFontSizeOverride("font_size", 10);
+                lbl.AddThemeColorOverride("font_color", new Color("F0ABFC"));
+                head.AddChild(lbl);
+
+                var pick = new Button { Text = "设为插入点", CustomMinimumSize = new Vector2(0, 22) };
+                SvWbTheme.StyleButton(pick);
+                var cbr = br;
+                pick.Pressed += () =>
+                {
+                    _insertList = cbr;
+                    _ctrl?.SetActiveInsertList(cbr);
+                    RedrawCanvas();
+                };
+                head.AddChild(pick);
+                wrap.AddChild(head);
+
+                if (br != null)
+                    foreach (var b in br.ToList()) wrap.AddChild(RenderBlock(b, depth + 1));
             }
         }
 
-        if (ws.AccelerateHats != null && ws.AccelerateHats.Count > 0)
+        return wrap;
+    }
+
+    private void AddSubList(VBoxContainer wrap, List<Block> list, string name, int depth)
+    {
+        if (list == null) return;
+        var head = new HBoxContainer();
+        var lbl = new Label
         {
-            AddChild(BlockBox(BlockShape.Hat, "⚡ 激奏 (" + ws.AccelerateCost + " 费)", null));
-            foreach (var h in ws.AccelerateHats) AddChild(BlockLeaf(h, 1));
+            Text = name + " 流（" + list.Count + " 项）",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        lbl.AddThemeFontSizeOverride("font_size", 10);
+        lbl.AddThemeColorOverride("font_color", new Color("FBCFE8"));
+        head.AddChild(lbl);
+
+        var pick = new Button { Text = "设为插入点", CustomMinimumSize = new Vector2(0, 22) };
+        SvWbTheme.StyleButton(pick);
+        pick.Pressed += () =>
+        {
+            _insertList = list;
+            _ctrl?.SetActiveInsertList(list);
+            RedrawCanvas();
+        };
+        head.AddChild(pick);
+        wrap.AddChild(head);
+
+        foreach (var b in list.ToList()) wrap.AddChild(RenderBlock(b, depth + 1));
+    }
+
+    private void RedrawInspector()
+    {
+        if (_inspectorCol == null) return;
+        foreach (var c in _inspectorCol.GetChildren())
+        {
+            _inspectorCol.RemoveChild(c);
+            c.QueueFree();
         }
 
-        if (ws.CrystallizeHats != null && ws.CrystallizeHats.Count > 0)
+        var title = new Label
         {
-            AddChild(BlockBox(BlockShape.Hat, "❖ 结晶 (" + ws.CrystallizeCost + " 费)", null));
-            foreach (var h in ws.CrystallizeHats) AddChild(BlockLeaf(h, 1));
+            Text = _selected == null ? "选中积木 · 孔位与参数" : "当前选中：" + BuildLabel(_selected),
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        title.AddThemeFontSizeOverride("font_size", 12);
+        title.AddThemeColorOverride("font_color", new Color("FEF08A"));
+        _inspectorCol.AddChild(title);
+
+        if (_selected == null)
+        {
+            var hint = new Label { Text = "（点击画布上任意一颗积木开始编辑）", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            hint.AddThemeFontSizeOverride("font_size", 11);
+            hint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+            _inspectorCol.AddChild(hint);
+            return;
         }
+
+        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        SvWbTheme.StyleScroll(scroll);
+        var col = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        col.AddThemeConstantOverride("separation", 5);
+        scroll.AddChild(col);
+        _inspectorCol.AddChild(scroll);
+
+        var b = _selected;
+        BuildTargetSlotEditor(col, "目标孔位", b.Target, v => { b.Target = v; Apply(); });
+        BuildNumberSlotEditor(col, "数值孔位", b.Number, v => { b.Number = v; Apply(); });
+        BuildNumberSlotEditor(col, "第二数值", b.Number2, v => { b.Number2 = v; Apply(); });
+        BuildConditionSlotEditor(col, "条件", b.Condition, v => { b.Condition = v; Apply(); });
+        BuildIntEditor(col, "整数 A", b.IntA, v => { b.IntA = v; Apply(); });
+        BuildTextEditor(col, "文本", b.Text, v => { b.Text = v; Apply(); });
+        BuildTextEditor(col, "枚举 A", b.EnumA, v => { b.EnumA = v; Apply(); });
+    }
+
+    private void Apply()
+    {
+        if (_ctrl == null || _ws == null) return;
+        _ctrl.CompileFromBlocks(_ws);
+        var fresh = _ctrl.BlockModel;
+        if (fresh != null) _ws = fresh;
+    }
+
+    private static void BuildIntEditor(VBoxContainer col, string label, int cur, Action<int> setter)
+    {
+        var row = new HBoxContainer();
+        var lbl = new Label { Text = label, CustomMinimumSize = new Vector2(92, 0) };
+        lbl.AddThemeFontSizeOverride("font_size", 11);
+        row.AddChild(lbl);
+        var spin = new SpinBox
+        {
+            MinValue = -999, MaxValue = 999, Step = 1, Value = cur,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        spin.ValueChanged += v => setter((int)v);
+        row.AddChild(spin);
+        col.AddChild(row);
+    }
+
+    private static void BuildTextEditor(VBoxContainer col, string label, string cur, Action<string> setter)
+    {
+        var row = new HBoxContainer();
+        var lbl = new Label { Text = label, CustomMinimumSize = new Vector2(92, 0) };
+        lbl.AddThemeFontSizeOverride("font_size", 11);
+        row.AddChild(lbl);
+        var edit = new LineEdit { Text = cur ?? "", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        edit.TextSubmitted += v => setter(v);
+        edit.FocusExited += () => setter(edit.Text);
+        row.AddChild(edit);
+        col.AddChild(row);
+    }
+
+    private static void BuildInlineText(VBoxContainer col, string label, string cur, Action<string> setter)
+    {
+        var row = new HBoxContainer();
+        var lbl = new Label { Text = label, CustomMinimumSize = new Vector2(76, 0) };
+        lbl.AddThemeFontSizeOverride("font_size", 10);
+        row.AddChild(lbl);
+        var edit = new LineEdit { Text = cur ?? "", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        edit.TextSubmitted += v => setter(v);
+        edit.FocusExited += () => setter(edit.Text);
+        row.AddChild(edit);
+        col.AddChild(row);
+    }
+
+    private static void BuildInlineInt(VBoxContainer col, string label, int cur, Action<int> setter)
+    {
+        var row = new HBoxContainer();
+        var lbl = new Label { Text = label, CustomMinimumSize = new Vector2(76, 0) };
+        lbl.AddThemeFontSizeOverride("font_size", 10);
+        row.AddChild(lbl);
+        var spin = new SpinBox
+        {
+            MinValue = -99, MaxValue = 99, Step = 1, Value = cur,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        spin.ValueChanged += v => setter((int)v);
+        row.AddChild(spin);
+        col.AddChild(row);
+    }
+
+    private static readonly string[] TargetOps = { "tgt_slot", "tgt_leader", "tgt_query" };
+
+    private void BuildTargetSlotEditor(VBoxContainer col, string label, Block cur, Action<Block> setter)
+    {
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 3);
+        var head = new Label { Text = label };
+        head.AddThemeFontSizeOverride("font_size", 11);
+        head.AddThemeColorOverride("font_color", new Color("6EE7B7"));
+        box.AddChild(head);
+
+        var opts = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        opts.AddItem("（无）");
+        foreach (var o in TargetOps) opts.AddItem(o);
+        opts.Selected = cur == null ? 0 : Math.Max(0, Array.IndexOf(TargetOps, cur.Opcode) + 1);
+        opts.ItemSelected += idx =>
+        {
+            if (idx <= 0) { setter(null); return; }
+            var op = TargetOps[(int)idx - 1];
+            if (cur != null && cur.Opcode == op) return;
+            var made = new Block { Opcode = op };
+            if (op == "tgt_slot") made.Text = TargetSpec.SlotSelf;
+            else if (op == "tgt_leader") made.EnumA = "Self";
+            else
+            {
+                made.IntA = 0; made.IntB = 1; made.Text = "Follower"; made.EnumA = "Choose";
+                made.Number = new Block { Opcode = "num_const", IntA = 1 };
+            }
+            setter(made);
+        };
+        box.AddChild(opts);
+
+        if (cur != null)
+        {
+            if (cur.Opcode == "tgt_slot")
+                BuildInlineText(box, "槽位", cur.Text, v => { cur.Text = v; setter(cur); });
+            else if (cur.Opcode == "tgt_leader")
+                BuildInlineText(box, "归属", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+            else if (cur.Opcode == "tgt_query")
+            {
+                BuildInlineInt(box, "归属(0我1敌)", cur.IntA, v => { cur.IntA = v; setter(cur); });
+                BuildInlineInt(box, "区域", cur.IntB, v => { cur.IntB = v; setter(cur); });
+                BuildInlineText(box, "卡种", cur.Text, v => { cur.Text = v; setter(cur); });
+                BuildInlineText(box, "选法", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+                var nb = new VBoxContainer();
+                box.AddChild(nb);
+                BuildNumberSlotEditor(nb, "选取数量", cur.Number, v => { cur.Number = v; setter(cur); });
+            }
+        }
+        col.AddChild(box);
+    }
+
+    private static readonly string[] NumOps =
+        { "num_const", "num_rand", "num_counter", "num_prop", "num_count", "num_arith" };
+
+    private void BuildNumberSlotEditor(VBoxContainer col, string label, Block cur, Action<Block> setter)
+    {
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 3);
+        var head = new Label { Text = label };
+        head.AddThemeFontSizeOverride("font_size", 11);
+        head.AddThemeColorOverride("font_color", new Color("6EE7B7"));
+        box.AddChild(head);
+
+        var opts = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        opts.AddItem("（无）");
+        foreach (var o in NumOps) opts.AddItem(o);
+        opts.Selected = cur == null ? 0 : Math.Max(0, Array.IndexOf(NumOps, cur.Opcode) + 1);
+        opts.ItemSelected += idx =>
+        {
+            if (idx <= 0) { setter(null); return; }
+            var op = NumOps[(int)idx - 1];
+            if (cur != null && cur.Opcode == op) return;
+            var made = new Block { Opcode = op };
+            if (op == "num_const") made.IntA = cur?.IntA ?? 1;
+            else if (op == "num_rand") { made.IntA = 2; made.IntB = 10; made.IntC = 0; }
+            else if (op == "num_counter") made.Text = "pp";
+            else if (op == "num_prop") made.EnumA = "Attack";
+            else if (op == "num_arith")
+            {
+                made.EnumA = "Add";
+                made.Number = new Block { Opcode = "num_const", IntA = 1 };
+                made.Number2 = new Block { Opcode = "num_const", IntA = 1 };
+            }
+            setter(made);
+        };
+        box.AddChild(opts);
+
+        if (cur != null)
+        {
+            if (cur.Opcode == "num_const")
+                BuildInlineInt(box, "常量", cur.IntA, v => { cur.IntA = v; setter(cur); });
+            else if (cur.Opcode == "num_rand")
+            {
+                BuildInlineInt(box, "下界", cur.IntA, v => { cur.IntA = v; setter(cur); });
+                BuildInlineInt(box, "上界", cur.IntB, v => { cur.IntB = v; setter(cur); });
+                BuildInlineInt(box, "变量槽", cur.IntC, v => { cur.IntC = v; setter(cur); });
+            }
+            else if (cur.Opcode == "num_counter")
+                BuildInlineText(box, "计数器", cur.Text, v => { cur.Text = v; setter(cur); });
+            else if (cur.Opcode == "num_prop")
+                BuildInlineText(box, "属性", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+            else if (cur.Opcode == "num_arith")
+            {
+                BuildInlineText(box, "运算符", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+                var n1 = new VBoxContainer(); box.AddChild(n1);
+                BuildNumberSlotEditor(n1, "左值", cur.Number, v => { cur.Number = v; setter(cur); });
+                var n2 = new VBoxContainer(); box.AddChild(n2);
+                BuildNumberSlotEditor(n2, "右值", cur.Number2, v => { cur.Number2 = v; setter(cur); });
+            }
+        }
+        col.AddChild(box);
+    }
+
+    private static readonly string[] CondOps =
+        { "bool_compare", "bool_exists", "bool_has_kw", "bool_has_trait",
+          "bool_has_clan", "bool_has_state", "bool_and", "bool_or", "bool_not" };
+
+    private void BuildConditionSlotEditor(VBoxContainer col, string label, Block cur, Action<Block> setter)
+    {
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 3);
+        var head = new Label { Text = label };
+        head.AddThemeFontSizeOverride("font_size", 11);
+        head.AddThemeColorOverride("font_color", new Color("C4B5FD"));
+        box.AddChild(head);
+
+        var opts = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        opts.AddItem("（无条件）");
+        foreach (var o in CondOps) opts.AddItem(o);
+        opts.Selected = cur == null ? 0 : Math.Max(0, Array.IndexOf(CondOps, cur.Opcode) + 1);
+        opts.ItemSelected += idx =>
+        {
+            if (idx <= 0) { setter(null); return; }
+            var op = CondOps[(int)idx - 1];
+            if (cur != null && cur.Opcode == op) return;
+            var made = new Block { Opcode = op };
+            if (op == "bool_compare")
+            {
+                made.EnumA = "Ge";
+                made.Number = new Block { Opcode = "num_const", IntA = 1 };
+                made.Number2 = new Block { Opcode = "num_const", IntA = 1 };
+            }
+            else if (op == "bool_has_kw") made.Text = "ward";
+            else if (op == "bool_has_trait") made.Text = "Fairy";
+            else if (op == "bool_has_clan") made.Text = "Forestcraft";
+            else if (op == "bool_has_state") made.Text = "Evolved";
+            else if (op == "bool_and" || op == "bool_or") made.Stacks = new List<Block>();
+            else if (op == "bool_not") made.Condition = new Block { Opcode = "bool_true" };
+            setter(made);
+        };
+        box.AddChild(opts);
+
+        if (cur != null)
+        {
+            if (cur.Opcode == "bool_compare")
+            {
+                BuildInlineText(box, "比较符", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+                var n1 = new VBoxContainer(); box.AddChild(n1);
+                BuildNumberSlotEditor(n1, "左值", cur.Number, v => { cur.Number = v; setter(cur); });
+                var n2 = new VBoxContainer(); box.AddChild(n2);
+                BuildNumberSlotEditor(n2, "右值", cur.Number2, v => { cur.Number2 = v; setter(cur); });
+            }
+            else if (cur.Opcode == "bool_has_kw" || cur.Opcode == "bool_has_trait"
+                  || cur.Opcode == "bool_has_clan" || cur.Opcode == "bool_has_state")
+                BuildInlineText(box, "取值", cur.Text, v => { cur.Text = v; setter(cur); });
+            else if (cur.Opcode == "bool_not")
+            {
+                var nb = new VBoxContainer(); box.AddChild(nb);
+                BuildConditionSlotEditor(nb, "内层条件", cur.Condition, v => { cur.Condition = v; setter(cur); });
+            }
+            else if (cur.Opcode == "bool_and" || cur.Opcode == "bool_or")
+            {
+                var add = new Button { Text = "+ 添加子条件", CustomMinimumSize = new Vector2(0, 24) };
+                SvWbTheme.StyleButton(add);
+                add.Pressed += () =>
+                {
+                    cur.Stacks ??= new List<Block>();
+                    cur.Stacks.Add(new Block { Opcode = "bool_true" });
+                    setter(cur);
+                };
+                box.AddChild(add);
+            }
+        }
+        col.AddChild(box);
+    }
+
+    private void BuildReadOnly(CardBlockWorkspace ws)
+    {
+        if (ws.DeckModBlocks != null)
+            foreach (var b in ws.DeckModBlocks) AddChild(BlockLeaf(b, 0));
+        if (ws.Keywords != null && ws.Keywords.Count > 0)
+            AddChild(BlockBox(BlockShape.Pill, "关键词：" + string.Join("、", ws.Keywords), null));
+        if (ws.Hats != null)
+            foreach (var h in ws.Hats) AddChild(BlockLeaf(h, 0));
     }
 
     private Control BlockLeaf(Block blk, int depth)
     {
         if (blk == null) return new Control();
-
-        var shape = blk.Shape;
-        string label = BuildLabel(blk);
-
         var wrap = new VBoxContainer();
         wrap.AddThemeConstantOverride("separation", 4);
-
-        // 动作块行：色块 + 可选的 [▲][▼][🗑]
-        var lineRow = new HBoxContainer();
-        lineRow.AddThemeConstantOverride("separation", 4);
-        wrap.AddChild(lineRow);
-
-        var box = BlockBox(shape, label, null, depth);
-        box.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        lineRow.AddChild(box);
-
-        if (_editable && _onRemoveAction != null && shape == BlockShape.Stack)
-        {
-            var up = new Button { Text = "▲", CustomMinimumSize = new Vector2(28, 28) };
-            SvWbTheme.StyleButton(up);
-            var b1 = blk;
-            up.Pressed += () => _onMoveAction?.Invoke(b1, -1);
-            lineRow.AddChild(up);
-
-            var down = new Button { Text = "▼", CustomMinimumSize = new Vector2(28, 28) };
-            SvWbTheme.StyleButton(down);
-            var b2 = blk;
-            down.Pressed += () => _onMoveAction?.Invoke(b2, 1);
-            lineRow.AddChild(down);
-
-            var del = new Button { Text = "🗑", CustomMinimumSize = new Vector2(28, 28) };
-            SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
-            var b3 = blk;
-            del.Pressed += () => _onRemoveAction(b3);
-            lineRow.AddChild(del);
-        }
-
-        foreach (var inner in blk.Stacks ?? new List<Block>())
-            wrap.AddChild(BlockLeaf(inner, depth + 1));
-        foreach (var inner in blk.ElseStacks ?? new List<Block>())
-            wrap.AddChild(BlockLeaf(inner, depth + 1));
-        foreach (var inner in blk.Branches ?? new List<List<Block>>())
-            foreach (var b in inner) wrap.AddChild(BlockLeaf(b, depth + 1));
-
+        wrap.AddChild(BlockBox(blk.Shape, BuildLabel(blk), null, depth));
+        foreach (var inner in blk.Stacks ?? new List<Block>()) wrap.AddChild(BlockLeaf(inner, depth + 1));
+        foreach (var inner in blk.ElseStacks ?? new List<Block>()) wrap.AddChild(BlockLeaf(inner, depth + 1));
+        if (blk.Branches != null)
+            foreach (var inner in blk.Branches)
+                if (inner != null)
+                    foreach (var b in inner) wrap.AddChild(BlockLeaf(b, depth + 1));
         return wrap;
     }
 
-    /// <summary>数值块的显示文本。数值挂在 Number 子积木上，不在块自身 IntA。</summary>
     private static string NumText(Block numBlk, int fallback = 1)
     {
         if (numBlk == null) return fallback.ToString();
@@ -165,100 +768,95 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             "num_counter" => "【" + (numBlk.Text ?? "计数") + "】",
             "num_count" => "统计数量",
             "num_prop" => (numBlk.EnumA ?? "属性"),
+            "num_rand" => "随机" + numBlk.IntA + "~" + numBlk.IntB,
+            "num_arith" => "(" + (numBlk.EnumA ?? "+") + ")",
             _ => string.IsNullOrEmpty(numBlk.Opcode) ? fallback.ToString() : numBlk.Opcode,
         };
     }
 
-    /// <summary>
-    /// 积木的卡面化描述。
-    ///
-    /// 两个坑都在这里踩过：
-    ///   1) 数值要读 blk.Number（子积木），读 blk.IntA 恒为 0
-    ///      —— 于是「打 3 点伤害」显示成「打 0 点伤害」；
-    ///   2) opcode 的真实拼写是 act_restore / act_summon，
-    ///      写成 act_heal / act_spawn 永远匹配不上，只会落到 default 分支。
-    /// </summary>
     private static string BuildLabel(Block blk)
     {
+        if (blk == null) return "";
         string op = blk.Opcode ?? "";
-        string txt = blk.Text ?? "";
-
-        return op switch
+        switch (op)
         {
-            "hat_self_event" => "🎩 当自身【" + txt + "】时",
-            "hat_watch_event" => "🎩 每当监听到【" + txt + "】时",
-            "hat_passive" => "🎩 常驻光环 / 初始设置",
-            "c_if_else" => "🔀 如果满足条件…否则…",
-            "c_repeat" => "🔁 重复执行 " + NumText(blk.Number) + " 次",
-            "c_mode" => "❖ 模式抉择 (" + (blk.EnumA ?? "") + ", 选 " + Math.Max(1, blk.IntA) + " 项)",
-            "act_damage" => "⚔ 对目标造成 " + NumText(blk.Number, 0) + " 点伤害",
-            "act_split_damage" => "⚔ 分配造成 " + NumText(blk.Number, 0) + " 点伤害",
-            "act_restore" => "💚 回复 " + NumText(blk.Number, 0) + " 点生命",
-            "act_full_restore" => "💚 完全回复生命",
-            "act_draw" => "🃏 抽取 " + NumText(blk.Number, 1) + " 张牌",
-            "act_summon" => "✨ 召唤 " + NumText(blk.Number, 1) + " 个《" + txt + "》",
-            "act_add_hand" => "📥 将 " + NumText(blk.Number, 1) + " 张《" + txt + "》加入手牌",
-            "act_gain_crest" => "❖ 获得纹章：《" + txt + "》",
-            "act_destroy" => "💀 破坏目标",
-            "act_banish" => "🌀 消失目标",
-            "act_discard" => "🗑 舍弃目标",
-            "act_bounce" => "↩ 将目标返回手牌",
-            "act_buff" => "⬆ 给予 +" + NumText(blk.Number, 0) + "/+" + NumText(blk.Number2, 0),
-            "act_grant_kw" => "🛡 给予关键词：【" + txt + "】",
-            "act_evolve" => "✦ 使目标进化",
-            "act_super_evolve" => "★ 使目标超进化",
-            "act_transform" => "🦋 使目标变身为《" + txt + "》",
-            "act_reanimate" => "⚰ 亡者召还 (" + NumText(blk.Number, 0) + ")",
-            "act_discover" => "🔍 发现 (" + (blk.IntB > 0 ? blk.IntB : 3) + " 选 "
-                                + (blk.IntA > 0 ? blk.IntA : 1) + ")",
-            "act_deck_mod" => "📐 构筑修正：" + txt + "(" + blk.IntA + ")",
-            "act_copy" => "📋 复制目标",
-            "act_move_zone" => "📦 移动目标区域",
-            "act_flip_damage" => "⚔ 翻转伤害",
-            "" => string.IsNullOrEmpty(txt) ? "(未知积木)" : txt,
-            _ => string.IsNullOrEmpty(txt) ? op : op + "  " + txt,
-        };
+            case "hat_self_event": return "当自身【" + (blk.Text ?? "OnPlay") + "】时";
+            case "hat_watch_event": return "每当【" + (blk.Text ?? "OnEnterField") + "】时";
+            case "hat_passive": return "常驻光环";
+            case "c_if_else": return "如果…否则…";
+            case "c_repeat": return "重复 " + NumText(blk.Number, 2) + " 次";
+            case "c_for_each": return "对每个目标";
+            case "c_mode": return "模式抉择（选 " + NumText(blk.Number, blk.IntA) + " 个）";
+            case "act_damage": return "造成 " + NumText(blk.Number, 2) + " 点伤害";
+            case "act_split_damage": return "分配 " + NumText(blk.Number, 2) + " 点伤害";
+            case "act_restore": return "回复 " + NumText(blk.Number, 2) + " 点生命";
+            case "act_full_restore": return "完全回复生命";
+            case "act_draw": return "抽取 " + NumText(blk.Number, 1) + " 张牌";
+            case "act_summon": return "召唤「" + (blk.Text ?? "?") + "」";
+            case "act_add_hand": return "生成「" + (blk.Text ?? "?") + "」加入手牌";
+            case "act_destroy": return "破坏目标";
+            case "act_banish": return "使目标消失";
+            case "act_bounce": return "将目标返回手牌";
+            case "act_return_deck": return "将目标洗回牌组";
+            case "act_discard": return "舍弃手牌";
+            case "act_silence": return "沉默目标";
+            case "act_buff": return "给予 " + NumText(blk.Number, 1) + "/" + NumText(blk.Number2, 1);
+            case "act_set_stats": return "设定攻防为 " + NumText(blk.Number, 1) + "/" + NumText(blk.Number2, 1);
+            case "act_swap_stats": return "交换攻防";
+            case "act_mod_cost": return "修改费用";
+            case "act_grant_kw": return "给予关键词【" + (blk.Text ?? "?") + "】";
+            case "act_remove_kw": return "移除关键词【" + (blk.Text ?? "?") + "】";
+            case "act_evolve": return "使目标进化";
+            case "act_super_evolve": return "使目标超进化";
+            case "act_reveal": return "公开手牌";
+            case "act_mod_counter": return "修改计数器【" + (blk.Text ?? "?") + "】";
+            case "act_gain_crest": return "获得纹章「" + (blk.Text ?? "?") + "」";
+            case "act_copy": return "复制目标";
+            case "act_discover": return "从卡池发现";
+            case "act_reanimate": return "亡者召还";
+            case "act_transform": return "使目标变身为「" + (blk.Text ?? "?") + "」";
+            case "act_replace_deck": return "替换整副牌组";
+            case "act_damage_aura": return "伤害修正光环";
+            case "act_grant_entity_ability": return "赋予目标一段能力";
+            case "act_grant_ability": return "赋予常驻能力";
+            case "act_invoke": return "复刻发动时机能力";
+            case "act_deck_mod": return "构筑规则修正";
+            case "act_move_to_board": return "移动到战场";
+            case "act_select": return "显式选择目标";
+            default: return string.IsNullOrEmpty(op) ? "(空积木)" : op;
+        }
     }
 
-    /// <summary>按形状画一个带切角/圆角的色块。</summary>
-    private Control BlockBox(BlockShape shape, string text, string pill, int depth = 0)
+    private static Control BlockBox(BlockShape shape, string text, string pill, int depth = 0)
     {
-        Color col = ShapeColor(shape);
-        int radius = shape switch
-        {
-            BlockShape.Pill => 14,
-            BlockShape.Hex  => 4,
-            BlockShape.Hat  => 10,
-            _ => 6,
-        };
-
-        var box = new PanelContainer { CustomMinimumSize = new Vector2(0, 34) };
-        box.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
-            col.Darkened(0.28f), col.Lightened(0.15f), radius, 1, 2));
-
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 8);
-        box.AddChild(row);
+        row.AddThemeConstantOverride("separation", 6);
 
-        if (depth > 0)
-            row.AddChild(new Control { CustomMinimumSize = new Vector2(depth * 18f, 0) });
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", 8 + depth * 12);
+        margin.AddThemeConstantOverride("margin_right", 8);
+        margin.AddThemeConstantOverride("margin_top", shape == BlockShape.Pill ? 3 : 6);
+        margin.AddThemeConstantOverride("margin_bottom", shape == BlockShape.Pill ? 3 : 6);
 
-        var lbl = new Label { Text = text, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        lbl.AddThemeFontSizeOverride("font_size", 12);
+        var box = new PanelContainer();
+        box.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
+            ShapeColor(shape), new Color(1, 1, 1, 0.28f), 6, 1, 4));
+        margin.AddChild(box);
+
+        var lbl = new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        lbl.AddThemeFontSizeOverride("font_size", shape == BlockShape.Pill ? 11 : 12);
         lbl.AddThemeColorOverride("font_color", Colors.White);
-        row.AddChild(lbl);
+        box.AddChild(lbl);
 
         if (!string.IsNullOrEmpty(pill))
         {
-            var p = new PanelContainer { CustomMinimumSize = new Vector2(72, 22) };
-            p.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
-                new Color("0891B2"), new Color("22D3EE"), 11, 1, 0));
-            var pl = new Label { Text = pill, HorizontalAlignment = HorizontalAlignment.Center };
-            pl.AddThemeFontSizeOverride("font_size", 11);
-            p.AddChild(pl);
-            row.AddChild(p);
+            var p = new Label { Text = pill };
+            p.AddThemeFontSizeOverride("font_size", 10);
+            p.AddThemeColorOverride("font_color", new Color("FEF08A"));
+            box.AddChild(p);
         }
 
-        return box;
+        row.AddChild(margin);
+        return row;
     }
 }
