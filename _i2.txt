@@ -1,0 +1,3 @@
+整合完成: {'name_chs': 0, 'text_chs': 78, 'text': 0, 'traits': 0, 'is_token': 0, 'rarity': 13, 'cost': 0, 'atk': 0, 'life': 0}
+剩余 name_chs==name_eng: 0
+text_chs 为空: 9

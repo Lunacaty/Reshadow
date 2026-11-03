@@ -1,0 +1,6 @@
+meta 首卡 skill 键: ['ja', 'en', 'zh-Hant', 'zh-Hans', 'ko']
+meta 首卡 names 键: ['ja', 'en', 'zh-Hant', 'zh-Hans', 'ko']
+pack 首卡字段: ['attack', 'card_id', 'clan', 'cost', 'is_token', 'kind', 'life', 'name_chs', 'name_eng', 'rarity', 'source_format', 'text', 'text_chs', 'traits']
+text_chs 样例: '【<color=Keyword>爆能强化</color>_4】本随从+3/+3。'
+10001110 skill.zh-Hans = '【<color=Keyword>爆能强化</color>_4】本随从+3/+3。'
+10001110 pack text_chs  = '【<color=Keyword>爆能强化</color>_4】本随从+3/+3。'

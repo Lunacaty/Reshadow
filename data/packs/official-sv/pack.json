@@ -791,7 +791,8 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "<ev><b><color=Keyword>Evolve</color></b>: Summon 2 copies of <b><i><color=Keyword>Ghost</color></i></b>.</ev>\n<sev><b><color=Keyword>Super-Evolve</color></b>: Give them <b><color=Keyword>Drain</color></b>.</sev>",
-   "text_chs": "<ev>【<color=Keyword>进化时</color>】召唤2个『<color=Keyword>怨灵</color>』。</ev>\n<sev>【<color=Keyword>超进化时</color>】使其获得【<color=Keyword>虹吸</color>】。</sev>"
+   "text_chs": "<ev>【<color=Keyword>进化时</color>】召唤2个『<color=Keyword>怨灵</color>』。</ev>\n<sev>【<color=Keyword>超进化时</color>】使其获得【<color=Keyword>虹吸</color>】。</sev>",
+   "rarity": 2
   },
   {
    "card_id": 10052310,
@@ -3895,7 +3896,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Enhance</color> (5)</b>: Draw a Swordcraft follower that costs 2 or less and set its cost to 0.\n<hr><b><color=Keyword>Rush</color></b>\n<b><color=Keyword>Follower</color></b> <b><color=Keyword>Strike</color></b>: If the opposing follower is damaged, destroy it.",
-   "text_chs": "【<color=Keyword>爆能强化</color>_5】抽取1张费用为2或以下的皇家护卫·随从，使其费用变为0。\n<hr>【<color=Keyword>突进</color>】\n【<color=Keyword>攻击时</color>】若攻击受伤的随从，则破坏交战对手。"
+   "text_chs": "【<color=Keyword>爆能强化</color>_5】抽取1张费用为2或以下的皇家护卫·随从，使其费用变为0。\n<hr>【<color=Keyword>突进</color>】\n【<color=Keyword>攻击时</color>】若攻击受伤的随从，则破坏交战对手。",
+   "rarity": 3
   },
   {
    "card_id": 10223120,
@@ -6092,7 +6094,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select another allied card on the field. If you selected one, destroy it and deal 2 damage to a random enemy follower.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Replicate the effects of this card's <b><color=Keyword>Fanfare</color></b> ability.</ev>",
-   "text_chs": "【<color=Keyword>入场曲</color>】选择自己的战场上的1张其他卡牌，若成功选择，则破坏该卡牌。对对手的战场上的随机1个随从造成2点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】发动与【<color=Keyword>入场曲</color>】相同的能力。</ev>"
+   "text_chs": "【<color=Keyword>入场曲</color>】选择自己的战场上的1张其他卡牌，若成功选择，则破坏该卡牌。对对手的战场上的随机1个随从造成2点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】发动与【<color=Keyword>入场曲</color>】相同的能力。</ev>",
+   "rarity": 2
   },
   {
    "card_id": 10372120,
@@ -6123,7 +6126,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select another allied card on the field. If you selected one, destroy it and draw 2 cards.\n<hr><b><color=Keyword>Last Words</color></b>: Draw a card.",
-   "text_chs": "【<color=Keyword>入场曲</color>】选择自己的战场上的1张其他卡牌，若成功选择，则破坏该卡牌。抽取2张卡牌。\n<hr>【<color=Keyword>谢幕曲</color>】抽取1张卡牌。"
+   "text_chs": "【<color=Keyword>入场曲</color>】选择自己的战场上的1张其他卡牌，若成功选择，则破坏该卡牌。抽取2张卡牌。\n<hr>【<color=Keyword>谢幕曲</color>】抽取1张卡牌。",
+   "rarity": 2
   },
   {
    "card_id": 10373110,
@@ -6634,7 +6638,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Zeta & Bea, Crimson and Blue</color></i></b>.\n<b><color=Keyword>Enhance</color> (6)</b>: Give it <b><color=Keyword>Bane</color></b> and this follower <b><color=Keyword>Storm</color></b>.\n<hr><b><color=Keyword>Rush</color></b>",
-   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>真红与群青·塞达&贝阿朵丽丝</color>』。\n【<color=Keyword>爆能强化</color>_6】使其获得【<color=Keyword>毁灭</color>】。本随从获得【<color=Keyword>疾驰</color>】。\n<hr>【<color=Keyword>突进</color>】"
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>真红与群青·塞达&贝阿朵丽丝</color>』。\n【<color=Keyword>爆能强化</color>_6】使其获得【<color=Keyword>毁灭</color>】。本随从获得【<color=Keyword>疾驰</color>】。\n<hr>【<color=Keyword>突进</color>】",
+   "rarity": 4
   },
   {
    "card_id": 10424120,
@@ -6649,7 +6654,8 @@
    "life": 3,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Skybound Art</color></b> - Evolve all unevolved allied followers on the field. <b><color=Keyword>Super Skybound Art</color></b> - Super-evolve them instead.",
-   "text_chs": "【<color=Keyword>入场曲</color>】【<color=Keyword>奥义</color>】使自己的战场上的所有进化前的随从进化。【<color=Keyword>解放奥义</color>】改为超进化。"
+   "text_chs": "【<color=Keyword>入场曲</color>】【<color=Keyword>奥义</color>】使自己的战场上的所有进化前的随从进化。【<color=Keyword>解放奥义</color>】改为超进化。",
+   "rarity": 4
   },
   {
    "card_id": 10431110,
@@ -8292,7 +8298,8 @@
    "life": 8,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Ward</color></b>\nAt the end of your turn, if this follower is unevolved, deal 8 damage to 2 random enemy followers and restore 8 defense to your leader. If this follower is evolved, deal 8 damage to the enemy leader.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Remove <b><color=Keyword>Ward</color></b> from this follower. Give it <b><color=Keyword>Intimidate</color></b>.</ev>",
-   "text_chs": "【<color=Keyword>守护</color>】\n自己的回合结束时，若本随从为进化前，则对对手的战场上的随机2个随从造成8点伤害。回复自己的主战者8点生命值。若为进化后，则对对手的主战者造成8点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】本随从失去【<color=Keyword>守护</color>】。本随从获得【<color=Keyword>威慑</color>】。</ev>"
+   "text_chs": "【<color=Keyword>守护</color>】\n自己的回合结束时，若本随从为进化前，则对对手的战场上的随机2个随从造成8点伤害。回复自己的主战者8点生命值。若为进化后，则对对手的主战者造成8点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】本随从失去【<color=Keyword>守护</color>】。本随从获得【<color=Keyword>威慑</color>】。</ev>",
+   "rarity": 4
   },
   {
    "card_id": 10544120,
@@ -8689,7 +8696,8 @@
    "life": 3,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon an <b><i><color=Keyword>Enhanced Puppet</color></i></b> and <b><i><color=Keyword>Puppet</color></i></b>.\n<b><color=Keyword>Enhance</color> (7)</b>: Give them <b><color=Keyword>Storm</color></b>.",
-   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>改良型·悬丝傀儡</color>』和1个『<color=Keyword>悬丝傀儡</color>』。\n【<color=Keyword>爆能强化</color>_7】使其获得【<color=Keyword>疾驰</color>】。"
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>改良型·悬丝傀儡</color>』和1个『<color=Keyword>悬丝傀儡</color>』。\n【<color=Keyword>爆能强化</color>_7】使其获得【<color=Keyword>疾驰</color>】。",
+   "rarity": 1
   },
   {
    "card_id": 10571120,
@@ -9181,7 +9189,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Summon 3 copies of <b><i><color=Keyword>Fearless Soldier</color></i></b>.\n<b><color=Keyword>Enhance</color> (7)</b>: Give them +2/+2.",
-   "text_chs": "召唤3个『<color=Keyword>勇烈的士兵</color>』。\n【<color=Keyword>爆能强化</color>_7】使其+2/+2。"
+   "text_chs": "召唤3个『<color=Keyword>勇烈的士兵</color>』。\n【<color=Keyword>爆能强化</color>_7】使其+2/+2。",
+   "rarity": 1
   },
   {
    "card_id": 10622110,
@@ -9809,7 +9818,8 @@
    "life": 3,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select another allied follower on the field. If you selected one, destroy it and evolve this follower.\n<hr><ev>When this follower evolves, summon a <b><i><color=Keyword>Bat</color></i></b> and evolve it.</ev>",
-   "text_chs": "【<color=Keyword>入场曲</color>】选择自己的战场上的1个其他随从，若成功选择，则破坏该随从。本随从进化。\n<hr><ev>本随从进化时，召唤1个『<color=Keyword>蝙蝠</color>』，使其进化。</ev>"
+   "text_chs": "【<color=Keyword>入场曲</color>】选择自己的战场上的1个其他随从，若成功选择，则破坏该随从。本随从进化。\n<hr><ev>本随从进化时，召唤1个『<color=Keyword>蝙蝠</color>』，使其进化。</ev>",
+   "rarity": 3
   },
   {
    "card_id": 10653310,
@@ -10640,7 +10650,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Select an enemy follower on the field and deal it 3 damage. <b><color=Keyword>Rally</color> (10)</b> - Give it \"Can't attack followers or leaders\" until the end of your opponent's turn.",
-   "text_chs": "选择对手的战场上的1个随从，对其造成3点伤害。【<color=Keyword>协作</color>_10】对手的回合结束前，使其获得「无法攻击随从或主战者」。"
+   "text_chs": "选择对手的战场上的1个随从，对其造成3点伤害。【<color=Keyword>协作</color>_10】对手的回合结束前，使其获得「无法攻击随从或主战者」。",
+   "rarity": 1
   },
   {
    "card_id": 10722110,
@@ -11267,7 +11278,8 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Rotting Zombie</color></i></b> and <b><i><color=Keyword>Skeleton</color></i></b>.\n<hr>Whenever an allied Departed follower enters the field, give it <b><color=Keyword>Storm</color></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Select another allied follower on the field. If you selected one, destroy it and a random enemy follower.</sev>",
-   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>腐臭的僵尸</color>』和1个『<color=Keyword>骸骨士兵</color>』。\n<hr>自己的亡者·随从进入战场时，使其获得【<color=Keyword>疾驰</color>】。\n<hr><sev>【<color=Keyword>超进化时</color>】选择自己的战场上的1个其他随从，若成功选择，则破坏该随从。破坏对手的战场上的随机1个随从。</sev>"
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>腐臭的僵尸</color>』和1个『<color=Keyword>骸骨士兵</color>』。\n<hr>自己的亡者·随从进入战场时，使其获得【<color=Keyword>疾驰</color>】。\n<hr><sev>【<color=Keyword>超进化时</color>】选择自己的战场上的1个其他随从，若成功选择，则破坏该随从。破坏对手的战场上的随机1个随从。</sev>",
+   "rarity": 3
   },
   {
    "card_id": 10753310,
@@ -13226,7 +13238,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Fairy</color></i></b> to your hand. <b><color=Keyword>Combo</color> (3)</b> - Give it <b><color=Keyword>Bane</color></b>.",
-   "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>妖精</color>』加入手牌。【<color=Keyword>连击</color>_3】使其获得【<color=Keyword>毁灭</color>】。"
+   "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>妖精</color>』加入手牌。【<color=Keyword>连击</color>_3】使其获得【<color=Keyword>毁灭</color>】。",
+   "rarity": 2
   },
   {
    "card_id": 10912120,
@@ -14402,7 +14415,8 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>神域的物证</color>』加入手牌。\n<hr>【<color=Keyword>突进</color>】"
   },
   {
    "card_id": 11002110,
@@ -14417,7 +14431,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and deal it 2 damage. Add a <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Replicate the effects of this card's <b><color=Keyword>Fanfare</color></b> ability.</ev>",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，对其造成2点伤害。将1张『<color=Keyword>神域的物证</color>』加入手牌。\n<hr><ev>【<color=Keyword>进化时</color>】发动与【<color=Keyword>入场曲</color>】相同的能力。</ev>"
   },
   {
    "card_id": 11002210,
@@ -14432,7 +14447,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Countdown</color> (3)</b>\nAt the end of your turn, banish a random enemy follower from the field and summon an enemy <b><i><color=Keyword>Divine Evidence</color></i></b>.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>吟唱</color>_3】\n自己的回合结束时，使对手的战场上的随机1个随从消失。在对手的战场上召唤1张『<color=Keyword>神域的物证</color>』。"
   },
   {
    "card_id": 11003110,
@@ -14450,7 +14466,8 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>入场曲</color>】对对手的战场上的所有随从造成2点伤害。将2张『<color=Keyword>神域的物证</color>』加入手牌。\n<hr>【<color=Keyword>守护</color>】"
   },
   {
    "card_id": 11003210,
@@ -14467,7 +14484,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Clue</color></b>\nWhen this card is banished from the field, restore 2 defense to your leader.\n<hr><b><color=Keyword>Engage</color> (1)</b>: Draw a card. Consume a clue.",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>证据</color>】\n本卡牌在战场上消失时，回复自己的主战者2点生命值。\n<hr>费用1【<color=Keyword>启动</color>】抽取1张卡牌。使自己的战场上的证据-1。"
   },
   {
    "card_id": 11004110,
@@ -14489,7 +14507,8 @@
      "cost": 0,
      "text_eng": "Whenever you play a follower, give it \"<b><color=Keyword>Last Words</color></b>: Summon a copy of this card\" and, until the end of the turn, \"Can't attack followers or leaders.\""
     }
-   ]
+   ],
+   "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，对其造成9点伤害。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己获得『纹章：理想国之神·列加尔』。</sev>"
   },
   {
    "card_id": 11011110,
@@ -14504,7 +14523,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: If there are at least two 1-base-cost allied cards on the field, restore 2 defense to your leader.</ev>",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1张『<color=Keyword>神域的物证</color>』。\n<hr><ev>【<color=Keyword>进化时</color>】若自己的战场上的原始费用为1的卡牌的张数为2张或以上，则回复自己的主战者2点生命值。</ev>"
   },
   {
    "card_id": 11011120,
@@ -14522,7 +14542,8 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤2个『<color=Keyword>群狼侍者</color>』。\n<hr>【<color=Keyword>突进</color>】\n<hr><ev>【<color=Keyword>进化时</color>】发动与【<color=Keyword>入场曲</color>】相同的能力。</ev>"
   },
   {
    "card_id": 11011310,
@@ -14537,7 +14558,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Summon a <b><i><color=Keyword>Fairy</color></i></b> and evolve it.\n<b><color=Keyword>Enhance</color> (6)</b>: Summon 3 instead.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "召唤1个『<color=Keyword>妖精</color>』，使其进化。\n【<color=Keyword>爆能强化</color>_6】改为召唤3个。"
   },
   {
    "card_id": 11012110,
@@ -14555,7 +14577,8 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "本随从进入战场时，若自己的战场上的其他原始费用为1的卡牌的张数为2张或以上，则本随从+2/+1。\n<hr>【<color=Keyword>突进</color>】"
   },
   {
    "card_id": 11012120,
@@ -14570,7 +14593,8 @@
    "life": 3,
    "source_format": "eng_cnl",
    "text": "At the end of your turn, add a <b><i><color=Keyword>Deepwood Bounty</color></i></b> and <b><i><color=Keyword>Fairy</color></i></b> to your hand.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "自己的回合结束时，将1张『<color=Keyword>森林的奥秘</color>』和1张『<color=Keyword>妖精</color>』加入手牌。"
   },
   {
    "card_id": 11012310,
@@ -14592,7 +14616,8 @@
      "cost": 0,
      "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the start of your turn, summon an <b><i><color=Keyword>Inquiring Mischief</color></i></b>."
     }
-   ]
+   ],
+   "text_chs": "召唤1张『<color=Keyword>神域的物证</color>』。使自己获得『纹章：鸟兽述怀』。"
   },
   {
    "card_id": 11013110,
@@ -14610,7 +14635,8 @@
    "keywords": [
     "Storm"
    ],
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1张『<color=Keyword>神域的物证</color>』。\n<hr>【<color=Keyword>疾驰</color>】\n<hr><ev>【<color=Keyword>进化时</color>】若自己的战场上的原始费用为1的卡牌的张数为2张或以上，则召唤1个『<color=Keyword>好奇的老鼠</color>』。</ev>"
   },
   {
    "card_id": 11013310,
@@ -14625,7 +14651,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Deal 5 damage to a random enemy follower. Add an <b><i><color=Keyword>Inquiring Mischief</color></i></b> to your hand and, if there are at least two 1-base-cost allied cards on the field, give it <b><color=Keyword>Storm</color></b>.",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "对对手的战场上的随机1个随从造成5点伤害。将1张『<color=Keyword>好奇的老鼠</color>』加入手牌。若自己的战场上的原始费用为1的卡牌的张数为2张或以上，则使其获得【<color=Keyword>疾驰</color>】。"
   },
   {
    "card_id": 11014110,
@@ -14640,7 +14667,8 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Sleuth's Best Friend</color></i></b> and <b><i><color=Keyword>Inquiring Mischief</color></i></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give all other allied followers on the field +2/+0.</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>传心搭档犬</color>』和1个『<color=Keyword>好奇的老鼠</color>』。\n<hr><sev>【<color=Keyword>超进化时</color>】使自己的战场上的其他所有随从+2/+0。</sev>"
   },
   {
    "card_id": 11014120,
@@ -14655,7 +14683,8 @@
    "life": 6,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Do this 2 times: \"Draw a card. Summon any Forestcraft followers drawn.\"\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Replicate the effects of this card's <b><color=Keyword>Fanfare</color></b> ability.</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "text_chs": "【<color=Keyword>入场曲</color>】发动2次「抽取1张卡牌，召唤其中的所有精灵·随从」。\n<hr><sev>【<color=Keyword>超进化时</color>】发动与【<color=Keyword>入场曲</color>】相同的能力。</sev>"
   },
   {
    "card_id": 11021110,
@@ -14673,7 +14702,8 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "在手牌中发动。自己【<color=Keyword>启动</color>】证据·护符时，本随从的攻击力与生命值交换。本随从+1/+0。\n<hr>【<color=Keyword>爆能强化</color>_4】召唤1个本随从的复制随从。\n<hr>【<color=Keyword>突进</color>】\n【<color=Keyword>谢幕曲</color>】召唤1张『<color=Keyword>神域的物证</color>』。"
   },
   {
    "card_id": 11021120,
@@ -14688,7 +14718,8 @@
    "life": 3,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Gilded Necklace</color></i></b> to your hand.\n<hr>Once on each of your turns, when you play a spell, deal 2 damage to all enemies.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>黄金项链</color>』加入手牌。\n<hr>自己使用法术时，自己的每回合中可触发1次，对对手的战场上的所有随从和对手的主战者造成2点伤害。"
   },
   {
    "card_id": 11021310,
@@ -14703,7 +14734,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Summon 2 copies of <b><i><color=Keyword>Steelclad Knight</color></i></b>, evolve them, and give them <b><color=Keyword>Barrier</color></b>.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "召唤2个『<color=Keyword>铁甲骑士</color>』，使其进化，使其获得【<color=Keyword>屏障</color>】。"
   },
   {
    "card_id": 11022110,
@@ -14718,7 +14750,8 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "Activates in hand. Whenever you <b><color=Keyword>Engage</color></b> a Clue amulet, swap this follower's attack and defense and give it +1/+0.\n<hr><b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and deal it X damage. X is this follower's attack. Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Summon a <b><i><color=Keyword>Guileless Newsie</color></i></b>.</ev>",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "在手牌中发动。自己【<color=Keyword>启动</color>】证据·护符时，本随从的攻击力与生命值交换。本随从+1/+0。\n<hr>【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，对其造成X点伤害。X为本随从的攻击力。召唤1张『<color=Keyword>神域的物证</color>』。\n<hr><ev>【<color=Keyword>进化时</color>】召唤1个『<color=Keyword>纯真卖报人</color>』。</ev>"
   },
   {
    "card_id": 11022120,
@@ -14736,7 +14769,8 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>入场曲</color>】若自己的战场上有护符，则选择对手的战场上的1个随从，使其消失。\n<hr>【<color=Keyword>守护</color>】\n<hr><sev>【<color=Keyword>超进化时</color>】发动与【<color=Keyword>入场曲</color>】相同的能力。</sev>"
   },
   {
    "card_id": 11022310,
@@ -14751,7 +14785,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Select an enemy follower on the field and deal it 5 damage. If you've <b><color=Keyword>Engage</color><color=Keyword>d</color></b> a Clue amulet this turn, deal 10 damage instead.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "选择对手的战场上的1个随从，对其造成5点伤害。若本回合中自己【<color=Keyword>启动</color>】过证据·护符，则改为10点伤害。"
   },
   {
    "card_id": 11023110,
@@ -14766,7 +14801,8 @@
    "life": 1,
    "source_format": "eng_cnl",
    "text": "Activates in hand. Whenever you <b><color=Keyword>Engage</color></b> a Clue amulet, swap this follower's attack and defense and give it +1/+0.\n<hr><b><color=Keyword>Fanfare</color></b>: Summon 2 copies of <b><i><color=Keyword>Guileless Newsie</color></i></b> and set their attack and defense to X/Y. X and Y are this follower's attack and defense.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Give all other allied followers on the field <b><color=Keyword>Bane</color></b>.</ev>",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "在手牌中发动。自己【<color=Keyword>启动</color>】证据·护符时，本随从的攻击力与生命值交换。本随从+1/+0。\n<hr>【<color=Keyword>入场曲</color>】召唤2个『<color=Keyword>纯真卖报人</color>』，使其变为攻击力X/生命值Y。X/Y为本随从的攻击力/生命值。\n<hr><ev>【<color=Keyword>进化时</color>】使自己的战场上的其他所有随从获得【<color=Keyword>毁灭</color>】。</ev>"
   },
   {
    "card_id": 11023310,
@@ -14781,7 +14817,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>. If you've <b><color=Keyword>Engage</color><color=Keyword>d</color></b> a Clue amulet this turn, summon a <b><i><color=Keyword>Guileless Newsie</color></i></b>.",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "召唤1张『<color=Keyword>神域的物证</color>』。若本回合中自己【<color=Keyword>启动</color>】过证据·护符，则召唤1个『<color=Keyword>纯真卖报人</color>』。"
   },
   {
    "card_id": 11024110,
@@ -14799,7 +14836,8 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "text_chs": "在手牌中发动。自己【<color=Keyword>启动</color>】证据·护符时，本随从的攻击力与生命值交换。本随从+1/+0。\n<hr>【<color=Keyword>入场曲</color>】召唤1个本随从的复制随从。若本随从的攻击力小于生命值，则使复制随从获得【<color=Keyword>毁灭</color>】。本随从获得【<color=Keyword>虹吸</color>】。若攻击力大于生命值，则使复制随从获得【<color=Keyword>守护</color>】。本随从获得【<color=Keyword>疾驰</color>】。\n<hr>【<color=Keyword>突进</color>】"
   },
   {
    "card_id": 11024120,
@@ -14821,7 +14859,8 @@
      "cost": 0,
      "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the end of your turn, activate an ability in sequence from the following.\n<ridx=0>1. Add a <b><i><color=Keyword>Gilded Blade</color></i></b> to your hand and set its cost to 0.</ridx>\n<ridx=1>2. Add a <b><i><color=Keyword>Gilded Goblet</color></i></b> to your hand and set its cost to 0.</ridx>"
     }
-   ]
+   ],
+   "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>闪耀的金币</color>』加入手牌。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：千金大参谋·阿尔梅莉洁』。</ev>\n<sev>【<color=Keyword>超进化时</color>】使自己的『纹章：千金大参谋·阿尔梅莉洁』的倒计数+2。</sev>"
   },
   {
    "card_id": 11031110,
@@ -14839,7 +14878,8 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1张『<color=Keyword>神域的物证</color>』。\n<hr>【<color=Keyword>守护</color>】\n自己【<color=Keyword>启动</color>】护符时，本随从+1/+1。"
   },
   {
    "card_id": 11031120,
@@ -14854,7 +14894,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select a <b><color=Keyword>Mode</color></b> to activate.\n<ridx=0>1. <b><color=Keyword>Earth Rite</color> (1)</b> - Deal 2 damage to a random enemy follower.</ridx>\n<ridx=1>2. Gain 2 earth sigils.</ridx>",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>入场曲</color>】【<color=Keyword>模式</color>】选择1个能力发动。\n<ridx=0>（1）【<color=Keyword>土之秘术</color>_1】对对手的战场上的随机1个随从造成2点伤害。</ridx>\n<ridx=1>（2）使自己的战场上的土之印+2。</ridx>"
   },
   {
    "card_id": 11031310,
@@ -14869,7 +14910,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Summon 3 copies of <b><i><color=Keyword>Clay Golem</color></i></b>.\n<b><color=Keyword>Enhance</color> (8)</b>: Give them <b><color=Keyword>Storm</color></b>.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "召唤3个『<color=Keyword>泥尘巨像</color>』。\n【<color=Keyword>爆能强化</color>_8】使其获得【<color=Keyword>疾驰</color>】。"
   },
   {
    "card_id": 11032110,
@@ -14884,7 +14926,8 @@
    "life": 3,
    "source_format": "eng_cnl",
    "text": "Activates in hand. Whenever you <b><color=Keyword>Engage</color></b> an amulet, reduce the cost of this card by 1.\n<hr><b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>.\n<hr>Whenever you <b><color=Keyword>Engage</color></b> an amulet, restore 1 defense to your leader.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "在手牌中发动。自己【<color=Keyword>启动</color>】护符时，使本卡牌的费用-1。\n<hr>【<color=Keyword>入场曲</color>】召唤1张『<color=Keyword>神域的物证</color>』。\n<hr>自己【<color=Keyword>启动</color>】护符时，回复自己的主战者1点生命值。"
   },
   {
    "card_id": 11032120,
@@ -14899,7 +14942,8 @@
    "life": 5,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color> (1)</b> - Summon a <b><i><color=Keyword>Guardian Golem</color></i></b>.\n<hr>Whenever an allied Golem follower enters the field, deal 3 damage to a random enemy follower.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Replicate the effects of this card's <b><color=Keyword>Fanfare</color></b> ability.</ev>",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>入场曲</color>】【<color=Keyword>土之秘术</color>_1】召唤1个『<color=Keyword>守护者巨像</color>』。\n<hr>自己的巨像·随从进入战场时，对对手的战场上的随机1个随从造成3点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】发动与【<color=Keyword>入场曲</color>】相同的能力。</ev>"
   },
   {
    "card_id": 11032310,
@@ -14914,7 +14958,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>. If you've <b><color=Keyword>Engage</color><color=Keyword>d</color></b> an amulet this turn, deal 3 damage to a random enemy follower.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "召唤1张『<color=Keyword>神域的物证</color>』。若本回合中自己【<color=Keyword>启动</color>】过护符，则对对手的战场上的随机1个随从造成3点伤害。"
   },
   {
    "card_id": 11033110,
@@ -14929,7 +14974,8 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Dedicated Aide</color></i></b>.\n<hr>Whenever you <b><color=Keyword>Engage</color></b> an amulet, deal 5 damage to a random enemy follower.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Recover 1 play point.</ev>",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>碎心勤务员</color>』。\n<hr>自己【<color=Keyword>启动</color>】护符时，对对手的战场上的随机1个随从造成5点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】回复自己1点能量点。</ev>"
   },
   {
    "card_id": 11033310,
@@ -14951,7 +14997,8 @@
      "cost": 0,
      "text_eng": "Whenever you <b><color=Keyword>Engage</color></b> an amulet, activate an ability that hasn't been activated yet in sequence from the following.\n<ridx=0>1. Deal 3 damage to a random enemy follower.</ridx>\n<ridx=1>2. Restore 2 defense to your leader.</ridx>\n<ridx=2>3. Recover 1 evolution point. Destroy this crest.</ridx>"
     }
-   ]
+   ],
+   "text_chs": "将1张『<color=Keyword>神域的物证</color>』加入手牌。使自己获得『纹章：诺茵华薇儿的审讯』。"
   },
   {
    "card_id": 11034110,
@@ -14973,7 +15020,8 @@
      "cost": 0,
      "text_eng": "Once on each of your turns, when you <b><color=Keyword>Engage</color></b> an amulet, recover 1 play point."
     }
-   ]
+   ],
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1张『<color=Keyword>神域的物证</color>』。\n<hr>自己【<color=Keyword>启动</color>】护符时，对对手的战场上的随机1个随从造成3点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：迷歌侦探·诺茵华薇儿』。</ev>"
   },
   {
    "card_id": 11034120,
@@ -14988,7 +15036,8 @@
    "life": 8,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Deal X damage split between all enemies. X is the number of earth sigils you have.",
-   "rarity": 4
+   "rarity": 4,
+   "text_chs": "【<color=Keyword>入场曲</color>】对对手的战场上的所有随从和对手的主战者分配X点伤害。X为自己的战场上的土之印数。"
   },
   {
    "card_id": 11041110,
@@ -15006,7 +15055,8 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>突进</color>】\n【<color=Keyword>谢幕曲</color>】将1张『<color=Keyword>神域的物证</color>』加入手牌。"
   },
   {
    "card_id": 11041120,
@@ -15021,7 +15071,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Do this 1 time: \"Deal 3 damage to a random enemy follower.\"\n<b><color=Keyword>Enhance</color> (7)</b>: Do it 3 times instead. Give this follower +5/+5.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>入场曲</color>】发动1次「对对手的战场上的随机1个随从造成3点伤害」。\n【<color=Keyword>爆能强化</color>_7】改为发动3次。本随从+5/+5。"
   },
   {
    "card_id": 11041310,
@@ -15036,7 +15087,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Draw a card. Restore 1 defense to your leader. If you're in <b><color=Keyword>Overflow</color></b>, gain 1 max play point.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "抽取1张卡牌。回复自己的主战者1点生命值。若为【<color=Keyword>觉醒</color>】，则使自己的能量点最大值+1。"
   },
   {
    "card_id": 11042110,
@@ -15051,7 +15103,8 @@
    "life": 5,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select 2 enemy followers on the field and destroy them. Add 2 copies of <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的2个随从，破坏这些随从。将2张『<color=Keyword>神域的物证</color>』加入手牌。"
   },
   {
    "card_id": 11042120,
@@ -15069,7 +15122,8 @@
    "keywords": [
     "Ambush"
    ],
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>潜行</color>】\n【<color=Keyword>攻击时</color>】使自己的战场上的随机1个进化前的其他随从进化。"
   },
   {
    "card_id": 11042310,
@@ -15084,7 +15138,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Deal 4 damage to a random enemy follower. If you have a Clue amulet in your hand, discard a random Clue amulet and draw a card with a base cost of 5 or more.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "对对手的战场上的随机1个随从造成4点伤害。若自己的手牌中有证据·护符，则舍弃其中随机1张。抽取1张原始费用为5或以上的卡牌。"
   },
   {
    "card_id": 11043110,
@@ -15099,7 +15154,8 @@
    "life": 3,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: If you have a Clue amulet in your hand, discard a random Clue amulet and gain 1 max play point.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Select an enemy follower on the field and deal it 3 damage.</ev>",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>入场曲</color>】若自己的手牌中有证据·护符，则舍弃其中随机1张。使自己的能量点最大值+1。\n<hr><ev>【<color=Keyword>进化时</color>】选择对手的战场上的1个随从，对其造成3点伤害。</ev>"
   },
   {
    "card_id": 11043310,
@@ -15114,7 +15170,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Select 2 <b><color=Keyword>Mode</color><color=Keyword>s</color></b> to activate.\n<ridx=0>1. Summon an <b><i><color=Keyword>Inquiring Mischief</color></i></b>.</ridx>\n<ridx=1>2. Give the 2 leftmost allied followers on the field +1/+0.</ridx>\n<ridx=2>3. Add 3 copies of <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand.</ridx>\n<ridx=3>4. Deal 4 damage to a random enemy follower.</ridx>",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>模式</color>】选择2个能力发动。\n<ridx=0>（1）召唤1个『<color=Keyword>好奇的老鼠</color>』。</ridx>\n<ridx=1>（2）使自己的战场上的从左起的2个随从+1/+0。</ridx>\n<ridx=2>（3）将3张『<color=Keyword>神域的物证</color>』加入手牌。</ridx>\n<ridx=3>（4）对对手的战场上的随机1个随从造成4点伤害。</ridx>"
   },
   {
    "card_id": 11044110,
@@ -15132,7 +15189,8 @@
    "keywords": [
     "Storm"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "text_chs": "【<color=Keyword>入场曲</color>】使自己的牌组中的所有原始费用为4或以下的卡牌消失。舍弃自己的手牌中的所有证据·护符。发动X次「对对手的战场上的随机1个随从造成8点伤害」。X为因本能力舍弃的张数。\n<hr>【<color=Keyword>疾驰</color>】"
   },
   {
    "card_id": 11044120,
@@ -15147,7 +15205,8 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Deal X damage split between all enemy followers. X is the enemy leader's max defense minus its defense.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give this follower <b><color=Keyword>Storm</color></b> and <b><color=Keyword>Ward</color></b>.</sev>",
-   "rarity": 4
+   "rarity": 4,
+   "text_chs": "【<color=Keyword>入场曲</color>】对对手的战场上的所有随从分配X点伤害。X为「对手的主战者的生命值的最大值减去对手的主战者的生命值」。\n<hr><sev>【<color=Keyword>超进化时</color>】本随从获得【<color=Keyword>疾驰</color>】和【<color=Keyword>守护</color>】。</sev>"
   },
   {
    "card_id": 11051110,
@@ -15162,7 +15221,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>. Add a <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>谢幕曲</color>】召唤1张『<color=Keyword>神域的物证</color>』。将1张『<color=Keyword>神域的物证</color>』加入手牌。"
   },
   {
    "card_id": 11051120,
@@ -15177,7 +15237,8 @@
    "life": 7,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Last Words</color></b>: Deal 2 damage to your leader.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>谢幕曲</color>】对自己的主战者造成2点伤害。"
   },
   {
    "card_id": 11051310,
@@ -15192,7 +15253,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Add a <b><i><color=Keyword>Ghost</color></i></b> to your hand.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "将1张『<color=Keyword>怨灵</color>』加入手牌。"
   },
   {
    "card_id": 11052110,
@@ -15207,7 +15269,8 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Rotting Zombie</color></i></b>.\n<hr>During your turn, whenever an allied card is banished from the field, give a random allied Departed follower on the field +2/+2 and <b><color=Keyword>Rush</color></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>.</ev>",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>腐臭的僵尸</color>』。\n<hr>自己的卡牌在战场上消失时，若为自己的回合，则使自己的战场上的随机1个亡者·随从+2/+2且获得【<color=Keyword>突进</color>】。\n<hr><ev>【<color=Keyword>进化时</color>】召唤1张『<color=Keyword>神域的物证</color>』。</ev>"
   },
   {
    "card_id": 11052120,
@@ -15225,7 +15288,8 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>突进</color>】\n【<color=Keyword>攻击时</color>】【<color=Keyword>唤灵</color>_4】对对手的战场上的所有随从造成4点伤害。"
   },
   {
    "card_id": 11052310,
@@ -15240,7 +15304,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Summon a <b><i><color=Keyword>Divine Evidence</color></i></b>. Add a <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "召唤1张『<color=Keyword>神域的物证</color>』。将1张『<color=Keyword>神域的物证</color>』加入手牌。"
   },
   {
    "card_id": 11053110,
@@ -15255,7 +15320,8 @@
    "life": 6,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Ghost</color></i></b> and give it <b><color=Keyword>Bane</color></b>.\n<hr>During your turn, whenever an allied card is banished from the field, restore 2 defense to your leader.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Replicate the effects of this card's <b><color=Keyword>Fanfare</color></b> ability.</sev>",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>怨灵</color>』，使其获得【<color=Keyword>毁灭</color>】。\n<hr>自己的卡牌在战场上消失时，若为自己的回合，则回复自己的主战者2点生命值。\n<hr><sev>【<color=Keyword>超进化时</color>】发动与【<color=Keyword>入场曲</color>】相同的能力。</sev>"
   },
   {
    "card_id": 11053310,
@@ -15270,7 +15336,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Deal X damage to all enemy followers. X is the number of clues you have. Banish all allied Clue amulets from the field.",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "对对手的战场上的所有随从造成X点伤害。X为自己的战场上的证据数。使自己的战场上的所有证据·护符消失。"
   },
   {
    "card_id": 11054110,
@@ -15285,7 +15352,8 @@
    "life": 4,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Ghost</color></i></b> and give it <b><color=Keyword>Bane</color></b>.\n<hr>During your turn, whenever an allied card is banished from the field, summon a <b><i><color=Keyword>Skeleton</color></i></b> and give it +2/+4 and <b><color=Keyword>Ward</color></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Add a <b><i><color=Keyword>Last Will and Testament</color></i></b> to your hand.</ev>",
-   "rarity": 4
+   "rarity": 4,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>怨灵</color>』，使其获得【<color=Keyword>毁灭</color>】。\n<hr>自己的卡牌在战场上消失时，若为自己的回合，则召唤1个『<color=Keyword>骸骨士兵</color>』，使其+2/+4且获得【<color=Keyword>守护</color>】。\n<hr><ev>【<color=Keyword>进化时</color>】将1张『<color=Keyword>听取遗言</color>』加入手牌。</ev>"
   },
   {
    "card_id": 11054120,
@@ -15310,7 +15378,8 @@
      "cost": 0,
      "text_eng": "At the end of your turn, gain 2 shadows."
     }
-   ]
+   ],
+   "text_chs": "【<color=Keyword>守护</color>】\n【<color=Keyword>谢幕曲</color>】【<color=Keyword>唤灵</color>_2】抽取1张卡牌。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：末日变换·格莫瑞』。</ev>"
   },
   {
    "card_id": 11061110,
@@ -15325,7 +15394,8 @@
    "life": 1,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Last Words</color></b>: Add 2 copies of <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>谢幕曲</color>】将2张『<color=Keyword>神域的物证</color>』加入手牌。"
   },
   {
    "card_id": 11061120,
@@ -15343,7 +15413,8 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>突进</color>】\n1回合可以攻击2次。\n【<color=Keyword>攻击时</color>】本随从+2/+2且获得【<color=Keyword>屏障</color>】。"
   },
   {
    "card_id": 11061310,
@@ -15358,7 +15429,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Select an allied follower on the field and give it +2/+2 and <b><color=Keyword>Barrier</color></b>.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "选择自己的战场上的1个随从，使其+2/+2且获得【<color=Keyword>屏障</color>】。"
   },
   {
    "card_id": 11062110,
@@ -15373,7 +15445,8 @@
    "life": 3,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Bunnies of Desolation</color></i></b> to your hand.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Recover 1 play point.</ev>",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>入场曲</color>】将1张『<color=Keyword>地害之兔</color>』加入手牌。\n<hr><ev>【<color=Keyword>进化时</color>】回复自己1点能量点。</ev>"
   },
   {
    "card_id": 11062120,
@@ -15388,7 +15461,8 @@
    "life": 1,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Holy Falcon</color></i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Give all other allied followers on the field +1/+1.</ev>",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>神圣猎鹰</color>』。\n<hr><ev>【<color=Keyword>进化时</color>】使自己的战场上的其他所有随从+1/+1。</ev>"
   },
   {
    "card_id": 11062310,
@@ -15403,7 +15477,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Summon 2 copies of <b><i><color=Keyword>Bunnies of Desolation</color></i></b>.\n<b><color=Keyword>Enhance</color> (8)</b>: Summon 4 instead.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "召唤2个『<color=Keyword>地害之兔</color>』。\n【<color=Keyword>爆能强化</color>_8】改为召唤4个。"
   },
   {
    "card_id": 11063110,
@@ -15418,7 +15493,8 @@
    "life": 5,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and banish it. Summon 2 copies of <b><i><color=Keyword>Bunnies of Desolation</color></i></b>.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Draw 2 cards. Restore 2 defense to your leader.</sev>",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，使其消失。召唤2个『<color=Keyword>地害之兔</color>』。\n<hr><sev>【<color=Keyword>超进化时</color>】抽取2张卡牌。回复自己的主战者2点生命值。</sev>"
   },
   {
    "card_id": 11063310,
@@ -15440,7 +15516,8 @@
      "cost": 0,
      "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nAt the start of your turn, restore 1 defense to your leader and add a <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand."
     }
-   ]
+   ],
+   "text_chs": "【<color=Keyword>模式</color>】选择1个能力发动。\n<ridx=0>（1）对对手的战场上的随机1个随从造成4点伤害。使自己获得『纹章：徒然的证言』。</ridx>\n<ridx=1>（2）召唤1个『<color=Keyword>地害之兔</color>』。</ridx>"
   },
   {
    "card_id": 11064110,
@@ -15462,7 +15539,8 @@
      "cost": 0,
      "text_eng": "<b><color=Keyword>Countdown</color> (1)</b>\nAt the start of your turn, summon a <b><i><color=Keyword>Bunnies of Desolation</color></i></b>."
     }
-   ]
+   ],
+   "text_chs": "【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，使其消失。召唤1个『<color=Keyword>地害之兔</color>』。\n<hr><ev>【<color=Keyword>进化时</color>】使自己获得『纹章：地害三恶·拉碧妲赫特』。</ev>\n<sev>【<color=Keyword>超进化时</color>】使自己的『纹章：地害三恶·拉碧妲赫特』的倒计数+1。</sev>"
   },
   {
    "card_id": 11064120,
@@ -15481,7 +15559,8 @@
     "Intimidate",
     "Aura"
    ],
-   "rarity": 4
+   "rarity": 4,
+   "text_chs": "【<color=Keyword>威慑</color>】\n【<color=Keyword>灵气</color>】\n无法攻击随从或主战者。\n对手的随从在战场上消失时，若为自己的回合，则召唤对应数量的复制随从。\n<hr><ev>【<color=Keyword>进化时</color>】选择对手的战场上的1个随从，使其消失。</ev>"
   },
   {
    "card_id": 11071110,
@@ -15499,7 +15578,8 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>守护</color>】\n【<color=Keyword>谢幕曲</color>】将2张『<color=Keyword>神域的物证</color>』加入手牌。"
   },
   {
    "card_id": 11071120,
@@ -15518,7 +15598,8 @@
     "Storm",
     "Aura"
    ],
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>疾驰</color>】\n【<color=Keyword>灵气</color>】"
   },
   {
    "card_id": 11071310,
@@ -15533,7 +15614,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "Add an <b><i><color=Keyword>Enhanced Puppet</color></i></b> to your hand and give it <b><color=Keyword>Bane</color></b> or <b><color=Keyword>Ward</color></b> at random.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "将1张『<color=Keyword>改良型·悬丝傀儡</color>』加入手牌，使其获得【<color=Keyword>毁灭</color>】【<color=Keyword>守护</color>】中随机1个能力。"
   },
   {
    "card_id": 11072110,
@@ -15548,7 +15630,8 @@
    "life": 2,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fanfare</color></b>: Add 2 copies of <b><i><color=Keyword>Divine Evidence</color></i></b> to your hand.\n<hr>Whenever you <b><color=Keyword>Fuse</color></b> an amulet, deal 1 damage to all enemy followers.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Draw a card with <b><color=Keyword>Fuse</color></b>.</ev>",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>入场曲</color>】将2张『<color=Keyword>神域的物证</color>』加入手牌。\n<hr>自己【<color=Keyword>融合</color>】护符时，对对手的战场上的所有随从造成1点伤害。\n<hr><ev>【<color=Keyword>进化时</color>】抽取1张拥有【<color=Keyword>融合</color>】的卡牌。</ev>"
   },
   {
    "card_id": 11072120,
@@ -15566,7 +15649,8 @@
    "keywords": [
     "Rush"
    ],
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>攻击创造物</color>』和1个『<color=Keyword>古老的创造物</color>』。\n<hr>【<color=Keyword>突进</color>】"
   },
   {
    "card_id": 11072310,
@@ -15581,7 +15665,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fuse</color></b>: Amulets\nWhenever you <b><color=Keyword>Fuse</color></b> to this card, summon a <b><i><color=Keyword>Divine Evidence</color></i></b>.\n<hr>Deal 4 damage to all enemy followers. If you've <b><color=Keyword>Fuse</color><color=Keyword>d</color></b> to this card, deal 8 damage instead.",
-   "rarity": 2
+   "rarity": 2,
+   "text_chs": "【<color=Keyword>融合</color>】护符\n与本卡牌【<color=Keyword>融合</color>】时，召唤1张『<color=Keyword>神域的物证</color>』。\n<hr>对对手的战场上的所有随从造成4点伤害。若已与本卡牌【<color=Keyword>融合</color>】，则改为8点伤害。"
   },
   {
    "card_id": 11073110,
@@ -15599,7 +15684,8 @@
    "keywords": [
     "Ward"
    ],
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>入场曲</color>】将2张『<color=Keyword>神域的物证</color>』加入手牌。\n<hr>自己【<color=Keyword>融合</color>】护符时，破坏对手的战场上的随机1个随从。回复自己的主战者2点生命值。\n【<color=Keyword>守护</color>】"
   },
   {
    "card_id": 11073310,
@@ -15614,7 +15700,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fuse</color></b>: Amulets\nWhenever you <b><color=Keyword>Fuse</color></b> to this card, summon a <b><i><color=Keyword>Divine Evidence</color></i></b>.\n<hr>Restore 2 defense to your leader. Consume 2 clues to destroy a random enemy follower with the highest attack.",
-   "rarity": 3
+   "rarity": 3,
+   "text_chs": "【<color=Keyword>融合</color>】护符\n与本卡牌【<color=Keyword>融合</color>】时，召唤1张『<color=Keyword>神域的物证</color>』。\n<hr>回复自己的主战者2点生命值。使自己的战场上的证据-2，破坏对手的战场上的随机1个攻击力最大的随从。"
   },
   {
    "card_id": 11074110,
@@ -15629,7 +15716,8 @@
    "life": 7,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Fuse</color></b>: Amulets\nWhenever you <b><color=Keyword>Fuse</color></b> to this card, summon a <b><i><color=Keyword>Divine Evidence</color></i></b>.\n<hr><b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and destroy all enemy copies of it. If you've <b><color=Keyword>Fuse</color><color=Keyword>d</color></b> to this card, halve the enemy leader's max defense.",
-   "rarity": 4
+   "rarity": 4,
+   "text_chs": "【<color=Keyword>融合</color>】护符\n与本卡牌【<color=Keyword>融合</color>】时，召唤1张『<color=Keyword>神域的物证</color>』。\n<hr>【<color=Keyword>入场曲</color>】选择对手的战场上的1个随从，破坏对手的战场上的所有与其同名的随从。若已与本卡牌【<color=Keyword>融合</color>】，则使对手的主战者的生命值的最大值变为一半。"
   },
   {
    "card_id": 11074120,
@@ -15651,7 +15739,8 @@
      "cost": 0,
      "text_eng": "<b><color=Keyword>Countdown</color> (2)</b>\nWhenever you <b><color=Keyword>Fuse</color></b>, advance this crest's count by 1.\n<b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Dimensional Wanderer</color></i></b>."
     }
-   ]
+   ],
+   "text_chs": "自己进行【<color=Keyword>融合</color>】时，本随从获得【<color=Keyword>突进</color>】。\n【<color=Keyword>谢幕曲</color>】使自己获得『纹章：次元异客』。\n<hr><sev>【<color=Keyword>超进化时</color>】本随从获得【<color=Keyword>疾驰</color>】。</sev>"
   },
   {
    "card_id": 90001110,
@@ -15683,7 +15772,8 @@
    "life": 0,
    "source_format": "eng_cnl",
    "text": "<b><color=Keyword>Clue</color></b>\n<hr><b><color=Keyword>Engage</color> (1)</b>: Draw a card. Consume a clue.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "【<color=Keyword>证据</color>】\n<hr>费用1【<color=Keyword>启动</color>】抽取1张卡牌。使自己的战场上的证据-1。"
   },
   {
    "card_id": 90004110,
@@ -16878,7 +16968,8 @@
    "life": 1,
    "source_format": "eng_cnl",
    "text": "When this follower enters the field, banish a random card with the lowest cost from your hand and evolve this follower.\n<hr><b><color=Keyword>Last Words</color></b>: Deal 2 damage to the enemy leader.",
-   "rarity": 1
+   "rarity": 1,
+   "text_chs": "本随从进入战场时，使自己的手牌中的随机1张费用最小的卡牌消失。本随从进化。\n<hr>【<color=Keyword>谢幕曲</color>】对对手的主战者造成2点伤害。"
   },
   {
    "card_id": 90064110,
