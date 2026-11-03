@@ -2054,16 +2054,21 @@ public sealed class BattleState : IVmWorld
         // 与 DestroyEntity 同一条规矩：快照已拍（记的是护符卡种），才开始还原。
         RestoreOriginalDef(e);
 
+        // 与 DestroyEntity 完全同构：快照取旧的（Zone 停在 Board），
+        // 身份取自增后的 serial —— 触发扫描靠 (EntityId, EntrySerial) 锁身份，
+        // 用旧号会让这条路径下的谢幕曲全部匹配失败。
+        EntityRef WithNewSerial(EntityRef r) => new EntityRef(r.EntityId, e.EntrySerial, r.Snapshot);
+
         EmitEvent(new VmEvent
         {
             Kind = CoreEvent.OnLeaveField,
-            Subject = EntityRef.From(e),
+            Subject = WithNewSerial(boardRef),
             PlayerId = owner,
         });
         EmitEvent(new VmEvent
         {
             Kind = CoreEvent.OnDestroy,
-            Subject = EntityRef.From(e),
+            Subject = WithNewSerial(boardRef),
             PlayerId = owner,
             // 生命归零这条路径同样要带超击飞标记。
             // 超进化随从把敌方随从打到 <=0 时走的就是
