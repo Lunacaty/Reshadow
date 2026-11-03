@@ -40,9 +40,10 @@ public static class CorpusCompilationAuditor
             if (!string.IsNullOrWhiteSpace(c.Text))
             {
                 EnglishCompiler.Result r = null;
-                var altTuples = (c.AltModes ?? new List<AltModeRawEntry>())
-                    .Select(a => (a.TypeEng, a.Cost, a.TextEng)).ToList();
-                try { r = compiler.Compile(c.Text, altTuples, c.NameEng, c.CardId); }
+                // 主文本必须**单独**编译（不传 altModes）。
+                // 早先这里把 altModes 一起传进去，BuildAltModeDefs 的子卡错误会混进
+                // 主结果：既分不清是哪一段出错，也会让「主卡编译」这一档显示假阳性。
+                try { r = compiler.Compile(c.Text, null, c.NameEng, c.CardId); }
                 catch (Exception ex)
                 {
                     issues.Add(new CardAuditIssue(pack.PackId, c.CardId, c.NameEng, c.NameChs,
