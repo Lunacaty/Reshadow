@@ -887,14 +887,15 @@ public partial class BattleScreenRoot : Control
                 if (sid >= 0)
                 {
                     int da = ev.Amount;
-                    bool buff = da >= 0;
+                    int dl = ev.SecondaryAmount;
+                    bool buff = da + dl >= 0;
                     _seq.Enqueue(new Seq().Do(() =>
                     {
                         var c = CenterOf(ev.Subject, ownerPid);
                         _anims.PlayStatPulse(sid, buff);
-                        // VmEvent 只有一个 Amount 槽，攻击与生命的变化值
-                        // 合并在内核侧写进同一个数字（正负同号）。
-                        string txt = (da >= 0 ? "+" : "") + da;
+                        // 攻击/生命两个分量都显示：「+2/+2」「-2/-0」。
+                        string S(int v) => (v >= 0 ? "+" : "") + v;
+                        string txt = S(da) + "/" + S(dl);
                         if (buff) _vfx.PlayBuff(c, txt); else _vfx.PlayDebuff(c, txt);
                     }));
                 }

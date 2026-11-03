@@ -259,16 +259,28 @@ public partial class LeaderMedallionWidget : Control
         var e = Leader;
         if (st == null || e == null) return;
 
-        bool any = false;
+        ShadowverseFan.KernelV3.Ast.DamageModifierNode first = null;
+        int amt = 0;
+        var eval = new ShadowverseFan.KernelV3.Vm.VmEval(st);
         foreach (var pair in st.QueryDamageModifiers(e))
         {
-            any = true;
+            first = pair.Node;
+            try { amt = eval.EvalNum(pair.Node.Amount, pair.Scope); } catch { amt = 0; }
             break;
         }
-        if (!any) return;
+        if (first == null) return;
 
         var tex = KeywordSvgAtlas.Get("badge_shield");
         if (tex == null) return;
-        DrawTextureRect(tex, new Rect2(new Vector2(Size.X + 2f, 4f), new Vector2(22, 22)), false);
+        var pos = new Vector2(Size.X + 2f, 4f);
+        DrawTextureRect(tex, new Rect2(pos, new Vector2(22, 22)), false);
+
+        // 数值必须显示：只挂图标看不出是 -1 还是 -5，也分不清减伤与上限。
+        string tip = first.Kind == ShadowverseFan.KernelV3.Ast.DamageAuraKind.TakenCap
+            ? "<=" + amt
+            : (first.IsReduction ? "-" : "+") + amt;
+        DrawString(ThemeDB.FallbackFont, pos + new Vector2(-12, 30), tip,
+                   HorizontalAlignment.Center, 34, 10,
+                   new Color(1f, 0.92f, 0.55f));
     }
 }

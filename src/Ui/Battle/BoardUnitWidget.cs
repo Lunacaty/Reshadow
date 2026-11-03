@@ -354,6 +354,7 @@ public partial class BoardUnitWidget : Control
         if (Has("ward")) Frame("frame_ward");
         if (Has("barrier")) Frame("frame_barrier");
         if (Has("ambush")) Frame("frame_ambush");
+        if (Has("intimidate")) Frame("frame_intimidate");
         if (Has("aura")) Frame("frame_aura");
         if (Has("immune_effects") || Has("immune_effects_except_stats")
             || Has("immune_damage") || Has("immune_ability_damage")
@@ -380,6 +381,23 @@ public partial class BoardUnitWidget : Control
         if (Has("drain")) Badge("badge_drain");
         if (Has("free_evolve") || Has("free_super_evolve")) Badge("badge_free_evolve");
 
+        // 「1 回合可攻击 X 次」：徽章 + ×X 角标。次数在 KeywordValues 里，
+        // 只画徽章不写 X 的话，玩家看不出能打几次。
+        var mkKey = schema.Keyword("max_attacks_per_turn");
+        if (e.KeywordValues.TryGetValue(mkKey, out int maxAtk) && maxAtk > 1)
+        {
+            var mt = KeywordSvgAtlas.Get("badge_multi_attack");
+            if (mt != null)
+            {
+                var mp = new Vector2(2 + slot * 22, H - 26);
+                DrawTextureRect(mt, new Rect2(mp, new Vector2(20, 20)), false);
+                DrawString(ThemeDB.FallbackFont, mp + new Vector2(12, 16),
+                           "x" + maxAtk, HorizontalAlignment.Left, -1, 11,
+                           new Color(1f, 0.92f, 0.55f));
+                slot++;
+            }
+        }
+
         // 减伤 / 上限光环：生命值正上方一枚琥珀符文小盾
         var st = CurrentController?.State;
         if (st != null)
@@ -390,7 +408,36 @@ public partial class BoardUnitWidget : Control
             {
                 var sh = KeywordSvgAtlas.Get("badge_shield");
                 if (sh != null)
-                    DrawTextureRect(sh, new Rect2(new Vector2(W - 26, 2), new Vector2(22, 22)), false);
+                {
+                    var sp = new Vector2(W - 26, 2);
+                    DrawTextureRect(sh, new Rect2(sp, new Vector2(22, 22)), false);
+
+                    // 必须印出数值：只画盾牌图标，玩家分不清是 -1 还是 -5，
+                    // 也分不清是减伤还是伤害上限。
+                    var dm0 = mods[0];
+                    int amt = 0;
+                    try
+                    {
+                        var ev0 = CurrentController?.State;
+                        if (ev0 != null)
+                        {
+                            var eval0 = new ShadowverseFan.KernelV3.Vm.VmEval(ev0);
+                            foreach (var pair in ev0.QueryDamageModifiers(e))
+                            {
+                                amt = eval0.EvalNum(pair.Node.Amount, pair.Scope);
+                                break;
+                            }
+                        }
+                    }
+                    catch { amt = 0; }
+
+                    string tip = dm0.Kind == ShadowverseFan.KernelV3.Ast.DamageAuraKind.TakenCap
+                        ? "<=" + amt
+                        : (dm0.IsReduction ? "-" : "+") + amt;
+                    DrawString(ThemeDB.FallbackFont, sp + new Vector2(-12, 30), tip,
+                               HorizontalAlignment.Center, 34, 10,
+                               new Color(1f, 0.92f, 0.55f));
+                }
             }
         }
     }

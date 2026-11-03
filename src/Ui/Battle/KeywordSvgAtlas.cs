@@ -153,16 +153,49 @@ public static class KeywordSvgAtlas
         </svg>
         """;
 
+    private const string FrameIntimidate = $"""
+        <svg width="104" height="132" viewBox="0 0 104 132"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="itg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#7F1D1D"/>
+              <stop offset="55%" stop-color="#3B0764"/>
+              <stop offset="100%" stop-color="#1E1B4B"/>
+            </linearGradient>
+          </defs>
+          <path d="M52 2 L94 20 L100 70 L52 130 L4 70 L10 20 Z"
+                fill="none" stroke="url(#itg)" stroke-width="4"/>
+          <path d="M14 30 L22 44 L14 58 M90 30 L82 44 L90 58 M30 118 L38 106 L46 118"
+                fill="none" stroke="#DC2626" stroke-width="2.2"/>
+        </svg>
+        """;
+
+    private const string BadgeMultiAttack = $"""
+        <svg width="28" height="28" viewBox="0 0 28 28"
+             xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="ma" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#FDE047"/>
+            <stop offset="100%" stop-color="#B45309"/>
+          </linearGradient></defs>
+          <circle cx="14" cy="14" r="12" fill="#1C1207" stroke="url(#ma)" stroke-width="1.8"/>
+          <path d="M8 19 L17 6 M12 20 L21 7" stroke="#FDE047"
+                stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        """;
+
+
     private static string BuildSvgXml(string key) => key switch
     {
         "frame_ward" => FrameWard,
         "frame_barrier" => FrameBarrier,
         "frame_immune" => FrameImmune,
         "frame_ambush" => FrameAmbush,
+        "frame_intimidate" => FrameIntimidate,
         "frame_aura" => FrameAura,
         "badge_bane" => BadgeBane,
         "badge_drain" => BadgeDrain,
         "badge_free_evolve" => BadgeFreeEvolve,
+        "badge_multi_attack" => BadgeMultiAttack,
         "badge_shield" => BadgeShield,
         "ring_immune" => RingImmune,
         _ => null,

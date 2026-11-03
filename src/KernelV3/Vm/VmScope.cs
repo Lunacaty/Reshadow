@@ -141,6 +141,13 @@ public sealed class VmEvent
     public int Amount { get; init; }
 
     /// <summary>
+    /// 事件携带的第二个数值。
+    /// 身材变化时 Amount 放攻击分量、这里放生命分量 ——
+    /// 少了它，UI 只能显示 +2 却显示不出 +2/+2。
+    /// </summary>
+    public int SecondaryAmount { get; init; }
+
+    /// <summary>
     /// 这次进化是不是玩家手动花 EP/SEP 触发的。
     /// 只有手动进化才发动卡面的 Evolve: / Super-Evolve: 冒号头；
     /// 能力效果自动进化只触发 When/Whenever ... evolves 类事件从句。
