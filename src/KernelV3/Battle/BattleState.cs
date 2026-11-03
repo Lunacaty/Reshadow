@@ -630,6 +630,11 @@ public sealed class BattleState : IVmWorld
                     HasFuse = crestDef.HasFuse,
                     FuseMaterialFilter = crestDef.FuseMaterialFilter,
                     SourceText = crestDef.SourceText,
+                    // 纹章是合成号段，没有自己的立绘文件；
+                    // 溯源面板要回到主人卡的图，否则条目全是空底色。
+                    ArtCardId = crestDef.ArtCardId > 0
+                        ? crestDef.ArtCardId
+                        : (crestDef.CardId > 0 && crestDef.CardId < 40000000 ? crestDef.CardId : cardId),
                 };
             cardId = synth;
             _cardPool[cardId] = def;

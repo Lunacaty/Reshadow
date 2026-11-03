@@ -301,6 +301,43 @@ public partial class TopLeftCardActionPanel : PanelContainer
                 Tag = "光环",
             });
         }
+
+        // 关键词光环（「当本卡在场时，我方随从获得【守护】」）不在
+        // QueryDamageModifiers 里 —— 那条路只扫 DamageModifierNode。
+        // 不单独扫一遍，这类光环在溯源面板上完全不出现。
+        for (int pid = 0; pid < 2; pid++)
+        {
+            var srcs = new System.Collections.Generic.List<ShadowverseFan.KernelV3.Vm.RuntimeEntity>();
+            srcs.AddRange(st.Players[pid].Board);
+            srcs.AddRange(st.Players[pid].CrestArea);
+            foreach (var src in srcs)
+            {
+                if (src?.Def?.Abilities == null || src.IsSilenced) continue;
+                if (src.EntityId == entity.EntityId) continue;
+                foreach (var ab in src.Def.Abilities)
+                {
+                    if (ab?.Trigger == null || ab.Trigger.Event != ShadowverseFan.KernelV3.Core.CoreEvent.PassiveAura) continue;
+                    if (ab.Body == null) continue;
+                    bool grants = false;
+                    foreach (var n in ab.Body)
+                        if (n is ShadowverseFan.KernelV3.Ast.ModifyKeywordNode mk
+                            && mk.Op == ShadowverseFan.KernelV3.Ast.KeywordOp.Grant
+                            && st.HasEffectiveKeyword(entity, mk.Keyword))
+                        { grants = true; break; }
+                    if (!grants) continue;
+                    bool dup2 = false;
+                    foreach (var old in list)
+                        if (ReferenceEquals(old.SourceCard, src.Def)) { dup2 = true; break; }
+                    if (dup2) continue;
+                    list.Insert(0, new AppliedEffectRecord
+                    {
+                        SourceCard = src.Def,
+                        SourceAbility = ab,
+                        Tag = "光环",
+                    });
+                }
+            }
+        }
         return list;
     }
 
