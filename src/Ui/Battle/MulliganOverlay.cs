@@ -86,6 +86,9 @@ public partial class MulliganOverlay : Control
         _tooltip = new CardHoverTooltip { ZIndex = 95 };
         AddChild(_tooltip);
 
+        // 窗口尺寸变化时重排起手牌：只算一次会在切换全屏后全部错位。
+        Resized += RebuildCards;
+
         RebuildCards();
     }
 

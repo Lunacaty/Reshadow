@@ -95,7 +95,9 @@ public partial class PendingChoiceOverlay : Control
 
     public void RefreshState()
     {
-        var p = _ctrl?.Runner?.PendingChoice;
+        // 客机不跑本地 VM，Runner 里永远没有挂起选择；
+        // 必须读 EffectivePendingChoice（远端快照带来的那一份）。
+        var p = _ctrl?.EffectivePendingChoice;
         if (p == null || !_ctrl.IsWaitingForInput || p.PlayerId != _ctrl.MyPlayerId)
         {
             _boundChoiceId = -1;
