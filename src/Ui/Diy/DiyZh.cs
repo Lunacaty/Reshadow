@@ -203,6 +203,39 @@ public static class DiyZh
         ("Damaged", "已受伤"),
     };
 
+
+    /// <summary>目标孔位的三种来源。</summary>
+    public static readonly (string Key, string Zh)[] TargetOps =
+    {
+        ("tgt_slot", "从槽位取（本卡 / 已选 / 生成物）"),
+        ("tgt_leader", "主战者"),
+        ("tgt_query", "从区域筛选（战场 / 手牌 / 牌组…）"),
+    };
+
+    /// <summary>数值孔位的六种形态。</summary>
+    public static readonly (string Key, string Zh)[] NumOps =
+    {
+        ("num_const", "固定数值"),
+        ("num_rand", "锁定随机数"),
+        ("num_counter", "计数器 / 能量点"),
+        ("num_prop", "属性读取（攻击力 / 生命值 / 费用）"),
+        ("num_count", "统计目标数量"),
+        ("num_arith", "四则运算"),
+    };
+
+    /// <summary>条件孔位的九种形态。</summary>
+    public static readonly (string Key, string Zh)[] CondOps =
+    {
+        ("bool_compare", "数值比较（≥ ≤ = …）"),
+        ("bool_exists", "存在满足条件的单位"),
+        ("bool_has_kw", "拥有某关键词"),
+        ("bool_has_trait", "拥有某兵种"),
+        ("bool_has_clan", "属于某职业"),
+        ("bool_has_state", "处于某状态（已进化…）"),
+        ("bool_and", "同时满足全部"),
+        ("bool_or", "满足任意一个"),
+        ("bool_not", "不满足"),
+    };
     /// <summary>把内部值翻成中文标签；没登记的返回原值，不印空白。</summary>
     public static string Zh((string Key, string Zh)[] table, string key)
     {

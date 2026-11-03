@@ -1017,12 +1017,12 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         var opts = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         opts.AddItem("（无）");
-        foreach (var o in TargetOps) opts.AddItem(o);
-        opts.Selected = cur == null ? 0 : Math.Max(0, Array.IndexOf(TargetOps, cur.Opcode) + 1);
+        foreach (var o in DiyZh.TargetOps) opts.AddItem(o.Zh);
+        opts.Selected = cur == null ? 0 : Math.Max(0, DiyZh.IndexOf(DiyZh.TargetOps, cur.Opcode) + 1);
         opts.ItemSelected += idx =>
         {
             if (idx <= 0) { setter(null); return; }
-            var op = TargetOps[(int)idx - 1];
+            var op = DiyZh.TargetOps[(int)idx - 1].Key;
             if (cur != null && cur.Opcode == op) return;
             var made = new Block { Opcode = op };
             if (op == "tgt_slot") made.Text = TargetSpec.SlotSelf;
@@ -1070,12 +1070,12 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         var opts = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         opts.AddItem("（无）");
-        foreach (var o in NumOps) opts.AddItem(o);
-        opts.Selected = cur == null ? 0 : Math.Max(0, Array.IndexOf(NumOps, cur.Opcode) + 1);
+        foreach (var o in DiyZh.NumOps) opts.AddItem(o.Zh);
+        opts.Selected = cur == null ? 0 : Math.Max(0, DiyZh.IndexOf(DiyZh.NumOps, cur.Opcode) + 1);
         opts.ItemSelected += idx =>
         {
             if (idx <= 0) { setter(null); return; }
-            var op = NumOps[(int)idx - 1];
+            var op = DiyZh.NumOps[(int)idx - 1].Key;
             if (cur != null && cur.Opcode == op) return;
             var made = new Block { Opcode = op };
             if (op == "num_const") made.IntA = cur?.IntA ?? 1;
@@ -1133,12 +1133,12 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         var opts = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         opts.AddItem("（无条件）");
-        foreach (var o in CondOps) opts.AddItem(o);
-        opts.Selected = cur == null ? 0 : Math.Max(0, Array.IndexOf(CondOps, cur.Opcode) + 1);
+        foreach (var o in DiyZh.CondOps) opts.AddItem(o.Zh);
+        opts.Selected = cur == null ? 0 : Math.Max(0, DiyZh.IndexOf(DiyZh.CondOps, cur.Opcode) + 1);
         opts.ItemSelected += idx =>
         {
             if (idx <= 0) { setter(null); return; }
-            var op = CondOps[(int)idx - 1];
+            var op = DiyZh.CondOps[(int)idx - 1].Key;
             if (cur != null && cur.Opcode == op) return;
             var made = new Block { Opcode = op };
             if (op == "bool_compare")
@@ -1237,13 +1237,27 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                      : t.EnumA == "Any" ? "双方主战者" : "我方主战者";
             case "tgt_query":
             {
-                string owner = t.IntA == 0 ? "我方" : t.IntA == 1 ? "敌方" : "双方";
-                string zone = (t.IntB == 0 ? "战场" : t.IntB == 1 ? "手牌"
-                             : t.IntB == 2 ? "牌组" : t.IntB == 3 ? "墓场" : "区域");
-                string mode = t.EnumA == "Choose" ? "手选"
-                              : t.EnumA == "Random" ? "随机"
-                              : t.EnumA == "First" ? "第一个" : "全部";
-                string kind = string.IsNullOrEmpty(t.Text) ? "" : (t.Text == "Follower" ? "随从" : t.Text);
+                // 编译器里 IntA = ZoneCode(区域)、IntB = OwnerCode(归属)，
+                // 早先这里写反了：「敌方战场」在标签上会显示成「我方手牌」。
+                string zone = t.IntA switch
+                {
+                    0 => "战场", 1 => "手牌", 2 => "牌组", 3 => "墓场",
+                    4 => "放逐区", 5 => "额外区", 6 => "纹章区", 7 => "主战者",
+                    _ => "区域",
+                };
+                string owner = t.IntB switch
+                {
+                    0 => "我方", 1 => "敌方", 2 => "双方", _ => "",
+                };
+                string mode = t.EnumA switch
+                {
+                    "Choose" => "手选", "Random" => "随机",
+                    "First" => "第一个", "All" => "全部", _ => "全部",
+                };
+                string kind = string.IsNullOrEmpty(t.Text) ? ""
+                    : t.Text == "Follower" ? "随从"
+                    : t.Text == "Spell" ? "法术"
+                    : t.Text == "Amulet" ? "护符" : t.Text;
                 return owner + zone + "·" + mode + (kind.Length > 0 ? "·" + kind : "");
             }
             default:
