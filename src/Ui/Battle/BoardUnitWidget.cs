@@ -559,8 +559,14 @@ public partial class BoardUnitWidget : Control
         {
             var (left, right) = SpanAt(poly, art.Position.Y + y + 0.5f);
             if (right - left <= 0.5f) continue;
-            int x0 = Mathf.Clamp(Mathf.FloorToInt(left), 0, dstW - 1);
-            int x1 = Mathf.Clamp(Mathf.CeilToInt(right), 0, dstW);
+
+            // SpanAt 返回的是**控件坐标系**的绝对 X（例如 8..88），
+            // 而 x0/x1 是输出图的下标（输出图从 0 开始、宽 dstW）。
+            // 不减掉 art.Position.X，整张立绘就会右移 8px：
+            // 右边被裁掉一条、左边留一条透明 —— 表现为棋子和卡框之间有黑边。
+            float ox = art.Position.X;
+            int x0 = Mathf.Clamp(Mathf.FloorToInt(left - ox), 0, dstW - 1);
+            int x1 = Mathf.Clamp(Mathf.CeilToInt(right - ox), 0, dstW);
             if (x1 <= x0) continue;
 
             for (int x = x0; x < x1; x++)
