@@ -238,6 +238,134 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     /// 激奏 / 结晶费用设置。原来页签只显示「激奏」两个字，
     /// 玩家在积木端根本没法开启或改价。
     /// </summary>
+
+    /// <summary>【关联纹章】页签的引导栏：说明纹章机制并提供一键初始化。</summary>
+    private void BuildCrestHelperBanner()
+    {
+        var box = new PanelContainer();
+        box.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
+            SvWbTheme.BgSurface, SvWbTheme.AccentCyan, 8, 1, 2));
+        var col = new VBoxContainer();
+        col.AddThemeConstantOverride("separation", 6);
+        box.AddChild(col);
+
+        var hint = new Label
+        {
+            Text = "💡【关联纹章说明】：此处定义的事件帽属于本卡关联的【纹章】能力。" +
+                   "别忘了在「本体能力」里加一块「获得纹章」积木来授予它！",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        hint.AddThemeFontSizeOverride("font_size", 11);
+        hint.AddThemeColorOverride("font_color", new Color("7DD3FC"));
+        col.AddChild(hint);
+
+        var quickBtn = new Button
+        {
+            Text = "⚡ 一键初始化：本体加「入场曲：获得此纹章」+ 此处创建纹章能力帽",
+            CustomMinimumSize = new Vector2(0, 28),
+        };
+        SvWbTheme.StyleButton(quickBtn, isPrimary: true, customAccent: SvWbTheme.AccentCyan);
+        quickBtn.AddThemeFontSizeOverride("font_size", 11);
+        quickBtn.Pressed += () =>
+        {
+            if (_ws == null || _ctrl == null) return;
+            string crestName = !string.IsNullOrWhiteSpace(_ws.Name) ? _ws.Name : "DIY Crest";
+
+            // 1. 本体：没有事件帽就补一顶，然后追加「获得纹章」积木。
+            _ws.Hats ??= new List<Block>();
+            if (_ws.Hats.Count == 0)
+                _ws.Hats.Add(DiyBlockTree.CreateDefaultBlock("hat_self_event"));
+            _ws.Hats[0].Stacks ??= new List<Block>();
+            _ws.Hats[0].Stacks.Add(new Block { Opcode = "act_gain_crest", Text = crestName, EnumA = "Self" });
+
+            // 2. 纹章域：空的话补一顶常驻帽与一顶回合末帽。
+            _ws.CrestHats ??= new List<Block>();
+            if (_ws.CrestHats.Count == 0)
+            {
+                _ws.CrestHats.Add(new Block
+                {
+                    Opcode = "hat_passive", Text = "PassiveAura",
+                    Costs = new List<(string, int)> { ("countdown", 3) },
+                });
+                var turnEndHat = new Block { Opcode = "hat_self_event", Text = "TurnEnd", DuringTurn = "Self" };
+                turnEndHat.Stacks ??= new List<Block>();
+                turnEndHat.Stacks.Add(DiyBlockTree.CreateDefaultBlock("act_draw"));
+                _ws.CrestHats.Add(turnEndHat);
+            }
+
+            _insertList = _ws.CrestHats[^1].Stacks;
+            _ctrl.SetActiveInsertList(_insertList);
+            Apply();
+            Refresh();
+        };
+        col.AddChild(quickBtn);
+
+        _canvasCol.AddChild(box);
+    }
+
+    /// <summary>【关联信仰】页签的引导栏：说明信仰机制并给涨点模板。</summary>
+    private void BuildFaithHelperBanner()
+    {
+        var box = new PanelContainer();
+        box.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
+            SvWbTheme.BgSurface, SvWbTheme.AccentGold, 8, 1, 2));
+        var col = new VBoxContainer();
+        col.AddThemeConstantOverride("separation", 6);
+        box.AddChild(col);
+
+        var hint = new Label
+        {
+            Text = "💡【关联信仰说明】：只要此页签非空，开局时就会自动在我方纹章区生成本卡的【信仰】" +
+                   "（初始值 0）。此页签配置的是「信仰怎么涨点」。",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        hint.AddThemeFontSizeOverride("font_size", 11);
+        hint.AddThemeColorOverride("font_color", new Color("FEF08A"));
+        col.AddChild(hint);
+
+        var quickBtn = new Button
+        {
+            Text = "⚡ 一键生成信仰模板（初始值 0 + 每当友方随从进化时信仰 +1）",
+            CustomMinimumSize = new Vector2(0, 28),
+        };
+        SvWbTheme.StyleButton(quickBtn, isPrimary: true, customAccent: SvWbTheme.AccentGold);
+        quickBtn.AddThemeFontSizeOverride("font_size", 11);
+        quickBtn.Pressed += () =>
+        {
+            if (_ws == null || _ctrl == null) return;
+            _ws.FaithHats ??= new List<Block>();
+            _ws.FaithHats.Clear();
+
+            // 1. 初始信仰值 = 0
+            var initHat = new Block { Opcode = "hat_passive", Text = "PassiveAura" };
+            initHat.Stacks ??= new List<Block>();
+            initHat.Stacks.Add(new Block
+            {
+                Opcode = "act_mod_counter", Text = "faith", EnumA = "Set",
+                Number = new Block { Opcode = "num_const", IntA = 0 },
+            });
+            _ws.FaithHats.Add(initHat);
+
+            // 2. 每当友方随从进化时，信仰 +1
+            var watchHat = DiyBlockTree.CreateDefaultBlock("hat_watch_event");
+            watchHat.Text = "OnEvolve";
+            watchHat.Stacks ??= new List<Block>();
+            watchHat.Stacks.Add(new Block
+            {
+                Opcode = "act_mod_counter", Text = "faith", EnumA = "Add",
+                Number = new Block { Opcode = "num_const", IntA = 1 },
+            });
+            _ws.FaithHats.Add(watchHat);
+
+            _insertList = watchHat.Stacks;
+            _ctrl.SetActiveInsertList(_insertList);
+            Apply();
+            Refresh();
+        };
+        col.AddChild(quickBtn);
+
+        _canvasCol.AddChild(box);
+    }
     private void BuildAcceleratePanel()
     {
         var col = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
@@ -433,6 +561,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         // 这两个面板必须在「域为空」的提前返回**之前**渲染：
         // 激奏/结晶费用框正是用来把空域开启的 —— 藏在空域提示后面就等于永远看不见。
         if (_scopeTab == 5) BuildKeywordsPanel();
+        if (_scopeTab == 1) BuildCrestHelperBanner();
+        if (_scopeTab == 2) BuildFaithHelperBanner();
         if (_scopeTab == 3 || _scopeTab == 4) BuildAcceleratePanel();
 
         if (root.Count == 0)
@@ -450,124 +580,207 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     private Control RenderBlock(Block blk, int depth)
     {
         if (blk == null) return new Control();
+        bool isSelected = ReferenceEquals(_selected, blk);
+        bool isHat = (blk.Opcode ?? "").StartsWith("hat_");
+        bool isCBlock = blk.Shape == BlockShape.C
+                        || blk.Opcode is "act_grant_entity_ability" or "act_grant_ability";
 
-        var wrap = new VBoxContainer();
-        wrap.AddThemeConstantOverride("separation", 3);
+        var wrap = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        wrap.AddThemeConstantOverride("separation", 0);
 
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 4);
-        wrap.AddChild(row);
+        // ── 积木头部横条：固定 36px 高，绝不随父容器纵向拉成柱子 ──
+        var headerPanel = new PanelContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0, 36),
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            MouseDefaultCursorShape = Control.CursorShape.PointingHand,
+        };
+        Color baseCol = ShapeColor(blk.Shape);
+        headerPanel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
+            isSelected ? baseCol.Lightened(0.18f) : baseCol,
+            isSelected ? new Color("FDE047") : new Color(1, 1, 1, 0.32f),
+            isHat ? 10 : 6, isSelected ? 3 : 1, isSelected ? 8 : 2));
 
-        var box = BlockBox(blk.Shape, BuildLabel(blk), null, depth);
-        box.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        box.MouseFilter = Control.MouseFilterEnum.Stop;
-        box.GuiInput += e =>
+        headerPanel.GuiInput += e =>
         {
             if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
             {
                 _selected = blk;
+                RedrawCanvas();
                 RedrawInspector();
-                box.AcceptEvent();
+                headerPanel.AcceptEvent();
             }
         };
-        row.AddChild(box);
+
+        var row = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        row.AddThemeConstantOverride("separation", 6);
+        headerPanel.AddChild(row);
+
+        var icon = new Label
+        {
+            Text = isHat ? "🎩" : isCBlock ? "🔀" : "▸",
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        icon.AddThemeFontSizeOverride("font_size", 13);
+        row.AddChild(icon);
+
+        var lbl = new Label
+        {
+            Text = BuildLabel(blk),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center,
+            ClipText = true,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+        };
+        lbl.AddThemeFontSizeOverride("font_size", 13);
+        lbl.AddThemeColorOverride("font_color", Colors.White);
+        row.AddChild(lbl);
 
         if (_editable && _ctrl != null)
         {
-            var up = new Button { Text = "▲", CustomMinimumSize = new Vector2(26, 26) };
-            SvWbTheme.StyleButton(up);
-            var c1 = blk;
-            up.Pressed += () => { _ctrl.MoveBlockInTree(c1, -1); _ws = _ctrl.BlockModel; Refresh(); };
-            row.AddChild(up);
-
-            var down = new Button { Text = "▼", CustomMinimumSize = new Vector2(26, 26) };
-            SvWbTheme.StyleButton(down);
-            var c2 = blk;
-            down.Pressed += () => { _ctrl.MoveBlockInTree(c2, 1); _ws = _ctrl.BlockModel; Refresh(); };
-            row.AddChild(down);
-
-            var cp = new Button { Text = "+", CustomMinimumSize = new Vector2(26, 26) };
-            SvWbTheme.StyleButton(cp);
-            var c3 = blk;
-            cp.Pressed += () => { _ctrl.DuplicateBlockInTree(c3); _ws = _ctrl.BlockModel; Refresh(); };
-            row.AddChild(cp);
-
-            var del = new Button { Text = "x", CustomMinimumSize = new Vector2(26, 26) };
-            SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
-            var c4 = blk;
-            del.Pressed += () =>
+            AddMiniBtn(row, "▲", "上移", () => { _ctrl.MoveBlockInTree(blk, -1); _ws = _ctrl.BlockModel; Refresh(); });
+            AddMiniBtn(row, "▼", "下移", () => { _ctrl.MoveBlockInTree(blk, 1); _ws = _ctrl.BlockModel; Refresh(); });
+            AddMiniBtn(row, "⧉", "复制", () => { _ctrl.DuplicateBlockInTree(blk); _ws = _ctrl.BlockModel; Refresh(); });
+            AddMiniBtn(row, "✕", "删除", () =>
             {
-                _ctrl.RemoveBlockFromTree(c4);
-                if (ReferenceEquals(_selected, c4)) _selected = null;
+                _ctrl.RemoveBlockFromTree(blk);
+                if (ReferenceEquals(_selected, blk)) _selected = null;
                 _ws = _ctrl.BlockModel;
                 Refresh();
-            };
-            row.AddChild(del);
+            }, SvWbTheme.StatusDanger);
         }
 
-        AddSubList(wrap, blk.Stacks, "Then", depth);
-        AddSubList(wrap, blk.ElseStacks, "Else", depth);
+        wrap.AddChild(headerPanel);
 
-        if (blk.Branches != null)
+        // ── 只有事件帽与控制流块才展开子槽；普通动作块绝不显示 Then 流 ──
+        if (isHat)
+        {
+            blk.Stacks ??= new List<Block>();
+            wrap.AddChild(RenderBracketSlot("⚡ 触发后依次执行", blk.Stacks, baseCol, depth));
+        }
+        else if (blk.Opcode == "c_if_else")
+        {
+            blk.Stacks ??= new List<Block>();
+            blk.ElseStacks ??= new List<Block>();
+            wrap.AddChild(RenderBracketSlot("┣ 【那么 (满足条件时)】", blk.Stacks, baseCol, depth));
+            wrap.AddChild(RenderBracketSlot("┗ 【否则 (不满足时)】", blk.ElseStacks, baseCol.Darkened(0.2f), depth));
+        }
+        else if (blk.Opcode is "c_repeat" or "c_for_each" or "act_grant_entity_ability" or "act_grant_ability")
+        {
+            blk.Stacks ??= new List<Block>();
+            wrap.AddChild(RenderBracketSlot("🔁 内部执行的动作", blk.Stacks, baseCol, depth));
+        }
+        else if (blk.Opcode == "c_mode" && blk.Branches != null)
         {
             for (int i = 0; i < blk.Branches.Count; i++)
             {
+                int idx = i;
                 var br = blk.Branches[i];
-                var head = new HBoxContainer();
-                var lbl = new Label
-                {
-                    Text = "分支 " + (i + 1) + "（" + (br?.Count ?? 0) + " 项）",
-                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                };
-                lbl.AddThemeFontSizeOverride("font_size", 10);
-                lbl.AddThemeColorOverride("font_color", new Color("F0ABFC"));
-                head.AddChild(lbl);
-
-                var pick = new Button { Text = "设为插入点", CustomMinimumSize = new Vector2(0, 22) };
-                SvWbTheme.StyleButton(pick);
-                var cbr = br;
-                pick.Pressed += () =>
-                {
-                    _insertList = cbr;
-                    _ctrl?.SetActiveInsertList(cbr);
-                    RedrawCanvas();
-                };
-                head.AddChild(pick);
-                wrap.AddChild(head);
-
-                if (br != null)
-                    foreach (var b in br.ToList()) wrap.AddChild(RenderBlock(b, depth + 1));
+                wrap.AddChild(RenderBracketSlot($"❖ 模式选项 ({idx + 1})", br, baseCol, depth,
+                    onRemoveBranch: blk.Branches.Count > 1 ? () =>
+                    {
+                        blk.Branches.RemoveAt(idx);
+                        Apply();
+                    } : null));
             }
         }
 
         return wrap;
     }
 
-    private void AddSubList(VBoxContainer wrap, List<Block> list, string name, int depth)
+    /// <summary>渲染 C 型夹子凹槽：左侧贯穿色带 + 缩进子积木 + 设为插入点。</summary>
+    private Control RenderBracketSlot(string slotTitle, List<Block> list, Color spineCol, int depth,
+                                      Action onRemoveBranch = null)
     {
-        if (list == null) return;
-        var head = new HBoxContainer();
-        var lbl = new Label
+        bool isFocus = ReferenceEquals(_insertList, list);
+        var hbox = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        hbox.AddThemeConstantOverride("separation", 0);
+
+        var spine = new ColorRect
         {
-            Text = name + " 流（" + list.Count + " 项）",
+            Color = isFocus ? new Color("FDE047") : spineCol,
+            CustomMinimumSize = new Vector2(8, 0),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        hbox.AddChild(spine);
+
+        var innerMargin = new MarginContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        innerMargin.AddThemeConstantOverride("margin_left", 10);
+        innerMargin.AddThemeConstantOverride("margin_top", 4);
+        innerMargin.AddThemeConstantOverride("margin_bottom", 6);
+        hbox.AddChild(innerMargin);
+
+        var col = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        col.AddThemeConstantOverride("separation", 4);
+        innerMargin.AddChild(col);
+
+        var bar = new HBoxContainer();
+        bar.AddThemeConstantOverride("separation", 6);
+        var titleLbl = new Label
+        {
+            Text = slotTitle + $"（{list?.Count ?? 0} 步）",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        lbl.AddThemeFontSizeOverride("font_size", 10);
-        lbl.AddThemeColorOverride("font_color", new Color("FBCFE8"));
-        head.AddChild(lbl);
+        titleLbl.AddThemeFontSizeOverride("font_size", 11);
+        titleLbl.AddThemeColorOverride("font_color", isFocus ? new Color("FEF08A") : SvWbTheme.TextSecondary);
+        bar.AddChild(titleLbl);
 
-        var pick = new Button { Text = "设为插入点", CustomMinimumSize = new Vector2(0, 22) };
-        SvWbTheme.StyleButton(pick);
-        pick.Pressed += () =>
+        var focusBtn = new Button
+        {
+            Text = isFocus ? "● 当前插入点" : "⊕ 设为插入点",
+            CustomMinimumSize = new Vector2(0, 24),
+        };
+        SvWbTheme.StyleButton(focusBtn, isPrimary: isFocus,
+                              customAccent: isFocus ? SvWbTheme.AccentGold : (Color?)null);
+        focusBtn.AddThemeFontSizeOverride("font_size", 11);
+        focusBtn.Pressed += () =>
         {
             _insertList = list;
             _ctrl?.SetActiveInsertList(list);
             RedrawCanvas();
         };
-        head.AddChild(pick);
-        wrap.AddChild(head);
+        bar.AddChild(focusBtn);
 
-        foreach (var b in list.ToList()) wrap.AddChild(RenderBlock(b, depth + 1));
+        if (onRemoveBranch != null)
+        {
+            var rmBtn = new Button { Text = "🗑 删分支", CustomMinimumSize = new Vector2(0, 24) };
+            SvWbTheme.StyleButton(rmBtn, customAccent: SvWbTheme.StatusDanger);
+            rmBtn.AddThemeFontSizeOverride("font_size", 11);
+            rmBtn.Pressed += onRemoveBranch;
+            bar.AddChild(rmBtn);
+        }
+        col.AddChild(bar);
+
+        if (list != null && list.Count > 0)
+        {
+            foreach (var child in list.ToList()) col.AddChild(RenderBlock(child, depth + 1));
+        }
+        else
+        {
+            var emptyHint = new Label { Text = "    （空槽位：点「⊕ 设为插入点」后从左侧点选动作积木）" };
+            emptyHint.AddThemeFontSizeOverride("font_size", 11);
+            emptyHint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+            col.AddChild(emptyHint);
+        }
+
+        return hbox;
+    }
+
+    /// <summary>28×28 的迷你操作钮。必须 ShrinkCenter —— 否则会随父容器纵向拉成高柱。</summary>
+    private static void AddMiniBtn(HBoxContainer row, string txt, string tip, Action onClick, Color? accent = null)
+    {
+        var b = new Button
+        {
+            Text = txt,
+            TooltipText = tip,
+            CustomMinimumSize = new Vector2(28, 28),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        b.AddThemeFontSizeOverride("font_size", 12);
+        SvWbTheme.StyleButton(b, customAccent: accent);
+        b.Pressed += onClick;
+        row.AddChild(b);
     }
 
 

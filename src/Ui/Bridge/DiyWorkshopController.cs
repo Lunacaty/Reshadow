@@ -181,14 +181,46 @@ public sealed class DiyWorkshopController
             return false;
         }
 
-        // 规范 AST 文本（CanonicalAstDsl）不是 JSON；解析不了就回落到上一份 JSON。
-        // 这样「③ AST 端」既能手写规范 DSL，也兼容旧 JSON 存档。
+        // 「③ AST 端」收两种文本：
+        //   · 以 { 开头 -> 旧 JSON 存档；
+        //   · 其余 -> 规范 AST 效果语言（CanonicalAstDsl）。
+        // 规范文本只含效果，卡头（名字/费用/身材）沿用当前卡，不在这里改。
         string trimmed = json.TrimStart();
         if (!trimmed.StartsWith("{") && !trimmed.StartsWith("["))
         {
-            LastErrors.Add("规范 AST 文本编辑尚未接回编译链，请改用积木端或表单端修改。");
-            LastStatusMessage = "规范 AST 只读（编译入口待接）";
-            return false;
+            var errs = new List<string>();
+            var abs = CanonicalAstDsl.ParseAbilities(json, errs);
+            if (abs == null)
+            {
+                LastErrors.AddRange(errs);
+                LastStatusMessage = "规范 AST 解析失败";
+                return false;
+            }
+
+            var head = CurrentDef ?? new CardDef { Kind = CardKind.Follower };
+            CurrentDef = new CardDef
+            {
+                CardId = head.CardId, ArtCardId = head.ArtCardId,
+                Name = head.Name, NameChs = head.NameChs, Kind = head.Kind,
+                BaseCost = head.BaseCost, BaseAttack = head.BaseAttack, BaseLife = head.BaseLife,
+                Clan = head.Clan, Traits = head.Traits,
+                InnateKeywords = head.InnateKeywords, DeckModifiers = head.DeckModifiers,
+                HasFuse = head.HasFuse, FuseMaterialFilter = head.FuseMaterialFilter,
+                CrestDef = head.CrestDef, FaithDef = head.FaithDef,
+                AccelerateDef = head.AccelerateDef, CrystallizeDef = head.CrystallizeDef,
+                PackId = head.PackId, IsToken = head.IsToken, Rarity = head.Rarity,
+                SourceText = head.SourceText,
+                Abilities = abs,
+            };
+            // 同步其余三端；同步过程会重算 AstJsonText，所以最后再覆盖回用户手写的文本，
+            // 避免「刚敲的规范 AST 被格式化结果顶掉」。
+            string userText = json;
+            SyncAllEndpointsFromCurrentDef();
+            AstJsonText = userText;
+            AstJsonRaw = AstJsonCodec.Encode(CurrentDef);
+            LastStatusMessage = "✔ 从【规范 AST 端】编译成功（仅效果，卡头沿用原卡）";
+            OnCardUpdated?.Invoke();
+            return true;
         }
 
         CardDef def;

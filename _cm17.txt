@@ -1,0 +1,35 @@
+feat(129-1 完整): Scratch 凹槽夹子画布 + 纹章信仰引导 + CanonicalAstDsl 双向
+
+【问题2 Scratch 端重做】
+RenderBlock 重写：
+  · 积木头部固定 36px 高 PanelContainer，图标 + 单行文字 + 4 个 28×28 迷你按钮；
+    文字 ClipText+省略号，绝不再被 WordSmart 拆成一字一行、把旁边按钮拉成巨柱。
+  · 迷你按钮 SizeFlagsVertical = ShrinkCenter，不再随父容器纵向拉高。
+  · **只有事件帽与控制流块才展开子槽**，普通动作块不再显示莫名其妙的「Then 流 (0 项)」。
+新增 RenderBracketSlot：左侧 8px 贯穿色带表达嵌套归属，
+  if_else 分「┣ 那么 / ┗ 否则」，c_mode 每个分支独立凹槽可删，
+  空白凹槽给出「设为插入点」引导。
+新增 BuildCrestHelperBanner / BuildFaithHelperBanner：
+  纹章域一键初始化（本体加「获得纹章」+ 建纹章能力帽 + 吟唱 3）；
+  信仰域一键生成涨点模板（初始值 0 + 每当友方随从进化 +1）。
+
+【问题3 AST 端：CanonicalAstDsl 双向】
+Print 端（此前已提交）：只写效果、首字母大写、2 格缩进、剥离 All n=1 与冗余 is Evolved。
+本轮新增 ParseInto（约 470 行）：
+  · 先建可变草稿树，再自底向上构造 init-only 的 AST；
+  · 支持 Fanfare/Evolve/LastWords/TurnEnd… 全部触发头与 manual/zone/turn/max/or 修饰；
+  · 支持 Deal/Restore/Draw/Destroy/Move/Spawn/GainCrest/ModifyStats/Keyword/
+    Counter/Evolve/Transform/DamageAura/Select/If/Else/Loop/Modes/MarkVictory；
+  · 触发头自带的 if 子句与 [Enhance(4)] 代价方括号；
+  · Evolve 头自动补 is Evolved($self) 条件（与 Print 的剥离对称）。
+实测往返无损（Anne & Grea）：
+  Print -> ParseAbilities -> Print 与原始编译结果逐字节相同，错误数 0，能力数 2。
+
+AST 端现在**可读也可改**：控制器收规范文本时只替换 Abilities，
+卡头（名字/费用/身材）沿用原卡，同步其余三端后把手写文本原样保留。
+快捷模板按钮全部换成规范 AST 语句（Fanfare:/Deal/Draw/ModifyStats/
+Keyword/DamageAura/Modes/Select/If/Spawn）。
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 / UI 3-3 / 战斗 UI 31-31 /
+逐卡矩阵 31-32（既有测试集自造卡）

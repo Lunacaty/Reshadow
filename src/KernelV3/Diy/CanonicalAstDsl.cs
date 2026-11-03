@@ -400,4 +400,565 @@ public static class CanonicalAstDsl
         if (e is ConstBoolExpr cb) return cb.Value ? "true" : "false";
         return AstEnglishPrinter.PrintBool(e);
     }
+
+    // ---------------------------------------------------------------- 反向解析（ParseInto）
+
+    /// <summary>解析过程中的可变草稿节点。构造完再一次性生成 init-only 的 AST。</summary>
+    private sealed class Draft
+    {
+        public string Kind;                 // Fanfare / Deal / Select / If / Else / Modes ...
+        public string Head;                 // 触发头原文（Kind 为 trigger 时用）
+        public string Raw;                  // 整行原文
+        public List<Draft> Children = new();
+        public List<List<Draft>> Branches = new();
+    }
+
+    /// <summary>
+    /// 把规范 AST 文本解析回能力列表。
+    ///
+    /// 只解析**效果**（触发头 + 缩进指令 + 子卡分栏），卡头仍由模板卡提供。
+    /// 采用「先建可变草稿树、再自底向上构造 AST」的方式，
+    /// 因为 IReadOnlyList 这类 init-only 字段没法边解析边追加。
+    /// </summary>
+    public static List<AbilityDef>? ParseAbilities(string text, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return new List<AbilityDef>();
+
+        var roots = new List<Draft>();
+        var stack = new List<(int Indent, Draft Node)>();
+
+        foreach (var rawLine in text.Replace("\r\n", "\n").Split('\n'))
+        {
+            string line = rawLine.TrimEnd();
+            string body = line.Trim();
+            if (body.Length == 0 || body.StartsWith("//")) continue;
+
+            // 子卡分栏：只标记，不重建子卡（子卡归属由模板卡决定）
+            if (body.StartsWith("[") && body.EndsWith("]")) { stack.Clear(); continue; }
+            if (body.StartsWith("Keywords:") || body.StartsWith("DeckMod ") || body.StartsWith("Fuse:")) continue;
+
+            int indent = line.Length - line.TrimStart().Length;
+            var d = new Draft { Raw = body };
+
+            // 判断是「块头」（以冒号结尾）还是叶子指令
+            bool isBlockHead = body.EndsWith(":");
+            if (isBlockHead) body = body.Substring(0, body.Length - 1).Trim();
+
+            string kind = KindOf(body, isBlockHead, out string head);
+            if (kind == null) { errors?.Add("无法识别：" + line.Trim()); continue; }
+            d.Kind = kind;
+            d.Head = head;
+
+            // 触发头：缩进 0 的块头一律视为新能力的开始
+            if (kind == "trigger")
+            {
+                roots.Add(d);
+                stack.Clear();
+                stack.Add((indent, d));
+                continue;
+            }
+
+            // 找父节点
+            while (stack.Count > 0 && stack[^1].Indent >= indent) stack.RemoveAt(stack.Count - 1);
+            var parent = stack.Count > 0 ? stack[^1].Node : null;
+            if (parent == null) { errors?.Add("指令出现在触发头之前：" + body); continue; }
+
+            // Modes 的分支："(1):" 形式
+            if (body.StartsWith("(") && body.EndsWith(")") && body.Length > 2
+                && int.TryParse(body.Substring(1, body.Length - 2), out _))
+            {
+                var br = new List<Draft>();
+                parent.Branches.Add(br);
+                stack.Add((indent, new Draft { Kind = "branch", Children = br }));
+                continue;
+            }
+
+            parent.Children.Add(d);
+            if (isBlockHead) stack.Add((indent, d));
+        }
+
+        var result = new List<AbilityDef>();
+        foreach (var r in roots)
+        {
+            var ab = BuildAbility(r, errors);
+            if (ab != null) result.Add(ab);
+        }
+        return result;
+    }
+
+    /// <summary>判断一行属于哪类节点。返回 null 表示不认识。</summary>
+    private static string KindOf(string body, bool isBlockHead, out string head)
+    {
+        head = null;
+        string first = body.Split(' ')[0];
+
+        if (isBlockHead)
+        {
+            if (first is "If" or "Else" or "Loop" or "Modes") return first.ToLowerInvariant();
+            head = body;
+            return "trigger";
+        }
+
+        return first switch
+        {
+            "Deal" or "Restore" or "FullyRestore" or "Draw" or "Destroy" or "Move"
+            or "Spawn" or "GainCrest" or "ModifyStats" or "SwapStats" or "ModifyCost"
+            or "Keyword" or "Counter" or "Evolve" or "SuperEvolve" or "Transform"
+            or "DamageAura" or "Select" or "Reanimate" or "MarkVictory" => first.ToLowerInvariant(),
+            _ => null,
+        };
+    }
+
+    private static AbilityDef BuildAbility(Draft d, List<string> errors)
+    {
+        var trig = ParseTriggerHead(d.Head, errors);
+        if (trig == null) return null;
+
+        // 触发头自带的条件（if 子句）；Evolve 头会自动补 is Evolved
+        BoolExpr cond = null;
+        int ifIdx = d.Head.IndexOf(" if ", StringComparison.Ordinal);
+        if (ifIdx >= 0)
+            cond = ParseBoolExpr(d.Head.Substring(ifIdx + 4).Trim(), errors);
+
+        if (trig.Event == CoreEvent.OnEvolve && cond == null)
+            cond = new HasStateExpr { State = UnitState.Evolved, Of = TargetSpec.Self };
+        if (trig.Event == CoreEvent.OnSuperEvolve && cond == null)
+            cond = new HasStateExpr { State = UnitState.SuperEvolved, Of = TargetSpec.Self };
+
+        return new AbilityDef
+        {
+            Trigger = trig,
+            Condition = cond,
+            Costs = ParseCosts(d.Head),
+            Body = BuildNodes(d.Children, errors),
+        };
+    }
+
+    private static List<EffectNode> BuildNodes(List<Draft> drafts, List<string> errors)
+    {
+        var list = new List<EffectNode>();
+        foreach (var d in drafts)
+        {
+            var n = BuildNode(d, errors);
+            if (n != null) list.Add(n);
+        }
+        return list;
+    }
+
+    private static EffectNode BuildNode(Draft d, List<string> errors)
+    {
+        switch (d.Kind)
+        {
+            case "if":
+                return new ConditionalNode
+                {
+                    Condition = ParseBoolExpr(Strip("If ", d.Raw), errors),
+                    Then = BuildNodes(d.Children, errors),
+                    Else = new List<EffectNode>(),
+                };
+            case "else":
+                return null;   // Else 由父 If 吸收，见 BuildWithElse
+            case "loop":
+            {
+                string rest = Strip("Loop ", d.Raw);
+                var parts = rest.Split(' ', 2);
+                var lk = Enum.TryParse<LoopKind>(parts[0], true, out var lkv) ? lkv : LoopKind.Times;
+                return new LoopNode
+                {
+                    Kind = lk,
+                    Count = lk == LoopKind.ForEach ? null : ParseNum(parts.Length > 1 ? parts[1] : "1"),
+                    Collection = lk == LoopKind.ForEach && parts.Length > 1 ? ParseTarget(parts[1]) : null,
+                    Body = BuildNodes(d.Children, errors),
+                };
+            }
+            case "modes":
+            {
+                string rest = Strip("Modes ", d.Raw);
+                var mp = rest.Split(' ');
+                var mk = Enum.TryParse<ModeDispatchKind>(mp[0], true, out var mkv) ? mkv : ModeDispatchKind.Choose;
+                string pick = mp.Length > 1 ? mp[1].Trim('(', ')') : "1";
+                var opts = d.Branches.Select(b => (IReadOnlyList<EffectNode>)BuildNodes(b, errors)).ToList();
+                return new BranchModeNode { Kind = mk, PickCount = ParseNum(pick), Options = opts };
+            }
+            case "select":
+            {
+                // Select $selected = opponent:board Choose(1) where is Follower
+                string rest = Strip("Select ", d.Raw);
+                int eq = rest.IndexOf('=');
+                string slot = eq > 0 ? rest.Substring(0, eq).Trim() : TargetSpec.SlotSelected;
+                string rhs = eq > 0 ? rest.Substring(eq + 1).Trim() : rest;
+                return new SelectTargetNode { Target = ParseTarget(rhs), OutSlot = slot };
+            }
+            case "deal":
+            {
+                // Deal 3 damage to opponent:board Choose(1) where is Follower [split]
+                string rest = Strip("Deal ", d.Raw);
+                int di = rest.IndexOf(" damage to ", StringComparison.Ordinal);
+                if (di < 0) { errors?.Add("Deal 缺少 'damage to'：" + d.Raw); return null; }
+                var amount = ParseNum(rest.Substring(0, di));
+                string tgt = rest.Substring(di + " damage to ".Length).Trim();
+                bool split = tgt.EndsWith(" split");
+                if (split) tgt = tgt.Substring(0, tgt.Length - " split".Length);
+                return new DealDamageNode { Amount = amount, Target = ParseTarget(tgt), IsSplit = split };
+            }
+            case "restore":
+            {
+                string rest = Strip("Restore ", d.Raw);
+                int ti = rest.IndexOf(" to ", StringComparison.Ordinal);
+                return new RestoreLifeNode
+                {
+                    Amount = ParseNum(ti > 0 ? rest.Substring(0, ti) : rest),
+                    Target = ti > 0 ? ParseTarget(rest.Substring(ti + 4)) : TargetSpec.Self,
+                };
+            }
+            case "fullyrestore":
+                return new RestoreLifeNode { Target = ParseTarget(Strip("FullyRestore ", d.Raw)), FullRestore = true };
+            case "draw":
+                return new MoveZoneNode
+                {
+                    Target = new TargetSpec { Zone = ZoneRef.Deck, Mode = SelectMode.First, Count = ParseNum(Strip("Draw ", d.Raw)) },
+                    ToZone = ZoneRef.Hand,
+                };
+            case "destroy":
+                return new MoveZoneNode { Target = ParseTarget(Strip("Destroy ", d.Raw)), ToZone = ZoneRef.Cemetery, IsDestroy = true };
+            case "move":
+            {
+                string rest = Strip("Move ", d.Raw);
+                int ti = rest.IndexOf(" to ", StringComparison.Ordinal);
+                if (ti < 0) { errors?.Add("Move 缺少 'to zone'：" + d.Raw); return null; }
+                var z = Enum.TryParse<ZoneRef>(rest.Substring(ti + 4).Trim(), true, out var zv) ? zv : ZoneRef.Hand;
+                return new MoveZoneNode { Target = ParseTarget(rest.Substring(0, ti)), ToZone = z };
+            }
+            case "spawn":
+            {
+                // Spawn 1 "Anne's Summoning" to Board (id=90034130)
+                string rest = Strip("Spawn ", d.Raw);
+                var mn = System.Text.RegularExpressions.Regex.Match(rest,
+                    "^(\\S+)\\s+\"(.+?)\"\\s+to\\s+(\\w+)(?:\\s+\\(id=(\\d+)\\))?$");
+                if (!mn.Success) { errors?.Add("Spawn 语法错误：" + d.Raw); return null; }
+                var z = Enum.TryParse<ZoneRef>(mn.Groups[3].Value, true, out var zv2) ? zv2 : ZoneRef.Board;
+                return new SpawnCardNode
+                {
+                    Count = ParseNum(mn.Groups[1].Value),
+                    CardName = mn.Groups[2].Value,
+                    CardId = mn.Groups[4].Success ? int.Parse(mn.Groups[4].Value) : 0,
+                    ToZone = z,
+                };
+            }
+            case "gaincrest":
+            {
+                string rest = Strip("GainCrest ", d.Raw).Replace("\"", "");
+                return new SpawnCardNode { IsCrest = true, CardName = rest.Trim(), ToZone = ZoneRef.CrestArea };
+            }
+            case "modifystats":
+            {
+                // ModifyStats Add 2/2 to $self
+                string rest = Strip("ModifyStats ", d.Raw);
+                var mp = rest.Split(' ', 3);
+                if (mp.Length < 3) { errors?.Add("ModifyStats 语法错误：" + d.Raw); return null; }
+                var atkLife = mp[1].Split('/');
+                string tail = mp[2];
+                int ti = tail.IndexOf(" to ", StringComparison.Ordinal);
+                string tgtS = ti >= 0 ? tail.Substring(ti + 4) : tail;
+                int durI = tgtS.IndexOf(" dur=", StringComparison.Ordinal);
+                if (durI >= 0) tgtS = tgtS.Substring(0, durI);
+                var op = Enum.TryParse<StatModOp>(mp[0], true, out var opv) ? opv : StatModOp.Add;
+                return new ModifyStatsNode
+                {
+                    Op = op,
+                    Attack = ParseNum(atkLife[0]),
+                    Life = ParseNum(atkLife.Length > 1 ? atkLife[1] : atkLife[0]),
+                    Target = ParseTarget(tgtS.Trim()),
+                };
+            }
+            case "keyword":
+            {
+                // Keyword Grant ward to $self
+                string rest = Strip("Keyword ", d.Raw);
+                var mp = rest.Split(' ', 3);
+                if (mp.Length < 3) { errors?.Add("Keyword 语法错误：" + d.Raw); return null; }
+                string kw = mp[1];
+                string tail = mp[2];
+                int ti = tail.IndexOf(" to ", StringComparison.Ordinal);
+                string tgtS = ti >= 0 ? tail.Substring(ti + 4) : tail;
+                int durI = tgtS.IndexOf(" dur=", StringComparison.Ordinal);
+                if (durI >= 0) tgtS = tgtS.Substring(0, durI);
+                var op = Enum.TryParse<KeywordOp>(mp[0], true, out var okv) ? okv : KeywordOp.Grant;
+                return new ModifyKeywordNode
+                {
+                    Op = op,
+                    Keyword = new SymbolId<KeywordTag>(0, kw),
+                    Target = ParseTarget(tgtS.Trim()),
+                };
+            }
+            case "counter":
+            {
+                // Counter spellboost Add 3 of self:hand All
+                string rest = Strip("Counter ", d.Raw);
+                var mp = rest.Split(' ', 3);
+                if (mp.Length < 3) { errors?.Add("Counter 语法错误：" + d.Raw); return null; }
+                var op = Enum.TryParse<CounterOp>(mp[1], true, out var cov) ? cov : CounterOp.Add;
+                string tail = mp[2];
+                int ofI = tail.IndexOf(" of ", StringComparison.Ordinal);
+                string deltaS = ofI >= 0 ? tail.Substring(0, ofI) : tail;
+                return new ModifyCounterNode
+                {
+                    Counter = new SymbolId<CounterTag>(0, mp[0]),
+                    Op = op,
+                    Delta = ParseNum(deltaS),
+                    Target = ofI >= 0 ? ParseTarget(tail.Substring(ofI + 4)) : null,
+                };
+            }
+            case "evolve":
+                return new EvolveNode { Target = ParseTarget(Strip("Evolve ", d.Raw)) };
+            case "superevolve":
+                return new EvolveNode { Target = ParseTarget(Strip("SuperEvolve ", d.Raw)), IsSuperEvolve = true };
+            case "markvictory":
+            {
+                string rest = Strip("MarkVictory", d.Raw).Replace("owner=", "").Trim();
+                var ow = Enum.TryParse<ZoneScope>(rest, true, out var owv) ? owv : ZoneScope.Self;
+                return new MarkVictoryCardNode { Owner = ow };
+            }
+            default:
+                errors?.Add("暂不支持解析的指令：" + d.Raw);
+                return null;
+        }
+    }
+
+    private static string Strip(string prefix, string s)
+        => s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? s.Substring(prefix.Length).Trim() : s.Trim();
+
+    /// <summary>触发头：Fanfare / Evolve [manual] / LastWords / TurnEnd turn=Self …</summary>
+    private static TriggerSpec ParseTriggerHead(string head, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(head)) return null;
+        var parts = head.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return null;
+
+        var ev = parts[0] switch
+        {
+            "Fanfare" => CoreEvent.OnPlay,
+            "Evolve" => CoreEvent.OnEvolve,
+            "SuperEvolve" => CoreEvent.OnSuperEvolve,
+            "LastWords" => CoreEvent.OnDestroy,
+            "LeaveField" => CoreEvent.OnLeaveField,
+            "EnterField" => CoreEvent.OnEnterField,
+            "OnSummon" => CoreEvent.OnSummon,
+            "OnBanish" => CoreEvent.OnBanish,
+            "OnAttack" => CoreEvent.OnAttack,
+            "OnClash" => CoreEvent.OnClash,
+            "OnDamaged" => CoreEvent.OnDamaged,
+            "OnHealed" => CoreEvent.OnHealed,
+            "OnDraw" => CoreEvent.OnDraw,
+            "OnDiscard" => CoreEvent.OnDiscard,
+            "OnSpellboost" => CoreEvent.OnSpellboost,
+            "OnFuse" => CoreEvent.OnFuse,
+            "OnEngage" => CoreEvent.OnEngage,
+            "OnTransform" => CoreEvent.OnTransform,
+            "CountdownExpire" => CoreEvent.OnCountdownExpire,
+            "OnSelectMode" => CoreEvent.OnSelectMode,
+            "OnEarthRite" => CoreEvent.OnEarthRite,
+            "TurnStart" => CoreEvent.TurnStart,
+            "TurnEnd" => CoreEvent.TurnEnd,
+            "BattleStart" => CoreEvent.BattleStart,
+            "PassiveAura" => CoreEvent.PassiveAura,
+            _ => CoreEvent.PassiveAura,
+        };
+
+        // TriggerSpec 的字段是 init-only：先收集局部量，最后一次性构造。
+        bool manual = false;
+        var zone = ActiveZoneScope.Board;
+        var turn = TurnOwnerScope.Any;
+        int maxPerTurn = 0;
+        CoreEvent? secondary = null;
+
+        foreach (var p in parts.Skip(1))
+        {
+            if (p == "manual") { manual = true; continue; }
+            if (p.StartsWith("zone="))
+            {
+                if (Enum.TryParse<ActiveZoneScope>(p.Substring(5), true, out var z)) zone = z;
+                continue;
+            }
+            if (p.StartsWith("turn="))
+            {
+                if (Enum.TryParse<TurnOwnerScope>(p.Substring(5), true, out var t)) turn = t;
+                continue;
+            }
+            if (p.StartsWith("max="))
+            {
+                int.TryParse(p.Substring(4), out maxPerTurn);
+                continue;
+            }
+            if (p.StartsWith("or="))
+            {
+                if (Enum.TryParse<CoreEvent>(p.Substring(3), true, out var se)) secondary = se;
+                continue;
+            }
+        }
+
+        return new TriggerSpec
+        {
+            Event = ev,
+            ManualEvolveOnly = manual,
+            ActiveZone = zone,
+            DuringTurn = turn,
+            MaxTriggersPerTurn = maxPerTurn,
+            SecondaryEvent = secondary,
+        };
+    }
+
+    private static List<CostSpec> ParseCosts(string head)
+    {
+        var list = new List<CostSpec>();
+        int lb = head.IndexOf('['), rb = head.IndexOf(']');
+        if (lb < 0 || rb <= lb) return list;
+        string inner = head.Substring(lb + 1, rb - lb - 1);
+        foreach (var one in inner.Split('+'))
+        {
+            string t = one.Trim();
+            int p1 = t.IndexOf('('), p2 = t.LastIndexOf(')');
+            if (p1 < 0 || p2 <= p1) continue;
+            string kind = t.Substring(0, p1).Trim();
+            int amt = int.TryParse(t.Substring(p1 + 1, p2 - p1 - 1), out var a) ? a : 1;
+            var ck = kind switch
+            {
+                "Enhance" => CostKind.UsePp,
+                "Necromancy" => CostKind.Necromance,
+                "EarthRite" => CostKind.DestroyAlly,
+                "Combo" => CostKind.TurnPlayCount,
+                "Rally" => CostKind.MatchPlayCount,
+                "Countdown" => CostKind.Countdown,
+                _ => CostKind.UsePp,
+            };
+            list.Add(new CostSpec { Kind = ck, Amount = NumExpr.Const(amt), Label = kind.ToLowerInvariant() });
+        }
+        return list;
+    }
+
+    /// <summary>目标：$self / opponent:board Choose(1) where is Follower / card(\"X\")@self:hand</summary>
+    private static TargetSpec ParseTarget(string s)
+    {
+        s = s.Trim();
+        if (s.Length == 0) return TargetSpec.Self;
+        if (s.StartsWith("$")) return new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = s };
+
+        var t = new TargetSpec();
+        string rest = s;
+
+        // where 子句
+        int wi = rest.IndexOf(" where ", StringComparison.Ordinal);
+        string whereS = null;
+        if (wi >= 0) { whereS = rest.Substring(wi + 7); rest = rest.Substring(0, wi).Trim(); }
+
+        // owner:zone
+        int ci = rest.IndexOf(':');
+        if (ci > 0)
+        {
+            var ow = rest.Substring(0, ci);
+            rest = rest.Substring(ci + 1);
+            var owner = ow switch
+            {
+                "self" => ZoneScope.Self,
+                "opponent" => ZoneScope.Opponent,
+                "any" => ZoneScope.Any,
+                _ => ZoneScope.Any,
+            };
+            var zp = rest.Split(' ')[0];
+            var zone = Enum.TryParse<ZoneRef>(zp, true, out var zv) ? zv : ZoneRef.Board;
+            rest = rest.Substring(zp.Length).Trim();
+            t = new TargetSpec { Owner = owner, Zone = zone };
+        }
+
+        // 选法：(All) / Choose(N) / Random(N) / First(N)
+        if (rest.StartsWith("All"))
+        {
+            t = new TargetSpec { Owner = t.Owner, Zone = t.Zone, Mode = SelectMode.All };
+        }
+        else
+        {
+            var mm = System.Text.RegularExpressions.Regex.Match(rest, "^(\\w+)\\((\\d+)\\)");
+            if (mm.Success)
+            {
+                var mode = Enum.TryParse<SelectMode>(mm.Groups[1].Value, true, out var mv) ? mv : SelectMode.All;
+                t = new TargetSpec
+                {
+                    Owner = t.Owner, Zone = t.Zone, Mode = mode,
+                    Count = NumExpr.Const(int.Parse(mm.Groups[2].Value)),
+                };
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(whereS))
+            t = new TargetSpec { Owner = t.Owner, Zone = t.Zone, Mode = t.Mode, Count = t.Count,
+                                 Where = ParseBoolExpr(whereS, null) ?? BoolExpr.True };
+        return t;
+    }
+
+    private static NumExpr ParseNum(string s)
+    {
+        s = s.Trim();
+        if (int.TryParse(s, out int v)) return NumExpr.Const(v);
+        var mm = System.Text.RegularExpressions.Regex.Match(s, @"^ctr[:（(](\w+)");
+        if (mm.Success) return NumExpr.Ctr(new SymbolId<CounterTag>(0, mm.Groups[1].Value));
+        return NumExpr.Const(1);
+    }
+
+    /// <summary>条件表达式：is Follower / has ward / (A and B) / not X …</summary>
+    private static BoolExpr ParseBoolExpr(string s, List<string> errors)
+    {
+        s = (s ?? "").Trim();
+        if (s.Length == 0) return BoolExpr.True;
+        if (s == "true") return BoolExpr.True;
+        if (s == "false") return BoolExpr.False;
+
+        if (s.StartsWith("(") && s.EndsWith(")"))
+        {
+            string inner = s.Substring(1, s.Length - 2);
+            var andParts = SplitTop(inner, " and ");
+            if (andParts.Count > 1)
+                return BoolExpr.And(andParts.Select(x => ParseBoolExpr(x, errors)).ToArray());
+            var orParts = SplitTop(inner, " or ");
+            if (orParts.Count > 1)
+                return BoolExpr.Or(orParts.Select(x => ParseBoolExpr(x, errors)).ToArray());
+            return ParseBoolExpr(inner, errors);
+        }
+        if (s.StartsWith("not ")) return BoolExpr.Not(ParseBoolExpr(s.Substring(4), errors));
+        if (s.StartsWith("is "))
+        {
+            string w = s.Substring(3).Trim();
+            if (Enum.TryParse<UnitState>(w, true, out var st))
+                return new HasStateExpr { State = st, Of = TargetSpec.Item };
+            if (Enum.TryParse<CardKind>(w, true, out var kd))
+                return new HasKindExpr { Kind = kd, Of = TargetSpec.Item };
+            return BoolExpr.True;
+        }
+        if (s.StartsWith("has "))
+        {
+            string w = s.Substring(4).Trim();
+            if (w.StartsWith("trait ")) return new HasTraitExpr { Trait = new SymbolId<TraitTag>(0, w.Substring(6)), Of = TargetSpec.Item };
+            if (w.StartsWith("clan ")) return new HasClanExpr { Clan = new SymbolId<ClanTag>(0, w.Substring(5)), Of = TargetSpec.Item };
+            return new HasKeywordExpr { Keyword = new SymbolId<KeywordTag>(0, w), Of = TargetSpec.Item };
+        }
+        return BoolExpr.True;
+    }
+
+    private static List<string> SplitTop(string s, string sep)
+    {
+        var parts = new List<string>();
+        int depth = 0, start = 0;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] == '(') depth++;
+            else if (s[i] == ')') depth--;
+            else if (depth == 0 && i + sep.Length <= s.Length && s.Substring(i, sep.Length) == sep)
+            {
+                parts.Add(s.Substring(start, i - start));
+                i += sep.Length - 1;
+                start = i + 1;
+            }
+        }
+        parts.Add(s.Substring(start));
+        return parts;
+    }
 }

@@ -446,39 +446,34 @@ public partial class DiyWorkshopView : Control
         _endpointHost.AddChild(tplBar);
 
         AddAstSnippetBtn(tplBar, "入场曲能力壳",
-            "{\n  \"trigger\": { \"event\": \"OnPlay\" },\n  \"body\": [\n    " +
-            "{ \"$op\": \"DealDamage\", \"target\": { \"owner\": \"Opponent\", \"zone\": \"Board\", " +
-            "\"mode\": \"Choose\", \"count\": 1 }, \"amount\": 3 }\n  ]\n}");
+            "Fanfare:\n  Deal 3 damage to opponent:board Choose(1) where is Follower\n");
 
-        AddAstSnippetBtn(tplBar, "伤害 DealDamage",
-            "{ \"$op\": \"DealDamage\", \"target\": \"$self\", \"amount\": 2 }");
+        AddAstSnippetBtn(tplBar, "伤害 Deal",
+            "Deal 3 damage to opponent:board Choose(1) where is Follower");
 
         AddAstSnippetBtn(tplBar, "抽牌 Draw",
-            "{ \"$op\": \"MoveZone\", \"target\": { \"owner\": \"Self\", \"zone\": \"Deck\", " +
-            "\"mode\": \"First\", \"count\": 2 }, \"to_zone\": \"Hand\" }");
+            "Draw 2");
 
         AddAstSnippetBtn(tplBar, "身材 ModifyStats",
-            "{ \"$op\": \"ModifyStats\", \"target\": \"$self\", \"op\": \"Add\", \"atk\": 2, \"life\": 2 }");
+            "ModifyStats Add 2/2 to $self");
 
-        AddAstSnippetBtn(tplBar, "关键词 ModifyKeyword",
-            "{ \"$op\": \"ModifyKeyword\", \"target\": \"$self\", \"op\": \"Grant\", \"keyword\": \"ward\" }");
+        AddAstSnippetBtn(tplBar, "关键词 Keyword",
+            "Keyword Grant ward to $self");
 
-        AddAstSnippetBtn(tplBar, "伤害光环 DamageModifier",
-            "{ \"$op\": \"DamageModifier\", \"target\": \"$self\", \"kind\": \"TakenCap\", " +
-            "\"source_mask\": \"All\", \"amount\": 3, \"is_reduction\": true }");
+        AddAstSnippetBtn(tplBar, "伤害光环 DamageAura",
+            "DamageAura TakenCap All reduce 3 to $self");
 
-        AddAstSnippetBtn(tplBar, "模式分支 BranchMode",
-            "{ \"$op\": \"BranchMode\", \"mode\": \"Choose\", \"pick_count\": 1, \"options\": [" +
-            "[ { \"$op\": \"RestoreLife\", \"target\": \"$self\", \"amount\": 4 } ], " +
-            "[ { \"$op\": \"DealDamage\", \"target\": \"$self\", \"amount\": 4 } ] ] }");
+        AddAstSnippetBtn(tplBar, "模式分支 Modes",
+            "Modes Choose(1):\n  (1):\n    Restore 4 to self:leader\n  (2):\n    Deal 4 damage to opponent:leader");
 
-        AddAstSnippetBtn(tplBar, "锁定随机数 RandomRange",
-            "{ \"$num\": \"RandomRange\", \"min\": 2, \"max\": 10, \"roll_id\": 0 }");
+        AddAstSnippetBtn(tplBar, "选择目标 Select",
+            "Select $selected = opponent:board Choose(1) where is Follower");
 
-        AddAstSnippetBtn(tplBar, "条件 Conditional",
-            "{ \"$op\": \"Conditional\", \"condition\": { \"$bool\": \"Compare\", " +
-            "\"left\": { \"$num\": \"Counter\", \"counter\": \"combo\" }, \"cmp\": \"Ge\", " +
-            "\"right\": { \"$num\": \"Const\", \"v\": 3 } }, \"then\": [] }");
+        AddAstSnippetBtn(tplBar, "条件 If",
+            "If is Follower:\n  Draw 1\nElse:\n  Restore 2 to $self");
+
+        AddAstSnippetBtn(tplBar, "召唤 Spawn",
+            "Spawn 1 \"Fairy\" to Board");
 
         _astJsonEdit = new TextEdit
         {
