@@ -422,11 +422,21 @@ public partial class PendingChoiceOverlay : Control
         RefreshState();
     }
 
+    /// <summary>远程模式下取代本地 SubmitChoice（客机只发意图）。</summary>
+    public Action<int, int[]> RemoteSubmit { get; set; }
+
     private void Submit(int choiceId, params int[] chosen)
     {
         _boundChoiceId = -1;
         _selected.Clear();
         Visible = false;
+        // 客机模式：选择也必须上行给权威端，本地不结算。
+        if (RemoteSubmit != null)
+        {
+            RemoteSubmit(choiceId, chosen);
+            OnChoiceSubmitted?.Invoke();
+            return;
+        }
         _ctrl.SubmitChoice(choiceId, chosen);
         OnChoiceSubmitted?.Invoke();
     }

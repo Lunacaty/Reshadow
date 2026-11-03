@@ -161,6 +161,11 @@ public sealed class AuthoritativeMatchHost : IDisposable
             case NetActionKind.UseExtraPp:
                 Runner.UseExtraPp();
                 break;
+            case NetActionKind.CancelPending:
+                // 预选阶段取消（还没扣费）也要走权威端，否则本地取消了、
+                // 权威端还停在等选择，两边就此卡死。
+                Runner.CancelPendingChoice();
+                break;
             case NetActionKind.SubmitChoice:
                 Runner.SubmitChoice(a.ChoiceId, a.Selected);
                 break;

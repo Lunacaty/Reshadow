@@ -140,6 +140,12 @@ public sealed class RemoteBattleClient : IDisposable
     public Task EndTurn()
         => SendAction(new NetActionPacket { Kind = NetActionKind.EndTurn });
 
+    public Task UseExtraPp()
+        => SendAction(new NetActionPacket { Kind = NetActionKind.UseExtraPp });
+
+    public Task CancelPending()
+        => SendAction(new NetActionPacket { Kind = NetActionKind.CancelPending });
+
     public Task SubmitChoice(int choiceId, params int[] selected)
         => SendAction(new NetActionPacket { Kind = NetActionKind.SubmitChoice, ChoiceId = choiceId, Selected = selected });
 

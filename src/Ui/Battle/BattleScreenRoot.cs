@@ -167,11 +167,26 @@ public partial class BattleScreenRoot : Control
         if (_remoteClient != null)
         {
             _remoteClient.SnapshotReceived += OnRemoteSnapshot;
+            if (_pending != null)
+                _pending.RemoteSubmit = (cid, sel) => RemoteSubmitChoice(cid, sel);
             _remoteClient.Failed += msg => System.Console.WriteLine("[联机] " + msg);
         }
     }
 
     private ShadowverseFan.Ui.Net.RemoteBattleClient _remoteClient;
+
+    // ---------------------------------------------------------------- 远程模式输入路由
+
+    /// <summary>客机模式下所有操作都必须上行给权威端，绝不在本地结算。</summary>
+    private bool IsRemote => _remoteClient != null;
+
+    private void RemotePlayCard(int entityId) { if (_remoteClient != null) _ = _remoteClient.PlayCard(entityId); }
+    private void RemoteAttack(int attackerId, int targetId) { if (_remoteClient != null) _ = _remoteClient.Attack(attackerId, targetId); }
+    private void RemoteEvolve(int entityId, bool super) { if (_remoteClient != null) _ = _remoteClient.Evolve(entityId, super); }
+    private void RemoteEngage(int entityId) { if (_remoteClient != null) _ = _remoteClient.EngageAmulet(entityId); }
+    private void RemoteEndTurn() { if (_remoteClient != null) _ = _remoteClient.EndTurn(); }
+    private void RemoteSubmitChoice(int choiceId, int[] selected) { if (_remoteClient != null) _ = _remoteClient.SubmitChoice(choiceId, selected); }
+
 
     private void OnRemoteSnapshot(ShadowverseFan.KernelV3.Net.NetStateSnapshot snap)
     {
@@ -276,6 +291,7 @@ public partial class BattleScreenRoot : Control
             if (IsInputBlocked) return;
             var target = _actionPanel.BoundEntity;
             if (target == null) return;
+            if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
             if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
         };
         _foeLeader.OnEvolveOrbClicked += isSuper =>
@@ -283,6 +299,7 @@ public partial class BattleScreenRoot : Control
             if (IsInputBlocked) return;
             var target = _actionPanel.BoundEntity;
             if (target == null) return;
+            if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
             if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
         };
         AddChild(_allyLeader);
@@ -292,12 +309,14 @@ public partial class BattleScreenRoot : Control
         _rightCol.OnEndTurnClicked += () =>
         {
             if (IsInputBlocked) return;
+            if (IsRemote) { RemoteEndTurn(); return; }
             _ctrl.EndTurn();
             Rebuild();
         };
         _rightCol.OnExtraPpClicked += () =>
         {
             if (IsInputBlocked) return;
+            if (IsRemote) { _ = _remoteClient.UseExtraPp(); return; }
             _ctrl.TryUseExtraPp();
             Rebuild();
         };
@@ -1391,6 +1410,7 @@ public partial class BattleScreenRoot : Control
             && _foeLeader.GetGlobalRect().HasPoint(screenPos))
         {
             _lastHitBySuperEvolved = atk.IsSuperEvolved;
+            if (IsRemote) { RemoteAttack(atk.EntityId, foeLeader.EntityId); return; }
             _ctrl.TryAttack(atk, foeLeader, out _);
             Rebuild();
             return;
@@ -1403,6 +1423,7 @@ public partial class BattleScreenRoot : Control
             if (!legal.Contains(w.Entity.EntityId)) continue;
 
             _lastHitBySuperEvolved = atk.IsSuperEvolved;
+            if (IsRemote) { RemoteAttack(atk.EntityId, w.Entity.EntityId); return; }
             _ctrl.TryAttack(atk, w.Entity, out _);
             Rebuild();
             return;
@@ -1706,6 +1727,7 @@ public partial class BattleScreenRoot : Control
             if (shouldPlay)
             {
                 SpawnBurst(_dragPos, 26, 190f, new Color("FDE68A"), 0.62f, -20f, 3.0f);
+                if (IsRemote) { RemotePlayCard(card.EntityId); return; }
                 _ctrl.TryPlayCard(card, out _);
                 Rebuild();
             }
