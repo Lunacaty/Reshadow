@@ -518,6 +518,12 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         _ws = fresh;
 
         _selected = path == null ? null : ResolvePath(fresh, path);
+
+        // 编译会重建整棵模型：画布与检视器必须跟着重画，
+        // 否则界面还停在上一次的旧积木上，看着像「点了没反应」。
+        EnsureInsertList();
+        RedrawCanvas();
+        RedrawInspector();
     }
 
     /// <summary>路径的一步：进入某个容器，再取该容器里的第几个。</summary>
@@ -545,7 +551,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         {
             var b = list[i];
             if (b == null) continue;
-            if (ReferenceEquals(b, target)) { path.Add(new Step(i, 0, 0)); return true; }
+            if (ReferenceEquals(b, target)) { path.Add(new Step(i, 0, i)); return true; }
             if (b.Stacks != null && b.Stacks.Count > 0)
             {
                 path.Add(new Step(i, 1, 0));
@@ -698,8 +704,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildInlineText(box, "归属", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
             else if (cur.Opcode == "tgt_query")
             {
-                BuildInlineInt(box, "归属(0我1敌)", cur.IntA, v => { cur.IntA = v; setter(cur); });
-                BuildInlineInt(box, "区域", cur.IntB, v => { cur.IntB = v; setter(cur); });
+                BuildInlineInt(box, "区域(0场1手2牌3墓)", cur.IntA, v => { cur.IntA = v; setter(cur); });
+                BuildInlineInt(box, "归属(0我1敌2双)", cur.IntB, v => { cur.IntB = v; setter(cur); });
                 BuildInlineText(box, "卡种", cur.Text, v => { cur.Text = v; setter(cur); });
                 BuildInlineText(box, "选法", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
                 var nb = new VBoxContainer();

@@ -30,6 +30,8 @@ public partial class DiyWorkshopView : Control
     private Label _astLabel;
     private Label _statusLabel;
     private VBoxContainer _endpointHost;
+    /// <summary>积木工作台实例。复用而非每次重建：它内部保存着当前能力域与选中积木。</summary>
+    private BlockTreeEditorWidget _blockEditor;
     private TextEdit _scriptEdit;
     private OptionButton _packPicker;
     private Control _hover;
@@ -115,6 +117,13 @@ public partial class DiyWorkshopView : Control
             int k = (int)idx;
             if (k <= 0 || k - 1 >= allCards.Count) return;
             _ctrl.LoadExistingCard(allCards[k - 1]);
+            // 换了一张卡：工作台必须按新模型重建。
+            // RefreshEndpoint 现在会复用实例（保住选中态），所以这里先主动弃掉它。
+            if (_blockEditor != null && IsInstanceValid(_blockEditor))
+            {
+                _blockEditor.QueueFree();
+                _blockEditor = null;
+            }
             RefreshAll();
             if (_statusLabel != null) _statusLabel.Text = _ctrl.LastStatusMessage;
         };
@@ -264,7 +273,18 @@ public partial class DiyWorkshopView : Control
 
     private void RefreshEndpoint()
     {
+        // 若正停在积木端且工作台还在树里，绝不销毁重建 ——
+        // 它内部保存着当前能力域页签与选中积木，重建一次全丢。
+        // 而镶嵌器每改一个孔位都会触发 OnCardUpdated -> RefreshAll -> 这里。
+        if (_active == DiyEndpointKind.Block
+            && _blockEditor != null && IsInstanceValid(_blockEditor)
+            && _blockEditor.GetParent() == _endpointHost)
+        {
+            return;
+        }
+
         foreach (var c in _endpointHost.GetChildren()) c.QueueFree();
+        _blockEditor = null;
 
         switch (_active)
         {
@@ -450,6 +470,7 @@ public partial class DiyWorkshopView : Control
         // 孔位镶嵌器全部要经控制器落盘并重编译。
         tree.BindController(_ctrl);
         tree.Build(_ctrl.BlockModel, _store.CardPrinter, editable: true);
+        _blockEditor = tree;
         _endpointHost.AddChild(tree);
     }
 

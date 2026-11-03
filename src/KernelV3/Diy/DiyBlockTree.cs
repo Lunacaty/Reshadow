@@ -269,6 +269,12 @@ public static class DiyBlockTree
             Number = Clone(b.Number),
             Number2 = Clone(b.Number2),
             Condition = Clone(b.Condition),
+            // 事件帽专属：漏了这几个，复制出来的帽子会丢掉
+            // 「在哪个区域生效 / 哪个回合生效 / 第二个目标 / 发动代价」。
+            Target2 = Clone(b.Target2),
+            ActiveZone = b.ActiveZone,
+            DuringTurn = b.DuringTurn,
+            Costs = b.Costs != null ? new List<(string kind, int amount)>(b.Costs) : new(),
         };
         if (b.Stacks != null) foreach (var x in b.Stacks) c.Stacks.Add(Clone(x));
         if (b.ElseStacks != null) foreach (var x in b.ElseStacks) c.ElseStacks.Add(Clone(x));
