@@ -1364,7 +1364,8 @@ public partial class BattleScreenRoot : Control
                 widget.Scale = Vector2.One * (0.85f + 0.15f * v);
                 widget.Modulate = new Color(1, 1, 1, v);
             }))
-            .Wait(1.0f)
+            // 停留时长：敌方出牌的卡面亮多久再淡出。
+            .Wait(0.75f)
             .Then(new Anim(0.26f, Ease.InCubic, v =>
             {
                 if (widget == null || !IsInstanceValid(widget)) return;
