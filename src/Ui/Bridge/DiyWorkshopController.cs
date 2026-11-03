@@ -181,7 +181,9 @@ public sealed class DiyWorkshopController
         CardDef def;
         try
         {
-            def = AstJsonCodec.Decode(json);
+            // 必须传 Schema：SymbolId 只按 Id 判等，
+            // 不带 Schema 建的符号 Id 全是 0，storm 会变成 ward。
+            def = AstJsonCodec.Decode(json, Workspace.Schema);
         }
         catch (Exception ex)
         {

@@ -47,6 +47,23 @@ public static class AstJsonCodec
         o["atk"] = card.BaseAttack;
         o["life"] = card.BaseLife;
 
+        // 构筑期修正与常驻关键词：漏了它们，切到 AST 端点一次编译就会静默丢失。
+        if (card.DeckModifiers != null && card.DeckModifiers.Count > 0)
+        {
+            o["deck_modifiers"] = card.DeckModifiers.Select(m => (object)new Dictionary<string, object>
+            {
+                ["kind"] = m.Kind.ToString(),
+                ["value"] = m.Value,
+                ["value2"] = m.Value2,
+                ["target_clan"] = m.TargetClan ?? "",
+                ["stack_per_copy"] = m.StackPerCopy,
+                ["exclusive_group"] = m.ExclusiveGroup ?? "",
+            }).ToList();
+        }
+
+        if (card.InnateKeywords != null && card.InnateKeywords.Count > 0)
+            o["innate_keywords"] = card.InnateKeywords.Select(k => (object)(k.Name ?? "")).ToList();
+
         if (card.HasFuse)
         {
             o["has_fuse"] = true;
@@ -449,13 +466,46 @@ private static object EncodeNum(NumExpr e)
     // ---------------------------------------------------------------- 解码
 
     /// <summary>把 JSON 文本读回 CardDef。容忍 // 注释、尾随逗号、单引号。</summary>
-    public static CardDef Decode(string json)
+    /// <summary>
+    /// 解码期间的符号表。SymbolId&lt;T&gt;.Equals 只比较 Id，
+    /// 若用 new SymbolId&lt;KeywordTag&gt;(0, "storm")，Id=0 在 Schema 里恒等于 "ward" ——
+    /// 玩家写 storm，对局里全变成守护。所以必须经 Schema 拿真实 Id。
+    /// </summary>
+    [ThreadStatic] private static GameSchema _schema;
+
+    public static CardDef Decode(string json, GameSchema schema = null)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
-        var root = JsonReader.AsMap(JsonReader.Parse(json));
-        if (root == null) return null;
-        return DecodeCard(root, isSub: false);
+        _schema = schema;
+        try
+        {
+            var root = JsonReader.AsMap(JsonReader.Parse(json));
+            if (root == null) return null;
+            return DecodeCard(root, isSub: false);
+        }
+        finally
+        {
+            _schema = null;
+        }
     }
+
+    // 没有 Schema 时退回 -1（Invalid），至少不会串成 ward；
+    // 但调用方应当传 Schema，否则编译期会被「空符号」拦下。
+    private static SymbolId<KeywordTag> Kw(string name)
+        => string.IsNullOrWhiteSpace(name) ? SymbolId<KeywordTag>.Invalid
+           : _schema != null ? _schema.Keyword(name) : SymbolId<KeywordTag>.FromName(name);
+
+    private static SymbolId<CounterTag> Ctr(string name)
+        => string.IsNullOrWhiteSpace(name) ? SymbolId<CounterTag>.Invalid
+           : _schema != null ? _schema.Counter(name) : SymbolId<CounterTag>.FromName(name);
+
+    private static SymbolId<TraitTag> Trt(string name)
+        => string.IsNullOrWhiteSpace(name) ? SymbolId<TraitTag>.Invalid
+           : _schema != null ? _schema.Trait(name) : SymbolId<TraitTag>.FromName(name);
+
+    private static SymbolId<ClanTag> Cln(string name)
+        => string.IsNullOrWhiteSpace(name) ? SymbolId<ClanTag>.Invalid
+           : _schema != null ? _schema.Clan(name) : SymbolId<ClanTag>.FromName(name);
 
     private static CardDef DecodeCard(Dictionary<string, object> m, bool isSub)
     {
@@ -469,7 +519,32 @@ private static object EncodeNum(NumExpr e)
             foreach (var t in tl)
             {
                 var nm = t?.ToString();
-                if (!string.IsNullOrEmpty(nm)) traits.Add(new SymbolId<TraitTag>(0, nm));
+                if (!string.IsNullOrEmpty(nm)) traits.Add(Trt(nm));
+            }
+
+        var deckMods = new List<DeckBuildModifier>();
+        if (m.TryGetValue("deck_modifiers", out var dm) && JsonReader.AsList(dm) is { } dml)
+            foreach (var one in dml)
+            {
+                var dmm = JsonReader.AsMap(one);
+                if (dmm == null) continue;
+                deckMods.Add(new DeckBuildModifier
+                {
+                    Kind = JsonReader.Enum(dmm, "kind", DeckModKind.ModifyDeckSize),
+                    Value = JsonReader.Int(dmm, "value"),
+                    Value2 = JsonReader.Int(dmm, "value2"),
+                    TargetClan = JsonReader.Str(dmm, "target_clan", ""),
+                    StackPerCopy = JsonReader.Bool(dmm, "stack_per_copy"),
+                    ExclusiveGroup = JsonReader.Str(dmm, "exclusive_group", ""),
+                });
+            }
+
+        var innateKw = new List<SymbolId<KeywordTag>>();
+        if (m.TryGetValue("innate_keywords", out var ik) && JsonReader.AsList(ik) is { } ikl)
+            foreach (var one in ikl)
+            {
+                var nmk = one?.ToString();
+                if (!string.IsNullOrEmpty(nmk)) innateKw.Add(Kw(nmk));
             }
 
         var abilities = new List<AbilityDef>();
@@ -491,8 +566,10 @@ private static object EncodeNum(NumExpr e)
             BaseLife = JsonReader.Int(m, "life"),
             Clan = string.IsNullOrEmpty(clan)
                 ? SymbolId<ClanTag>.Invalid
-                : new SymbolId<ClanTag>(0, clan),
+                : Cln(clan),
             Traits = traits,
+            DeckModifiers = deckMods,
+            InnateKeywords = innateKw,
             Abilities = abilities,
             HasFuse = JsonReader.Bool(m, "has_fuse"),
             FuseMaterialFilter = m.TryGetValue("fuse_filter", out var ff) ? DecodeTarget(ff) : null,
@@ -612,7 +689,7 @@ private static object EncodeNum(NumExpr e)
                 {
                     Target = DecodeTarget(m.TryGetValue("target", out var t6) ? t6 : null),
                     Op = JsonReader.Enum(m, "op", KeywordOp.Grant),
-                    Keyword = string.IsNullOrEmpty(kw) ? SymbolId<KeywordTag>.Invalid : new SymbolId<KeywordTag>(0, kw),
+                    Keyword = Kw(kw),
                     Value = m.TryGetValue("value", out var a6) ? DecodeNum(a6) : null,
                     Duration = JsonReader.Enum(m, "duration", DurationKind.Permanent),
                 };
@@ -629,7 +706,7 @@ private static object EncodeNum(NumExpr e)
                 var cn = JsonReader.Str(m, "counter", "");
                 return new GrantCounterAbilityNode
                 {
-                    Counter = string.IsNullOrEmpty(cn) ? SymbolId<CounterTag>.Invalid : new SymbolId<CounterTag>(0, cn),
+                    Counter = Ctr(cn),
                     Owner = JsonReader.Enum(m, "owner", ZoneScope.Self),
                     Granted = m.TryGetValue("granted", out var g8) ? DecodeAbility(JsonReader.AsMap(g8)) : null,
                 };
@@ -676,7 +753,7 @@ private static object EncodeNum(NumExpr e)
                 var cn2 = JsonReader.Str(m, "counter", "");
                 return new ModifyCounterNode
                 {
-                    Counter = string.IsNullOrEmpty(cn2) ? SymbolId<CounterTag>.Invalid : new SymbolId<CounterTag>(0, cn2),
+                    Counter = Ctr(cn2),
                     Op = JsonReader.Enum(m, "op", CounterOp.Add),
                     Delta = DecodeNum(m.TryGetValue("delta", out var a13) ? a13 : null) ?? NumExpr.Const(1),
                     Target = m.TryGetValue("target", out var t13) ? DecodeTarget(t13) : null,
@@ -840,7 +917,7 @@ private static object EncodeNum(NumExpr e)
                 var kw = JsonReader.Str(m, "keyword", "");
                 return new HasKeywordExpr
                 {
-                    Keyword = string.IsNullOrEmpty(kw) ? SymbolId<KeywordTag>.Invalid : new SymbolId<KeywordTag>(0, kw),
+                    Keyword = Kw(kw),
                     Of = m.TryGetValue("of", out var of1) ? DecodeTarget(of1) : null,
                 };
             }
@@ -849,7 +926,7 @@ private static object EncodeNum(NumExpr e)
                 var tr = JsonReader.Str(m, "trait", "");
                 return new HasTraitExpr
                 {
-                    Trait = string.IsNullOrEmpty(tr) ? SymbolId<TraitTag>.Invalid : new SymbolId<TraitTag>(0, tr),
+                    Trait = Trt(tr),
                     Of = m.TryGetValue("of", out var of2) ? DecodeTarget(of2) : null,
                 };
             }
@@ -861,11 +938,11 @@ private static object EncodeNum(NumExpr e)
                     foreach (var x in cll)
                     {
                         var nm = x?.ToString();
-                        if (!string.IsNullOrEmpty(nm)) clans.Add(new SymbolId<ClanTag>(0, nm));
+                        if (!string.IsNullOrEmpty(nm)) clans.Add(Cln(nm));
                     }
                 return new HasClanExpr
                 {
-                    Clan = string.IsNullOrEmpty(cl) ? SymbolId<ClanTag>.Invalid : new SymbolId<ClanTag>(0, cl),
+                    Clan = Cln(cl),
                     Clans = clans,
                     IsSelfClan = JsonReader.Bool(m, "self_clan"),
                 };
@@ -935,8 +1012,7 @@ private static object EncodeNum(NumExpr e)
             case "Counter":
             {
                 var cn = JsonReader.Str(m, "counter", "");
-                return NumExpr.Ctr(string.IsNullOrEmpty(cn)
-                    ? SymbolId<CounterTag>.Invalid : new SymbolId<CounterTag>(0, cn));
+                return NumExpr.Ctr(Ctr(cn));
             }
             case "Arith":
             {
