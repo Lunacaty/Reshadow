@@ -207,6 +207,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             ("act_bounce", "返回手牌"),
             ("act_return_deck", "洗回牌组"),
             ("act_transform", "使目标变身"),
+            ("act_move_to_board", "移动到战场"),
         }),
         ("身材 / 费用 / 词条", new[]
         {
@@ -237,6 +238,27 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         var col = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         col.AddThemeConstantOverride("separation", 3);
         scroll.AddChild(col);
+
+        // 构筑规则域只收 act_deck_mod：编译端对 DeckModBlocks 里其他 opcode
+        // 直接 continue 静默忽略，摆一片能力积木进去等于白点。
+        if (_scopeTab == 5)
+        {
+            var only = new Label { Text = "构筑规则（仅此类积木生效）" };
+            only.AddThemeFontSizeOverride("font_size", 12);
+            only.AddThemeColorOverride("font_color", new Color("FDE68A"));
+            col.AddChild(only);
+
+            var bd = new Button
+            {
+                Text = "+ 构筑规则修正",
+                CustomMinimumSize = new Vector2(0, 26),
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            };
+            SvWbTheme.StyleButton(bd, customAccent: ShapeColor(BlockShape.Pill));
+            bd.Pressed += () => InsertBlock("act_deck_mod");
+            col.AddChild(bd);
+            return scroll;
+        }
 
         foreach (var (title, items) in Palette)
         {
@@ -484,9 +506,98 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     private void Apply()
     {
         if (_ctrl == null || _ws == null) return;
+
+        // CompileFromBlocks 会**整棵重建** BlockModel ——
+        // _selected 立刻变成孤儿，后面再编辑改的是一棵已经不在树里的积木，
+        // 界面上什么都不会发生。所以先记下路径，编译后按路径找回同一颗。
+        var path = PathOf(_selected);
+
         _ctrl.CompileFromBlocks(_ws);
         var fresh = _ctrl.BlockModel;
-        if (fresh != null) _ws = fresh;
+        if (fresh == null) return;
+        _ws = fresh;
+
+        _selected = path == null ? null : ResolvePath(fresh, path);
+    }
+
+    /// <summary>路径的一步：进入某个容器，再取该容器里的第几个。</summary>
+    private readonly struct Step
+    {
+        public Step(int owner, int kind, int index) { Owner = owner; Kind = kind; Index = index; }
+        public int Owner { get; }
+        public int Kind { get; }
+        public int Index { get; }
+    }
+
+    private List<Step> PathOf(Block target)
+    {
+        if (target == null || _ctrl == null) return null;
+        var root = _ctrl.RootListOf(_scopeTab);
+        if (root == null) return null;
+        var path = new List<Step>();
+        return Walk(root, target, path) ? path : null;
+    }
+
+    private static bool Walk(List<Block> list, Block target, List<Step> path)
+    {
+        if (list == null) return false;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var b = list[i];
+            if (b == null) continue;
+            if (ReferenceEquals(b, target)) { path.Add(new Step(i, 0, 0)); return true; }
+            if (b.Stacks != null && b.Stacks.Count > 0)
+            {
+                path.Add(new Step(i, 1, 0));
+                if (Walk(b.Stacks, target, path)) return true;
+                path.RemoveAt(path.Count - 1);
+            }
+            if (b.ElseStacks != null && b.ElseStacks.Count > 0)
+            {
+                path.Add(new Step(i, 2, 0));
+                if (Walk(b.ElseStacks, target, path)) return true;
+                path.RemoveAt(path.Count - 1);
+            }
+            if (b.Branches != null)
+            {
+                for (int k = 0; k < b.Branches.Count; k++)
+                {
+                    var br = b.Branches[k];
+                    if (br == null || br.Count == 0) continue;
+                    path.Add(new Step(i, 3, k));
+                    if (Walk(br, target, path)) return true;
+                    path.RemoveAt(path.Count - 1);
+                }
+            }
+        }
+        return false;
+    }
+
+    private Block ResolvePath(CardBlockWorkspace ws, List<Step> path)
+    {
+        var cur = _ctrl?.RootListOf(_scopeTab);
+        if (cur == null || path == null || path.Count == 0) return null;
+        Block chosen = null;
+        foreach (var st in path)
+        {
+            if (st.Kind == 0)
+            {
+                if (cur == null || st.Index < 0 || st.Index >= cur.Count) return null;
+                chosen = cur[st.Index];
+                continue;
+            }
+            if (cur == null || st.Owner < 0 || st.Owner >= cur.Count) return null;
+            var owner = cur[st.Owner];
+            if (owner == null) return null;
+            if (st.Kind == 1) cur = owner.Stacks;
+            else if (st.Kind == 2) cur = owner.ElseStacks;
+            else
+            {
+                if (owner.Branches == null || st.Index < 0 || st.Index >= owner.Branches.Count) return null;
+                cur = owner.Branches[st.Index];
+            }
+        }
+        return chosen;
     }
 
     private static void BuildIntEditor(VBoxContainer col, string label, int cur, Action<int> setter)
