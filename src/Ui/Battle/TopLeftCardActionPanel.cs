@@ -176,7 +176,10 @@ public partial class TopLeftCardActionPanel : Control
         // 主窗背景换成这张卡的立绘中心填充。
         if (_mainCardBox != null)
         {
-            _mainCardBox.CardId = def.ArtCardId > 0 ? def.ArtCardId : def.CardId;
+            // 分开填：CardId 是这张卡本身，ArtCardId 是立绘来源。
+            // 塞进同一个字段会让 _Draw 里的回落判断失去意义。
+            _mainCardBox.CardId = def.CardId;
+            _mainCardBox.ArtCardId = def.ArtCardId;
             _mainCardBox.QueueRedraw();
         }
 
