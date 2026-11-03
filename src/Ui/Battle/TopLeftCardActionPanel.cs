@@ -38,6 +38,10 @@ public partial class TopLeftCardActionPanel : PanelContainer
     /// <summary>「曾受能力影响」列表容器。</summary>
     private VBoxContainer _historyList;
 
+    /// <summary>主详情窗：用选中卡的立绘中心填充做背景。</summary>
+    private ArtCenterBannerBox _mainCardBox;
+    private VBoxContainer _mainCardInner;
+
     /// <summary>点开某条历史后在右侧展开的二级来源详情。</summary>
     private PanelContainer _secondaryPopup;
     private Label _secondaryTitle;
@@ -57,19 +61,35 @@ public partial class TopLeftCardActionPanel : PanelContainer
         CustomMinimumSize = new Vector2(336, 0);
         ZIndex = 65;
 
-        AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
-            new Color(0.06f, 0.09f, 0.16f, 0.95f), new Color("D4AF37"), 10, 2, 12));
+        // 主弹窗不能是纯色块：需求要的是「弹窗背景用选中卡的立绘中心填充」。
+        // 外层本身透明无边框，视觉全部由内部的 ArtCenterBannerBox 提供。
+        AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
 
         var root = new VBoxContainer();
         root.AddThemeConstantOverride("separation", 6);
         AddChild(root);
 
+        _mainCardBox = new ArtCenterBannerBox
+        {
+            DimAlpha = 0.78f,
+            CustomMinimumSize = new Vector2(336, 0),
+        };
+        _mainCardBox.AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
+        root.AddChild(_mainCardBox);
+
+        // 主窗内容装在内层容器里，叠在立绘背景之上。
+        _mainCardInner = new VBoxContainer();
+        _mainCardInner.AddThemeConstantOverride("separation", 6);
+        _mainCardBox.AddChild(_mainCardInner);
+
         var head = new HBoxContainer();
-        root.AddChild(head);
+        _mainCardInner.AddChild(head);
 
         _nameLbl = new Label { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _nameLbl.AddThemeFontSizeOverride("font_size", 16);
         _nameLbl.AddThemeColorOverride("font_color", new Color("FEF08A"));
+        _nameLbl.AddThemeConstantOverride("outline_size", 4);
+        _nameLbl.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.9f));
         head.AddChild(_nameLbl);
 
         var close = new Button { Text = "✕" };
@@ -80,7 +100,7 @@ public partial class TopLeftCardActionPanel : PanelContainer
         _metaLbl = new Label();
         _metaLbl.AddThemeFontSizeOverride("font_size", 12);
         _metaLbl.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
-        root.AddChild(_metaLbl);
+        _mainCardInner.AddChild(_metaLbl);
 
         _effectRich = new RichTextLabel
         {
@@ -91,12 +111,11 @@ public partial class TopLeftCardActionPanel : PanelContainer
         };
         _effectRich.AddThemeFontSizeOverride("normal_font_size", 12);
         _effectRich.AddThemeFontSizeOverride("bold_font_size", 12);
-        root.AddChild(_effectRich);
+        _mainCardInner.AddChild(_effectRich);
 
         _actionRow = new HBoxContainer();
         _actionRow.AddThemeConstantOverride("separation", 8);
-        root.AddChild(_actionRow);
-
+        _mainCardInner.AddChild(_actionRow);
         // ── 曾受能力影响（点击展开来源）──
         _historyList = new VBoxContainer();
         _historyList.AddThemeConstantOverride("separation", 4);
@@ -149,6 +168,13 @@ public partial class TopLeftCardActionPanel : PanelContainer
         _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}】 {stat}";
 
         _effectRich.Text = SvWbTheme.FormatRichCardText(_ctrl.Store.CardPrinter.PrintCard(def));
+
+        // 主窗背景换成这张卡的立绘中心填充。
+        if (_mainCardBox != null)
+        {
+            _mainCardBox.CardId = def.ArtCardId > 0 ? def.ArtCardId : def.CardId;
+            _mainCardBox.QueueRedraw();
+        }
 
         // 不能在按钮自己的 Pressed 回调里销毁按钮本身。
         // Godot 的信号派发持有当前控件的引用，边派发边 QueueFree
@@ -319,8 +345,8 @@ public partial class TopLeftCardActionPanel : PanelContainer
 
             var title = new Label
             {
-                Text = DeckEditorViewModel.DisplayName(rec.SourceCard)
-                       + (string.IsNullOrEmpty(rec.Tag) ? "" : "　" + rec.Tag),
+                // 严格只显示来源卡的中文卡名，不拼内部 Tag（Grant ward / TakenDelta 这类英文枚举）。
+                Text = DeckEditorViewModel.DisplayName(rec.SourceCard),
                 VerticalAlignment = VerticalAlignment.Center,
                 ClipText = true,
             };
@@ -353,8 +379,18 @@ public partial class TopLeftCardActionPanel : PanelContainer
         }
         _activeRecord = rec;
         _secondaryTitle.Text = "《" + DeckEditorViewModel.DisplayName(rec.SourceCard) + "》";
-        _secondaryRich.Text = SvWbTheme.FormatRichCardText(
-            _ctrl.Store.CardPrinter.PrintCardWithHighlight(rec.SourceCard, rec.SourceAbility));
+        // 高亮那一行已经是 ▶ 开头的纯文本；转 RichText 前先把它包成
+        // 金底亮字，否则在长卡面里只有一个箭头，根本定位不到。
+        string raw = _ctrl.Store.CardPrinter.PrintCardWithHighlight(rec.SourceCard, rec.SourceAbility);
+        var sb = new System.Text.StringBuilder();
+        foreach (var ln in raw.Replace("\r", "").Split('\n'))
+        {
+            if (ln.StartsWith("▶ "))
+                sb.Append("[bgcolor=#451A03][color=#FEF08A][b]").Append(ln).Append("[/b][/color][/bgcolor]").Append('\n');
+            else if (!string.IsNullOrWhiteSpace(ln))
+                sb.Append("[color=#94A3B8]").Append(SvWbTheme.FormatRichCardText(ln)).Append("[/color]").Append('\n');
+        }
+        _secondaryRich.Text = sb.ToString();
         _secondaryPopup.Visible = true;
         _secondaryPopup.Position = new Vector2(Size.X + 10f, anchor.Position.Y);
     }
@@ -379,6 +415,7 @@ public partial class TopLeftCardActionPanel : PanelContainer
 public partial class ArtCenterBannerBox : PanelContainer
 {
     public int CardId { get; set; }
+    public int ArtCardId { get; set; }
     public bool Selected { get; set; }
     public float DimAlpha { get; set; } = 0.76f;
 
@@ -387,7 +424,8 @@ public partial class ArtCenterBannerBox : PanelContainer
         var rect = new Rect2(Vector2.Zero, Size);
         if (rect.Size.X <= 1f || rect.Size.Y <= 1f) return;
 
-        var tex = ShadowverseFan.Ui.CardArtLoader.Load(CardId);
+        // 纹章/信仰没有自己的立绘，回落到主人卡。
+        var tex = ShadowverseFan.Ui.CardArtLoader.Load(ArtCardId > 0 ? ArtCardId : CardId);
         if (tex != null)
         {
             // 取立绘正中心偏上（y=0.38 是角色面部/胸像的黄金区）做等比裁切填充。

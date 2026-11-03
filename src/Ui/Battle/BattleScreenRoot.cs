@@ -911,7 +911,19 @@ public partial class BattleScreenRoot : Control
                         var c = CenterOf(ev.Subject, ownerPid);
                         int kind = ev.Amount;
                         if (kind == -99) _vfx.PlaySilence(c);
-                        else if (kind > 0) _vfx.PlayKeywordGrant(c, "badge_shield");
+                        else if (kind > 0)
+                        {
+                            // 按实际被赋予的关键词挑贴图，不能一律用护盾徽章。
+                            string key = ev.CounterName switch
+                            {
+                                "bane" => "badge_bane",
+                                "drain" => "badge_drain",
+                                "free_evolve" or "free_super_evolve" => "badge_free_evolve",
+                                "max_attacks_per_turn" => "badge_multi_attack",
+                                _ => "badge_shield",
+                            };
+                            _vfx.PlayKeywordGrant(c, key);
+                        }
                     }));
                 }
                 break;
@@ -1293,6 +1305,7 @@ public partial class BattleScreenRoot : Control
             var card = hand[i];
             var w = new CardVisualWidget();
             w.Setup(card.Def, _store.CardPrinter, 0, 3, showCopyPips: false);
+            w.BindRuntimeEntity(card);
             w.Position = new Vector2(startX + i * stepX, trayTop + 7f);
             w.SetCardSize(cardW, cardH);
             _handHitRects.Add((new Rect2(w.Position, new Vector2(cardW, cardH)), card));

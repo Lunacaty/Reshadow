@@ -37,6 +37,16 @@ public partial class CardVisualWidget : Control
 
     public bool IsLocked => _locked;
 
+    /// <summary>运行时实体（手牌卡才有）。用于显示实时费用/身材与公开标记。</summary>
+    private ShadowverseFan.KernelV3.Vm.RuntimeEntity _runtimeEntity;
+
+    /// <summary>绑定运行时实体：手牌被减费、被 Buff 后要显示实时值而非印刷值。</summary>
+    public void BindRuntimeEntity(ShadowverseFan.KernelV3.Vm.RuntimeEntity rt)
+    {
+        _runtimeEntity = rt;
+        QueueRedraw();
+    }
+
     public void Setup(
         CardDef def, ChineseCardPrinter printer,
         int inDeckCount = 0, int maxCopyLimit = 3, bool showCopyPips = true)
@@ -136,12 +146,33 @@ public partial class CardVisualWidget : Control
 
         DrawTopNameBanner(frameL, frameT, frameW, font);
         DrawBottomOrnamentAndGem(frameL, frameB, frameW, clanCol);
-        DrawEmeraldCostOrb(new Vector2(frameL + 14f, frameT + 24f), 21f, Card.BaseCost, font);
+        // 实时费用：手牌减费后必须变数，并变色提示。
+        int shownCost = _runtimeEntity?.Cost ?? Card.BaseCost;
+        Color costColor = shownCost < Card.BaseCost ? new Color("4ADE80")
+                        : shownCost > Card.BaseCost ? new Color("F87171") : Colors.White;
+        DrawEmeraldCostOrb(new Vector2(frameL + 14f, frameT + 24f), 21f, shownCost, font, costColor);
 
         if (Card.Kind == CardKind.Follower)
         {
-            DrawBlueSwordAttackBadge(new Vector2(frameL + 12f, frameB - 14f), Card.BaseAttack, font);
-            DrawRedShieldLifeBadge(new Vector2(frameR - 12f, frameB - 14f), Card.BaseLife, font);
+            // 实时攻防：被 Buff/减益后手牌也要跟着变，否则玩家看到的还是印刷值。
+            int shownAtk = _runtimeEntity?.Attack ?? Card.BaseAttack;
+            int shownLife = _runtimeEntity?.Life ?? Card.BaseLife;
+            Color atkCol = shownAtk > Card.BaseAttack ? new Color("4ADE80")
+                         : shownAtk < Card.BaseAttack ? new Color("F87171") : Colors.White;
+            Color lifeCol = shownLife > Card.BaseLife ? new Color("4ADE80")
+                          : shownLife < Card.BaseLife ? new Color("F87171") : Colors.White;
+            DrawBlueSwordAttackBadge(new Vector2(frameL + 12f, frameB - 14f), shownAtk, font, atkCol);
+            DrawRedShieldLifeBadge(new Vector2(frameR - 12f, frameB - 14f), shownLife, font, lifeCol);
+
+            // 已公开标记：「时空掌握者」抽到时公开，手牌上要能看出来。
+            if (_runtimeEntity?.IsRevealed == true)
+            {
+                Rect2 revPill = new(frameR - 54f, frameT + 14f, 48f, 18f);
+                DrawRect(revPill, new Color(0.08f, 0.12f, 0.22f, 0.92f));
+                DrawRect(revPill, new Color("FDE047"), false, 1.2f);
+                DrawString(font, new Vector2(revPill.Position.X + 6f, revPill.Position.Y + 13f),
+                           "公开", HorizontalAlignment.Left, -1, 10, new Color("FEF08A"));
+            }
         }
         else
         {
@@ -379,7 +410,7 @@ public partial class CardVisualWidget : Control
                    HorizontalAlignment.Left, availW, fontSize, Colors.White);
     }
 
-    private void DrawEmeraldCostOrb(Vector2 center, float radius, int cost, Font font)
+    private void DrawEmeraldCostOrb(Vector2 center, float radius, int cost, Font font, Color numCol)
     {
         DrawCircle(center + new Vector2(1.5f, 2.5f), radius + 2f, new Color(0, 0, 0, 0.6f));
         DrawCircle(center, radius + 2.5f, new Color("92400E"));
@@ -395,10 +426,10 @@ public partial class CardVisualWidget : Control
         int fs = 22;
         Vector2 sz = font.GetStringSize(txt, HorizontalAlignment.Left, -1, fs);
         Vector2 pos = new(center.X - sz.X * 0.5f, center.Y + fs * 0.36f);
-        DrawOutlinedNumber(font, pos, txt, fs, Colors.White, new Color("052E16"));
+        DrawOutlinedNumber(font, pos, txt, fs, numCol, new Color("052E16"));
     }
 
-    private void DrawBlueSwordAttackBadge(Vector2 center, int attack, Font font)
+    private void DrawBlueSwordAttackBadge(Vector2 center, int attack, Font font, Color numCol)
     {
         float cx = center.X;
         float cy = center.Y;
@@ -438,7 +469,7 @@ public partial class CardVisualWidget : Control
         DrawOutlinedNumber(font, pos, txt, fs, Colors.White, new Color("0F172A"));
     }
 
-    private void DrawRedShieldLifeBadge(Vector2 center, int life, Font font)
+    private void DrawRedShieldLifeBadge(Vector2 center, int life, Font font, Color numCol)
     {
         float cx = center.X;
         float cy = center.Y;

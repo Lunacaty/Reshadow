@@ -178,10 +178,15 @@ public sealed class ChineseCardPrinter
 
         // 同一张卡上可能有两条内容完全相同的能力（同名纹章重复授予），
         // 引用比不中时退到「打印结果相同」来匹配。
-        string targetSig = PrintAbility(targetAbility);
+        // 常驻光环由 PrintPassiveLine 输出而不是 PrintAbility，
+        // 用 PrintAbility 算签名会让 PassiveAura 的减伤光环永远匹配不上。
+        string LineOf(AbilityDef a)
+            => a?.Trigger?.Event == Core.CoreEvent.PassiveAura ? PrintPassiveLine(a) : PrintAbility(a);
+
+        string targetSig = LineOf(targetAbility);
         bool IsMatch(AbilityDef ab)
             => ReferenceEquals(ab, targetAbility)
-               || (ab != null && PrintAbility(ab) == targetSig);
+               || (ab != null && !string.IsNullOrEmpty(targetSig) && LineOf(ab) == targetSig);
 
         var sb = new StringBuilder();
 
@@ -190,9 +195,7 @@ public sealed class ChineseCardPrinter
             if (list == null) return;
             foreach (var ab in list)
             {
-                string line = ab?.Trigger?.Event == Core.CoreEvent.PassiveAura
-                    ? PrintPassiveLine(ab)
-                    : PrintAbility(ab);
+                string line = LineOf(ab);
                 if (string.IsNullOrEmpty(line)) continue;
 
                 if (IsMatch(ab))

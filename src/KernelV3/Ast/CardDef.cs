@@ -101,6 +101,14 @@ public sealed class CardDef
 {
     public int CardId { get; init; }
 
+    /// <summary>
+    /// 立绘用的卡号。0 表示用 CardId 本身。
+    ///
+    /// 纹章/信仰是合成号段（4xxxxxxxx），没有对应立绘文件；
+    /// 它们要回到主人卡的立绘，否则来源溯源条目加载不出图。
+    /// </summary>
+    public int ArtCardId { get; init; }
+
     /// <summary>定义这张卡的卡包 ID（空 = 引擎内置）。跨包冲突检测与来源追溯用。</summary>
     public string PackId { get; init; } = "";
 

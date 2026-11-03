@@ -265,8 +265,14 @@ public partial class BoardUnitWidget : Control
             // VisualLifeOffset 是**已扣但未播**的伤害，符号为正表示「补回去」。
             int shownLife = Math.Max(0, Entity.Life + VisualLifeOffset - evoLife);
 
-            DrawSwordBadge(new Vector2(16f, H - 22f), shownAtk, font);
-            DrawShieldBadge(new Vector2(W - 16f, H - 22f), shownLife, font);
+            // 攻防数字按 Buff / 受伤变色：+2/+2 变绿、掉血变红，
+            // 否则玩家看不出这个随从被加强过还是被打残了。
+            Color atkCol = shownAtk > def.BaseAttack ? new Color("4ADE80")
+                         : shownAtk < def.BaseAttack ? new Color("F87171") : Colors.White;
+            Color lifeCol = shownLife > def.BaseLife ? new Color("4ADE80")
+                          : shownLife < def.BaseLife ? new Color("F87171") : Colors.White;
+            DrawSwordBadge(new Vector2(16f, H - 22f), shownAtk, font, atkCol);
+            DrawShieldBadge(new Vector2(W - 16f, H - 22f), shownLife, font, lifeCol);
         }
 
         DrawAbilityBadge(new Vector2(W * 0.5f, H - 12f), font);
@@ -340,8 +346,12 @@ public partial class BoardUnitWidget : Control
         var schema = CurrentController?.Schema;
         if (schema == null) return;
 
+        // 必须走 HasEffectiveKeyword：由场上常驻光环赋予的
+        // 【守护】【屏障】【潜行】【不受能力影响】也要能画出外框。
+        var stKw = CurrentController?.State;
         bool Has(string kw)
-            => e.Keywords.Contains(schema.Keyword(kw));
+            => stKw != null ? stKw.HasEffectiveKeyword(e, schema.Keyword(kw))
+                            : e.Keywords.Contains(schema.Keyword(kw));
 
         // 外框装甲：铺在棋子外围，稍微超出边界制造「装甲包边」的观感
         void Frame(string key)
@@ -791,7 +801,7 @@ public partial class BoardUnitWidget : Control
         return inside;
     }
 
-    private void DrawSwordBadge(Vector2 c, int atk, Font font)
+    private void DrawSwordBadge(Vector2 c, int atk, Font font, Color numCol)
     {
         Vector2[] poly =
         {
@@ -809,10 +819,10 @@ public partial class BoardUnitWidget : Control
         string t = atk.ToString();
         var sz = font.GetStringSize(t, HorizontalAlignment.Left, -1, 15);
         DrawString(font, new Vector2(c.X - sz.X * 0.5f, c.Y + 6f), t,
-                   HorizontalAlignment.Left, -1, 15, Colors.White);
+                   HorizontalAlignment.Left, -1, 15, numCol);
     }
 
-    private void DrawShieldBadge(Vector2 c, int life, Font font)
+    private void DrawShieldBadge(Vector2 c, int life, Font font, Color numCol)
     {
         Vector2[] poly =
         {
@@ -829,7 +839,7 @@ public partial class BoardUnitWidget : Control
         string t = life.ToString();
         var sz = font.GetStringSize(t, HorizontalAlignment.Left, -1, 15);
         DrawString(font, new Vector2(c.X - sz.X * 0.5f, c.Y + 6f), t,
-                   HorizontalAlignment.Left, -1, 15, Colors.White);
+                   HorizontalAlignment.Left, -1, 15, numCol);
     }
 
     /// <summary>

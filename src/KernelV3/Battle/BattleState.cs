@@ -1434,6 +1434,8 @@ public sealed class BattleState : IVmWorld
                 {
                     if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.PassiveAura) continue;
                     if (ab.Body == null) continue;
+                    // 带上来源能力：左上角点开这条光环时要能高亮对应的那句话。
+                    scope.SourceAbility = ab;
 
                     bool condOk;
                     try { condOk = ab.Condition == null || eval.EvalBool(ab.Condition, scope); }
@@ -1497,6 +1499,8 @@ public sealed class BattleState : IVmWorld
                 {
                     if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.PassiveAura) continue;
                     if (ab.Body == null) continue;
+                    // 带上来源能力：左上角点开这条光环时要能高亮对应的那句话。
+                    scope.SourceAbility = ab;
 
                     bool condOk;
                     try { condOk = ab.Condition == null || eval.EvalBool(ab.Condition, scope); }
