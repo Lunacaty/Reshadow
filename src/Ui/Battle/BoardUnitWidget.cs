@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Core;
@@ -530,6 +531,16 @@ public partial class BoardUnitWidget : Control
     /// 裁一次缓存起来，之后每帧只需 1 次 DrawTextureRect。
     /// </summary>
     private static readonly Dictionary<(int, bool, bool), Texture2D> _clippedCache = new();
+
+    /// <summary>
+    /// 玩家切换了某卡的立绘版本（原画⇄异画）时调用：
+    /// 只清该卡的预裁切图，其余卡不动 —— 一次性换整套素材才用 ClearCache。
+    /// </summary>
+    public static void InvalidateArtCache(int cardId)
+    {
+        foreach (var key in _clippedCache.Keys.Where(k => k.Item1 == cardId).ToList())
+            _clippedCache.Remove(key);
+    }
 
     private static Texture2D GetClippedArt(int cardId, bool isAmulet, bool evolved = false)
     {

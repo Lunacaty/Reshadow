@@ -22,6 +22,7 @@ public partial class MainMenuView : Control
     public event Action OnDeckManagement;
     public event Action OnDiyWorkshop;
     public event Action OnPackManager;
+    public event Action OnCardGallery;
     public event Action OnQuit;
 
     private GameSessionStore _store;
@@ -105,6 +106,7 @@ public partial class MainMenuView : Control
         col.AddChild(MakeButton("🃏  牌 组 管 理", false, null, () => OnDeckManagement?.Invoke()));
         col.AddChild(MakeButton("🛠  DIY 造卡工坊", false, SvWbTheme.AccentPurple, () => OnDiyWorkshop?.Invoke()));
         col.AddChild(MakeButton("⚙  卡包 / 卡池管理", false, null, () => OnPackManager?.Invoke()));
+        col.AddChild(MakeButton("📚  卡 片 一 览", false, null, () => OnCardGallery?.Invoke()));
 
         var gap = new Control { CustomMinimumSize = new Vector2(0, 10) };
         col.AddChild(gap);

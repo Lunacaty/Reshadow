@@ -61,6 +61,7 @@ public partial class DeckManagementRoot : Control
         menu.OnDeckManagement += ShowDeckList;
         menu.OnDiyWorkshop    += ShowDiyWorkshop;
         menu.OnPackManager    += ShowPackManager;
+        menu.OnCardGallery    += ShowCardGallery;
         menu.OnQuit           += () => GetTree().Quit();
     }
 
@@ -151,6 +152,15 @@ public partial class DeckManagementRoot : Control
     /// <summary>当前战斗界面的控制器（建房时要把它的 State 交给权威端）。</summary>
     private ShadowverseFan.Ui.Bridge.BattleSessionController GetBattleController()
         => (_current as Battle.BattleScreenRoot)?.Controller;
+
+    /// <summary>卡片一览 / 图鉴：浏览全量卡池并切换原画⇄异画。</summary>
+    private void ShowCardGallery()
+    {
+        var view = new Decks.CardGalleryView();
+        Swap(view);
+        view.Boot(_store);
+        view.OnBack += ShowMainMenu;
+    }
 
     /// <summary>对战选择窗：先卡池、再双方牌组，然后直接开局。</summary>
     private void ShowBattleSelect()

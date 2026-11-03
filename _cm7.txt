@@ -1,0 +1,21 @@
+feat(126-5): 卡片图鉴 + 原画/异画全场景切换
+
+CardArtLoader 升级为多变体体系：
+  GetPreferredVariant / SetPreferredVariant（切换即清该卡棋子预裁切缓存）；
+  GetAvailableVariants 探测磁盘上 3/5/7/9 末位的异画档位；
+  LoadVariant 兼容 <id>_3.png 与源素材 9 位 <id>3.png 两种命名，
+  异画缺进化后图时回落异画进化前，再回落原画；
+  查找顺序：各卡包 cards/ 目录优先，全局 assets/cards/ 兜底（专题三的自包含结构）。
+  Load/LoadEvolved 在变体 != 0 时走变体路径 —— 一处切换，
+  手牌/详情/构筑台/战场棋子全部同步生效。
+
+BoardUnitWidget.InvalidateArtCache(cardId)：只清该卡的预裁切图。
+
+新增 CardGalleryView（图鉴）：
+  左栏网格（卡种筛选 + 卡名/中文/效果搜索）；
+  右栏大图预览 + 进化前/后切换 + 立绘版本切换台 + 完整中文效果。
+  效果文本走 ChineseCardPrinter.PrintCard，不用 raw json 字段。
+  主菜单新增「📚 卡片一览」入口。
+
+ALL ENGINE CHECKS PASSED / Combat 16-16 / 完整对局 7-7 / DIY 8-8 /
+卡池 22-22 / UI 3-3 / 战斗 UI 31-31

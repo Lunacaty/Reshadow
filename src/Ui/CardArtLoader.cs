@@ -27,6 +27,11 @@ public static class CardArtLoader
     /// </summary>
     public static Texture2D Load(int cardId)
     {
+        // 玩家切换过异画版本时走变体路径（一处切换，手牌/详情/棋子全生效）。
+        // 默认 0 号变体仍走原来的 _cache 快路径，行为不变。
+        int variant = GetPreferredVariant(cardId);
+        if (variant != 0) return LoadVariant(cardId, variant, evolved: false);
+
         if (_cache.TryGetValue(cardId, out var cached)) return cached;
         if (_missing.Contains(cardId)) return null;
 
@@ -72,6 +77,9 @@ public static class CardArtLoader
     /// </summary>
     public static Texture2D LoadEvolved(int cardId)
     {
+        int variant = GetPreferredVariant(cardId);
+        if (variant != 0) return LoadVariant(cardId, variant, evolved: true);
+
         if (_evolvedCache.TryGetValue(cardId, out var cached)) return cached;
         if (_evolvedMissing.Contains(cardId)) return null;
 
@@ -102,6 +110,107 @@ public static class CardArtLoader
         }
         catch { }
 
+        return null;
+    }
+
+
+    // ---------------------------------------------------------------- 多变体异画（126 轮）
+
+    /// <summary>cardId -> 当前选用立绘变体代号（0=原画，3=异画I，5=异画II…）。</summary>
+    private static readonly Dictionary<int, int> _preferredVariant = new();
+
+    /// <summary>某卡当前选用的变体代号（默认 0 原画）。</summary>
+    public static int GetPreferredVariant(int cardId)
+        => _preferredVariant.TryGetValue(cardId, out int v) ? v : 0;
+
+    /// <summary>
+    /// 切换某卡的立绘版本（0=原画，3=异画I…）。一处切换，全场景生效：
+    /// 手牌、详情、构筑台、战场棋子全走 Load/LoadEvolved，下次取图即新版。
+    /// </summary>
+    public static void SetPreferredVariant(int cardId, int variantCode)
+    {
+        if (variantCode <= 0) _preferredVariant.Remove(cardId);
+        else _preferredVariant[cardId] = variantCode;
+        ShadowverseFan.Ui.Battle.BoardUnitWidget.InvalidateArtCache(cardId);
+    }
+
+    /// <summary>探测某卡磁盘上可用的立绘档位（图鉴渲染切换按钮用）。</summary>
+    public static List<(int Code, string Label)> GetAvailableVariants(int cardId)
+    {
+        var list = new List<(int, string)> { (0, "原画") };
+        int[] altCodes = { 3, 5, 7, 9 };
+        string[] altNames = { "异画 I", "异画 II", "异画 III", "异画 IV" };
+        for (int i = 0; i < altCodes.Length; i++)
+            if (ResolveArtFile(cardId, altCodes[i], evolved: false) != null)
+                list.Add((altCodes[i], altNames[i]));
+        return list;
+    }
+
+    public static Texture2D LoadVariant(int cardId, int variant, bool evolved)
+    {
+        var key = (cardId, variant, evolved);
+        if (_variantCache.TryGetValue(key, out var hit)) return hit;
+
+        string path = ResolveArtFile(cardId, variant, evolved);
+        // 异画往往只有进化前一张（只有末位3没有末位4）：进化后回落异画进化前。
+        if (path == null && evolved && variant > 0)
+            path = ResolveArtFile(cardId, variant, evolved: false);
+        // 异画文件不存在整体回落原画。
+        if (path == null && variant > 0)
+            path = ResolveArtFile(cardId, 0, evolved);
+
+        Texture2D tex = null;
+        if (path != null)
+        {
+            try
+            {
+                var img = Image.LoadFromFile(path);
+                if (img != null && img.GetWidth() > 0 && img.GetHeight() > 0)
+                    tex = ImageTexture.CreateFromImage(img);
+            }
+            catch { }
+        }
+        _variantCache[key] = tex;
+        return tex;
+    }
+
+    private static readonly Dictionary<(int, int, bool), Texture2D> _variantCache = new();
+
+    /// <summary>
+    /// 按优先级找立绘文件：卡包自包含目录 data/packs/&lt;packId&gt;/cards/ 优先，
+    /// 全局 assets/cards/ 兜底；同时兼容 &lt;id&gt;_3.png 与源素材 9 位 &lt;id&gt;3.png。
+    /// </summary>
+    private static string ResolveArtFile(int cardId, int variant, bool evolved)
+    {
+        var dirs = new List<string>();
+        var packsRoot = ContentPaths.FilePath("data", "packs");
+        try
+        {
+            if (System.IO.Directory.Exists(packsRoot))
+                foreach (var d in System.IO.Directory.GetDirectories(packsRoot))
+                    dirs.Add(System.IO.Path.Combine(d, "cards"));
+        }
+        catch { }
+        dirs.Add(ContentPaths.FilePath("assets", "cards"));
+
+        // 末位映射：原画 0/1；异画 n 的进化前是 n、进化后是 n+1（3->3/4，5->5/6）。
+        string[] names = variant switch
+        {
+            0 => evolved ? new[] { $"{cardId}_e.png", $"{cardId}1.png" }
+                         : new[] { $"{cardId}.png", $"{cardId}0.png" },
+            _ => evolved ? new[] { $"{cardId}_{variant}_e.png", $"{cardId}_{variant + 1}.png", $"{cardId}{variant + 1}.png" }
+                         : new[] { $"{cardId}_{variant}.png", $"{cardId}{variant}.png" },
+        };
+
+        foreach (var dir in dirs)
+        {
+            if (!System.IO.Directory.Exists(dir)) continue;
+            foreach (var fn in names)
+            {
+                string full = System.IO.Path.Combine(dir, fn);
+                if (File.Exists(full)) return full;
+            }
+        }
         return null;
     }
 
