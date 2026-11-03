@@ -430,6 +430,8 @@ public sealed class VmEval
         UnitState.Evolved => sn.IsEvolved,
         UnitState.SuperEvolved => sn.IsSuperEvolved,
         UnitState.Silenced => sn.IsSilenced,
+        // "Whenever you play an Enhanced card"：本卡以爆能强化档位打出。
+        UnitState.Enhanced => sn.PlayedWithEnhance,
         _ => false,
     };
 

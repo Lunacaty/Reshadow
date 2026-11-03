@@ -1,0 +1,24 @@
+fix(126-1): 随从入场重叠 + Enhanced 被吞 + 古旧天晶信仰不生成
+
+【Bug1 随从重叠】AddBoardRow 早先一律 PinAtOldSlot 把幸存者钉死，
+而 TriggerBoardReflow 只在 OnDestroy/OnBanish 触发 ——
+新随从入场时旧随从被永久钉在旧位，与第 4 张叠在一起。
+现在按文档区分两种语义：本侧有阵亡替身 -> 等离场动画播完合拢；
+没有 -> 当场 0.20s OutCubic 滑开让位。
+并改用「旧槽位 + 未走完的 LayoutOffset」作为上一帧真实视觉位置，
+连续 Rebuild 不再把滑动中的随从误判成没动。
+
+【Bug2a Enhanced 被吞】TargetParser 的 6c「未知修饰词」循环把
+"an Enhanced card" 吞成 "a card"，《古旧天剑》信仰变成打出任何卡都+1。
+三步修复：UnitState 新增 Enhanced；RuntimeEntity/EntitySnapshot 新增
+PlayedWithEnhance（TurnRunner 扣费处记录 bestTier > Cost）；
+TargetParser 正式识别 enhanced 并**彻底删除吞词循环**。
+MatchState 补 UnitState.Enhanced => sn.PlayedWithEnhance。
+
+【Bug2b 古旧天晶信仰不生成】BattleState.DefinesFaith 只扫 def.Abilities，
+而《古旧天晶》的信仰完整写在 alt_modes（FaithDef）里，正文没提 faith。
+补上 def.FaithDef != null 判定。
+
+lang-5 为既有失败（基线 3b065c8 复测同样失败，与本次改动无关）。
+其余全绿：VM 50-50 / 文档验收 102-102 / Combat 16-16 / 效用 12-12 /
+逐卡矩阵 31-32 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 / UI 3-3 / 战斗 UI 31-31

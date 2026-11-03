@@ -318,6 +318,9 @@ public sealed class TurnRunner
         int bestTier = 0;
         foreach (var tier in EnhanceTiers(card)) if (pp >= tier && tier > bestTier) bestTier = tier;
         if (bestTier > pay) pay = bestTier;
+        // 记录本卡本次是以【爆能强化】打出（供 "Whenever you play an Enhanced card" 判定）。
+        // 必须在扣费前记：进墓地/被回手的路径都不会再回来改这个标志。
+        card.PlayedWithEnhance = bestTier > card.Cost;
 
         // 本体费用不够时，激奏 / 结晶是**合法的另一条出牌路径**。
         // 规则的顺序是：能按本体打出就必须按本体，只有不够时才允许这两者。

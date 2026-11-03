@@ -61,6 +61,7 @@ public sealed class EntitySnapshot
     public bool IsEvolved { get; init; }
     public bool IsSuperEvolved { get; init; }
     public bool IsSilenced { get; init; }
+    public bool PlayedWithEnhance { get; init; }
     public IReadOnlyCollection<SymbolId<KeywordTag>> Keywords { get; init; }
         = Array.Empty<SymbolId<KeywordTag>>();
     public IReadOnlyCollection<SymbolId<TraitTag>> Traits { get; init; }
@@ -146,6 +147,9 @@ public sealed class RuntimeEntity
 
     /// <summary>上一次攻击是否打的是主战者（部分卡牌以此为条件）。</summary>
     public bool AttackedLeaderLastTurn { get; set; }
+
+    /// <summary>本卡本次是以【爆能强化】打出的。用于 "Whenever you play an Enhanced card" 这类条件。</summary>
+    public bool PlayedWithEnhance { get; set; }
     public int EnteredTurn { get; set; }
 
     /// <summary>本回合是否已启动过（护符 Engage）。每回合上限 1 次。</summary>
@@ -261,6 +265,7 @@ public sealed class RuntimeEntity
         IsEvolved = IsEvolved,
         IsSuperEvolved = IsSuperEvolved,
         IsSilenced = IsSilenced,
+        PlayedWithEnhance = PlayedWithEnhance,
         Keywords = new List<SymbolId<KeywordTag>>(Keywords),
         Traits = new List<SymbolId<TraitTag>>(Traits),
         Counters = new Dictionary<SymbolId<CounterTag>, int>(Counters),

@@ -224,6 +224,13 @@ public sealed class BattleState : IVmWorld
     /// <summary>该卡是否定义了信仰（卡面提到 faith）。</summary>
     private static bool DefinesFaith(CardDef def)
     {
+        if (def == null) return false;
+
+        // 铁律：只要卡片挂了 FaithDef（来自 alt_modes 或 DIY 关联信仰），就定义了信仰。
+        // 《古旧天晶》的正文一个 faith 都没提——信仰完整写在它的 alt_modes 里，
+        // 只扫 Abilities 会漏掉它，开局连信仰图标都不生成。
+        if (def.FaithDef != null) return true;
+
         if (def.Abilities == null) return false;
         foreach (var ab in def.Abilities)
         {

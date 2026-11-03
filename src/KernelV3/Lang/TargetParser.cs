@@ -567,6 +567,15 @@ public sealed class TargetParser
                 wheres.Add(new HasStateExpr { State = UnitState.Evolved, Of = TargetSpec.Item });
                 matched = true; continue;
             }
+            // "an Enhanced card"：以爆能强化档位打出的卡。
+            // 早先这里没有分支，"Enhanced" 落进后面的未知修饰词循环被静默吞掉，
+            // 条件退化成「打出任何一张卡」——《古旧天剑》的信仰因此被打成过牌机。
+            if (cur.Current.IsAnyWord("enhanced"))
+            {
+                cur.Advance();
+                wheres.Add(new HasStateExpr { State = UnitState.Enhanced, Of = TargetSpec.Item });
+                matched = true; continue;
+            }
             // "damaged" 必须后接名词，否则可能是 "Destroy all damaged enemy followers" 里的修饰
             if (cur.Current.IsAnyWord("damaged"))
             {
@@ -672,22 +681,15 @@ public sealed class TargetParser
             owner = ZoneScope.Any; ownerSet = true; matched = true;
         }
 
-        // ---- 6c. 未知修饰词（未注册的兵种，如 Mysteria / Enhanced）----
-        // 它们不是词典里的 Trait/Clan，但语法位置是前置定语，跳过即可
-        while (!cur.IsAtEnd && cur.Current.Kind == TokKind.Word
-               && !cur.Current.IsAnyWord("follower", "followers", "amulet", "amulets",
-                                          "spell", "spells", "card", "cards",
-                                          "leader", "leaders", "it", "them", "this",
-                                          "enemy", "allied", "your", "the", "a", "an",
-                                          "copy", "copies", "and", "or", "with", "on",
-                                          "in", "from", "at", "to", "by", "that", "whose",
-                                          "duplicate", "duplicates", "ally", "allies",
-                                          "enemies", "random", "other", "another",
-                                          "differently", "named", "unselected", "leftmost",
-                                          "exact", "all"))
-        {
-            cur.Advance();
-        }
+        // ---- 6c. 未知修饰词：已彻底删除 ----
+        //
+        // 早先这里有一个 while 循环，把所有「不是词典词条的单词」静默跳过，
+        // 意图是容忍未注册的兵种名（Mysteria 之类）。代价远大于收益：
+        // 《古旧天剑》的 "an Enhanced card" 被吞成 "a card"，条件彻底失效，
+        // 而且这类 bug 只能靠玩家反馈才发现 —— 编译不报错、卡面也不异常。
+        //
+        // 现在的策略是**不吞**：未识别的修饰词会自然落入后续匹配，
+        // 若最终整句无法解析，编译器会给出明确报错而不是静默生成错误语义。
 
         // ---- 7. 卡种 / 卡名 ----
         if (cur.MatchPhrase("ally", "or", "enemy") || cur.MatchPhrase("allies", "or", "enemies"))

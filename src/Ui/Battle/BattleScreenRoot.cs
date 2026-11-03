@@ -597,11 +597,17 @@ public partial class BattleScreenRoot : Control
 
             Vector2 topLeft = ComputeSlotTopLeft(playerId, i, count);
 
-            // 若这个随从原来在别的槽位，说明本帧发生了重排（有人阵亡或有人插入）。
-            // 先把它**视觉上钉在旧槽位**，等离场动画播完再滑过去 ——
-            // 这样「碎裂/击飞」与「幸存者合拢」不会同时发生。
-            bool wasElsewhere = _unitTops.TryGetValue(e.EntityId, out var oldTop)
-                                && oldTop.DistanceTo(topLeft) > 1f;
+            // 取「上一帧的真实视觉位置」：旧槽位 + 尚未走完的 LayoutOffset。
+            //
+            // 只比 _unitTops 是不够的 —— 连续两次 Rebuild 之间，上一轮
+            // PlayLayoutReflow 可能才走到一半，此时旧槽位已经写成新值了，
+            // 再按它判断就会把「还在滑动的随从」当成没动过，位移直接吞掉。
+            Vector2 prevVisualTop = _unitTops.TryGetValue(e.EntityId, out var oldSlotTop)
+                ? oldSlotTop + _anims.MotionOf(e.EntityId).LayoutOffset
+                : topLeft;
+
+            bool movedSlot = _unitTops.ContainsKey(e.EntityId)
+                             && prevVisualTop.DistanceTo(topLeft) > 1f;
 
             _unitTops[e.EntityId] = topLeft;
             _unitCenters[e.EntityId] = topLeft + new Vector2(BoardUnitWidget.UnitW * 0.5f,
@@ -613,10 +619,21 @@ public partial class BattleScreenRoot : Control
             bool selected = _actionPanel.BoundEntity != null
                             && _actionPanel.BoundEntity.EntityId == e.EntityId;
             w.Setup(e, selected, canAtk);
-            if (wasElsewhere)
+
+            if (movedSlot)
             {
-                // 钉在旧槽位；滑到新槽位由离场动画末尾的 TriggerBoardReflow 驱动。
-                _anims.PinAtOldSlot(e.EntityId, oldTop, topLeft);
+                _anims.PinAtOldSlot(e.EntityId, prevVisualTop, topLeft);
+
+                // 两种重排语义完全不同，必须分开处理：
+                //   · 有人阵亡：先钉住，等离场动画播完再由 TriggerBoardReflow 合拢；
+                //   · 新随从入场挤压：本侧没有阵亡替身，当场滑开让位。
+                // 早先不分情况一律等 TriggerBoardReflow，而它只在 OnDestroy/OnBanish
+                // 触发 —— 新随从入场时旧随从被永久钉死，和第 4 个随从叠在一起。
+                bool hasDyingOnThisSide = _dyingProxies.Values.Any(
+                    p => p != null && IsInstanceValid(p)
+                         && p.Entity != null && p.Entity.PlayerId == playerId);
+                if (!hasDyingOnThisSide)
+                    _anims.PlayLayoutReflow(new[] { (long)e.EntityId }, 0.20f);
             }
             w.ApplyMotion(_anims.MotionOf(e.EntityId));
 

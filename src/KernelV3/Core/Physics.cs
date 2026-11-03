@@ -187,6 +187,9 @@ public enum UnitState
     HasOnSpellboost,
     Destroyed,
     AttackedLeaderLastTurn,
+
+    /// <summary>本卡本次是以【爆能强化】打出的（Enhance 档位高于本体费用）。</summary>
+    Enhanced,
 }
 
 /// <summary>历史池作用域（用于"本局/本回合被破坏的卡"这类统计）。</summary>
