@@ -604,6 +604,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             row.AddThemeConstantOverride("separation", 4);
 
             var opt = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+
+            // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+
+            SvWbTheme.StyleOptionPopup(opt);
             for (int k = 0; k < zhMap.Length; k++) opt.AddItem(zhMap[k].Zh, k);
             int sel = DiyZh.IndexOf(zhMap, kind);
             if (sel >= 0) opt.Selected = sel;
@@ -831,6 +835,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         row.AddChild(lbl);
 
         var opt = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+
+        // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+
+        SvWbTheme.StyleOptionPopup(opt);
         for (int i = 0; i < table.Length; i++) opt.AddItem(table[i].Zh, i);
 
         int idx = DiyZh.IndexOf(table, cur);
@@ -1018,6 +1026,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         box.AddChild(head);
 
         var opts = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+
+        // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+
+        SvWbTheme.StyleOptionPopup(opts);
         opts.AddItem("（无）");
         foreach (var o in DiyZh.TargetOps) opts.AddItem(o.Zh);
         opts.Selected = cur == null ? 0 : Math.Max(0, DiyZh.IndexOf(DiyZh.TargetOps, cur.Opcode) + 1);
@@ -1049,6 +1061,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 // tgt_query 的 IntA 是区域码、IntB 是归属码。
                 // 早先是「手填数字」的输入框，玩家得记住 0=战场 1=手牌… 现在换中文下拉。
                 var zoneOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+                SvWbTheme.StyleOptionPopup(zoneOpt);
                 for (int zi = 0; zi < DiyZh.Zones.Length; zi++) zoneOpt.AddItem(DiyZh.Zones[zi].Zh, zi);
                 zoneOpt.Selected = Mathf.Clamp(cur.IntA, 0, DiyZh.Zones.Length - 1);
                 zoneOpt.ItemSelected += s2 =>
@@ -1059,6 +1073,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 box.AddChild(zoneOpt);
 
                 var ownerOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+
+                // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+
+                SvWbTheme.StyleOptionPopup(ownerOpt);
                 for (int oi = 0; oi < DiyZh.Owners.Length; oi++) ownerOpt.AddItem(DiyZh.Owners[oi].Zh, oi);
                 ownerOpt.Selected = Mathf.Clamp(cur.IntB, 0, DiyZh.Owners.Length - 1);
                 ownerOpt.ItemSelected += s3 =>
@@ -1069,6 +1087,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 box.AddChild(ownerOpt);
 
                 var kindOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+
+                // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+
+                SvWbTheme.StyleOptionPopup(kindOpt);
                 for (int ki = 0; ki < DiyZh.Kinds.Length; ki++) kindOpt.AddItem(DiyZh.Kinds[ki].Zh, ki);
                 int kIdx = DiyZh.IndexOf(DiyZh.Kinds, cur.Text);
                 if (kIdx >= 0) kindOpt.Selected = kIdx;
@@ -1082,6 +1104,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 box.AddChild(kindOpt);
 
                 var modeOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+
+                // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+
+                SvWbTheme.StyleOptionPopup(modeOpt);
                 for (int mi = 0; mi < DiyZh.SelectModes.Length; mi++) modeOpt.AddItem(DiyZh.SelectModes[mi].Zh, mi);
                 int mIdx = DiyZh.IndexOf(DiyZh.SelectModes, cur.EnumA);
                 if (mIdx >= 0) modeOpt.Selected = mIdx;
@@ -1114,6 +1140,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         box.AddChild(head);
 
         var opts = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+
+        // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+
+        SvWbTheme.StyleOptionPopup(opts);
         opts.AddItem("（无）");
         foreach (var o in DiyZh.NumOps) opts.AddItem(o.Zh);
         opts.Selected = cur == null ? 0 : Math.Max(0, DiyZh.IndexOf(DiyZh.NumOps, cur.Opcode) + 1);
@@ -1177,6 +1207,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         box.AddChild(head);
 
         var opts = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+
+        // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+
+        SvWbTheme.StyleOptionPopup(opts);
         opts.AddItem("（无条件）");
         foreach (var o in DiyZh.CondOps) opts.AddItem(o.Zh);
         opts.Selected = cur == null ? 0 : Math.Max(0, DiyZh.IndexOf(DiyZh.CondOps, cur.Opcode) + 1);
@@ -1210,6 +1244,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             {
                 // 比较符也是手填英文 Ge/Le 的重灾区，换中文下拉。
                 var cmpOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
+                SvWbTheme.StyleOptionPopup(cmpOpt);
                 for (int ci = 0; ci < DiyZh.Compares.Length; ci++) cmpOpt.AddItem(DiyZh.Compares[ci].Zh, ci);
                 int cIdx = DiyZh.IndexOf(DiyZh.Compares, cur.EnumA);
                 if (cIdx >= 0) cmpOpt.Selected = cIdx;

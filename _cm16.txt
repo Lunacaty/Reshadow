@@ -1,0 +1,47 @@
+feat(129-1): 三处布局阻断修复 + BoolExpr 折叠 + CanonicalAstDsl 规范 AST 语言
+
+【问题1 三处阻断级布局 Bug】
+① MainMenuView 退出按钮掉出屏幕：
+   7 个按钮 × 56px + 间距 14 ≈ 486px，起点 vp.Y*0.42（720 下 =302）
+   底部到 788px，而 canvas_items 拉伸模式下逻辑画布恒为 720 ——
+   第 7 个按钮永远在屏幕外。压缩到 44px/间距 10px，
+   并把起点钳在 [200, vp.Y-totalH-42]。
+② CreateDeckWizardModal 下一步被遮挡：
+   _body 没包 ScrollContainer，卡池多时规则文字换行把内容撑到 700px+。
+   已包进 ScrollContainer（禁横向滚动），卡池卡片改 HFlowContainer 折行。
+③ BlockTreeEditorWidget 右栏超出屏幕：
+   10 处 OptionButton 全部缺 SvWbTheme.StyleOptionPopup，
+   FitToLongestItem 默认 true 被长条目撑到 280px+。已全部补上；
+   DiyWorkshopView 的 _endpointHost 滚动容器禁横向滚动。
+
+【问题3 前置：BoolExpr 从源头折叠冗余项】
+And/Or 现在会丢弃 true/false 单位元、处理短路、展平嵌套。
+Anne & Grea 实测：
+  改前 if (true and is Evolved(slot:$self All n=1))
+  改后 if is Evolved(slot:$self All n=1)
+这是源头修复，不是打印时做字符串特判。
+
+【问题3 主体：新增 CanonicalAstDsl（402 行）】
+只写效果、首字母大写、2 格缩进的规范 AST 语言，替代 AST 端的 JSON：
+
+  Fanfare:
+    Spawn 1 \"Anne's Summoning\" to Board (id=90034130)
+    Counter spellboost Add 3 of self:hand All
+  Evolve manual:
+    Select $selected = opponent:board Choose(1) where is Follower
+    Deal 3 damage to $selected
+
+  [Crest]
+  EnterField on($self):
+    replace deck with the Mjerrabaine Deck
+    MarkVictory owner=Self
+
+要点：PrintTargetClean 不再拖 All n=1 尾巴；StripRedundantCondition
+剥掉触发头已表达的 is Evolved；裸关键词收进 Keywords: 行；
+子卡用 [Accelerate N] / [Crystallize N] / [Crest] / [Faith] 分栏。
+
+另修 DiyWorkshopView 四端页签高亮不刷新（点在积木端却亮着 AST 端）。
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 / UI 3-3 / 战斗 UI 31-31 /
+逐卡矩阵 31-32（既有测试集自造卡）

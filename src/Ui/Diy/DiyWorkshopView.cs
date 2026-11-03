@@ -326,6 +326,10 @@ public partial class DiyWorkshopView : Control
         pane.AddChild(scroll);
         SvWbTheme.StyleScroll(scroll);
 
+        // 禁掉横向滚动：右栏一旦出现水平滚动条，说明有控件被最小宽度撑破了，
+        // 那是 Bug 不是需求 —— 应该让它纵向滚，而不是让玩家左右拖。
+        scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+
         _endpointHost = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _endpointHost.AddThemeConstantOverride("separation", 6);
         scroll.AddChild(_endpointHost);
@@ -357,12 +361,23 @@ public partial class DiyWorkshopView : Control
         return pane;
     }
 
+    /// <summary>四端页签按钮。切换时必须刷新全部按钮的高亮，
+    /// 否则会出现「点在积木端、亮着的却是 AST 端」的错位。</summary>
+    private readonly List<(Button Btn, DiyEndpointKind Kind)> _endpointTabBtns = new();
+
     private void AddEndpointTab(HBoxContainer host, string caption, DiyEndpointKind kind)
     {
         var b = new Button { Text = caption };
         SvWbTheme.StyleButton(b, isPrimary: _active == kind);
-        b.Pressed += () => { _active = kind; RefreshEndpoint(); };
+        b.Pressed += () =>
+        {
+            _active = kind;
+            foreach (var (btn, k) in _endpointTabBtns)
+                if (IsInstanceValid(btn)) SvWbTheme.StyleButton(btn, isPrimary: _active == k);
+            RefreshEndpoint();
+        };
         host.AddChild(b);
+        _endpointTabBtns.Add((b, kind));
     }
 
     // ---------------------------------------------------------------- 刷新

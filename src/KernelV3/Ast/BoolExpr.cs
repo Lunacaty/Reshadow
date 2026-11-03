@@ -22,8 +22,48 @@ public abstract class BoolExpr
     public static readonly BoolExpr True = new ConstBoolExpr(true);
     public static readonly BoolExpr False = new ConstBoolExpr(false);
 
-    public static BoolExpr And(params BoolExpr[] items) => new AndExpr(items);
-    public static BoolExpr Or(params BoolExpr[] items) => new OrExpr(items);
+    /// <summary>
+    /// 构造 AND，并**折叠冗余项**：
+    ///   · 丢掉落单的 true（否则 AST 里会冒出 `if (true and is Evolved(...))`）；
+    ///   · 命中 false 直接短路成 false；
+    ///   · 展平嵌套 And。
+    /// 这是从源头消灭废话，而不是在打印时做字符串特判。
+    /// </summary>
+    public static BoolExpr And(params BoolExpr[] items)
+    {
+        if (items == null || items.Length == 0) return True;
+        var flat = new List<BoolExpr>();
+        foreach (var it in items)
+        {
+            if (it == null) continue;
+            if (it is ConstBoolExpr cb)
+            {
+                if (cb.Value) continue;      // true 是单位元，丢掉
+                return False;                 // false 短路
+            }
+            if (it is AndExpr inner) { flat.AddRange(inner.Items); continue; }
+            flat.Add(it);
+        }
+        return flat.Count == 0 ? True : flat.Count == 1 ? flat[0] : new AndExpr(flat);
+    }
+
+    public static BoolExpr Or(params BoolExpr[] items)
+    {
+        if (items == null || items.Length == 0) return False;
+        var flat = new List<BoolExpr>();
+        foreach (var it in items)
+        {
+            if (it == null) continue;
+            if (it is ConstBoolExpr cb)
+            {
+                if (!cb.Value) continue;      // false 是单位元
+                return True;                  // true 短路
+            }
+            if (it is OrExpr inner) { flat.AddRange(inner.Items); continue; }
+            flat.Add(it);
+        }
+        return flat.Count == 0 ? False : flat.Count == 1 ? flat[0] : new OrExpr(flat);
+    }
     public static BoolExpr Not(BoolExpr e) => new NotExpr(e);
 }
 

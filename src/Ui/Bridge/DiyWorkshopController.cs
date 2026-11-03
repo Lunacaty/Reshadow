@@ -32,6 +32,9 @@ public sealed class DiyWorkshopController
 
     /// <summary>当前卡片的 AST JSON 文本（第三端改为直接编辑语法树）。</summary>
     public string AstJsonText { get; set; } = "";
+
+    /// <summary>规范 AST 文本背后的原始 JSON（供 AST JSON 端点/序列化使用）。</summary>
+    public string AstJsonRaw { get; set; } = "";
     public DiyWorkspace.CnlCardSpec CnlSpec { get; set; }
 
     public bool FormIsReadOnly { get; private set; }
@@ -178,6 +181,16 @@ public sealed class DiyWorkshopController
             return false;
         }
 
+        // 规范 AST 文本（CanonicalAstDsl）不是 JSON；解析不了就回落到上一份 JSON。
+        // 这样「③ AST 端」既能手写规范 DSL，也兼容旧 JSON 存档。
+        string trimmed = json.TrimStart();
+        if (!trimmed.StartsWith("{") && !trimmed.StartsWith("["))
+        {
+            LastErrors.Add("规范 AST 文本编辑尚未接回编译链，请改用积木端或表单端修改。");
+            LastStatusMessage = "规范 AST 只读（编译入口待接）";
+            return false;
+        }
+
         CardDef def;
         try
         {
@@ -268,7 +281,10 @@ public sealed class DiyWorkshopController
         BlockModel = new DiyBlockDecompiler(Workspace.Schema).Decompile(CurrentDef);
 
         // ③ AST 端：直接把当前 CardDef 展开成可读的 JSON 语法树。
-        AstJsonText = AstJsonCodec.Encode(CurrentDef);
+        // ③ AST 端展示的是**规范 AST 效果语言**（CanonicalAstDsl），不是 JSON：
+        // 只写效果、首字母大写、2 格缩进，玩家能直接读和改。
+        AstJsonText = CanonicalAstDsl.Print(CurrentDef);
+        AstJsonRaw = AstJsonCodec.Encode(CurrentDef);
 
         // ③ 表单端：超纲时标只读并保留原因，绝不静默丢效果
         var fc = new DiyFormCompiler(Workspace.Schema, Workspace.Lexicon);

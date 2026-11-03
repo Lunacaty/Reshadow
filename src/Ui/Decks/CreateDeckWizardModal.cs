@@ -72,9 +72,26 @@ public partial class CreateDeckWizardModal : Control
         _stepLabel.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
         root.AddChild(_stepLabel);
 
-        _body = new VBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        // _body 必须包在 ScrollContainer 里：
+        // 卡池多起来时规则文字换行会把内容撑到 700px+，
+        // 底部的「取消 / 下一步」栏就被挤出弹窗下边缘。
+        var bodyScroll = new ScrollContainer
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0, 380),
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        SvWbTheme.StyleScroll(bodyScroll);
+        root.AddChild(bodyScroll);
+
+        _body = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
         _body.AddThemeConstantOverride("separation", 10);
-        root.AddChild(_body);
+        bodyScroll.AddChild(_body);
 
         var bottom = new HBoxContainer();
         bottom.AddThemeConstantOverride("separation", 10);
@@ -113,7 +130,8 @@ public partial class CreateDeckWizardModal : Control
         _stepLabel.Text = "Step 1 / 3  选择所属赛制卡池";
         _nextBtn.Text = "下一步 →";
 
-        var row = new HBoxContainer
+        // 卡池多时自动折行，不再横向撑爆弹窗。
+        var row = new HFlowContainer
         {
             SizeFlagsVertical = SizeFlags.ShrinkBegin,
         };

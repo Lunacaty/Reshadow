@@ -96,19 +96,29 @@ public partial class MainMenuView : Control
         col.SetAnchorsPreset(LayoutPreset.TopLeft);
         col.Size = new Vector2(320, 0);
 
-        // 不再写死 (480,300)：那个坐标是按 1280x720 算的，1920x1080 下会整体偏左上。
-        // 改成跟随视口尺寸居中，全屏切换也不跑偏。
+        col.AddThemeConstantOverride("separation", 10);
+
+        // 不再写死 (480,300)：那个坐标是按 1280x720 算的。
+        //
+        // 更要紧的是**总高**：7 个按钮 × 56 + 间距 14 ≈ 486px，
+        // 起点 vp.Y*0.42（720 下是 302）算下来底部到 788px，
+        // 而 project.godot 是 canvas_items 拉伸模式，逻辑画布恒为 720 ——
+        // 第 7 个按钮「退出游戏」永远掉在屏幕外。
+        // 现在按钮压到 44px、间距 10px，并把起点钳在「底部留 42px 底栏」之上。
         void CenterButtons()
         {
             if (!IsInstanceValid(col)) return;
             var vp = Size;
             if (vp.X <= 0 || vp.Y <= 0) vp = GetViewportRect().Size;
-            col.Position = new Vector2(Mathf.Max(12f, (vp.X - 320f) * 0.5f),
-                                       Mathf.Max(12f, vp.Y * 0.42f));
+            float totalH = col.GetCombinedMinimumSize().Y;
+            float y = Mathf.Clamp((vp.Y - totalH) * 0.60f,
+                                  200f,
+                                  Mathf.Max(200f, vp.Y - totalH - 42f));
+            col.Position = new Vector2(Mathf.Max(12f, (vp.X - 320f) * 0.5f), y);
         }
         Resized += CenterButtons;
-        CenterButtons();
-        col.AddThemeConstantOverride("separation", 14);
+        // 首次布局时子控件还没排完，GetCombinedMinimumSize 可能为 0，需延迟再算一次。
+        CallDeferred(MethodName.CenterButtonsDeferred);
 
         col.AddChild(MakeButton("⚔  开 始 对 战", true, SvWbTheme.AccentGold, () => OnStartBattle?.Invoke()));
         col.AddChild(MakeButton("🌐  局 域 网 联 机", false, SvWbTheme.AccentCyan, () => OnLanBattle?.Invoke()));
@@ -117,20 +127,23 @@ public partial class MainMenuView : Control
         col.AddChild(MakeButton("⚙  卡包 / 卡池管理", false, null, () => OnPackManager?.Invoke()));
         col.AddChild(MakeButton("📚  卡 片 一 览", false, null, () => OnCardGallery?.Invoke()));
 
-        var gap = new Control { CustomMinimumSize = new Vector2(0, 10) };
+        var gap = new Control { CustomMinimumSize = new Vector2(0, 6) };
         col.AddChild(gap);
 
         col.AddChild(MakeButton("✕  退 出 游 戏", false, SvWbTheme.StatusDanger, () => OnQuit?.Invoke()));
     }
+
+    /// <summary>延迟重算按钮列位置（首帧子控件还没排完，高度会算成 0）。</summary>
+    private void CenterButtonsDeferred() => EmitSignal(SignalName.Resized);
 
     private static Button MakeButton(string text, bool primary, Color? accent, Action onPressed)
     {
         var b = new Button
         {
             Text = text,
-            CustomMinimumSize = new Vector2(320, 56),
+            CustomMinimumSize = new Vector2(320, 44),
         };
-        b.AddThemeFontSizeOverride("font_size", 20);
+        b.AddThemeFontSizeOverride("font_size", 18);
         SvWbTheme.StyleButton(b, primary, accent);
         b.Pressed += onPressed;
         return b;
