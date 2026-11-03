@@ -470,7 +470,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         var title = new Label
         {
-            Text = _selected == null ? "选中积木 · 孔位与参数" : "当前选中：" + BuildLabel(_selected),
+            Text = _selected == null ? "选中积木 · 属性" : "当前选中：" + BuildLabel(_selected),
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
         title.AddThemeFontSizeOverride("font_size", 12);
@@ -493,16 +493,168 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         scroll.AddChild(col);
         _inspectorCol.AddChild(scroll);
 
-        var b = _selected;
-        BuildTargetSlotEditor(col, "目标孔位", b.Target, v => { b.Target = v; Apply(); });
-        BuildNumberSlotEditor(col, "数值孔位", b.Number, v => { b.Number = v; Apply(); });
-        BuildNumberSlotEditor(col, "第二数值", b.Number2, v => { b.Number2 = v; Apply(); });
-        BuildConditionSlotEditor(col, "条件", b.Condition, v => { b.Condition = v; Apply(); });
-        BuildIntEditor(col, "整数 A", b.IntA, v => { b.IntA = v; Apply(); });
-        BuildTextEditor(col, "文本", b.Text, v => { b.Text = v; Apply(); });
-        BuildTextEditor(col, "枚举 A", b.EnumA, v => { b.EnumA = v; Apply(); });
+        // 按 opcode 定制：每种积木只渲染它自己真正拥有的孔位。
+        // 原来不管点中什么都列出「整数A / 文本 / 枚举A」七个裸字段，
+        // 玩家想把入场曲改成谢幕曲得自己猜着敲 OnDestroy —— 那不是 Scratch。
+        BuildScriptSpecificInspector(col, _selected);
     }
 
+    /// <summary>按积木语义定制的中文表单。</summary>
+    private void BuildScriptSpecificInspector(VBoxContainer col, Block b)
+    {
+        switch (b.Opcode)
+        {
+            case "hat_self_event":
+            case "hat_watch_event":
+            case "hat_passive":
+                BuildEnumCombo(col, "触发时机", DiyZh.Events, b.Text,
+                               v => { b.Text = v; Apply(); });
+                BuildEnumCombo(col, "生效区域", DiyZh.Zones, BlockZone(b),
+                               v => { SetBlockZone(b, v); Apply(); });
+                if (b.Opcode == "hat_watch_event")
+                    BuildTargetSlotEditor(col, "监听的随从", b.Target,
+                                          v => { b.Target = v; Apply(); });
+                break;
+
+            case "c_if_else":
+                BuildConditionSlotEditor(col, "成立条件", b.Condition,
+                                         v => { b.Condition = v; Apply(); });
+                break;
+            case "c_repeat":
+                BuildNumberSlotEditor(col, "重复次数", b.Number, v => { b.Number = v; Apply(); });
+                break;
+            case "c_for_each":
+                BuildTargetSlotEditor(col, "遍历集合", b.Target, v => { b.Target = v; Apply(); });
+                break;
+            case "c_mode":
+                BuildEnumCombo(col, "抉择方式", DiyZh.ModeKinds, b.EnumA,
+                               v => { b.EnumA = v; Apply(); });
+                BuildNumberSlotEditor(col, "选取个数", b.Number, v => { b.Number = v; Apply(); });
+                var addBranch = new Button { Text = "+ 新增模式分支", CustomMinimumSize = new Vector2(0, 26) };
+                SvWbTheme.StyleButton(addBranch);
+                addBranch.Pressed += () =>
+                {
+                    b.Branches ??= new List<List<Block>>();
+                    b.Branches.Add(new List<Block>());
+                    Apply();
+                    Refresh();
+                };
+                col.AddChild(addBranch);
+                break;
+
+            case "act_damage":
+            case "act_split_damage":
+                BuildTargetSlotEditor(col, "对谁造成伤害", b.Target, v => { b.Target = v; Apply(); });
+                BuildNumberSlotEditor(col, "伤害值", b.Number, v => { b.Number = v; Apply(); });
+                break;
+
+            case "act_restore":
+                BuildTargetSlotEditor(col, "回复谁", b.Target, v => { b.Target = v; Apply(); });
+                BuildNumberSlotEditor(col, "回复量", b.Number, v => { b.Number = v; Apply(); });
+                break;
+
+            case "act_draw":
+                BuildNumberSlotEditor(col, "抽几张", b.Number, v => { b.Number = v; Apply(); });
+                break;
+
+            case "act_buff":
+            case "act_set_stats":
+                BuildTargetSlotEditor(col, "对谁", b.Target, v => { b.Target = v; Apply(); });
+                BuildEnumCombo(col, "方式", DiyZh.StatOps, b.EnumA, v => { b.EnumA = v; Apply(); });
+                BuildNumberSlotEditor(col, "攻击力", b.Number, v => { b.Number = v; Apply(); });
+                BuildNumberSlotEditor(col, "生命值", b.Number2, v => { b.Number2 = v; Apply(); });
+                break;
+
+            case "act_grant_kw":
+            case "act_remove_kw":
+                BuildEnumCombo(col, "关键词", DiyZh.Keywords, b.Text, v => { b.Text = v; Apply(); });
+                BuildTargetSlotEditor(col, "给予谁", b.Target, v => { b.Target = v; Apply(); });
+                break;
+
+            case "act_mod_cost":
+                BuildTargetSlotEditor(col, "对谁", b.Target, v => { b.Target = v; Apply(); });
+                BuildEnumCombo(col, "方式", DiyZh.CostOps, b.EnumA, v => { b.EnumA = v; Apply(); });
+                BuildNumberSlotEditor(col, "费用变化", b.Number, v => { b.Number = v; Apply(); });
+                break;
+
+            case "act_mod_counter":
+                BuildEnumCombo(col, "计数器", DiyZh.Counters, b.Text, v => { b.Text = v; Apply(); });
+                BuildNumberSlotEditor(col, "变化量", b.Number, v => { b.Number = v; Apply(); });
+                break;
+
+            case "act_summon":
+            case "act_add_hand":
+                BuildTextEditor(col, "卡名", b.Text, v => { b.Text = v; Apply(); });
+                BuildNumberSlotEditor(col, "数量", b.Number, v => { b.Number = v; Apply(); });
+                break;
+
+            case "act_destroy":
+            case "act_banish":
+            case "act_bounce":
+            case "act_return_deck":
+            case "act_silence":
+            case "act_select":
+            case "act_reveal":
+            case "act_evolve":
+            case "act_super_evolve":
+            case "act_swap_stats":
+            case "act_full_restore":
+            case "act_move_to_board":
+                BuildTargetSlotEditor(col, "目标", b.Target, v => { b.Target = v; Apply(); });
+                break;
+
+            case "act_damage_aura":
+                BuildTargetSlotEditor(col, "作用对象", b.Target, v => { b.Target = v; Apply(); });
+                BuildEnumCombo(col, "光环类型", DiyZh.DamageAuraKinds, b.EnumA,
+                               v => { b.EnumA = v; Apply(); });
+                BuildEnumCombo(col, "伤害来源", DiyZh.SourceMasks, b.EnumB,
+                               v => { b.EnumB = v; Apply(); });
+                BuildNumberSlotEditor(col, "数值", b.Number, v => { b.Number = v; Apply(); });
+                break;
+
+            case "act_deck_mod":
+                BuildTextEditor(col, "规则项", b.Text, v => { b.Text = v; Apply(); });
+                BuildIntEditor(col, "数值", b.IntA, v => { b.IntA = v; Apply(); });
+                break;
+
+            default:
+                // 兜底：确实需要手填的少数积木，但也要给出中文说明。
+                BuildTextEditor(col, "卡名 / 名称", b.Text, v => { b.Text = v; Apply(); });
+                BuildNumberSlotEditor(col, "数值", b.Number, v => { b.Number = v; Apply(); });
+                break;
+        }
+    }
+
+    private static string BlockZone(Block b) => string.IsNullOrEmpty(b.EnumA) ? "Board" : b.EnumA;
+
+    private static void SetBlockZone(Block b, string zone) => b.EnumA = zone;
+
+    /// <summary>中文下拉框：选项来自词表，回写内部值。</summary>
+    private void BuildEnumCombo(VBoxContainer col, string label,
+                                (string Key, string Zh)[] table, string cur, Action<string> setter)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 6);
+
+        var lbl = new Label { Text = label, CustomMinimumSize = new Vector2(88, 0), VerticalAlignment = VerticalAlignment.Center };
+        lbl.AddThemeFontSizeOverride("font_size", 11);
+        row.AddChild(lbl);
+
+        var opt = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        for (int i = 0; i < table.Length; i++) opt.AddItem(table[i].Zh, i);
+
+        int idx = DiyZh.IndexOf(table, cur);
+        if (idx >= 0) opt.Selected = idx;
+
+        opt.ItemSelected += sel =>
+        {
+            int i = (int)sel;
+            if (i < 0 || i >= table.Length) return;
+            setter(table[i].Key);
+        };
+        row.AddChild(opt);
+        col.AddChild(row);
+    }
     private void Apply()
     {
         if (_ctrl == null || _ws == null) return;
@@ -876,6 +1028,41 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         return wrap;
     }
 
+    /// <summary>目标的中文速写：让画布上每颗积木都能看清「打谁」。</summary>
+    private static string DescribeTargetShort(Block t)
+    {
+        if (t == null) return "（未指定）";
+        switch (t.Opcode)
+        {
+            case "tgt_slot":
+                return t.Text switch
+                {
+                    "$self" => "本卡",
+                    "$selected" => "已选目标",
+                    "$created" => "刚生成的",
+                    "$trigger" => "触发者",
+                    "$opposing" => "对阵者",
+                    _ => t.Text ?? "槽位",
+                };
+            case "tgt_leader":
+                return t.EnumA == "Opponent" ? "敌方主战者"
+                     : t.EnumA == "Any" ? "双方主战者" : "我方主战者";
+            case "tgt_query":
+            {
+                string owner = t.IntA == 0 ? "我方" : t.IntA == 1 ? "敌方" : "双方";
+                string zone = (t.IntB == 0 ? "战场" : t.IntB == 1 ? "手牌"
+                             : t.IntB == 2 ? "牌组" : t.IntB == 3 ? "墓场" : "区域");
+                string mode = t.EnumA == "Choose" ? "手选"
+                              : t.EnumA == "Random" ? "随机"
+                              : t.EnumA == "First" ? "第一个" : "全部";
+                string kind = string.IsNullOrEmpty(t.Text) ? "" : (t.Text == "Follower" ? "随从" : t.Text);
+                return owner + zone + "·" + mode + (kind.Length > 0 ? "·" + kind : "");
+            }
+            default:
+                return "目标";
+        }
+    }
+
     private static string NumText(Block numBlk, int fallback = 1)
     {
         if (numBlk == null) return fallback.ToString();
@@ -897,32 +1084,32 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         string op = blk.Opcode ?? "";
         switch (op)
         {
-            case "hat_self_event": return "当自身【" + (blk.Text ?? "OnPlay") + "】时";
-            case "hat_watch_event": return "每当【" + (blk.Text ?? "OnEnterField") + "】时";
+            case "hat_self_event": return "当本卡" + DiyZh.Zh(DiyZh.Events, blk.Text) + "";
+            case "hat_watch_event": return "每当【" + DescribeTargetShort(blk.Target) + "】" + DiyZh.Zh(DiyZh.Events, blk.Text) + "";
             case "hat_passive": return "常驻光环";
-            case "c_if_else": return "如果…否则…";
+            case "c_if_else": return "如果满足条件，则…否则…";
             case "c_repeat": return "重复 " + NumText(blk.Number, 2) + " 次";
             case "c_for_each": return "对每个目标";
             case "c_mode": return "模式抉择（选 " + NumText(blk.Number, blk.IntA) + " 个）";
-            case "act_damage": return "造成 " + NumText(blk.Number, 2) + " 点伤害";
-            case "act_split_damage": return "分配 " + NumText(blk.Number, 2) + " 点伤害";
-            case "act_restore": return "回复 " + NumText(blk.Number, 2) + " 点生命";
+            case "act_damage": return "对【" + DescribeTargetShort(blk.Target) + "】造成【" + NumText(blk.Number, 2) + "】点伤害";
+            case "act_split_damage": return "向【" + DescribeTargetShort(blk.Target) + "】分配【" + NumText(blk.Number, 2) + "】点伤害";
+            case "act_restore": return "为【" + DescribeTargetShort(blk.Target) + "】回复【" + NumText(blk.Number, 2) + "】点生命";
             case "act_full_restore": return "完全回复生命";
             case "act_draw": return "抽取 " + NumText(blk.Number, 1) + " 张牌";
             case "act_summon": return "召唤「" + (blk.Text ?? "?") + "」";
             case "act_add_hand": return "生成「" + (blk.Text ?? "?") + "」加入手牌";
-            case "act_destroy": return "破坏目标";
-            case "act_banish": return "使目标消失";
-            case "act_bounce": return "将目标返回手牌";
+            case "act_destroy": return "破坏【" + DescribeTargetShort(blk.Target) + "】";
+            case "act_banish": return "使【" + DescribeTargetShort(blk.Target) + "】消失";
+            case "act_bounce": return "将【" + DescribeTargetShort(blk.Target) + "】返回手牌";
             case "act_return_deck": return "将目标洗回牌组";
             case "act_discard": return "舍弃手牌";
             case "act_silence": return "沉默目标";
-            case "act_buff": return "给予 " + NumText(blk.Number, 1) + "/" + NumText(blk.Number2, 1);
+            case "act_buff": return "使【" + DescribeTargetShort(blk.Target) + "】获得【" + NumText(blk.Number, 1) + "/" + NumText(blk.Number2, 1) + "】";
             case "act_set_stats": return "设定攻防为 " + NumText(blk.Number, 1) + "/" + NumText(blk.Number2, 1);
             case "act_swap_stats": return "交换攻防";
-            case "act_mod_cost": return "修改费用";
-            case "act_grant_kw": return "给予关键词【" + (blk.Text ?? "?") + "】";
-            case "act_remove_kw": return "移除关键词【" + (blk.Text ?? "?") + "】";
+            case "act_mod_cost": return "使【" + DescribeTargetShort(blk.Target) + "】的费用【增减】【" + NumText(blk.Number, 1) + "】";
+            case "act_grant_kw": return "给予【" + DescribeTargetShort(blk.Target) + "】【" + DiyZh.Zh(DiyZh.Keywords, blk.Text) + "】";
+            case "act_remove_kw": return "移除【" + DescribeTargetShort(blk.Target) + "】的【" + DiyZh.Zh(DiyZh.Keywords, blk.Text) + "】";
             case "act_evolve": return "使目标进化";
             case "act_super_evolve": return "使目标超进化";
             case "act_reveal": return "公开手牌";
@@ -933,7 +1120,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             case "act_reanimate": return "亡者召还";
             case "act_transform": return "使目标变身为「" + (blk.Text ?? "?") + "」";
             case "act_replace_deck": return "替换整副牌组";
-            case "act_damage_aura": return "伤害修正光环";
+            case "act_damage_aura": return "护盾光环：使【" + DescribeTargetShort(blk.Target) + "】" + DiyZh.Zh(DiyZh.DamageAuraKinds, blk.EnumA) + "【" + NumText(blk.Number, 3) + "】";
             case "act_grant_entity_ability": return "赋予目标一段能力";
             case "act_grant_ability": return "赋予常驻能力";
             case "act_invoke": return "复刻发动时机能力";
