@@ -529,14 +529,18 @@ public partial class BoardUnitWidget : Control
     /// 场上 10 个棋子就是 620 次绘制指令，动画期间每帧重跑。
     /// 裁一次缓存起来，之后每帧只需 1 次 DrawTextureRect。
     /// </summary>
-    private static readonly Dictionary<(int, bool), Texture2D> _clippedCache = new();
+    private static readonly Dictionary<(int, bool, bool), Texture2D> _clippedCache = new();
 
-    private static Texture2D GetClippedArt(int cardId, bool isAmulet)
+    private static Texture2D GetClippedArt(int cardId, bool isAmulet, bool evolved = false)
     {
-        var key = (cardId, isAmulet);
+        var key = (cardId, isAmulet, evolved);
         if (_clippedCache.TryGetValue(key, out var hit)) return hit;
 
-        var tex = ShadowverseFan.Ui.CardArtLoader.Load(cardId);
+        // 进化后优先用进化立绘；没有 _e 图时回落进化前，缓存键不同互不污染。
+        var tex = evolved
+            ? ShadowverseFan.Ui.CardArtLoader.LoadEvolved(cardId)
+              ?? ShadowverseFan.Ui.CardArtLoader.Load(cardId)
+            : ShadowverseFan.Ui.CardArtLoader.Load(cardId);
         if (tex == null) { _clippedCache[key] = null; return null; }
 
         var img = tex.GetImage();
@@ -764,7 +768,13 @@ public partial class BoardUnitWidget : Control
         // 拱顶那 7px 根本没画立绘，露出底色，看起来就是「上方有黑色缺口」。
         var art = OutlineBounds(InnerOutline(isAmulet));
 
-        var tex = ShadowverseFan.Ui.CardArtLoader.Load(def.CardId);
+        // 进化后换进化立绘：Entity.IsEvolved 的用 <id>_e.png，
+        // 没有进化立绘的卡回落进化前（LoadEvolved 返回 null）。
+        bool wantEvolved = Entity?.IsEvolved == true;
+        var tex = wantEvolved
+            ? ShadowverseFan.Ui.CardArtLoader.LoadEvolved(def.CardId)
+              ?? ShadowverseFan.Ui.CardArtLoader.Load(def.CardId)
+            : ShadowverseFan.Ui.CardArtLoader.Load(def.CardId);
         if (tex != null)
         {
             // 立绘必须被棋子边框裁掉。
@@ -795,7 +805,7 @@ public partial class BoardUnitWidget : Control
             //
             // 行高 2px 足够 —— 棋子只有 96 宽，再细肉眼也看不出阶梯。
             // 预裁切缓存：命中时每帧只剩 1 次 DrawTextureRect。
-            var clipped = GetClippedArt(def.CardId, isAmulet);
+            var clipped = GetClippedArt(def.CardId, isAmulet, wantEvolved);
             if (clipped != null)
             {
                 DrawTextureRect(clipped, art, false);

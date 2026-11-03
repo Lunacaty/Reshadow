@@ -92,6 +92,10 @@ public static class ContentPaths
     public static string CardArtPath(int cardId)
         => Path.Combine(Root, "assets", "cards", cardId + ".png");
 
+    /// <summary>进化后立绘：源素材文件名 {id}+1，导入时落成 &lt;id&gt;_e.png。</summary>
+    public static string CardArtPath(int cardId, bool evolved)
+        => Path.Combine(Root, "assets", "cards", cardId + (evolved ? "_e" : "") + ".png");
+
     /// <summary>
     /// 启动自检：把定位结果打成文本。
     ///
