@@ -33,8 +33,7 @@ public partial class MatchResultOverlay : Control
         var panel = new PanelContainer();
         AddChild(panel);
         panel.SetAnchorsPreset(LayoutPreset.TopLeft);
-        panel.Size = new Vector2(560, 320);
-        panel.Position = new Vector2(360, 200);
+        SvWbTheme.KeepCentered(this, panel, new Vector2(560, 320));
         panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             isVictory ? new Color(0.10f, 0.09f, 0.04f, 0.96f)
                       : new Color(0.12f, 0.04f, 0.05f, 0.96f),

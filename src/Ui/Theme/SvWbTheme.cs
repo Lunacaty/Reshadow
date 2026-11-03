@@ -190,6 +190,14 @@ public static class SvWbTheme
     public static void StyleOptionPopup(OptionButton picker)
     {
         if (picker == null) return;
+
+        // OptionButton.FitToLongestItem 默认为 true：一旦把几百张卡塞进去，
+        // 它会无视 CustomMinimumSize，把宽度撑到最长条目的宽度（约 360~420px），
+        // 整行被顶出屏幕右边界。这里全局锁死，过长文字用省略号。
+        picker.FitToLongestItem = false;
+        picker.ClipText = true;
+        picker.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+
         var popup = picker.GetPopup();
         if (popup == null) return;
 
@@ -281,5 +289,31 @@ public static class SvWbTheme
         s = Regex.Replace(s, @"【([^】]+)】", "[color=#FBBF24][b]【$1】[/b][/color]");
         s = Regex.Replace(s, @"《([^》]+)》", "[color=#38BDF8]《$1》[/color]");
         return s;
+    }
+
+    /// <summary>
+    /// 让固定尺寸的弹窗面板在任意窗口尺寸 / 全屏切换下始终保持屏幕中央。
+    ///
+    /// 取代「写死 1280x720 基准坐标」—— 那种写法在 1920x1080 下会整体偏左上。
+    /// </summary>
+    public static void KeepCentered(Control host, Control panel, Vector2 panelSize, Vector2 offset = default)
+    {
+        if (host == null || panel == null) return;
+        panel.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        panel.Size = panelSize;
+        panel.CustomMinimumSize = panelSize;
+
+        void UpdatePos()
+        {
+            if (!GodotObject.IsInstanceValid(host) || !GodotObject.IsInstanceValid(panel)) return;
+            var vp = host.Size;
+            if (vp.X <= 0 || vp.Y <= 0) vp = host.GetViewportRect().Size;
+            panel.Position = new Vector2(
+                Mathf.Max(12f, (vp.X - panelSize.X) * 0.5f + offset.X),
+                Mathf.Max(12f, (vp.Y - panelSize.Y) * 0.5f + offset.Y));
+        }
+
+        host.Resized += UpdatePos;
+        UpdatePos();
     }
 }

@@ -44,8 +44,7 @@ public partial class BattleSelectDialog : Control
         var panel = new PanelContainer();
         AddChild(panel);
         panel.SetAnchorsPreset(LayoutPreset.TopLeft);
-        panel.Position = new Vector2(100, 56);
-        panel.Size = new Vector2(1080, 608);
+        SvWbTheme.KeepCentered(this, panel, new Vector2(1080, 608));
         panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             SvWbTheme.BgPanel, SvWbTheme.AccentGold, 14, 2, 20));
 

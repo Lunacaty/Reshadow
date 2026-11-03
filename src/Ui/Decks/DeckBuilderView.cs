@@ -145,6 +145,10 @@ public partial class DeckBuilderView : Control
         row.AddChild(_capacityLabel);
 
         _startupLabel = new Label();
+        // 多条构筑规则会把右侧的「构筑合法」顶出屏幕：限宽 + 省略号。
+        _startupLabel.ClipText = true;
+        _startupLabel.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        _startupLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _startupLabel.AddThemeFontSizeOverride("font_size", 12);
         row.AddChild(_startupLabel);
 
@@ -164,8 +168,11 @@ public partial class DeckBuilderView : Control
     private Control BuildLeftPane()
     {
         var pane = new VBoxContainer();
-        pane.CustomMinimumSize = new Vector2(860, 0);
+        // 去掉原来的硬编码 860：那个宽度在窄窗口下会直接把右栏挤出屏幕。
+        // 改成弹性比例（左 2.3 份 / 右 1 份），随窗口自适应。
+        pane.CustomMinimumSize = new Vector2(420, 0);
         pane.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        pane.SizeFlagsStretchRatio = 2.3f;
         pane.AddThemeConstantOverride("separation", 6);
 
         // 第一行：职业页签 + 搜索
@@ -249,6 +256,15 @@ public partial class DeckBuilderView : Control
         SvWbTheme.StyleScroll(scroll);
 
         _cardGrid = new GridContainer { Columns = 4 };
+        // 列数跟随可用宽度：标准窗口 4 列，宽屏自动扩到 5~6 列。
+        scroll.Resized += () =>
+        {
+            if (_cardGrid == null || !IsInstanceValid(_cardGrid)) return;
+            float w = scroll.Size.X;
+            if (w <= 0f) return;
+            int cols = Mathf.Max(2, (int)((w - 24f) / 196f));
+            if (_cardGrid.Columns != cols) _cardGrid.Columns = cols;
+        };
         _cardGrid.AddThemeConstantOverride("h_separation", 8);
         _cardGrid.AddThemeConstantOverride("v_separation", 8);
         scroll.AddChild(_cardGrid);

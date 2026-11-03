@@ -40,8 +40,7 @@ public partial class BattleInfoModal : Control
 
         var panel = new PanelContainer();
         panel.SetAnchorsPreset(LayoutPreset.TopLeft);
-        panel.Size = new Vector2(820, 560);
-        panel.Position = new Vector2(230, 80);
+        SvWbTheme.KeepCentered(this, panel, new Vector2(820, 560));
         panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             SvWbTheme.BgPanel, new Color("D4AF37"), 12, 2, 18));
         AddChild(panel);

@@ -82,26 +82,35 @@ public partial class DiyWorkshopView : Control
 
     private Control BuildTopBar()
     {
-        var bar = new PanelContainer { CustomMinimumSize = new Vector2(0, 58) };
+        var bar = new PanelContainer { CustomMinimumSize = new Vector2(0, 52) };
         bar.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             SvWbTheme.BgPanel, SvWbTheme.BorderSubtle, 0, 0, 4));
 
+        // 外层 MarginContainer 保证最右侧按钮离窗口右缘始终有 16px 安全距离，
+        // 否则「保存进卡包」会被前面几个控件的固有宽度顶出屏幕。
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", 16);
+        margin.AddThemeConstantOverride("margin_right", 16);
+        margin.AddThemeConstantOverride("margin_top", 4);
+        margin.AddThemeConstantOverride("margin_bottom", 4);
+        bar.AddChild(margin);
+
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 12);
-        bar.AddChild(row);
+        row.AddThemeConstantOverride("separation", 8);
+        margin.AddChild(row);
 
         var back = new Button { Text = "← 返回牌组一览" };
         SvWbTheme.StyleButton(back);
         back.Pressed += () => OnBackToDecks?.Invoke();
         row.AddChild(back);
 
-        var title = new Label { Text = "DIY 四端同构造卡工坊" };
-        title.AddThemeFontSizeOverride("font_size", 22);
+        var title = new Label { Text = "🛠 DIY 造卡工坊", VerticalAlignment = VerticalAlignment.Center };
+        title.AddThemeFontSizeOverride("font_size", 18);
         title.AddThemeColorOverride("font_color", new Color("FEF08A"));
         row.AddChild(title);
 
         // 从现有卡池导入一张真卡：把测试集里的卡拉进工坊看它的四端投影。
-        var loadPicker = new OptionButton { CustomMinimumSize = new Vector2(220, 34) };
+        var loadPicker = new OptionButton { CustomMinimumSize = new Vector2(180, 32) };
         SvWbTheme.StyleButton(loadPicker);
         SvWbTheme.StyleOptionPopup(loadPicker);
         loadPicker.AddItem("📂 加载现有卡牌…", 0);
@@ -129,7 +138,7 @@ public partial class DiyWorkshopView : Control
         };
         row.AddChild(loadPicker);
 
-        var defineBtn = new Button { Text = "➕ 注册新词条", CustomMinimumSize = new Vector2(150, 34) };
+        var defineBtn = new Button { Text = "➕ 注册词条", CustomMinimumSize = new Vector2(120, 32) };
         SvWbTheme.StyleButton(defineBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
         defineBtn.Pressed += ShowDefineDialog;
         row.AddChild(defineBtn);
@@ -141,7 +150,7 @@ public partial class DiyWorkshopView : Control
         packLbl.AddThemeColorOverride("font_color", SvWbTheme.TextSecondary);
         row.AddChild(packLbl);
 
-        _packPicker = new OptionButton { CustomMinimumSize = new Vector2(160, 34) };
+        _packPicker = new OptionButton { CustomMinimumSize = new Vector2(130, 32) };
         SvWbTheme.StyleButton(_packPicker);
         SvWbTheme.StyleOptionPopup(_packPicker);
         int i = 0;
@@ -151,7 +160,7 @@ public partial class DiyWorkshopView : Control
         }
         row.AddChild(_packPicker);
 
-        var saveBtn = new Button { Text = "💾 保存进卡包", CustomMinimumSize = new Vector2(160, 34) };
+        var saveBtn = new Button { Text = "💾 保存进卡包", CustomMinimumSize = new Vector2(130, 32) };
         SvWbTheme.StyleButton(saveBtn, isPrimary: true, customAccent: SvWbTheme.AccentGold);
         saveBtn.Pressed += OnSave;
         row.AddChild(saveBtn);

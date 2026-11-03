@@ -101,11 +101,11 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         wb.AddChild(BuildPaletteColumn());
 
-        _canvasCol = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _canvasCol = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, ClipContents = true };
         _canvasCol.AddThemeConstantOverride("separation", 4);
         wb.AddChild(_canvasCol);
 
-        _inspectorCol = new VBoxContainer { CustomMinimumSize = new Vector2(300, 0) };
+        _inspectorCol = new VBoxContainer { CustomMinimumSize = new Vector2(250, 0) };
         _inspectorCol.AddThemeConstantOverride("separation", 4);
         wb.AddChild(_inspectorCol);
 
@@ -134,8 +134,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
     private Control BuildScopeTabs()
     {
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 6);
+        // HFlowContainer：6 个能力域页签在窄屏下自动折行，绝不横向撑爆右半屏。
+        var row = new HFlowContainer();
+        row.AddThemeConstantOverride("h_separation", 6);
+        row.AddThemeConstantOverride("v_separation", 4);
         var labels = new[]
         {
             "本体能力 (" + (_ws?.Hats?.Count ?? 0) + ")",
@@ -337,7 +339,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     }
     private Control BuildPaletteColumn()
     {
-        var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(215, 460) };
+        var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(185, 0), SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         SvWbTheme.StyleScroll(scroll);
         var col = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         col.AddThemeConstantOverride("separation", 3);
