@@ -23,6 +23,7 @@ public partial class PackAndPoolManagerView : Control
     private VBoxContainer _packList;
     private VBoxContainer _cardList;
     private VBoxContainer _ruleList;
+    private VBoxContainer _namedDeckList;
     private Label _header;
     private readonly Dictionary<string, Control> _ruleEdits = new();
     private Button _saveRulesBtn;
@@ -38,6 +39,7 @@ public partial class PackAndPoolManagerView : Control
         BuildUi();
         RefreshPacks();
         RefreshRules();
+        RefreshNamedDecks();
     }
 
     private void BuildUi()
@@ -127,6 +129,7 @@ public partial class PackAndPoolManagerView : Control
             if (k < 0 || k >= keys.Count) return;
             _selectedPoolId = keys[k];
             RefreshRules();
+            RefreshNamedDecks();
         };
         ruleBar.AddChild(_poolPicker);
 
@@ -146,6 +149,53 @@ public partial class PackAndPoolManagerView : Control
         _ruleList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _ruleList.AddThemeConstantOverride("separation", 3);
         ruleScroll.AddChild(_ruleList);
+
+        // ── 具名牌组（归属卡池）───────────────────────────────────────
+        // 130 号文档把 NamedDecks 从卡包迁到了卡池，卡池配置器必须能看到它，
+        // 否则一个卡池声明了哪些「整副替换牌库」无从查起。
+        var ndTitle = new Label { Text = "具名牌组（本卡池）" };
+        ndTitle.AddThemeFontSizeOverride("font_size", 13);
+        ndTitle.AddThemeColorOverride("font_color", new Color("7DD3FC"));
+        right.AddChild(ndTitle);
+
+        _namedDeckList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _namedDeckList.AddThemeConstantOverride("separation", 2);
+        var ndScroll = new ScrollContainer { CustomMinimumSize = new Vector2(0, 110) };
+        ndScroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+        SvWbTheme.StyleScroll(ndScroll);
+        ndScroll.AddChild(_namedDeckList);
+        right.AddChild(ndScroll);
+    }
+
+    /// <summary>刷新具名牌组列表（随卡池下拉切换）。</summary>
+    private void RefreshNamedDecks()
+    {
+        if (_namedDeckList == null) return;
+        foreach (var c in _namedDeckList.GetChildren()) { _namedDeckList.RemoveChild(c); c.QueueFree(); }
+
+        if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var cfg)
+            || cfg.NamedDecks == null || cfg.NamedDecks.Count == 0)
+        {
+            var empty = new Label { Text = "（本卡池未定义具名牌组）" };
+            empty.AddThemeFontSizeOverride("font_size", 11);
+            empty.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+            _namedDeckList.AddChild(empty);
+            return;
+        }
+
+        foreach (var nd in cfg.NamedDecks)
+        {
+            int total = 0;
+            foreach (var e in nd.Entries ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckEntryRaw>()) total += e.Copies;
+            var row = new Label
+            {
+                Text = "《" + (string.IsNullOrEmpty(nd.DeckNameChs) ? nd.DeckName : nd.DeckNameChs)
+                       + "》 " + (nd.Entries?.Count ?? 0) + " 种 / " + total + " 张",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            };
+            row.AddThemeFontSizeOverride("font_size", 11);
+            _namedDeckList.AddChild(row);
+        }
     }
 
     private void RefreshPacks()
@@ -370,5 +420,6 @@ public partial class PackAndPoolManagerView : Control
         }
 
         RefreshRules();
+        RefreshNamedDecks();
     }
 }

@@ -41,6 +41,9 @@ public sealed class GlobalCatalog
     /// <summary>构建期收集的非致命提示（如跨包引用被总表自动挂载）。</summary>
     public List<string> Notices { get; } = new();
 
+    /// <summary>编译失败的卡片清单（结构化，供审计器与门禁读取）。</summary>
+    public List<CardAuditIssue> CompileFailures { get; } = new();
+
     public GlobalCatalog() { Lexicon = new Lexicon(Schema); }
 
     /// <summary>把已编译好的卡放进总表（工具/测试与卡池运行时都要用）。</summary>
@@ -282,7 +285,15 @@ public sealed class GlobalCatalog
 
         var alts = c.AltModes.Select(a => (a.TypeEng, a.Cost, a.TextEng)).ToArray();
         var r = comp.Compile(c.Text, alts, c.NameEng, c.CardId);
-        foreach (var e in r.Errors) Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》编译失败：" + e);
+
+        // 黑洞封堵：以前这里只把错误丢进没人看的 Notices，然后照常返回
+        // 带「半截效果」的 CardDef —— 卡进了游戏、效果错了一半，且无任何汇总。
+        // 现在：错误带卡号前缀统一登记，并在卡片上留下可查标记。
+        foreach (var e in r.Errors)
+            Notices.Add("[编译失败] " + c.CardId + "《" + c.NameEng + "》" + e);
+        if (r.Errors.Count > 0)
+            CompileFailures.Add(new CardAuditIssue(pack.PackId, c.CardId, c.NameEng, c.NameChs,
+                "总表编译", string.Join(" | ", r.Errors)));
 
         return new CardDef
         {

@@ -187,7 +187,18 @@ public sealed class PrefixParser
             var matToks = new List<Token>();
             for (int k = matStart; k < cur.Position; k++) matToks.Add(cur.All[k]);
             if (matToks.Count > 0)
-                b.FuseMaterialFilter = _target.TryParse(new TokenCursor(matToks));
+            {
+                var mc = new TokenCursor(matToks);
+                var parsed = _target.TryParse(mc);
+
+                // 黑洞封堵：以前材料过滤条件解析失败就静默留 null，
+                // 结果「Fuse: 2-cost Artifact」变成「Fuse: 任意卡」，融合规则全错。
+                if (parsed == null || !mc.IsAtEnd)
+                    throw LangException.At("Fuse 材料",
+                        "材料过滤条件解析失败或未消费完所有词", mc, matToks);
+
+                b.FuseMaterialFilter = parsed;
+            }
         }
 
         // "When you've Fused both to this card," —— 融合条件从句。
