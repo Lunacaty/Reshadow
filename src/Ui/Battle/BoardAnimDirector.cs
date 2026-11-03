@@ -176,24 +176,6 @@ public sealed class BoardAnimDirector
         }, () => { t.Motion = UnitMotion.Idle; }));
     }
 
-    /// <summary>
-    /// 让棋子从一段偏移滑动回原位（布局重排用）。
-    ///
-    /// 随从死亡后整行重新居中，其余棋子的目标坐标会平移。
-    /// 用 Offset 演出而不是逐帧改 Position —— 棋子挂在 HBoxContainer 里，
-    /// 容器每帧都会按布局把子节点位置重写回去，直接插值会被当场抹掉。
-    /// </summary>
-    public void PlaySlide(long entityId, Vector2 fromOffset, float dur = 0.22f)
-    {
-        var t = TrackOf(entityId);
-        if (t == null) return;
-        Play(entityId, new Anim(dur, Ease.OutCubic, v =>
-        {
-            t.Motion.Alpha = 1f;
-            t.Motion.Offset = fromOffset * (1f - v);
-        }, () => { t.Motion = UnitMotion.Idle; }));
-    }
-
     public void PlayEnter(long entityId, float height = 124f)
     {
         var t = TrackOf(entityId);

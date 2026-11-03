@@ -507,185 +507,82 @@ public partial class BattleScreenRoot : Control
         return new Vector2(startX + index * (BoardUnitWidget.UnitW + sep), rowY);
     }
 
-    /// <summary>场上棋子控件池：按 EntityId 复用，不随布局变化重建。</summary>
-    private readonly Dictionary<long, BoardUnitWidget> _boardWidgets = new();
-
-    /// <summary>
-    /// 正在播离场动画、还没从布局中移除的棋子。
-    ///
-    /// 它们已经从 BattleState.Board 里消失了，但视觉上还要留在原位
-    /// 播完碎裂/击飞，之后才让幸存者滑过去补位。
-    /// </summary>
-    private readonly HashSet<long> _pendingLeave = new();
-
-    /// <summary>每侧的棋子行容器。</summary>
-    private readonly Dictionary<int, HBoxContainer> _boardRows = new();
-
-    /// <summary>某一侧当前参与布局的实体序列（用于判断是否需要增删控件）。</summary>
-    private readonly Dictionary<int, List<long>> _boardOrder = new();
-
     private void RebuildBoards()
     {
-        if (_ctrl == null) return;
+        foreach (var c in _boardAlly.GetChildren()) c.QueueFree();
+        foreach (var c in _boardFoe.GetChildren()) c.QueueFree();
 
-        foreach (var playerId in new[] { 1, 0 })
-        {
-            var host = playerId == 1 ? _boardFoe : _boardAlly;
-            var live = _ctrl.Board(playerId).Take(5).Select(e => (long)e.EntityId).ToList();
-
-            // 关键：布局用的序列 = 活着 + 还在播离场动画的。
-            // 少了这一步，随从一死就立刻从行里消失，幸存者当场跳位，
-            // 离场动画变成「凭空没了」，后面排队的那段重排也无从谈起。
-            var order = new List<long>(live);
-            foreach (var id in _pendingLeave)
-            {
-                if (_lastBoardEntities.TryGetValue(id, out var pe) && pe != null
-                    && pe.PlayerId == playerId && !order.Contains(id))
-                    order.Add(id);
-            }
-
-            _boardOrder[playerId] = order;
-            SyncBoardRow(host, playerId, order);
-        }
-
+        AddBoardRow(_boardFoe, 1);
+        AddBoardRow(_boardAlly, 0);
         ApplyMotionsToWidgets();
-    }
-
-    /// <summary>按 EntityId 序列增删控件，复用已有实例。</summary>
-    private void SyncBoardRow(VBoxContainer host, int playerId, List<long> order)
-    {
-        if (!_boardRows.TryGetValue(playerId, out var row) || !IsInstanceValid(row))
-        {
-            foreach (var c in host.GetChildren()) c.QueueFree();
-            row = new HBoxContainer
-            {
-                Alignment = BoxContainer.AlignmentMode.Center,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            row.AddThemeConstantOverride("separation", 14);
-            host.AddChild(row);
-            _boardRows[playerId] = row;
-        }
-
-        // 先清掉已经不在序列里的控件
-        var want = new HashSet<long>(order);
-        foreach (var kv in _boardWidgets.ToList())
-        {
-            if (want.Contains(kv.Key)) continue;
-            if (kv.Value == null || !IsInstanceValid(kv.Value)) { _boardWidgets.Remove(kv.Key); continue; }
-            if (kv.Value.GetParent() != row) continue;
-            kv.Value.QueueFree();
-            _boardWidgets.Remove(kv.Key);
-        }
-
-        // 再补上缺的控件
-        for (int i = 0; i < order.Count; i++)
-        {
-            long id = order[i];
-            var e = _ctrl.Board(playerId).FirstOrDefault(x => x.EntityId == id);
-            if (e == null) _lastBoardEntities.TryGetValue(id, out e);
-            if (e?.Def == null) continue;
-            _lastBoardEntities[id] = e;
-
-            if (!_boardWidgets.TryGetValue(id, out var w) || !IsInstanceValid(w))
-            {
-                w = BuildBoardUnit(e, playerId);
-                row.AddChild(w);
-                _boardWidgets[id] = w;
-            }
-            else
-            {
-                // 已有的控件：只刷新选中态与可攻击态，不重建
-                bool selected = _actionPanel?.BoundEntity != null
-                                && _actionPanel.BoundEntity.EntityId == id;
-                bool canAtk = playerId == 0 && _ctrl.CanAttackWith(e);
-                w.Setup(e, selected, canAtk);
-            }
-
-            Vector2 topLeft = ComputeSlotTopLeft(playerId, i, order.Count);
-            _unitTops[id] = topLeft;
-            _unitCenters[id] = topLeft + new Vector2(BoardUnitWidget.UnitW * 0.5f,
-                                                     BoardUnitWidget.UnitH * 0.5f);
-        }
-    }
-
-    private BoardUnitWidget BuildBoardUnit(RuntimeEntity e, int playerId)
-    {
-        var w = new BoardUnitWidget();
-        w.BindDirector(_anims);
-        bool canAtk = playerId == 0 && _ctrl.CanAttackWith(e);
-        bool selected = _actionPanel?.BoundEntity != null
-                        && _actionPanel.BoundEntity.EntityId == e.EntityId;
-        w.Setup(e, selected, canAtk);
-        w.ApplyMotion(_anims.MotionOf(e.EntityId));
-
-        w.OnClicked += ent =>
-        {
-            if (!_seq.Busy && _pending != null && IsInstanceValid(_pending)
-                && _pending.TryPickBoardOrHandEntity(ent.EntityId))
-                return;
-
-            _actionPanel.ShowForEntity(ent);
-            if (!IsInputBlocked && _ctrl.IsInFuseMode) _ctrl.ToggleFuseMaterial(ent);
-        };
-        w.OnRightClicked += ent => _actionPanel.ShowForEntity(ent);
-
-        w.OnDragAttackStarted += (ent, pos) =>
-        {
-            if (IsInputBlocked) return;
-            _anims.SetAiming(ent.EntityId);
-            _attacker = ent;
-            _field.IsDraggingAttack = true;
-            _field.AttackDragStart = _unitCenters.TryGetValue(ent.EntityId, out var c) ? c : pos;
-            _field.AttackDragCurrent = pos;
-            _field.QueueRedraw();
-        };
-        w.OnDragAttackMoved += (ent, pos) =>
-        {
-            if (_attacker == null) return;
-            _field.AttackDragCurrent = pos;
-            _field.QueueRedraw();
-        };
-        w.OnDragAttackReleased += (ent, pos) => ReleaseAttack(pos);
-
-        return w;
-    }
-
-    /// <summary>
-    /// 只重排已有棋子，不重建控件：位置变化用动画过渡。
-    ///</summary>
-    private void RelayoutBoardAnimated()
-    {
-        if (_ctrl == null) return;
-
-        foreach (var playerId in new[] { 1, 0 })
-        {
-            if (!_boardOrder.TryGetValue(playerId, out var order) || order == null) continue;
-
-            for (int i = 0; i < order.Count; i++)
-            {
-                long id = order[i];
-                if (!_boardWidgets.TryGetValue(id, out var wd) || !IsInstanceValid(wd)) continue;
-
-                Vector2 want = ComputeSlotTopLeft(playerId, i, order.Count);
-                Vector2 was = wd.Position;
-
-                _unitTops[id] = want;
-                _unitCenters[id] = want + new Vector2(BoardUnitWidget.UnitW * 0.5f,
-                                                      BoardUnitWidget.UnitH * 0.5f);
-
-                if (was.DistanceSquaredTo(want) < 0.01f) continue;
-
-                wd.Position = want;
-                _anims.PlaySlide(id, was - want);
-            }
-        }
     }
 
     private void AddBoardRow(VBoxContainer host, int playerId)
     {
-        // 已由 SyncBoardRow 统一处理，这里只保留空壳避免调用点报错。
+        var row = new HBoxContainer
+        {
+            Alignment = BoxContainer.AlignmentMode.Center,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        row.AddThemeConstantOverride("separation", 14);
+        host.AddChild(row);
+
+        var boardList = _ctrl.Board(playerId).Take(5).ToList();
+        int count = boardList.Count;
+
+        for (int i = 0; i < count; i++)
+        {
+            var e = boardList[i];
+            _lastBoardEntities[e.EntityId] = e;
+
+            // 立即写入精确槽位坐标，绝不等到下一帧
+            Vector2 topLeft = ComputeSlotTopLeft(playerId, i, count);
+            _unitTops[e.EntityId] = topLeft;
+            _unitCenters[e.EntityId] = topLeft + new Vector2(BoardUnitWidget.UnitW * 0.5f,
+                                                             BoardUnitWidget.UnitH * 0.5f);
+
+            var w = new BoardUnitWidget();
+            w.BindDirector(_anims);
+            bool canAtk = playerId == 0 && _ctrl.CanAttackWith(e);
+            bool selected = _actionPanel.BoundEntity != null
+                            && _actionPanel.BoundEntity.EntityId == e.EntityId;
+            w.Setup(e, selected, canAtk);
+            w.ApplyMotion(_anims.MotionOf(e.EntityId));
+
+            w.OnClicked += ent =>
+            {
+                if (!_seq.Busy && _pending != null && IsInstanceValid(_pending)
+                    && _pending.TryPickBoardOrHandEntity(ent.EntityId))
+                    return;
+
+                _actionPanel.ShowForEntity(ent);
+                if (!IsInputBlocked && _ctrl.IsInFuseMode) _ctrl.ToggleFuseMaterial(ent);
+            };
+            w.OnRightClicked += ent => _actionPanel.ShowForEntity(ent);
+
+            // 第一层（无条件动画）：只要未处于阻塞态，随时可拿起就绪随从进入浮动瞄准状态！
+            w.OnDragAttackStarted += (ent, pos) =>
+            {
+                if (IsInputBlocked) return;
+                _anims.SetAiming(ent.EntityId);
+                _attacker = ent;
+                _field.IsDraggingAttack = true;
+                _field.AttackDragStart = _unitCenters.TryGetValue(ent.EntityId, out var c) ? c : pos;
+                _field.AttackDragCurrent = pos;
+                _field.QueueRedraw();
+            };
+            w.OnDragAttackMoved += (ent, pos) =>
+            {
+                if (_attacker == null) return;
+                _field.AttackDragCurrent = pos;
+                _field.QueueRedraw();
+            };
+            w.OnDragAttackReleased += (ent, pos) => ReleaseAttack(pos);
+
+            row.AddChild(w);
+        }
     }
+
     /// <summary>
     /// 为已被破坏/消失、但死亡动画还在 _seq 中排队的随从生成视觉替身棋子（Dying Proxy）。
     /// 这样它能继续在原座位挨刀、抖动、冒伤害数字，然后播放超进化击飞或碎裂消散！
@@ -899,12 +796,7 @@ public partial class BattleScreenRoot : Control
             case CoreEvent.OnDestroy:
             {
                 if (sid >= 0 && ev.Subject?.Snapshot?.Zone == ZoneRef.Board)
-                {
                     EnsureDyingProxy(sid, ev.Subject);
-                    // 先占住它这一格：布局里还算它一份，等离场动画播完再撤，
-                    // 否则幸存者会当场跳过去补位，碎裂动画就成了「凭空没了」。
-                    _pendingLeave.Add(sid);
-                }
 
                 Vector2 unitCenter = center;
                 if (sid >= 0 && _unitTops.TryGetValue(sid, out var t0))
@@ -926,12 +818,9 @@ public partial class BattleScreenRoot : Control
                         {
                             _vfx.PlayDestroy(leaderCenter);
                             SpawnBurst(leaderCenter, 24, 165f, new Color("C084FC"), 0.65f);
-                            _pendingLeave.Remove(sid);
                             RemoveDyingProxy(sid);
                         })
-                        .Wait(0.12f)
-                        // 离场播完才重排：先看着它飞走，再让幸存者归位。
-                        .Do(() => { RebuildBoards(); RelayoutBoardAnimated(); }));
+                        .Wait(0.12f));
                 }
                 else
                 {
@@ -946,11 +835,8 @@ public partial class BattleScreenRoot : Control
                         .Wait(0.26f)
                         .Do(() =>
                         {
-                            _pendingLeave.Remove(sid);
                             if (sid >= 0) RemoveDyingProxy(sid);
-                        })
-                        // 离场播完才重排：先看碎裂消散，再让幸存者滑到新位置。
-                        .Do(() => { RebuildBoards(); RelayoutBoardAnimated(); }));
+                        }));
                 }
                 break;
             }
