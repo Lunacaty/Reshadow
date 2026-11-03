@@ -1179,10 +1179,18 @@ public sealed class BattleState : IVmWorld
                 break;
             }
             case CoreEvent.OnKeywordModified:
+            {
+                // 关键词要显示中文：ev.CounterName 是内部词条名（ward / bane），
+                // 直接印进对局日志玩家看不懂。走 Glossary 翻译，
+                // 没登记的也原样回落，不会印出空白。
+                string kwZh = new Lang.ChineseCardPrinter(Pool?.Catalog?.Glossary)
+                    .KeywordZh(ev.CounterName);
                 BattleLogs.Add(ev.Amount == -99
                     ? NameOf(ev.Subject) + " 受到沉默（失去全部能力）"
-                    : NameOf(ev.Subject) + (ev.Amount > 0 ? " 获得" : " 失去") + "关键词【" + ev.CounterName + "】");
+                    : NameOf(ev.Subject) + (ev.Amount > 0 ? " 获得" : " 失去")
+                      + "关键词【" + kwZh + "】");
                 break;
+            }
             case CoreEvent.OnEvolve:
                 BattleLogs.Add(Side(pid) + " " + NameOf(ev.Subject) + " 进行了【进化】");
                 break;
