@@ -1,0 +1,59 @@
+fix(116): 修预选取消误杀模式弹窗 + 免疫力统一判定 + 牌组写入
+
+【问题1：_Input 把模式弹窗的点击当成取消（新引入的严重 Bug）】
+  原来写 `pc.Kind != SelectTarget ? false : HitAnyCandidate(...)`，
+  于是 SelectMode 时 onTarget 恒为 false —— 玩家点【模式1】【模式2】
+  甚至【查看战场】的瞬间就被 CancelPendingChoice 拦掉，
+  预选阶段任何模式都点不了。
+
+  修法：
+    · PendingChoiceOverlay 新增 IsPointOnOverlayUi（弹窗/查看/确认按钮）
+    · _Input 先问它，落在浮层 UI 上就 return 交给控件
+    · 只有 Kind == SelectTarget 才存在「点空白=取消」的语义
+    · HitAnyCandidate 补上手牌候选（「选择 1 张手牌舍弃」）
+
+【问题2：合法性检查与激奏/结晶预扫】
+  · PlayCard 先调 CanPlayCard —— 否则 1 费时拖 8 费带指向入场曲的随从
+    也会进瞄准预选，选完才因费用不足打不出
+  · EngageAmulet 先调 CanEngageAmulet
+  · PreChoiceInspector 按与 TurnRunner 相同的规则切到
+    AccelerateDef / CrystallizeDef 再扫，否则问到的是本体入场曲的目标
+  · ResolveCands 的潜行/灵气改走 HasEffectiveKeyword
+
+【问题3：免疫统一判定】
+  新增 BattleState.IsImmuneToEffectFrom(target, sourceRef, isStatMod)：
+  走 HasEffectiveKeyword（光环授予的免疫词条生效），
+  且 sourceRef == target 时放行自身能力 —— 卡面改自己攻防不该被自己挡住。
+
+  替换全部手写 Keywords.Contains：
+    DestroyEntity / BanishEntity / TransformEntity / DoMoveZone
+    DoModifyStats / DoModifyKeyword(Remove+SilenceAll)
+    CombatResolver 的五个 immune_* 词条
+
+  ApplyDealtModifiers 改为复用 QueryDamageModifiers(sourceEntity)，
+  删掉手写扫描 —— 那版既没扫 _granted（单选赋予「造成伤害-3」无效），
+  又只按 src.PlayerId 匹配（随从 A 的「造成伤害上限1」会锁住队友 B）。
+  ApplyDamage 增加 sourceEntity 参数，交战的四处调用都传入真正的对手。
+  DoDamage 的 srcPlayer 改取 scope.Controller，不再硬猜「目标的对手」。
+
+【问题4：往牌组加入卡牌被写死进手牌】
+  ConsumeDestination 原来只吞词不记录，返回 void。
+  改为返回 ZoneRef?（内部调 PeekDestinationZone），
+  ParseAdd 的两处 SpawnCardNode 用返回值覆盖默认 toZone。
+
+  实测：
+    Add 2 copies of Fairy to your deck. -> ToZone=Deck
+    Add 2 copies of Fairy to your hand. -> ToZone=Hand
+
+【问题5：三个打印器补齐新原语】
+  · AstEnglishPrinter：RandomRange 打成 rand(min,max)#rollId，补 RevealCardNode
+  · ChineseCardPrinter：RandomRange 印「（A至B的随机数）」；
+    补 DamageModifierNode 四种语义与 RevealCardNode；
+    PrintBranch 的 pick 改用 PrintNum（动态表达式不再印成 1）；
+    关键词参数放宽到任意 NumExpr（「可攻击 X 次」不再印成 0 次）
+  · reveal / damage_mod / rand / 动态 mode 的解析与打印在 115 轮已补齐
+
+【验证】
+  ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 /
+  回归 Combat 16-16 / 测试集效用 12-12 / 完整对局 7-7 /
+  DIY 8-8 / 卡池 22-22 / 战斗 UI 31-31

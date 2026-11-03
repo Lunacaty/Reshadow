@@ -246,7 +246,7 @@ public sealed class CombatResolver
             // 必须标成 Combat：否则主战者的「不受战斗伤害 / 战斗减伤 / 上限」
             // 对随从平 A 完全失效，反而被「不受能力伤害」莫名挡住。
             int dealt = ApplyDamage(defender, atk, attacker.PlayerId, vm,
-                                    Ast.DamageSourceMask.Combat);
+                                    Ast.DamageSourceMask.Combat, attacker);
             ApplyDrain(attacker, dealt, vm);
         }
         else if (defender.Zone == ZoneRef.Board)
@@ -260,10 +260,10 @@ public sealed class CombatResolver
 
             // 8. 被攻击方反击
             int dealtToDefender = ApplyDamage(defender, atk, attacker.PlayerId, vm,
-                                               Ast.DamageSourceMask.Combat);
+                                               Ast.DamageSourceMask.Combat, attacker);
             ApplyDrain(attacker, dealtToDefender, vm);
             int dealtToAttacker = ApplyDamage(attacker, defender.Attack, defender.PlayerId, vm,
-                                               Ast.DamageSourceMask.Combat);
+                                               Ast.DamageSourceMask.Combat, defender);
             // 【虹吸 Drain】只在「主动发动攻击造成伤害」时回血。
             // 被攻击方的反击不触发它自己的 Drain（官方定义）。
             // 之前这里也调了 ApplyDrain(defender, ...)，
@@ -335,7 +335,8 @@ public sealed class CombatResolver
 
     public int ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId,
                            CardVm vm = null,
-                           DamageSourceMask source = DamageSourceMask.Ability)
+                           DamageSourceMask source = DamageSourceMask.Ability,
+                           RuntimeEntity sourceEntity = null)
     {
         if (target == null || amount <= 0) return 0;
 
@@ -352,19 +353,19 @@ public sealed class CombatResolver
         var kwImmuneEffects = _schema.Keyword("immune_effects");
         var kwImmuneEffectsXS = _schema.Keyword("immune_effects_except_stats");
 
-        if (target.Keywords.Contains(kwImmuneAll)) return 0;
+        if (_state.HasEffectiveKeyword(target, kwImmuneAll)) return 0;
         if ((source & DamageSourceMask.Combat) != 0
-            && target.Keywords.Contains(kwImmuneCombat)) return 0;
+            && _state.HasEffectiveKeyword(target, kwImmuneCombat)) return 0;
         if ((source & DamageSourceMask.Ability) != 0
-            && (target.Keywords.Contains(kwImmuneAbility)
-                || target.Keywords.Contains(kwImmuneEffects)
-                || target.Keywords.Contains(kwImmuneEffectsXS))) return 0;
+            && (_state.HasEffectiveKeyword(target, kwImmuneAbility)
+                || _state.HasEffectiveKeyword(target, kwImmuneEffects)
+                || _state.HasEffectiveKeyword(target, kwImmuneEffectsXS))) return 0;
 
         // ---- 动态伤害修正（光环 + 挂载）----
         //
         // 先算「造成伤害」侧（由来源实体决定），再算「受到伤害」侧（由目标决定）。
         // 全部实时扫描，不缓存 —— 光环源离场或被沉默后立刻失效。
-        amount = _state.ApplyDealtModifiers(sourcePlayerId, target, amount, source);
+        amount = _state.ApplyDealtModifiers(sourcePlayerId, sourceEntity, amount, source);
         amount = _state.ApplyTakenModifiers(target, amount, source);
         if (amount <= 0) return 0;
 

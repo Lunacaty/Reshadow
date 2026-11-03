@@ -452,6 +452,11 @@ public sealed class MatchRunner
     {
         if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
 
+        // 先校验这次出牌本身合法，再做预选 ——
+        // 否则只有 1 费时把 8 费带指向入场曲的随从拖出来，
+        // 也会进入瞄准预选，选完目标才因费用不足打不出。
+        if (!_turns.CanPlayCard(_state.ActivePlayer, card, out _)) return false;
+
         // 发动前预选：先问目标/模式，问完才真正出牌。
         if (!TryStartPreAction(PlayerActionKind.PlayCard, card)) return false;
         if (_preAction != null)
@@ -574,6 +579,9 @@ public sealed class MatchRunner
     public bool EngageAmulet(RuntimeEntity a)
     {
         if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;
+
+        // 费用不够就不该弹预选框。
+        if (_turns.CanEngageAmulet(_state.ActivePlayer, a, out _) == false) return false;
 
         // 启动式能力的指向性同样要「先选后启动」。
         if (!TryStartPreAction(PlayerActionKind.EngageAmulet, a)) return false;

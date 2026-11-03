@@ -1299,13 +1299,16 @@ public sealed class ActionParser
             {
                 var ct = cur.Current;
                 cur.Advance();
-                ConsumeDestination(cur);
+                // 用 ConsumeDestination 返回的真实区域覆盖默认值：
+                // 「Add 10 copies of X to your deck」必须落到牌组，
+                // 原来这里只吞词不记录，永远落到默认的手牌。
+                var dest1 = ConsumeDestination(cur);
                 nodes.Add(new SpawnCardNode
                 {
                     SourceKind = CardSourceKind.CardId,
                     CardId = ct.CardId,
                     CardName = ct.Text,
-                    ToZone = toZone,
+                    ToZone = dest1 ?? toZone,
                     ToOwner = ZoneScope.Self,
                     Count = copyCount,
                     // 卡名来源没有「当前状态」可继承（那张卡不一定在场上），
@@ -1316,12 +1319,12 @@ public sealed class ActionParser
                 return nodes;
             }
             var copySrc = _target.TryParse(cur) ?? TargetSpec.Self;
-            ConsumeDestination(cur);
+            var dest2 = ConsumeDestination(cur);
             nodes.Add(new SpawnCardNode
             {
                 SourceKind = CardSourceKind.CopyOfTarget,
                 CopyFrom = copySrc,
-                ToZone = toZone,
+                ToZone = dest2 ?? toZone,
                 ToOwner = ZoneScope.Self,
                 Count = copyCount,
                 // 只有「an exact copy」继承源目标的当前状态；
@@ -2525,8 +2528,13 @@ public sealed class ActionParser
         return nodes;
     }
 
-    private void ConsumeDestination(TokenCursor cur)
+    private ZoneRef? ConsumeDestination(TokenCursor cur)
     {
+        // 必须把真实区域**返回**出去：原来这里只吞词、不记录，
+        // 「Add 10 copies of Chronos to your deck」于是永远落到默认的
+        // ZoneRef.Hand —— 牌组里一张没加，手牌爆掉。
+        var explicitZone = PeekDestinationZone(cur);
+
         while (cur.Current.IsAnyWord("to"))
         {
             var nx = cur.Peek();
@@ -2555,6 +2563,7 @@ public sealed class ActionParser
         }
         // "to your hand without revealing it"
         if (cur.MatchPhrase("without", "revealing")) { cur.TryMatchAnyWord("it", "them"); }
+        return explicitZone;
     }
 
     /// <summary>消费括号里的参数 Enhance (4) / Combo (3)。返回参数值，无参数返回 0。</summary>

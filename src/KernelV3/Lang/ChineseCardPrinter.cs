@@ -479,6 +479,25 @@ public sealed class ChineseCardPrinter
                 };
             }
 
+            case RevealCardNode rv:
+                return "公开" + PrintTarget(rv.Target) + "。";
+
+            case DamageModifierNode dm:
+            {
+                string who = PrintTarget(dm.Target);
+                string amt = PrintNum(dm.Amount);
+                return dm.Kind switch
+                {
+                    DamageAuraKind.TakenDelta => "使" + who
+                        + (dm.IsReduction ? "受到的伤害-" : "受到的伤害+") + amt + "。",
+                    DamageAuraKind.TakenCap => "使" + who + "受到的伤害不能超过" + amt + "。",
+                    DamageAuraKind.DealtDelta => "使" + who
+                        + (dm.IsReduction ? "造成的伤害-" : "造成的伤害+") + amt + "。",
+                    DamageAuraKind.DealtCap => "使" + who + "造成的伤害不能超过" + amt + "。",
+                    _ => "",
+                };
+            }
+
             case ModifyKeywordNode k:
                 return k.Op switch
                 {
@@ -840,7 +859,9 @@ public sealed class ChineseCardPrinter
 
     private string PrintBranch(BranchModeNode b)
     {
-        int pick = b.PickCount != null ? EvalConst(b.PickCount, 1) : 1;
+        // 必须按表达式打印：PickCount 可能是动态的
+        // （「发动 Y 个，Y 为此卡费用」），写死 EvalConst 会印成 1。
+        string pick = b.PickCount != null ? PrintNum(b.PickCount) : "1";
         string head = b.Kind switch
         {
             ModeDispatchKind.Choose => "选择" + pick + "个【模式】发动：",
@@ -1160,6 +1181,10 @@ public sealed class ChineseCardPrinter
         switch (e.Op)
         {
             case NumOp.Const: return e.Value.ToString();
+            case NumOp.RandomRange:
+                return "（" + e.Value + "至"
+                    + (e.Args != null && e.Args.Count > 0 ? PrintNum(e.Args[0]) : e.Value.ToString())
+                    + "的随机数）";
             // 计数器当数值用时不能带「点」这类量词：「造成连击点伤害」读不通。
             case NumOp.Counter: return CounterZh(e.Counter.Name) + "值";
             case NumOp.Property: return StatZh(e.Stat);
@@ -1287,9 +1312,11 @@ public sealed class ChineseCardPrinter
     {
         string name = KeywordZh(k.Keyword.Name);
         // 带参关键词必须把参数说出来，否则「可攻击 N 次」变成「可攻击」。
-        if (k.Value != null && k.Value.Op == NumOp.Const)
+        if (k.Value != null)
         {
-            int v = k.Value.Value;
+            // 用 PrintNum 而不是取常量：动态 X（rand 或计数器）也要印出来，
+            // 写死 e.Value.Value 会让「可攻击 X 次」印成「可攻击 0 次」。
+            string v = PrintNum(k.Value);
             return k.Keyword.Name switch
             {
                 "max_attacks_per_turn" => "【1回合可攻击" + v + "次】",

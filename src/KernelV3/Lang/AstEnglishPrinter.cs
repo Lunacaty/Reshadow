@@ -305,6 +305,11 @@ public static class AstEnglishPrinter
         return e.Op switch
         {
             NumOp.Const => e.Value.ToString(),
+            // 锁定随机数必须打出上下界与变量槽，否则两边读回来的
+            // rand(2,10,X) 全变成同一个 "randomrange"，往返对不上。
+            NumOp.RandomRange => "rand(" + e.Value + ","
+                + (e.Args != null && e.Args.Count > 0 ? PrintNum(e.Args[0]) : e.Value.ToString())
+                + ")#" + e.RollId,
             // 显式取值玩家必须打印出来：否则两侧读同一个计数器名的条件
             // （"both players have N max play points"）打印成完全相同的两半，
             // 验收时看不出它到底只判了一侧还是判了两侧。

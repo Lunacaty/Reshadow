@@ -1301,6 +1301,10 @@ public partial class BattleScreenRoot : Control
                 && _allyLeader.GetGlobalRect().HasPoint(at)) return true;
             if (_foeLeader?.Leader?.EntityId == id
                 && _foeLeader.GetGlobalRect().HasPoint(at)) return true;
+
+            // 手牌候选：如「选择 1 张手牌舍弃」
+            foreach (var (rect, card) in _handHitRects)
+                if (card != null && card.EntityId == id && rect.HasPoint(at)) return true;
         }
         return false;
     }
@@ -1352,11 +1356,20 @@ public partial class BattleScreenRoot : Control
             if (@event is InputEventMouseButton lmb
                 && lmb.Pressed && lmb.ButtonIndex == MouseButton.Left)
             {
+                // 点在模式弹窗 / 查看战场 / 多选确认按钮上时交给控件自己处理。
+                // _Input 先于 GuiInput 执行，不先让一步的话，
+                // 预选阶段任何模式都点不了，一点就被当成「点空白取消」。
+                if (_pending != null && IsInstanceValid(_pending)
+                    && _pending.IsPointOnOverlayUi(lmb.GlobalPosition))
+                    return;
+
+                // 只有「选目标」才存在「点空白 = 取消」的语义。
+                // 选模式、多选确认这些都必须点到具体控件上，
+                // 点空白不取消，否则玩家永远没机会做选择。
                 var pc = _ctrl.Runner.PendingChoice;
-                bool onTarget = pc != null && pc.Kind != ChoiceKind.SelectTarget
-                                ? false
-                                : HitAnyCandidate(lmb.GlobalPosition);
-                if (!onTarget)
+                bool onTarget = pc != null && pc.Kind == ChoiceKind.SelectTarget
+                                && HitAnyCandidate(lmb.GlobalPosition);
+                if (pc != null && pc.Kind == ChoiceKind.SelectTarget && !onTarget)
                 {
                     _ctrl.CancelPendingChoice();
                     Rebuild();

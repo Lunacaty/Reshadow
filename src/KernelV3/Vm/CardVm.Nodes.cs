@@ -313,8 +313,10 @@ public sealed partial class CardVm
             if (self != null && self.Keywords.Contains(ambushKw)) self.Keywords.Remove(ambushKw);
         }
 
-        // 伤害来源玩家：取目标的对手（能力伤害通常是对手发起的）。
-        int srcPlayer = t.PlayerId == 0 ? 1 : 0;
+        // 伤害来源玩家：优先取作用域里的施放者。
+        // 硬猜「目标的对手」在 2v2 / 自伤 / 队友增益时全错，
+        // 而 scope.Controller 就是这一次能力结算的真正发起方。
+        int srcPlayer = scope?.Controller ?? (t.PlayerId == 0 ? 1 : 0);
         _world.ApplyDamage(t, amount, srcPlayer);
     }
 
@@ -345,7 +347,9 @@ public sealed partial class CardVm
         {
             // 「不受能力影响」：完全免疫攻防修改。
             // 「不受能力影响（攻防变化除外）」：放行，所以只查前者。
-            if (t.Keywords.Contains(Schema.Keyword("immune_effects"))) continue;
+            // 自身能力改自身攻防要放行（IsImmuneToEffectFrom 已处理）。
+            if (_world is Battle.BattleState bsStats
+                && bsStats.IsImmuneToEffectFrom(t, scope?.Source, isStatMod: true)) continue;
 
             // 必须在**每个目标上**求值：翻倍这类表达式的属性读取锚点是 $item，
             // 在循环外求值会让所有目标都取第一个候选的身材。
@@ -457,9 +461,8 @@ public sealed partial class CardVm
                 case KeywordOp.SilenceAll:
                     // 「不受能力影响」与「（攻防变化除外）」都免疫沉默。
                     // 不拦的话，一张沉默就能把免疫词条本身剥掉 —— 自相矛盾。
-                    if (t.Keywords.Contains(Schema.Keyword("immune_effects"))
-                        || t.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
-                        break;
+                    if (_world is Battle.BattleState bsKw
+                        && bsKw.IsImmuneToEffectFrom(t, scope?.Source)) break;
                     t.Keywords.Clear();
                     t.KeywordValues.Clear();
                     t.IsSilenced = true;
@@ -601,8 +604,8 @@ public sealed partial class CardVm
             var kept = new List<RuntimeEntity>();
             foreach (var t0 in mvTargets)
             {
-                if (t0.Keywords.Contains(Schema.Keyword("immune_effects"))
-                    || t0.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
+                if (_world is Battle.BattleState bsMv2
+                    && bsMv2.IsImmuneToEffectFrom(t0, scope?.Source))
                     continue;
                 kept.Add(t0);
             }
@@ -620,10 +623,9 @@ public sealed partial class CardVm
 
         // 免疫目标在这里真正剔除 —— 上面的计数器只是「全免疫就整句跳过」的短路。
         {
-            var kwIE = Schema.Keyword("immune_effects");
-            var kwIE2 = Schema.Keyword("immune_effects_except_stats");
-            targets = targets.Where(x => !x.Keywords.Contains(kwIE)
-                                      && !x.Keywords.Contains(kwIE2)).ToList();
+            var bsTgt = _world as Battle.BattleState;
+            if (bsTgt != null)
+                targets = targets.Where(x => !bsTgt.IsImmuneToEffectFrom(x, scope?.Source)).ToList();
         }
 
         var moved = new List<RuntimeEntity>();

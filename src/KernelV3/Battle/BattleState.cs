@@ -1368,6 +1368,32 @@ public sealed class BattleState : IVmWorld
     /// 否则屏障、超进化免伤、伤害上限全部被绕过。
     /// </summary>
     /// <summary>
+    /// 该实体是否免疫「来自某个来源的能力效果」。
+    ///
+    /// 统一判定入口，取代各处手写的 Keywords.Contains：
+    ///   · 走 HasEffectiveKeyword，光环授予的免疫词条同样生效
+    ///   · sourceRef 与 target 相同时放行 —— 自身能力改自己的攻防
+    ///     不该被自己的「不受能力影响」挡住，否则卡面自相矛盾
+    ///   · isStatMod = true 时，immune_effects_except_stats 放行
+    /// </summary>
+    public bool IsImmuneToEffectFrom(RuntimeEntity target, Vm.EntityRef? sourceRef = null,
+                                     bool isStatMod = false)
+    {
+        if (target == null) return false;
+
+        var kwAll = Schema.Keyword("immune_effects");
+        var kwXs = Schema.Keyword("immune_effects_except_stats");
+
+        bool immune = HasEffectiveKeyword(target, kwAll)
+                   || (!isStatMod && HasEffectiveKeyword(target, kwXs));
+        if (!immune) return false;
+
+        // 自身能力作用于自身：放行。
+        if (sourceRef != null && sourceRef.Value.EntityId == target.EntityId) return false;
+        return true;
+    }
+
+    /// <summary>
     /// 该实体此刻是否**有效持有**某个关键词。
     ///
     /// 三个来源按顺序判定：
@@ -1553,68 +1579,6 @@ public sealed class BattleState : IVmWorld
     }
 
     /// <summary>结算「造成伤害」侧的修正。currentTarget 用于找出伤害来源实体。</summary>
-    public int ApplyDealtModifiers(int sourcePlayerId, RuntimeEntity currentTarget, int amount,
-                                   Ast.DamageSourceMask source)
-    {
-        if (amount <= 0) return amount;
-        var eval = new Vm.VmEval(this);
-        int dealt = amount;
-
-        for (int pid = 0; pid < 2; pid++)
-        {
-            var sources = new List<RuntimeEntity>();
-            sources.AddRange(Players[pid].Board);
-            sources.AddRange(Players[pid].CrestArea);
-
-            foreach (var src in sources)
-            {
-                if (src?.Def?.Abilities == null || src.IsSilenced) continue;
-
-                var scope = new Vm.VmScope
-                {
-                    Owner = ZoneScope.Self,
-                    Controller = src.PlayerId,
-                    Source = Vm.EntityRef.From(src),
-                };
-
-                foreach (var ab in src.Def.Abilities)
-                {
-                    if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.PassiveAura) continue;
-                    if (ab.Body == null) continue;
-
-                    bool condOk;
-                    try { condOk = ab.Condition == null || eval.EvalBool(ab.Condition, scope); }
-                    catch { condOk = true; }
-                    if (!condOk) continue;
-
-                    foreach (var n in ab.Body)
-                    {
-                        if (n is not Ast.DamageModifierNode dm) continue;
-                        if ((dm.SourceMask & source) == 0) continue;
-                        // 「造成伤害」侧限定在来源玩家自己的随从
-                        if (src.PlayerId != sourcePlayerId) continue;
-
-                        int x;
-                        try { x = eval.EvalNum(dm.Amount, scope); } catch { continue; }
-
-                        if (dm.Kind == Ast.DamageAuraKind.DealtDelta)
-                        {
-                            dealt = dm.IsReduction ? dealt - x : dealt + x;
-                            if (dealt <= 0) return 0;
-                        }
-                        else if (dm.Kind == Ast.DamageAuraKind.DealtCap)
-                        {
-                            if (x < 0) x = 0;
-                            if (dealt > x) dealt = x;
-                        }
-                    }
-                }
-            }
-        }
-
-        return Math.Max(0, dealt);
-    }
-
     public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId)
     {
         if (target == null || amount <= 0) return;
@@ -1630,6 +1594,40 @@ public sealed class BattleState : IVmWorld
         new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId);
     }
 
+    public int ApplyDealtModifiers(int sourcePlayerId, RuntimeEntity sourceEntity,
+                                   int amount, Ast.DamageSourceMask source)
+    {
+        if (amount <= 0) return amount;
+        var eval = new Vm.VmEval(this);
+        int dealt = amount;
+
+        // 直接复用 QueryDamageModifiers(sourceEntity)：
+        // 它已经实现了「全场 PassiveAura + 运行时授予 + AuraTargets 匹配」。
+        // 之前这里手写了一遍扫描，既没扫 _granted（单选赋予某随从
+        // 「造成的伤害 -3」无效），又只按 src.PlayerId 匹配玩家
+        // （随从 A 自己的「造成伤害上限 1」会把队友随从 B 的伤害也锁成 1）。
+        var mods = QueryDamageModifiers(sourceEntity).ToList();
+
+        foreach (var (dm, scope) in mods)
+        {
+            if ((dm.SourceMask & source) == 0) continue;
+            int x;
+            try { x = eval.EvalNum(dm.Amount, scope); } catch { continue; }
+
+            if (dm.Kind == Ast.DamageAuraKind.DealtDelta)
+            {
+                dealt = dm.IsReduction ? dealt - x : dealt + x;
+                if (dealt <= 0) return 0;
+            }
+            else if (dm.Kind == Ast.DamageAuraKind.DealtCap)
+            {
+                if (x < 0) x = 0;
+                if (dealt > x) dealt = x;
+            }
+        }
+
+        return Math.Max(0, dealt);
+    }
     /// <summary>IVmWorld 接口实现：能力破坏，受保护拦截。</summary>
     void IVmWorld.DestroyEntity(RuntimeEntity e) => DestroyEntity(e);
 
@@ -1658,9 +1656,7 @@ public sealed class BattleState : IVmWorld
         // DestroyByState（ProcessStateBasedActions 的收尾），
         // 压根不经过本方法；byRule 目前只有「土之印层数归 0」一处，
         // 那同样是能力结算的结果，理应一起被免疫。
-        if (e.Keywords.Contains(Schema.Keyword("immune_effects"))
-            || e.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
-            return;
+        if (IsImmuneToEffectFrom(e)) return;
 
         // 「以消失替代破坏」：先跑一次离场时触发链。
         // 卡面写 "When this card leaves the field, banish it." 的实体
@@ -1761,9 +1757,7 @@ public sealed class BattleState : IVmWorld
         if (e == null || e.Zone == ZoneRef.Banished) return;
 
         // 「不受能力影响」：能力消失无效。
-        if (e.Keywords.Contains(Schema.Keyword("immune_effects"))
-            || e.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
-            return;
+        if (IsImmuneToEffectFrom(e)) return;
         // OnLeaveField 由 MoveEntity 统一发一次（它只在「离开战场」时发）。
         // 这里手发会与之叠加成两次，而 OnBanish 反倒一次都没有。
         MoveEntity(e, ZoneRef.Banished, e.PlayerId);
@@ -2038,9 +2032,7 @@ public sealed class BattleState : IVmWorld
         if (e == null) return;
 
         // 「不受能力影响」：变身无效。
-        if (e.Keywords.Contains(Schema.Keyword("immune_effects"))
-            || e.Keywords.Contains(Schema.Keyword("immune_effects_except_stats")))
-            return;
+        if (IsImmuneToEffectFrom(e)) return;
         var d = CardDefOf(intoCardId);
         if (d == null) return;
 

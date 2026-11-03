@@ -68,7 +68,37 @@ public static class PreChoiceInspector
             var scope = ScopeOf(card);
             int consumed = 0;
 
-            foreach (var ab in card.Def.Abilities)
+            // 激奏 / 结晶：当前 PP 不够本体费用时，运行时走的是子卡定义。
+            // 预扫必须跟着切，否则会按本体入场曲去问目标 ——
+            // 玩家被问了、选了，真正打出的却是激奏版，答案全错位。
+            var defToScan = card.Def;
+            if (kind == PlayerActionKind.PlayCard && defToScan != null)
+            {
+                int ppNow = state.ReadCounter(card.PlayerId, ppKey);
+                int bodyCost = defToScan.BaseCost;
+                bool boardFull = state.Players[card.PlayerId].Board.Count
+                                 (x => x?.Def != null
+                                    && (x.Def.Kind == Ast.CardKind.Follower
+                                        || x.Def.Kind == Ast.CardKind.Amulet))
+                                 >= state.Rules.MaxBoardSize;
+
+                bool bodyPlayable = ppNow >= bodyCost
+                    && !(boardFull
+                         && (defToScan.Kind == Ast.CardKind.Follower
+                             || defToScan.Kind == Ast.CardKind.Amulet));
+
+                if (!bodyPlayable)
+                {
+                    if (defToScan.AccelerateDef != null
+                        && ppNow >= defToScan.AccelerateDef.BaseCost)
+                        defToScan = defToScan.AccelerateDef;
+                    else if (defToScan.CrystallizeDef != null
+                             && ppNow >= defToScan.CrystallizeDef.BaseCost && !boardFull)
+                        defToScan = defToScan.CrystallizeDef;
+                }
+            }
+
+            foreach (var ab in defToScan.Abilities)
             {
                 if (ab?.Trigger == null || ab.Body == null) continue;
 
@@ -311,8 +341,10 @@ public static class PreChoiceInspector
             if (live.Zone == ZoneRef.Board)
             {
                 if (state.IsProtectedAmulet(live)) continue;
+                // 必须走 HasEffectiveKeyword：潜行/灵气可能是光环授予的。
                 if (live.PlayerId != card.PlayerId
-                    && (live.Keywords.Contains(ambush) || live.Keywords.Contains(aura)))
+                    && (state.HasEffectiveKeyword(live, ambush)
+                        || state.HasEffectiveKeyword(live, aura)))
                     continue;
             }
             ids.Add(live.EntityId);

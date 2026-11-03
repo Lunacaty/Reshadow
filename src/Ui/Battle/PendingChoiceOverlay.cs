@@ -31,6 +31,28 @@ public partial class PendingChoiceOverlay : Control
     private bool _peekingField;
 
     private Control _modalContent;
+
+    /// <summary>
+    /// 该全局坐标是否落在挂起选择浮层的交互控件上
+    /// （模式弹窗、查看战场按钮、多选确认按钮）。
+    ///
+    /// _Input 先于所有控件的 GuiInput 执行，不先问一句就把点击当成
+    /// 「点空白取消」，模式弹窗会一点就消失。
+    /// </summary>
+    public bool IsPointOnOverlayUi(Vector2 globalPos)
+    {
+        if (!Visible) return false;
+        if (_modalContent != null && IsInstanceValid(_modalContent) && _modalContent.Visible
+            && _modalContent.GetGlobalRect().HasPoint(globalPos))
+            return true;
+        if (_peekBtn != null && IsInstanceValid(_peekBtn) && _peekBtn.Visible
+            && _peekBtn.GetGlobalRect().HasPoint(globalPos))
+            return true;
+        if (_bannerConfirmBtn != null && IsInstanceValid(_bannerConfirmBtn) && _bannerConfirmBtn.Visible
+            && _bannerConfirmBtn.GetGlobalRect().HasPoint(globalPos))
+            return true;
+        return false;
+    }
     private Button _peekBtn;
     private Label _bannerLabel;
     private Button _bannerConfirmBtn;
