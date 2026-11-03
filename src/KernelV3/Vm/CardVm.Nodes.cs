@@ -226,7 +226,16 @@ public sealed partial class CardVm
     private bool DoReveal(RevealCardNode n, VmScope scope)
     {
         foreach (var t in _eval.Resolve(n.Target, scope))
+        {
             t.IsRevealed = true;
+            // 公开手牌：UI 据此在手牌区播提示光。
+            _world.EmitEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnCardRevealed,
+                Subject = EntityRef.From(t),
+                PlayerId = t.PlayerId,
+            });
+        }
         return false;
     }
 
@@ -375,6 +384,16 @@ public sealed partial class CardVm
         foreach (var t in targets)
         {
             RecordEffect(t, scope, n.Op + " " + (n.Attack != null ? "攻" : "") + (n.Life != null ? "血" : ""));
+            // 身材变化事件：UI 据此弹跳与飘字。取攻击变化量作代表值，
+            // VmEvent 只有一个数值槽，够 UI 判正负与显示。
+            int da = n.Attack != null ? _eval.EvalNum(n.Attack, scope) : 0;
+            _world.EmitEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnStatsModified,
+                Subject = EntityRef.From(t),
+                Amount = da,
+                PlayerId = t.PlayerId,
+            });
             // 「不受能力影响」：完全免疫攻防修改。
             // 「不受能力影响（攻防变化除外）」：放行，所以只查前者。
             // 自身能力改自身攻防要放行（IsImmuneToEffectFrom 已处理）。
@@ -467,6 +486,17 @@ public sealed partial class CardVm
         foreach (var t in targets)
         {
             RecordEffect(t, scope, n.Op + " " + n.Keyword.Name);
+            // 关键词变化事件：UI 据此播徽章镶入 / 沉默环。
+            int kd = n.Op == KeywordOp.Remove ? -1
+                   : n.Op == KeywordOp.SilenceAll ? -99 : 1;
+            _world.EmitEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnKeywordModified,
+                Subject = EntityRef.From(t),
+                Amount = kd,
+                CounterName = n.Keyword.Name,
+                PlayerId = t.PlayerId,
+            });
             switch (n.Op)
             {
                 case KeywordOp.Grant:

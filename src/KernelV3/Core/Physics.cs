@@ -127,6 +127,14 @@ public enum CoreEvent
 
     // 计数变化
     OnCounterChange,
+    /// <summary>身材被增益/减益（Amount=攻击变化，SecondaryAmount=生命变化）。</summary>
+    OnStatsModified,
+
+    /// <summary>关键词被赋予/移除/沉默（CounterName=关键词名，Amount=1/-1/-99）。</summary>
+    OnKeywordModified,
+
+    /// <summary>手牌被公开。</summary>
+    OnCardRevealed,
 }
 
 /// <summary>触发者在哪个区域监听。</summary>

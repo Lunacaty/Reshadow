@@ -161,6 +161,21 @@ public sealed class BoardAnimDirector
     }
 
     /// <summary>入场：从座位下方钻出。</summary>
+    /// <summary>身材增益/减益弹跳：buff 时向上膨胀发光，否则下压收缩。</summary>
+    public void PlayStatPulse(long entityId, bool isBuff)
+    {
+        var t = TrackOf(entityId);
+        if (t == null) return;
+        float peak = isBuff ? 0.24f : -0.16f;
+        float lift = isBuff ? -12f : 8f;
+        Play(entityId, new Anim(0.28f, Ease.OutBack, v =>
+        {
+            float wave = Mathf.Sin(v * Mathf.Pi);
+            t.Motion.Scale = 1f + peak * wave;
+            t.Motion.Offset = new Vector2(0f, lift * wave);
+        }, () => { t.Motion = UnitMotion.Idle; }));
+    }
+
     public void PlayEnter(long entityId, float height = 124f)
     {
         var t = TrackOf(entityId);

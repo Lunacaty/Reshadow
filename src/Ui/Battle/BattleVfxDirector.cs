@@ -112,6 +112,64 @@ public partial class BattleVfxDirector : Control
         Push("summon", unitCenter, new Color("FBBF24"), 0.40f);
     }
 
+    /// <summary>身材增益：脚下金绿光环 + 向上光柱 + 飘字。</summary>
+    /// <summary>扩散光环（复用 summon 的环形绘制）。</summary>
+    private void PlayRing(Vector2 center, Color col, float dur)
+        => Push("summon", center, col, dur);
+
+    /// <summary>飘字（复用 damage 的文本绘制）。</summary>
+    private void PlayFloatText(Vector2 center, string text, Color col)
+        => Push("damage", center, col, 0.75f, text);
+
+    /// <summary>把一张贴图从 1.8x 缩到 1.0x 镶进棋子。</summary>
+    private void PlayStampTexture(Vector2 center, Texture2D tex)
+    {
+        var spr = new TextureRect
+        {
+            Texture = tex,
+            Size = new Vector2(26, 26),
+            PivotOffset = new Vector2(13, 13),
+            Position = center - new Vector2(13, 13),
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        AddChild(spr);
+        var tw = CreateTween();
+        tw.TweenProperty(spr, "scale", Vector2.One, 0.22f)
+          .From(Vector2.One * 1.8f)
+          .SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
+        tw.TweenInterval(0.35f);
+        tw.TweenProperty(spr, "modulate", new Color(1, 1, 1, 0f), 0.25f);
+        tw.TweenCallback(Callable.From(() => { if (IsInstanceValid(spr)) spr.QueueFree(); }));
+    }
+
+    public void PlayBuff(Vector2 center, string text = "")
+    {
+        PlayRing(center, new Color(0.35f, 1f, 0.62f), 0.55f);
+        if (!string.IsNullOrEmpty(text)) PlayFloatText(center, text, new Color(0.55f, 1f, 0.72f));
+    }
+
+    /// <summary>身材减益：暗紫红收缩环 + 下沉飘字。</summary>
+    public void PlayDebuff(Vector2 center, string text = "")
+    {
+        PlayRing(center, new Color(0.72f, 0.28f, 0.55f), 0.42f);
+        if (!string.IsNullOrEmpty(text)) PlayFloatText(center, text, new Color(0.95f, 0.45f, 0.55f));
+    }
+
+    /// <summary>关键词赋予：徽章从 1.8x 缩到 1.0x 镶进棋子。</summary>
+    public void PlayKeywordGrant(Vector2 center, string svgKey)
+    {
+        var tex = KeywordSvgAtlas.Get(svgKey);
+        if (tex != null) PlayStampTexture(center, tex);
+        PlayRing(center, new Color(1f, 0.86f, 0.35f), 0.38f);
+    }
+
+    /// <summary>沉默：一圈灰白震动环。</summary>
+    public void PlaySilence(Vector2 center)
+    {
+        PlayRing(center, new Color(0.78f, 0.80f, 0.86f), 0.50f);
+        PlayFloatText(center, "沉默", new Color(0.85f, 0.87f, 0.92f));
+    }
+
     public void PlayEvolve(Vector2 unitCenter, bool isSuper)
         => Push("evolve", unitCenter,
                 isSuper ? new Color("C084FC") : new Color("F59E0B"), 0.65f,

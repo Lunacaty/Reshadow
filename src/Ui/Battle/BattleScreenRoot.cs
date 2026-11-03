@@ -881,6 +881,47 @@ public partial class BattleScreenRoot : Control
                 break;
             }
 
+            case CoreEvent.OnStatsModified:
+            {
+                // 身材变化：棋子弹跳 + 飘字。
+                if (sid >= 0)
+                {
+                    int da = ev.Amount;
+                    bool buff = da >= 0;
+                    _seq.Enqueue(new Seq().Do(() =>
+                    {
+                        var c = CenterOf(ev.Subject, ownerPid);
+                        _anims.PlayStatPulse(sid, buff);
+                        // VmEvent 只有一个 Amount 槽，攻击与生命的变化值
+                        // 合并在内核侧写进同一个数字（正负同号）。
+                        string txt = (da >= 0 ? "+" : "") + da;
+                        if (buff) _vfx.PlayBuff(c, txt); else _vfx.PlayDebuff(c, txt);
+                    }));
+                }
+                break;
+            }
+
+            case CoreEvent.OnKeywordModified:
+            {
+                if (sid >= 0)
+                {
+                    _seq.Enqueue(new Seq().Do(() =>
+                    {
+                        var c = CenterOf(ev.Subject, ownerPid);
+                        int kind = ev.Amount;
+                        if (kind == -99) _vfx.PlaySilence(c);
+                        else if (kind > 0) _vfx.PlayKeywordGrant(c, "badge_shield");
+                    }));
+                }
+                break;
+            }
+
+            case CoreEvent.OnCardRevealed:
+            {
+                // 公开手牌：只是可见性变化，播一圈提示光即可。
+                if (sid >= 0) RebuildHand();
+                break;
+            }
             case CoreEvent.OnEnterField:
             {
                 // 入队瞬间先将随从设为隐身预备态（Alpha = 0），
