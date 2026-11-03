@@ -161,7 +161,10 @@ public partial class RightCommandColumnWidget : Control
         {
             if (mb.Position.DistanceTo(TurnBtnCenter) <= TurnBtnRadius)
             {
-                OnEndTurnClicked?.Invoke();
+                // 敌方回合时按钮画的是红色「敌方回合」，点击必须无效 ——
+                // 原来这里无条件 Invoke，玩家能把 AI 的回合点掉。
+                bool canEnd = _ctrl.IsMyTurn && !_ctrl.IsWaitingForInput;
+                if (canEnd) OnEndTurnClicked?.Invoke();
                 AcceptEvent();
             }
             // 我方后手时，Extra PP 框画在下方（Y=374..416）；

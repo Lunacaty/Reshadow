@@ -350,6 +350,8 @@ public sealed class MatchRunner
     public void EndTurn()
     {
         if (Phase != MatchPhase.Playing || IsWaitingForInput) return;
+
+
         int cur = _state.ActivePlayer;
         _turns.EndTurn(cur, _vm);
         if (CheckFinished()) return;

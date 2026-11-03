@@ -371,6 +371,14 @@ public sealed class BattleSessionController
     public void EndTurn()
     {
         if (IsWaitingForInput) return;
+
+        // 只能结束自己的回合。
+        //
+        // 少了这道守卫，对面回合时点结束按钮也会照常执行：
+        // 内核看到 ActivePlayer 是对方，于是「结束对方的回合、开始我方的回合」，
+        // 表现出来就是玩家能替 AI 结束它的回合。
+        if (!IsMyTurn) return;
+
         Runner.EndTurn();
         ResolveAiPendingIfAny();
     }
