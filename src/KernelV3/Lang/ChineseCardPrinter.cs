@@ -165,6 +165,57 @@ public sealed class ChineseCardPrinter
         return string.Join("", parts);
     }
 
+    /// <summary>
+    /// 渲染来源卡的完整中文卡面，并把 targetAbility 对应的那一段用金底高亮标出。
+    ///
+    /// 左上角弹窗点开一条「受能力影响」记录时用：未命中的段落压成柔和灰蓝，
+    /// 命中的那一条亮起，玩家视线 0 秒锁定生效的那句话。
+    /// </summary>
+    public string PrintCardWithHighlight(CardDef card, AbilityDef targetAbility)
+    {
+        if (card == null) return "";
+        if (targetAbility == null) return PrintCard(card);
+
+        // 同一张卡上可能有两条内容完全相同的能力（同名纹章重复授予），
+        // 引用比不中时退到「打印结果相同」来匹配。
+        string targetSig = PrintAbility(targetAbility);
+        bool IsMatch(AbilityDef ab)
+            => ReferenceEquals(ab, targetAbility)
+               || (ab != null && PrintAbility(ab) == targetSig);
+
+        var sb = new StringBuilder();
+
+        void AppendAbilities(IReadOnlyList<AbilityDef> list)
+        {
+            if (list == null) return;
+            foreach (var ab in list)
+            {
+                string line = ab?.Trigger?.Event == Core.CoreEvent.PassiveAura
+                    ? PrintPassiveLine(ab)
+                    : PrintAbility(ab);
+                if (string.IsNullOrEmpty(line)) continue;
+
+                if (IsMatch(ab))
+                    sb.Append("▶ ").Append(line).Append('\n');
+                else
+                    sb.Append(line).Append('\n');
+            }
+        }
+
+        AppendAbilities(card.Abilities);
+        if (card.CrestDef != null)
+        {
+            sb.Append("【关联纹章：").Append(CardZh(card.CrestDef.Name)).Append("】").Append('\n');
+            AppendAbilities(card.CrestDef.Abilities);
+        }
+        if (card.FaithDef != null)
+        {
+            sb.Append("【关联信仰：").Append(CardZh(card.FaithDef.Name)).Append("】").Append('\n');
+            AppendAbilities(card.FaithDef.Abilities);
+        }
+        return sb.ToString().TrimEnd();
+    }
+
     public string PrintAbility(AbilityDef ab)
     {
         if (ab == null) return "";

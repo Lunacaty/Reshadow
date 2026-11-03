@@ -656,6 +656,7 @@ public sealed partial class CardVm
                     Source = EntityRef.From(e),
                     Trigger = ev.Subject,
                     Event = ev,
+                    SourceAbility = ab,
                 };
 
                 // $opposing：交战/交互事件里的「对面那一方」。

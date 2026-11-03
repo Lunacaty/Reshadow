@@ -102,6 +102,13 @@ public sealed class VmScope
     /// </summary>
     public Queue<IReadOnlyList<int>> PreCommittedChoices { get; set; }
 
+    /// <summary>
+    /// 本次能力结算所对应的那条 AbilityDef。
+    /// 用于给 RuntimeEntity.EffectHistory 记「是哪一段能力造成的」，
+    /// 左上角弹窗据此在来源卡的完整卡面里精准高亮那一段。
+    /// </summary>
+    public Ast.AbilityDef SourceAbility { get; set; }
+
     public VmScope Derive()
     {
         var s = new VmScope
@@ -115,6 +122,7 @@ public sealed class VmScope
             LoopDepth = LoopDepth + 1,
             // 关键：子帧共享同一个队列引用，而不是复制一份。
             PreCommittedChoices = PreCommittedChoices,
+            SourceAbility = SourceAbility,
         };
         foreach (var kv in Registers) s.Registers[kv.Key] = new List<EntityRef>(kv.Value);
         return s;

@@ -85,6 +85,25 @@ public sealed class EntitySnapshot
     /// </summary>
     public IReadOnlyList<TemporaryModifier> TempModifiers { get; init; }
         = Array.Empty<TemporaryModifier>();
+
+    /// <summary>快照时刻的能力影响历史（复制体继承它，便于溯源）。</summary>
+    public IReadOnlyList<AppliedEffectRecord> EffectHistory { get; init; }
+        = Array.Empty<AppliedEffectRecord>();
+}
+
+/// <summary>
+/// 本实体曾受到的一条能力影响记录（供战斗左上角详情窗溯源展示）。
+/// </summary>
+public sealed record AppliedEffectRecord
+{
+    /// <summary>施加该效果的来源卡定义（提供立绘 CardId、卡名与完整效果文本）。</summary>
+    public Ast.CardDef SourceCard { get; init; }
+
+    /// <summary>来源卡上具体生效的那条能力（用于在二级弹窗里精准高亮那一段）。</summary>
+    public Ast.AbilityDef SourceAbility { get; init; }
+
+    /// <summary>简短标签，如 "+2/+2"、"费用-1"、"【疾驰】"。</summary>
+    public string Tag { get; init; } = "";
 }
 
 /// <summary>运行时实体。</summary>
@@ -210,6 +229,12 @@ public sealed class RuntimeEntity
     public Queue<IReadOnlyList<int>> PreCommittedChoices { get; set; }
 
     /// <summary>
+    /// 本实体曾受到的能力影响历史，按发生顺序追加。
+    /// 只用于 UI 溯源展示，不参与任何规则判定。
+    /// </summary>
+    public List<AppliedEffectRecord> EffectHistory { get; } = new();
+
+    /// <summary>
     /// 这张牌是否被公开（手牌里显示「👁 公开」标识）。
     ///
     /// 纯可见性标记，不参与任何数值或区域判定。
@@ -241,6 +266,7 @@ public sealed class RuntimeEntity
         Counters = new Dictionary<SymbolId<CounterTag>, int>(Counters),
         KeywordValues = new Dictionary<SymbolId<KeywordTag>, int>(KeywordValues),
         TempModifiers = new List<TemporaryModifier>(TempModifiers),
+        EffectHistory = new List<AppliedEffectRecord>(EffectHistory),
     };
 }
 

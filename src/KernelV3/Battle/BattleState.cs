@@ -2005,6 +2005,13 @@ public sealed class BattleState : IVmWorld
             foreach (var tm in s.TempModifiers) e.TempModifiers.Add(tm);
         }
 
+        // 能力影响历史：复制体继承它，溯源面板才能说清「这个复制品被谁改过」。
+        if (s.EffectHistory != null)
+        {
+            e.EffectHistory.Clear();
+            foreach (var eh in s.EffectHistory) e.EffectHistory.Add(eh);
+        }
+
         // 授予能力不写在 CardDef 里（GrantAbility 单独记账），必须按实体逐条搬。
         foreach (var (ge, gab, gdur) in _granted.ToList())
             if (ge != null && ge.EntityId == s.EntityId) _granted.Add((e, gab, gdur));
@@ -2047,6 +2054,8 @@ public sealed class BattleState : IVmWorld
         e.KeywordValues.Clear();
         e.Counters.Clear();
         e.TempModifiers.Clear();
+        // 变身成另一张卡后，旧卡的影响历史不该继续挂在它身上。
+        e.EffectHistory.Clear();
         e.LastCreatedRefs.Clear();
         e.IsEvolved = false;
         e.IsSuperEvolved = false;

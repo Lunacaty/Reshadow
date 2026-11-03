@@ -19,6 +19,34 @@ namespace ShadowverseFan.KernelV3.Vm;
 
 public sealed partial class CardVm
 {
+    /// <summary>
+    /// 登记「本实体受到了来自 scope.Source 这条能力的某次影响」。
+    ///
+    /// 只写进 EffectHistory 供左上角弹窗溯源，不参与任何规则判定。
+    /// 同一来源卡的同一段能力对同一目标重复命中时只保留最早一条，
+    /// 避免「每回合 +2/+2」把列表刷成几百条。
+    /// </summary>
+    private void RecordEffect(RuntimeEntity target, VmScope scope, string tag)
+    {
+        if (target == null || scope?.Source == null) return;
+
+        var srcSnap = scope.Source.Value.Snapshot;
+        var srcDef = srcSnap?.Def ?? (_world as Battle.BattleState)?.CardDefOf(srcSnap?.CardId ?? 0);
+        if (srcDef == null) return;
+
+        foreach (var old in target.EffectHistory)
+            if (ReferenceEquals(old.SourceCard, srcDef)
+                && ReferenceEquals(old.SourceAbility, scope.SourceAbility))
+                return;
+
+        target.EffectHistory.Add(new AppliedEffectRecord
+        {
+            SourceCard = srcDef,
+            SourceAbility = scope.SourceAbility,
+            Tag = tag ?? "",
+        });
+    }
+
     /// <summary>执行一个原子节点。返回 true 表示已挂起等输入。</summary>
     private bool ExecNode(EffectNode node, VmFrame frame)
     {
@@ -172,6 +200,7 @@ public sealed partial class CardVm
 
         foreach (var t in targets)
         {
+            RecordEffect(t, scope, n.Kind + " " + n.Amount?.Op);
             var auraAb = new AbilityDef
             {
                 Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
@@ -345,6 +374,7 @@ public sealed partial class CardVm
 
         foreach (var t in targets)
         {
+            RecordEffect(t, scope, n.Op + " " + (n.Attack != null ? "攻" : "") + (n.Life != null ? "血" : ""));
             // 「不受能力影响」：完全免疫攻防修改。
             // 「不受能力影响（攻防变化除外）」：放行，所以只查前者。
             // 自身能力改自身攻防要放行（IsImmuneToEffectFrom 已处理）。
@@ -404,6 +434,7 @@ public sealed partial class CardVm
         int v = _eval.EvalNum(n.Value, scope);
         foreach (var t in targets)
         {
+            RecordEffect(t, scope, n.Op + " 费用");
             int before = t.Cost;
             t.Cost = n.Op switch
             {
@@ -435,6 +466,7 @@ public sealed partial class CardVm
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets)
         {
+            RecordEffect(t, scope, n.Op + " " + n.Keyword.Name);
             switch (n.Op)
             {
                 case KeywordOp.Grant:
@@ -919,6 +951,7 @@ public sealed partial class CardVm
         var targets = _eval.Resolve(n.Target, scope);
         foreach (var t in targets)
         {
+            RecordEffect(t, scope, "进化");
             // 已经进化过的随从不再进化：重复执行 "Evolve this follower"
             // 会无限叠属性（+2/+2 每跑一遍加一次）。
             if (t.IsEvolved) continue;
@@ -1203,7 +1236,11 @@ public sealed partial class CardVm
         var targets = _eval.Resolve(n.Target, scope);
         // Duration 必须一起传：不传就等于永久授予，
         // 「本回合赋予某能力」到了下回合依然生效。
-        foreach (var t in targets) _world.GrantAbility(t, n.Granted, n.Duration);
+        foreach (var t in targets)
+        {
+            RecordEffect(t, scope, "赋予能力");
+            _world.GrantAbility(t, n.Granted, n.Duration);
+        }
         return false;
     }
 
