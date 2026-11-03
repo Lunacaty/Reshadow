@@ -122,6 +122,8 @@ public static class DiyZh
         ("wrath", "血怒"),
     };
 
+    /// <summary>可读属性。顺序与 StatKey 的重要程度对齐；
+    /// 编译器用 Enum.TryParse 覆盖全部 StatKey，这里缺项就等于玩家选不到。</summary>
     public static readonly (string Key, string Zh)[] Stats =
     {
         ("Attack", "攻击力"),
@@ -129,6 +131,9 @@ public static class DiyZh
         ("Cost", "费用"),
         ("BaseAttack", "基础攻击力"),
         ("BaseLife", "基础生命值"),
+        ("BaseCost", "基础费用"),
+        ("MaxLife", "生命上限"),
+        ("Countdown", "吟唱计数"),
     };
 
     public static readonly (string Key, string Zh)[] Compares =
@@ -196,6 +201,7 @@ public static class DiyZh
         ("Sub", "－ 减"),
         ("Mul", "× 乘"),
         ("Div", "÷ 除"),
+        ("Mod", "％ 取余"),
     };
 
     public static readonly (string Key, string Zh)[] LoopKinds =
@@ -205,12 +211,16 @@ public static class DiyZh
         ("RepeatUntil", "重复直到"),
     };
 
+    /// <summary>可选状态。必须与 DiyBlockCompiler 的 bool_has_state 分支一一对应，
+    /// 漏一项就意味着那个状态在积木端永远选不到（编译器支持 6 种，这里也必须是 6 种）。</summary>
     public static readonly (string Key, string Zh)[] States =
     {
-        ("None", "（无）"),
         ("Evolved", "已进化"),
         ("SuperEvolved", "已超进化"),
         ("Damaged", "已受伤"),
+        ("HasFuse", "带有融合"),
+        ("HasLastWords", "带有谢幕曲"),
+        ("HasOnSpellboost", "带有魔力增幅"),
     };
 
 

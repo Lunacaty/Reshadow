@@ -1,0 +1,31 @@
+fix(127-复查): 补 MarkVictoryCardNode 的 AST 编解码 + 补全三个词表
+
+逐段复查 127 号文档挖出 4 处缺口：
+
+1. AstJsonCodec 缺 MarkVictoryCardNode 的 Encode/Decode 分支 ——
+   上一轮我加了节点、加了四端打印、加了积木双向，唯独漏了 AST JSON 这一端。
+   表现：Encode 落进 default 写出 "$op":"MarkVictoryCard"，Decode 的 default 返回 null，
+   玩家在「AST 语法树端」点一次编译，胜利卡机制就静默消失。
+   实测：Body 从 3 掉到 2，修完恢复 3 个节点。
+   这正是文档 Bug 3 说的同一类「编了不解析」。
+
+2. DiyZh.States 只有 4 项，编译器支持 6 项 ——
+   HasFuse / HasLastWords / HasOnSpellboost 在积木端永远选不到。
+   顺带去掉 "None"：选「无状态」等于不写条件，编译器会落进 Damaged 兜底。
+
+3. DiyZh.Stats 缺 BaseCost / MaxLife / Countdown ——
+   编译器用 Enum.TryParse 覆盖全部 StatKey，下拉缺项玩家就选不到。
+
+4. DiyZh.ArithOps 缺 Mod（取余）。
+
+六项 Bug 验收结论：
+  Bug1 Enhanced 活体+快照两分支、中文两处  → 齐
+  Bug2 bool_has_state 写 EnumA、Slots 词表、子孔位下拉 → 齐
+  Bug3 AddDepartedTrait / ResolveCardId / 四种 NumOp / 四处调用点传 lex → 齐
+  Bug4 DoHost 不 Shutdown、TryJoinRoom 统一校验、禁 AI、广播快照、PendingJoinDeck → 齐
+  Bug5 ClearCache 清三表、偏好落盘 → 齐
+  Bug6 六维筛选、导入异画按钮、切换后刷网格 → 齐
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 四端矩阵 211-211 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 /
+UI 3-3 / 战斗 UI 31-31 / 逐卡矩阵 31-32（既有测试集自造卡）

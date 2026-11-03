@@ -288,6 +288,12 @@ public static class AstJsonCodec
                 d["deck_name"] = x.DeckName ?? "";
                 break;
 
+            case MarkVictoryCardNode x:
+                // 胜利卡没有卡号也没有卡面，只记归属方。
+                d["$op"] = "MarkVictoryCard";
+                d["owner"] = x.Owner.ToString();
+                break;
+
             case MacroNode x:
                 d["$op"] = "Macro";
                 d["macro"] = x.Macro.Name ?? "";
@@ -861,6 +867,11 @@ private static object EncodeNum(NumExpr e)
             }
             case "ReplaceDeck":
                 return new ReplaceDeckNode { DeckName = JsonReader.Str(m, "deck_name", "") };
+            case "MarkVictoryCard":
+                return new MarkVictoryCardNode
+                {
+                    Owner = JsonReader.Enum(m, "owner", ZoneScope.Self),
+                };
             default:
                 return null;
         }
