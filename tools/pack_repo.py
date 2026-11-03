@@ -229,10 +229,35 @@ def main():
     title = args.title or (os.path.basename(root) + ' 仓库完整代码与数据')
     head = run_git(root, 'log', '-1', '--format=%h %s').strip()
 
+    # 附件也要算进页头：--attach-dir 的文件在正文之后才读，
+    # 但读者看的是页头那个数字。只数 kept 会让 64-H 附录
+    # 明明有 4 个文件却显示 文件数：1。
+    _attach_list = []
+    for _d in args.attach_dir:
+        _dp = _d if os.path.isabs(_d) else os.path.join(root, _d)
+        if not os.path.isdir(_dp):
+            continue
+        for _name in sorted(os.listdir(_dp)):
+            _p2 = os.path.join(_dp, _name)
+            if os.path.isfile(_p2):
+                _attach_list.append(_p2)
+    for _ap in args.attach:
+        _attach_list.append(_ap if os.path.isabs(_ap) else os.path.join(root, _ap))
+    _seen_a, _attach_ok = set(), []
+    for _fp in _attach_list:
+        _real = os.path.abspath(_fp)
+        if _real in _seen_a or not os.path.isfile(_real):
+            continue
+        _seen_a.add(_real)
+        _attach_ok.append(_real)
+
+    _total_count = len(kept) + len(_attach_ok)
+    _total_all = total_bytes + sum(os.path.getsize(x) for x in _attach_ok)
+
     out = io.StringIO()
     out.write("# " + title + "\n\n")
     out.write("> 提交：`" + head + "`\n")
-    out.write("> 文件数：" + str(len(kept)) + "　总计：" + fmt_size(total_bytes) + "\n")
+    out.write("> 文件数：" + str(_total_count) + "　总计：" + fmt_size(_total_all) + "\n")
     if skipped:
         out.write("> 已跳过：" + str(len(skipped)) + " 个文件（见文末）\n")
     out.write("\n")
