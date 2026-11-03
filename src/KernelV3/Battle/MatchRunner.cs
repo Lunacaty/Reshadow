@@ -132,8 +132,15 @@ public sealed class MatchRunner
         if (schema.CounterLimits.TryGetValue("sep", out var sepLim) && targetSep > sepLim.max)
             schema.CounterLimits["sep"] = (sepLim.min, targetSep);
 
-        _state.WriteCounter(playerId, schema.Counter("ep"), targetEp);
-        _state.WriteCounter(playerId, schema.Counter("sep"), targetSep);
+        // 记下「解锁时该发多少」，但开局一律置 0：
+        // 原版规则里解锁前 EP/SEP 恒为 0，任何能力都无法提前获得。
+        var p0 = _state.Players[playerId];
+        p0.InitialEpToGrant = targetEp;
+        p0.InitialSepToGrant = targetSep;
+        p0.EpUnlocked = false;
+        p0.SepUnlocked = false;
+        _state.Players[playerId].Counters[schema.Counter("ep").Id] = 0;
+        _state.Players[playerId].Counters[schema.Counter("sep").Id] = 0;
         _state.WriteCounter(playerId, schema.Counter("shadow"), 0);
         _state.WriteCounter(playerId, schema.Counter("combo"), 0);
         _state.WriteCounter(playerId, schema.Counter("rally"), 0);
@@ -255,8 +262,14 @@ public sealed class MatchRunner
         var rules = _state.Rules;
         _state.WriteCounter(playerId, _schema.Counter("pp"), 0);
         _state.WriteCounter(playerId, _schema.Counter("max_pp"), rules.InitialMaxPp);
-        _state.WriteCounter(playerId, _schema.Counter("ep"), rules.InitialEp(playerId));
-        _state.WriteCounter(playerId, _schema.Counter("sep"), rules.InitialSep(playerId));
+        // 同上：记下解锁时的发放量，开局置 0。
+        var p1 = _state.Players[playerId];
+        p1.InitialEpToGrant = rules.InitialEp(playerId);
+        p1.InitialSepToGrant = rules.InitialSep(playerId);
+        p1.EpUnlocked = false;
+        p1.SepUnlocked = false;
+        _state.Players[playerId].Counters[_schema.Counter("ep").Id] = 0;
+        _state.Players[playerId].Counters[_schema.Counter("sep").Id] = 0;
         _state.WriteCounter(playerId, _schema.Counter("shadow"), 0);
         _state.WriteCounter(playerId, _schema.Counter("combo"), 0);
         _state.WriteCounter(playerId, _schema.Counter("rally"), 0);

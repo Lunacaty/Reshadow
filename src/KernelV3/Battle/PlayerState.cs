@@ -22,6 +22,23 @@ public sealed class PlayerState
     /// 一局两次：第 1~5 回合可用 1 次（Early），第 6 回合起可用 1 次（Late）。
     /// 前 5 回合没用不会累加到第 6 回合，且每回合最多按 1 次。
     /// </summary>
+    /// <summary>本局该玩家解锁进化时应获得的初始 EP（标准 2 + 构筑修正）。</summary>
+    public int InitialEpToGrant { get; set; } = 2;
+
+    /// <summary>本局该玩家解锁超进化时应获得的初始 SEP（标准 2 + 构筑修正）。</summary>
+    public int InitialSepToGrant { get; set; } = 2;
+
+    /// <summary>
+    /// 是否已到达该玩家的进化解锁时点并发放过初始 EP。
+    ///
+    /// 解锁前 EP 恒为 0，且任何「回复进化点」的效果都无效 ——
+    /// 光把开局点数改成 0 不够，能力回复照样能加进去。
+    /// </summary>
+    public bool EpUnlocked { get; set; }
+
+    /// <summary>是否已到达该玩家的超进化解锁时点并发放过初始 SEP。</summary>
+    public bool SepUnlocked { get; set; }
+
     public bool UsedEarlyExtraPp { get; set; }
     public bool UsedLateExtraPp { get; set; }
     public bool UsedExtraPpThisTurn { get; set; }

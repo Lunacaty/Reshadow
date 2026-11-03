@@ -253,6 +253,9 @@ public sealed class EnglishCompiler
                 BaseCost = cost,
                 Abilities = sub.Abilities,
                 SourceText = textEng,
+                // 纹章/信仰是合成号段，没有立绘文件；记下主人卡号，
+                // 溯源面板才能加载出主人卡的图而不是黑底。
+                ArtCardId = _currentCardId,
             };
             if (isCrest) r.CrestDef = def;
             else if (isFaith) r.FaithDef = def;

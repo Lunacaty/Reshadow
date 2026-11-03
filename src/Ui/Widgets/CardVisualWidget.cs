@@ -466,7 +466,7 @@ public partial class CardVisualWidget : Control
         int fs = 22;
         Vector2 sz = font.GetStringSize(txt, HorizontalAlignment.Left, -1, fs);
         Vector2 pos = new(cx - sz.X * 0.5f, cy + 10f);
-        DrawOutlinedNumber(font, pos, txt, fs, Colors.White, new Color("0F172A"));
+        DrawOutlinedNumber(font, pos, txt, fs, numCol, new Color("0F172A"));
     }
 
     private void DrawRedShieldLifeBadge(Vector2 center, int life, Font font, Color numCol)
@@ -504,7 +504,7 @@ public partial class CardVisualWidget : Control
         int fs = 22;
         Vector2 sz = font.GetStringSize(txt, HorizontalAlignment.Left, -1, fs);
         Vector2 pos = new(cx - sz.X * 0.5f, cy + 8f);
-        DrawOutlinedNumber(font, pos, txt, fs, Colors.White, new Color("450A0A"));
+        DrawOutlinedNumber(font, pos, txt, fs, numCol, new Color("450A0A"));
     }
 
     private void DrawBottomOrnamentAndGem(float frameL, float frameB, float frameW, Color clanCol)

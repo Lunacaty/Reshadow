@@ -15,7 +15,11 @@ namespace ShadowverseFan.Ui.Battle;
 /// 并在底部给出【进化】【超进化】【启动】【融合】按钮 ——
 /// 原版战斗界面的核心操作入口就是这个左上角窗，不是右键菜单。
 /// </summary>
-public partial class TopLeftCardActionPanel : PanelContainer
+/// 基类必须是 Control 而不是 PanelContainer：
+/// PanelContainer 是布局容器，子节点可见性一变就会把它们的 Position
+/// 强制重置回 (0,0) 并铺满自身 —— 二级弹窗刚设好的右侧坐标下一微秒就被拉回去，
+/// 表现就是「点开历史条目，弹窗糊在主弹窗脸上」。
+public partial class TopLeftCardActionPanel : Control
 {
     private BattleSessionController _ctrl;
     private RuntimeEntity _bound;
@@ -63,7 +67,7 @@ public partial class TopLeftCardActionPanel : PanelContainer
 
         // 主弹窗不能是纯色块：需求要的是「弹窗背景用选中卡的立绘中心填充」。
         // 外层本身透明无边框，视觉全部由内部的 ArtCenterBannerBox 提供。
-        AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
+        // Control 没有 panel 样式，不需要清理；背景由内部 _mainCardBox 提供。
 
         var root = new VBoxContainer();
         root.AddThemeConstantOverride("separation", 6);
@@ -367,6 +371,7 @@ public partial class TopLeftCardActionPanel : PanelContainer
             var captured = rec;
             var box = new ArtCenterBannerBox
             {
+                ArtCardId = rec.SourceCard.ArtCardId,
                 CardId = rec.SourceCard.CardId,
                 DimAlpha = 0.62f,
                 CustomMinimumSize = new Vector2(310, 38),
@@ -429,7 +434,14 @@ public partial class TopLeftCardActionPanel : PanelContainer
         }
         _secondaryRich.Text = sb.ToString();
         _secondaryPopup.Visible = true;
-        _secondaryPopup.Position = new Vector2(Size.X + 10f, anchor.Position.Y);
+        // 基类改成 Control 后不会再篡改子节点坐标。
+        // X 固定在主窗宽度右侧 + 10px；Y 用**全局**坐标差值对齐被点的这一行 ——
+        // anchor.Position.Y 是它在 _historyList 内部的相对值，直接用会错位。
+        float rightX = (_mainCardBox != null && _mainCardBox.Size.X > 0
+                        ? _mainCardBox.Size.X : 336f) + 10f;
+        float alignY = anchor != null
+            ? Mathf.Max(0f, anchor.GlobalPosition.Y - GlobalPosition.Y) : 0f;
+        _secondaryPopup.Position = new Vector2(rightX, alignY);
     }
 
     public void HidePanel()

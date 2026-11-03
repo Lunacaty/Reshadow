@@ -44,6 +44,9 @@ public sealed class TurnRunner
         // 用 FirstPlayer 而不是写死 0：玩家 1 先手时，他的第 1 回合也该让 TurnNumber 前进。
         if (_state.TurnNumber == 0 || playerId == _state.FirstPlayer) _state.TurnNumber++;
 
+        // 回合数推进后立刻判一次解锁：解锁前该玩家的 EP/SEP 恒为 0。
+        _state.CheckAndUnlockEvolution(playerId);
+
         vm?.CurrentTurnOwner = playerId;
         vm?.ResetTriggerCounts();
 

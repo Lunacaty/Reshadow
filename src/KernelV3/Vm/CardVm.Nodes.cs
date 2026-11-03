@@ -810,6 +810,10 @@ public sealed partial class CardVm
         // 残留的 $created 会让 Super-Evolve 的 them 指向上一次对局里的实体。
         t.LastCreatedRefs.Clear();
 
+        // 回到手牌就是「一张普通手牌」：之前受过什么影响不该继续挂着，
+        // 否则溯源面板会显示早已失效的来源。
+        t.EffectHistory.Clear();
+
         var def = t.Def;
         t.Attack = def?.BaseAttack ?? t.Attack;
         t.Life = def?.BaseLife ?? t.Life;

@@ -191,7 +191,9 @@ public sealed class BattleSessionController
         try
         {
             var key = Schema.Counter(counterName);
-            return State.Players[playerId].Counters.TryGetValue(key.Id, out int v) ? v : 0;
+            // 必须走 BattleState.ReadCounter，不能直接查字典：
+            // 那里有进化/超进化解锁守卫，未解锁时恒读 0。
+            return State.ReadCounter(playerId, key);
         }
         catch
         {

@@ -871,6 +871,10 @@ public partial class BattleScreenRoot : Control
                 // 敌方出牌：从敌方手牌区飞出一张背面，停 1 秒后消散。
                 // 我方出牌由拖拽本身表现，不需要额外动画。
                 bool isMine = ev.PlayerId < 0 || ev.PlayerId == _ctrl.MyPlayerId;
+                // 记下这张卡的完整定义：动画要画正面，不能只是一块空面板。
+                _pendingPlayDef = ev.Subject?.Snapshot?.Def;
+                if (_pendingPlayDef == null && ev.Subject != null)
+                    _pendingPlayDef = _ctrl.State.CardDefOf(ev.Subject.Value.Snapshot?.CardId ?? 0);
                 if (!isMine)
                 {
                     _seq.Enqueue(new Seq()
@@ -1056,42 +1060,48 @@ public partial class BattleScreenRoot : Control
     ///
     /// 敌方手牌是盖着的，所以用牌背表现；停 1 秒由外层 Seq.Wait 负责。
     /// </summary>
+    /// <summary>当前这次敌方出牌的卡定义，供 CreateEnemyPlayIn 画正面。</summary>
+    private ShadowverseFan.KernelV3.Ast.CardDef _pendingPlayDef;
+
     private Anim CreateEnemyPlayIn()
     {
         if (_overlayLayer == null)
             return new Anim(0f, Ease.Linear, _ => { });
 
-        var panel = new PanelContainer();
-        panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
-            new Color("1A2438"), SvWbTheme.AccentCyan, 8, 2, 10));
-        panel.Size = new Vector2(72, 100);
-        panel.MouseFilter = MouseFilterEnum.Ignore;
-        panel.ZIndex = 58;
-        panel.Name = "EnemyPlayGhost";
+        // 必须是**正面明牌**：敌方打出的这张卡已经公开，
+        // 画成空面板等于给玩家看一张牌背，完全看不出打的是什么。
+        var def = _pendingPlayDef;
+        if (def == null) return new Anim(0f, Ease.Linear, _ => { });
+
+        var widget = new CardVisualWidget();
+        widget.Setup(def, _ctrl.Store.CardPrinter, showCopyPips: false);
+        widget.SetCardSize(96f, 128f);
+        widget.MouseFilter = MouseFilterEnum.Ignore;
+        widget.ZIndex = 58;
+        widget.Name = "EnemyPlayGhost";
 
         var from = EnemyHandAnchor();
-        panel.Position = from;
-        panel.Modulate = new Color(1, 1, 1, 0f);
-        _overlayLayer.AddChild(panel);
+        widget.Position = from;
+        widget.Modulate = new Color(1, 1, 1, 0f);
+        _overlayLayer.AddChild(widget);
 
         var to = from + new Vector2(0f, 56f);
 
         return new Anim(0.30f, Ease.OutCubic, v =>
         {
-            if (!IsInstanceValid(panel)) return;
-            panel.Position = from.Lerp(to, v);
-            panel.Scale = Vector2.One * (1f + 0.25f * v);
-            panel.Modulate = new Color(1, 1, 1, v);
+            if (!IsInstanceValid(widget)) return;
+            widget.Position = from.Lerp(to, v);
+            widget.Scale = Vector2.One * (1f + 0.25f * v);
+            widget.Modulate = new Color(1, 1, 1, v);
         });
     }
-
     /// <summary>敌方出牌第二步：停留结束后向上淡出消散。</summary>
     private Anim CreateEnemyPlayOut()
     {
         if (_overlayLayer == null)
             return new Anim(0f, Ease.Linear, _ => { });
 
-        var card = _overlayLayer.GetNodeOrNull<PanelContainer>("EnemyPlayGhost");
+        var card = _overlayLayer.GetNodeOrNull<Control>("EnemyPlayGhost");
         if (card == null || !IsInstanceValid(card))
             return new Anim(0f, Ease.Linear, _ => { });
 

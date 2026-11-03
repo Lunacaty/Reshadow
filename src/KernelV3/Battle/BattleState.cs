@@ -496,6 +496,40 @@ public sealed class BattleState : IVmWorld
 
     // ---------- 计数器：一律按绝对玩家编号 ----------
 
+    /// <summary>
+    /// 检查并触发该玩家的进化 / 超进化解锁。
+    ///
+    /// 解锁前 EP / SEP 恒为 0，且任何能力都无法给予或回复 ——
+    /// 否则「若已解锁超进化」这类条件在第 1 回合就判真，
+    /// 而「回复 1 点进化点」也能提前把豆加上去。
+    ///
+    /// 在 StartTurn 里主动调一次；ReadCounter / WriteCounter 里再惰性调一次，
+    /// 兼容单元测试直接改 TurnNumber 而不走 StartTurn 的场景。
+    /// </summary>
+    public void CheckAndUnlockEvolution(int playerId)
+    {
+        if (playerId is < 0 or > 1) return;
+        var p = Players[playerId];
+
+        int epTurn = Rules.EvolveUnlockTurn(playerId);
+        if (!p.EpUnlocked && (TurnNumber > epTurn
+            || (TurnNumber == epTurn && ActivePlayer == playerId)))
+        {
+            p.EpUnlocked = true;
+            var epKey = Schema.Counter("ep");
+            p.Counters[epKey.Id] = Schema.ClampCounter(epKey, p.InitialEpToGrant);
+        }
+
+        int sepTurn = Rules.SuperEvolveUnlockTurn(playerId);
+        if (!p.SepUnlocked && (TurnNumber > sepTurn
+            || (TurnNumber == sepTurn && ActivePlayer == playerId)))
+        {
+            p.SepUnlocked = true;
+            var sepKey = Schema.Counter("sep");
+            p.Counters[sepKey.Id] = Schema.ClampCounter(sepKey, p.InitialSepToGrant);
+        }
+    }
+
     public int ReadCounter(int playerId, SymbolId<CounterTag> counter)
     {
         if (playerId < 0 || playerId > 1) return 0;
@@ -507,6 +541,18 @@ public sealed class BattleState : IVmWorld
         // 这里做别名转发，而不是去改 AST 打印字符串（那会打翻一批文档验收断言）。
         if (counter.IsValid && string.Equals(counter.Name, "match_play", StringComparison.Ordinal))
             counter = Schema.Counter("rally");
+
+        // 解锁前一律读成 0：条件判定不该看到未解锁的点数。
+        if (counter.IsValid && counter.Name == "ep")
+        {
+            CheckAndUnlockEvolution(playerId);
+            if (!Players[playerId].EpUnlocked) return 0;
+        }
+        else if (counter.IsValid && counter.Name == "sep")
+        {
+            CheckAndUnlockEvolution(playerId);
+            if (!Players[playerId].SepUnlocked) return 0;
+        }
 
         // 信仰值住在信仰实体身上，不在玩家身上。
         // 这样做的好处：信仰占纹章区一格、同名唯一、而且可以单独被授予能力，
@@ -541,6 +587,26 @@ public sealed class BattleState : IVmWorld
     {
         if (playerId < 0 || playerId > 1) return;
 
+        // 解锁前无论谁想加 EP / SEP 都拦下并清零 ——
+        // 只把开局点数设成 0 是不够的，「回复 1 点进化点」照样能加上去。
+        if (counter.IsValid && counter.Name == "ep")
+        {
+            CheckAndUnlockEvolution(playerId);
+            if (!Players[playerId].EpUnlocked)
+            {
+                Players[playerId].Counters[counter.Id] = 0;
+                return;
+            }
+        }
+        else if (counter.IsValid && counter.Name == "sep")
+        {
+            CheckAndUnlockEvolution(playerId);
+            if (!Players[playerId].SepUnlocked)
+            {
+                Players[playerId].Counters[counter.Id] = 0;
+                return;
+            }
+        }
         var faith = FindFaith(playerId);
         if (faith != null && counter.Name == "faith")
         {
