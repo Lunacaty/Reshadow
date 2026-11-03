@@ -22,6 +22,62 @@ public static class Json
         return sb.ToString();
     }
 
+
+    /// <summary>缩进版输出：给玩家看的 AST JSON 必须是能读的，一行流没法改。</summary>
+    public static string WritePretty(object o, int indentWidth = 2)
+    {
+        var sb = new StringBuilder();
+        EmitPretty(sb, o, 0, indentWidth);
+        return sb.ToString();
+    }
+
+    private static void EmitPretty(StringBuilder sb, object o, int depth, int iw)
+    {
+        string pad = new string(' ', depth * iw);
+        string padIn = new string(' ', (depth + 1) * iw);
+
+        switch (o)
+        {
+            case null: sb.Append("null"); return;
+            case string s: Escape(sb, s); return;
+            case bool b: sb.Append(b ? "true" : "false"); return;
+            case int i: sb.Append(i.ToString(CultureInfo.InvariantCulture)); return;
+            case long l: sb.Append(l.ToString(CultureInfo.InvariantCulture)); return;
+            case IDictionary<string, object> map:
+            {
+                if (map.Count == 0) { sb.Append("{}"); return; }
+                sb.Append('{').Append('\n');
+                bool first = true;
+                foreach (var kv in map)
+                {
+                    if (!first) sb.Append(',').Append('\n');
+                    first = false;
+                    sb.Append(padIn);
+                    Escape(sb, kv.Key);
+                    sb.Append(": ");
+                    EmitPretty(sb, kv.Value, depth + 1, iw);
+                }
+                sb.Append('\n').Append(pad).Append('}');
+                return;
+            }
+            case IEnumerable seq:
+            {
+                var items = new List<object>();
+                foreach (var x in seq) items.Add(x);
+                if (items.Count == 0) { sb.Append("[]"); return; }
+                sb.Append('[').Append('\n');
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if (i > 0) sb.Append(',').Append('\n');
+                    sb.Append(padIn);
+                    EmitPretty(sb, items[i], depth + 1, iw);
+                }
+                sb.Append('\n').Append(pad).Append(']');
+                return;
+            }
+            default: Escape(sb, o.ToString()); return;
+        }
+    }
     private static void Emit(StringBuilder sb, object o)
     {
         switch (o)
