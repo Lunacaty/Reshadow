@@ -110,12 +110,26 @@ public sealed class PoolBuildResult
 {
     public CardPoolRuntime Pool { get; init; }
     public List<string> Errors { get; } = new();
+
+    /// <summary>非致命提示（如卡号冲突已自动隔离），不影响 Ok。</summary>
+    public List<string> Notices { get; } = new();
+
+    /// <summary>
+    /// artCardId -> packId 登记表。
+    ///
+    /// KernelV3 不依赖 Ui，所以这里只产出数据，由 Ui 层（GameSessionStore）
+    /// 读走后喂给 CardArtLoader.RegisterCardPack，找图时优先查本包 cards/ 目录。
+    /// </summary>
+    public Dictionary<int, string> ArtPackMap { get; } = new();
+
     public bool Ok => Errors.Count == 0 && Pool != null;
 
     internal PoolBuildResult With(CardPoolRuntime pool)
     {
         var r = new PoolBuildResult { Pool = pool };
         r.Errors.AddRange(Errors);
+        r.Notices.AddRange(Notices);
+        foreach (var kv in ArtPackMap) r.ArtPackMap[kv.Key] = kv.Value;
         return r;
     }
 }
@@ -179,6 +193,8 @@ public static class CardPoolBuilder
 
         var cardIndex = new Core.PoolCardIndex();
         var idOf = new Dictionary<CardRawEntry, int>();
+        // 卡号冲突被自动改号时，原号记在这里，稍后写进 CardDef.ArtCardId（找图用）。
+        var pendingArtCardId = new Dictionary<CardRawEntry, int>();
         var cardOwnerPack = new Dictionary<int, string>();
         var nameOwnerPack = new Dictionary<string, (string packId, int cardId)>(StringComparer.OrdinalIgnoreCase);
 
@@ -237,11 +253,20 @@ public static class CardPoolBuilder
                     continue;
                 }
 
+                // 跨创作者卡号冲突（126 专题三 ①）：**不再报错拒绝**，改为自动改号。
+                // 两个包都写 card_id=1001 时，后到的这张通过命名空间键分配一个新号，
+                // 原号保留在 ArtCardId 里供找图用 —— 两张 1001 既能同时上场，
+                // 又能各读各卡包 cards/ 目录下的立绘，绝不串图。
                 if (cardOwnerPack.TryGetValue(effectiveId, out var prevPack))
                 {
-                    res.Errors.Add("卡号冲突：卡包 [" + pack.PackId + "] 与 [" + prevPack
-                                   + "] 都定义了 CardId=" + effectiveId + "（《" + c.NameEng + "》）！");
-                    continue;
+                    int reassigned = cardIndex.Assign(pack.PackId,
+                        !string.IsNullOrEmpty(c.LocalId) ? c.LocalId : ("id" + effectiveId));
+                    pendingArtCardId[c] = effectiveId;
+                    res.Notices.Add("卡号冲突已自动隔离：卡包 [" + pack.PackId + "] 的《" + c.NameEng
+                                    + "》原 CardId=" + effectiveId + "（与 [" + prevPack
+                                    + "] 冲突）→ 运行期改为 " + reassigned + "，原号存为 ArtCardId");
+                    effectiveId = reassigned;
+                    idOf[c] = effectiveId;
                 }
                 cardOwnerPack[effectiveId] = pack.PackId;
 
@@ -331,6 +356,28 @@ public static class CardPoolBuilder
                 {
                     pool.RegisterCompiledCard(card);
                     allCardsLookupTable[card.CardId] = card;
+                    res.ArtPackMap[card.ArtCardId > 0 ? card.ArtCardId : card.CardId] = pack.PackId;
+
+                    // 卡号曾被自动隔离的卡：原号写进 ArtCardId，找立绘时用它，
+                    // 这样两张撞号的 1001 各自去自己的包目录取图，不会串图。
+                    if (pendingArtCardId.TryGetValue(c, out int artId) && artId > 0)
+                    {
+                        var fixedCard = new CardDef
+                        {
+                            CardId = card.CardId, ArtCardId = artId,
+                            Name = card.Name, NameChs = card.NameChs, Kind = card.Kind,
+                            BaseCost = card.BaseCost, BaseAttack = card.BaseAttack, BaseLife = card.BaseLife,
+                            Clan = card.Clan, Traits = card.Traits, Abilities = card.Abilities,
+                            InnateKeywords = card.InnateKeywords, DeckModifiers = card.DeckModifiers,
+                            HasFuse = card.HasFuse, FuseMaterialFilter = card.FuseMaterialFilter,
+                            CrestDef = card.CrestDef, FaithDef = card.FaithDef,
+                            AccelerateDef = card.AccelerateDef, CrystallizeDef = card.CrystallizeDef,
+                            PackId = card.PackId, IsToken = card.IsToken, Rarity = card.Rarity,
+                            SourceText = card.SourceText,
+                        };
+                        pool.RegisterCompiledCard(fixedCard);
+                        allCardsLookupTable[fixedCard.CardId] = fixedCard;
+                    }
                 }
             }
 

@@ -168,6 +168,105 @@ public partial class DiyWorkshopView : Control
         return bar;
     }
 
+
+    // ---------------------------------------------------------------- 立绘上传（126 专题三）
+
+    /// <summary>
+    /// 立绘上传按钮组：进化前 / 进化后 / 异画 I / 异画 I 进化后。
+    ///
+    /// 落盘目标固定为**目标卡包自己的目录** data/packs/&lt;packId&gt;/cards/，
+    /// 这样创作者把整个卡包文件夹打包发出去，素材就跟着走，绝不污染全局图库。
+    /// </summary>
+    private Control BuildArtUploadBar()
+    {
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 4);
+
+        var head = new Label { Text = "卡面立绘" };
+        head.AddThemeFontSizeOverride("font_size", 12);
+        head.AddThemeColorOverride("font_color", new Color("FDE68A"));
+        box.AddChild(head);
+
+        var flow = new HFlowContainer();
+        flow.AddThemeConstantOverride("h_separation", 6);
+        flow.AddThemeConstantOverride("v_separation", 4);
+        AddArtUploadBtn(flow, "🖼 上传进化前", "");
+        AddArtUploadBtn(flow, "🔥 上传进化后", "_e");
+        AddArtUploadBtn(flow, "🎨 上传异画", "_3");
+        AddArtUploadBtn(flow, "✨ 上传异画进化", "_4");
+        box.AddChild(flow);
+
+        return box;
+    }
+
+    private void AddArtUploadBtn(Control host, string label, string suffix)
+    {
+        var btn = new Button { Text = label, CustomMinimumSize = new Vector2(0, 28) };
+        SvWbTheme.StyleButton(btn);
+        btn.Pressed += () => OpenImageFileDialog(suffix);
+        host.AddChild(btn);
+    }
+
+    private void OpenImageFileDialog(string suffix)
+    {
+        if (_ctrl?.CurrentDef == null)
+        {
+            if (_statusLabel != null) _statusLabel.Text = "✘ 请先加载或新建一张卡";
+            return;
+        }
+
+        var dlg = new FileDialog
+        {
+            FileMode = FileDialog.FileModeEnum.OpenFile,
+            Access = FileDialog.AccessEnum.Filesystem,
+            Filters = new[] { "*.png, *.jpg, *.jpeg, *.webp ; 图片文件" },
+            Title = "选择卡牌立绘图片",
+            Size = new Vector2I(760, 480),
+        };
+        dlg.FileSelected += srcPath =>
+        {
+            try
+            {
+                var img = Image.LoadFromFile(srcPath);
+                if (img == null || img.IsEmpty())
+                {
+                    if (_statusLabel != null) _statusLabel.Text = "✘ 图片加载失败";
+                    dlg.QueueFree();
+                    return;
+                }
+
+                string packId = (_packPicker != null && _packPicker.ItemCount > 0)
+                    ? _packPicker.GetItemText(_packPicker.Selected) : "testset-v2";
+
+                // 用 ArtCardId（源素材原始卡号）命名，跨创作者撞号时各读各的目录。
+                int cid = _ctrl.CurrentDef.ArtCardId > 0
+                    ? _ctrl.CurrentDef.ArtCardId : _ctrl.CurrentDef.CardId;
+
+                string packCardsDir = System.IO.Path.Combine(
+                    ShadowverseFan.Ui.ContentPaths.Root, "data", "packs", packId, "cards");
+                System.IO.Directory.CreateDirectory(packCardsDir);
+                string dstPath = System.IO.Path.Combine(packCardsDir, cid + suffix + ".png");
+                img.SavePng(dstPath);
+
+                // 清缓存让新图立刻生效；异画顺带把该卡偏好切到这一版。
+                ShadowverseFan.Ui.CardArtLoader.ClearCache();
+                if (suffix == "_3") ShadowverseFan.Ui.CardArtLoader.SetPreferredVariant(cid, 3);
+                if (suffix == "_4") ShadowverseFan.Ui.CardArtLoader.SetPreferredVariant(cid, 3);
+
+                RefreshAll();
+                if (_statusLabel != null) _statusLabel.Text = "✔ 已保存立绘至 " + dstPath;
+            }
+            catch (Exception ex)
+            {
+                if (_statusLabel != null) _statusLabel.Text = "✘ 保存立绘出错：" + ex.Message;
+            }
+            dlg.QueueFree();
+        };
+        dlg.Canceled += () => dlg.QueueFree();
+        AddChild(dlg);
+        dlg.PopupCentered();
+    }
+
     private Control BuildLeftPane()
     {
         var pane = new VBoxContainer { CustomMinimumSize = new Vector2(350, 0) };
@@ -192,6 +291,9 @@ public partial class DiyWorkshopView : Control
         };
         _chinesePreview.AddThemeFontSizeOverride("normal_font_size", 12);
         pane.AddChild(_chinesePreview);
+
+        // 立绘上传（126 专题三）：落盘到目标卡包自己的 cards/ 目录。
+        pane.AddChild(BuildArtUploadBar());
 
         var astTitle = new Label { Text = "AST 规范形" };
         astTitle.AddThemeFontSizeOverride("font_size", 13);

@@ -128,7 +128,15 @@ public sealed class GameSessionStore
             // 按 id 拼文件名会在磁盘上造出第二个同 id 文件互相打架。
             PoolFilePaths[cfg.PoolId] = path;
             var built = CardPoolBuilder.Build(cfg, Catalog.Packs);
-            if (built.Ok) PoolRuntimes[cfg.PoolId] = built.Pool;
+            if (built.Ok)
+            {
+                PoolRuntimes[cfg.PoolId] = built.Pool;
+
+                // 卡号被自动隔离的卡：把「原号 -> 所属卡包」喂给找图器，
+                // 让两张撞号的卡各自去自己的 cards/ 目录取立绘，绝不串图。
+                foreach (var kv in built.ArtPackMap)
+                    CardArtLoader.RegisterCardPack(kv.Key, kv.Value);
+            }
         }
 
         // 3. 玩家构筑存档（写在 exe 旁的 decks/，不是只读的 data/）

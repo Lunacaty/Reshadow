@@ -19,6 +19,15 @@ namespace ShadowverseFan.Ui;
 public static class CardArtLoader
 {
     private static readonly Dictionary<int, Texture2D> _cache = new();
+
+    /// <summary>cardId -> 所属卡包（让 ResolveArtFile 优先查该包自己的 cards/）。</summary>
+    private static readonly Dictionary<int, string> _cardPackId = new();
+
+    /// <summary>登记某张卡属于哪个卡包（卡池构建时调用，供查找立绘时优先定位）。</summary>
+    public static void RegisterCardPack(int cardId, string packId)
+    {
+        if (cardId > 0 && !string.IsNullOrEmpty(packId)) _cardPackId[cardId] = packId;
+    }
     private static readonly HashSet<int> _missing = new();
 
     /// <summary>
@@ -182,7 +191,16 @@ public static class CardArtLoader
     /// </summary>
     private static string ResolveArtFile(int cardId, int variant, bool evolved)
     {
+        // 查找优先级（126 专题三「卡包自包含目录」）：
+        //   1. 本卡所属卡包自己的 cards/ —— 创作者发一个文件夹就能带走素材；
+        //   2. 其余卡包的 cards/（跨包引用/依赖链）；
+        //   3. 全局 assets/cards/ 兜底（官方基础图库）。
         var dirs = new List<string>();
+
+        string packId = _cardPackId.TryGetValue(cardId, out var pid) ? pid : null;
+        if (!string.IsNullOrEmpty(packId))
+            dirs.Add(ContentPaths.FilePath("data", "packs", packId, "cards"));
+
         var packsRoot = ContentPaths.FilePath("data", "packs");
         try
         {

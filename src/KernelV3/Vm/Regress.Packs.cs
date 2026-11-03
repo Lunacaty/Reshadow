@@ -263,7 +263,13 @@ public static class RegressPacks
         {
             PoolId = "p1", EnabledPackIds = new List<string> { "a", "b" },
         }, idClash);
-        bool c2 = !r2.Ok && r2.Errors.Any(e => e.Contains("卡号冲突"));
+        // 126 轮改语义：同号不再报错拒绝，而是**自动隔离**——
+        // 后到的卡分配新运行期卡号，原号存进 ArtCardId 供找图，两张共存。
+        bool c2 = r2.Ok
+                  && r2.Notices.Any(n => n.Contains("卡号冲突已自动隔离"))
+                  && r2.Pool != null
+                  && r2.Pool.AllCards.Values.Count(c => c.Name == "Alpha" || c.Name == "Beta") == 2
+                  && r2.Pool.AllCards.Values.Any(c => c.Name == "Beta" && c.ArtCardId == 730003);
 
         // C3：同名计数器不同上下限
         var ctrClash = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
