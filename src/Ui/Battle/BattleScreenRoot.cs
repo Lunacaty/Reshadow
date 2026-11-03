@@ -140,6 +140,47 @@ public partial class BattleScreenRoot : Control
         RefreshOverlays();
     }
 
+
+    /// <summary>
+    /// 客机模式启动：本地 State 只作只读镜像，所有操作上行给权威端。
+    ///
+    /// 与 Boot 的区别：不跑本地 AI、不做本地换牌 —— 权威端说了算；
+    /// 快照到达时把状态铺进镜像再重绘，而不是本地结算。
+    /// </summary>
+    public void BootRemote(GameSessionStore store, ConstructedDeck mine, ConstructedDeck foe,
+                           ShadowverseFan.Ui.Net.RemoteBattleClient client)
+    {
+        _store = store;
+        _myDeck = mine;
+        _foeDeck = foe;
+        _remoteClient = client;
+
+        _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
+                                            startInMulligan: false);
+        BoardUnitWidget.CurrentController = _ctrl;
+        _lastEventIdx = _ctrl.State.EventLog.Count;
+
+        BuildUi();
+        Rebuild();
+        RefreshOverlays();
+
+        if (_remoteClient != null)
+        {
+            _remoteClient.SnapshotReceived += OnRemoteSnapshot;
+            _remoteClient.Failed += msg => System.Console.WriteLine("[联机] " + msg);
+        }
+    }
+
+    private ShadowverseFan.Ui.Net.RemoteBattleClient _remoteClient;
+
+    private void OnRemoteSnapshot(ShadowverseFan.KernelV3.Net.NetStateSnapshot snap)
+    {
+        if (_ctrl == null || snap == null) return;
+        _ctrl.ApplyRemoteSnapshot(snap);
+        Rebuild();
+        RefreshOverlays();
+    }
+
     private void RefreshOverlays()
     {
         if (_ctrl == null) return;

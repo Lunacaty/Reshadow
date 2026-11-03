@@ -60,6 +60,122 @@ public sealed class BattleSessionController
             ConfirmPlayerMulligan(Array.Empty<RuntimeEntity>());
     }
 
+
+    // ---------------------------------------------------------------- 联机镜像
+
+    /// <summary>
+    /// 客机模式：把权威端下发的裁剪快照铺到本地 State 上。
+    ///
+    /// 本地 State 只是**只读镜像**，不是真相源。所有数值都来自快照，
+    /// 所以改本地内存毫无意义 —— 下一包快照推进来就覆盖回去了。
+    /// 玩家操作也不在这里结算，一律经 RemoteBattleClient 上行给权威端。
+    ///
+    /// 隐藏卡（IsHidden / CardId == -1）用一张占位卡面填充：
+    /// 客机的内存里根本不存在对手的真实卡号，这是防读牌的最后一道。
+    /// </summary>
+    public void ApplyRemoteSnapshot(ShadowverseFan.KernelV3.Net.NetStateSnapshot snap)
+    {
+        if (snap == null || State == null) return;
+
+        State.ActivePlayer = snap.ActivePlayer;
+        State.TurnNumber = snap.TurnNumber;
+
+        for (int pid = 0; pid < 2 && pid < snap.Players.Length; pid++)
+        {
+            var dto = snap.Players[pid];
+            if (dto == null) continue;
+            var p = State.Players[pid];
+
+            p.Deck.Clear();
+            p.Hand.Clear();
+            p.Board.Clear();
+            p.CrestArea.Clear();
+            p.Cemetery.Clear();
+            p.Banished.Clear();
+
+            // 牌库只发张数：补等量的占位，让界面上的张数正确，
+            // 但没有任何真实卡号可读。
+            for (int i = 0; i < dto.DeckCount; i++) p.Deck.Add(PlaceholderEntity(pid, ZoneRef.Deck));
+            for (int i = 0; i < dto.CemeteryCount; i++) p.Cemetery.Add(PlaceholderEntity(pid, ZoneRef.Cemetery));
+            for (int i = 0; i < dto.BanishedCount; i++) p.Banished.Add(PlaceholderEntity(pid, ZoneRef.Banished));
+
+            if (dto.Leader != null)
+                p.Leader = MaterializeEntity(dto.Leader, pid, ZoneRef.Leader) ?? p.Leader;
+
+            foreach (var e in dto.Board)
+            {
+                var made = MaterializeEntity(e, pid, ZoneRef.Board);
+                if (made != null) p.Board.Add(made);
+            }
+            foreach (var e in dto.Crests)
+            {
+                var made = MaterializeEntity(e, pid, ZoneRef.CrestArea);
+                if (made != null) p.CrestArea.Add(made);
+            }
+            foreach (var e in dto.Hand)
+            {
+                var made = MaterializeEntity(e, pid, ZoneRef.Hand);
+                if (made != null) p.Hand.Add(made);
+            }
+
+            p.EpUnlocked = dto.EpUnlocked;
+            p.SepUnlocked = dto.SepUnlocked;
+
+            foreach (var kv in dto.Counters ?? new System.Collections.Generic.Dictionary<string, int>())
+                State.WriteCounter(pid, State.Schema.Counter(kv.Key), kv.Value);
+        }
+    }
+
+    /// <summary>隐藏卡：没有卡号，用一张中性占位立绘撑住手牌张数。</summary>
+    private RuntimeEntity PlaceholderEntity(int playerId, ZoneRef zone)
+    {
+        return new RuntimeEntity
+        {
+            EntityId = -9000 - playerId,
+            EntrySerial = 0,
+            Def = null,
+            PlayerId = playerId,
+            Zone = zone,
+            Cost = 0,
+            Attack = 0,
+            Life = 1,
+            MaxLife = 1,
+        };
+    }
+
+    private RuntimeEntity MaterializeEntity(ShadowverseFan.KernelV3.Net.NetEntityDto d, int playerId, ZoneRef zone)
+    {
+        if (d == null) return null;
+        if (d.IsHidden || d.CardId <= 0) return PlaceholderEntity(playerId, zone);
+
+        var def = State.CardDefOf(d.CardId);
+        if (def == null) return PlaceholderEntity(playerId, zone);
+
+        var e = new RuntimeEntity
+        {
+            EntityId = d.EntityId,
+            EntrySerial = d.EntrySerial,
+            Def = def,
+            PlayerId = playerId,
+            Zone = zone,
+            Cost = d.Cost,
+            Attack = d.Attack,
+            Life = d.Life,
+            MaxLife = d.MaxLife,
+            IsEvolved = d.IsEvolved,
+            IsSuperEvolved = d.IsSuperEvolved,
+            IsSilenced = d.IsSilenced,
+            IsRevealed = d.IsRevealed,
+            EnteredTurn = d.EnteredTurn,
+            AttacksThisTurn = d.AttacksThisTurn,
+            AttackedThisTurn = d.AttackedThisTurn,
+            EngagedThisTurn = d.EngagedThisTurn,
+            FusedThisTurn = d.FusedThisTurn,
+            IsFaith = d.IsFaith,
+        };
+        return e;
+    }
+
     // ---------------------------------------------------------------- 换牌
 
     public bool IsInMulligan => Runner.Phase == MatchPhase.Mulligan;

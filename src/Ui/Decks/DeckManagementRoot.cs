@@ -74,23 +74,46 @@ public partial class DeckManagementRoot : Control
 
         lobby.OnCancelled += () => lobby.QueueFree();
 
-        // 加入房间：连上权威端后由 RemoteBattleClient 持续接收裁剪快照。
-        // 客机本地不持有真实 BattleState，改内存没有意义。
+        // 加入房间：连上权威端后由 RemoteBattleClient 持续接收裁剪快照，
+        // 快照铺进本地只读镜像驱动画面。客机本地改内存毫无意义。
         lobby.OnJoinRoom += info =>
         {
             lobby.QueueFree();
             var client = new Net.RemoteBattleClient();
             _remoteClient = client;
+
+            var deck = _store.SavedDecks.FirstOrDefault();
+            if (deck == null) return;
+
+            var view = new Battle.BattleScreenRoot();
+            Swap(view);
+            view.BootRemote(_store, deck, deck, client);
+            view.OnExitToDecks += ShowMainMenu;
+
             _ = client.ConnectAsync(info.Ip, info.Port, 1);
         };
 
+        // 建房：自己是房主，本地就是权威端 —— 起服务端并直接进正常对局。
         lobby.OnHostRoom += (poolId, deck) =>
         {
             lobby.QueueFree();
+
+            var foe = _store.SavedDecks.FirstOrDefault(d => d != deck) ?? deck;
+            StartBattle(deck, foe);
+
+            var host = new ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost();
+            _authoritativeHost = host;
+            var ctrl = GetBattleController();
+            if (ctrl != null) host.Start(ctrl.State, ctrl.Runner);
         };
     }
 
     private Net.RemoteBattleClient _remoteClient;
+    private ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost _authoritativeHost;
+
+    /// <summary>当前战斗界面的控制器（建房时要把它的 State 交给权威端）。</summary>
+    private ShadowverseFan.Ui.Bridge.BattleSessionController GetBattleController()
+        => (_current as Battle.BattleScreenRoot)?.Controller;
 
     /// <summary>对战选择窗：先卡池、再双方牌组，然后直接开局。</summary>
     private void ShowBattleSelect()
