@@ -8,6 +8,14 @@ namespace ShadowverseFan.Ui.Battle;
 public struct UnitMotion
 {
     public Vector2 Offset;
+
+    /// <summary>
+    /// 布局重排偏移：与 Offset 分开一通道，因为两者语义不同。
+    /// Offset 是攻击/受击等一次性演出，LayoutOffset 是「我还钉在旧槽位」的残留位移。
+    /// 混用一个通道会让攻击动画把布板位移冲掉。
+    /// </summary>
+    public Vector2 LayoutOffset;
+
     public float Scale;
     public float FlipX;
     public float Alpha;
@@ -15,12 +23,14 @@ public struct UnitMotion
     public static UnitMotion Idle => new()
     {
         Offset = Vector2.Zero,
+        LayoutOffset = Vector2.Zero,
         Scale = 1f,
         FlipX = 0f,
         Alpha = 1f,
     };
 
     public bool IsIdle => Offset == Vector2.Zero
+                         && LayoutOffset == Vector2.Zero
                          && Mathf.IsEqualApprox(Scale, 1f)
                          && Mathf.IsEqualApprox(FlipX, 0f)
                          && Mathf.IsEqualApprox(Alpha, 1f);
@@ -93,6 +103,49 @@ public sealed class BoardAnimDirector
     {
         _tracks.Clear();
         _aimingEntity = -1;
+    }
+
+
+    /// <summary>
+    /// 把随从**视觉上钉在旧槽位**：控件已经在新槽位，用 LayoutOffset 把它拉回去。
+    ///
+    /// 用于「有随从阵亡但离场动画还没播完」的窗口期 ——
+    /// 这时候幸存者绝不能提前补位，否则碎裂动画还没演完，人已经被别人顶走了。
+    /// </summary>
+    public void PinAtOldSlot(long entityId, Vector2 oldTopLeft, Vector2 newTopLeft)
+    {
+        var t = TrackOf(entityId);
+        if (t == null) return;
+        t.Motion.LayoutOffset = oldTopLeft - newTopLeft;
+    }
+
+    /// <summary>
+    /// 离场动画播完后调用：把钉住的随从用 0.22s OutCubic 滑到新槽位。
+    ///
+    /// 曲线与时长对应 CSS 的「transition: transform .22s cubic-bezier(.22,1,.36,1)」，
+    /// 起步快、收尾缓，观感是「被吸过去」而不是机械匀速。
+    /// </summary>
+    public void PlayLayoutReflow(IEnumerable<long> entityIds, float duration = 0.22f)
+    {
+        if (entityIds == null) return;
+        foreach (var id in entityIds)
+        {
+            if (!_tracks.TryGetValue(id, out var t)) continue;
+            Vector2 start = t.Motion.LayoutOffset;
+            if (start.LengthSquared() < 1f)
+            {
+                t.Motion.LayoutOffset = Vector2.Zero;
+                continue;
+            }
+
+            Play(id, new Anim(duration, Ease.OutCubic, v =>
+            {
+                t.Motion.LayoutOffset = start * (1f - v);
+            }, () =>
+            {
+                t.Motion.LayoutOffset = Vector2.Zero;
+            }));
+        }
     }
 
     public void Play(long entityId, Anim anim)

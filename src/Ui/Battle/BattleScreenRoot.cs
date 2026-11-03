@@ -595,8 +595,14 @@ public partial class BattleScreenRoot : Control
             var e = boardList[i];
             _lastBoardEntities[e.EntityId] = e;
 
-            // 立即写入精确槽位坐标，绝不等到下一帧
             Vector2 topLeft = ComputeSlotTopLeft(playerId, i, count);
+
+            // 若这个随从原来在别的槽位，说明本帧发生了重排（有人阵亡或有人插入）。
+            // 先把它**视觉上钉在旧槽位**，等离场动画播完再滑过去 ——
+            // 这样「碎裂/击飞」与「幸存者合拢」不会同时发生。
+            bool wasElsewhere = _unitTops.TryGetValue(e.EntityId, out var oldTop)
+                                && oldTop.DistanceTo(topLeft) > 1f;
+
             _unitTops[e.EntityId] = topLeft;
             _unitCenters[e.EntityId] = topLeft + new Vector2(BoardUnitWidget.UnitW * 0.5f,
                                                              BoardUnitWidget.UnitH * 0.5f);
@@ -607,6 +613,11 @@ public partial class BattleScreenRoot : Control
             bool selected = _actionPanel.BoundEntity != null
                             && _actionPanel.BoundEntity.EntityId == e.EntityId;
             w.Setup(e, selected, canAtk);
+            if (wasElsewhere)
+            {
+                // 钉在旧槽位；滑到新槽位由离场动画末尾的 TriggerBoardReflow 驱动。
+                _anims.PinAtOldSlot(e.EntityId, oldTop, topLeft);
+            }
             w.ApplyMotion(_anims.MotionOf(e.EntityId));
 
             w.OnClicked += ent =>
@@ -735,20 +746,16 @@ public partial class BattleScreenRoot : Control
     {
         if (_vfx == null || _ctrl?.State == null) return;
 
-        // 先为当前已在场的实体预填坐标（供新入场随从的 OnEnterField 读取）
+        // 只登记实体，**绝不在这里覆盖 _unitTops**。
+        //
+        // 早先这段会把每个存活随从的槽位按「当前棋盘」重算一遍写回去，
+        // 而阵亡随从已经不在 Board 里了 —— 它们死前的座位就此丢失，
+        // EnsureDyingProxy 拿不到旧坐标、幸存者也判定不出自己「原来在哪」，
+        // 离场动画与新槽位之间的那段过渡就此断掉。
+        // 坐标一律由 RebuildBoards / RelayoutBoardAnimated 负责。
         for (int pid = 0; pid <= 1; pid++)
-        {
-            var list = _ctrl.Board(pid).Take(5).ToList();
-            for (int idx = 0; idx < list.Count; idx++)
-            {
-                var e = list[idx];
+            foreach (var e in _ctrl.Board(pid).Take(5).ToList())
                 _lastBoardEntities[e.EntityId] = e;
-                Vector2 tl = ComputeSlotTopLeft(pid, idx, list.Count);
-                _unitTops[e.EntityId] = tl;
-                _unitCenters[e.EntityId] = tl + new Vector2(BoardUnitWidget.UnitW * 0.5f,
-                                                             BoardUnitWidget.UnitH * 0.5f);
-            }
-        }
 
         var log = _ctrl.State.EventLog;
         for (int i = _lastEventIdx; i < log.Count; i++)
@@ -880,7 +887,10 @@ public partial class BattleScreenRoot : Control
                             SpawnBurst(leaderCenter, 24, 165f, new Color("C084FC"), 0.65f);
                             RemoveDyingProxy(sid);
                         })
-                        .Wait(0.12f));
+                        .Wait(0.12f)
+                        // 飞走之后再让幸存者合拢。
+                        .Do(() => TriggerBoardReflow(ownerPid))
+                        .Wait(0.22f));
                 }
                 else
                 {
@@ -896,7 +906,10 @@ public partial class BattleScreenRoot : Control
                         .Do(() =>
                         {
                             if (sid >= 0) RemoveDyingProxy(sid);
-                        }));
+                        })
+                        // 碎裂播完再合拢。
+                        .Do(() => TriggerBoardReflow(ownerPid))
+                        .Wait(0.22f));
                 }
                 break;
             }
@@ -921,7 +934,10 @@ public partial class BattleScreenRoot : Control
                     .Do(() =>
                     {
                         if (sid >= 0) RemoveDyingProxy(sid);
-                    }));
+                    })
+                    // 放逐播完再合拢。
+                    .Do(() => TriggerBoardReflow(ownerPid))
+                    .Wait(0.22f));
                 break;
             }
 
@@ -1560,6 +1576,20 @@ public partial class BattleScreenRoot : Control
             _handHitRects.Add((new Rect2(wd.Position, new Vector2(cardW, cardH)), hand[i]));
         }
     }
+
+    /// <summary>
+    /// 离场动画播完后调用：让本侧所有被钉在旧槽位的幸存者滑到新槽位。
+    ///
+    /// 必须等 RemoveDyingProxy 之后 —— 先看着阵亡者碎裂/击飞播完，
+    /// 再让剩下的随从合拢，这才是「先离场、后重排」的观感。
+    /// </summary>
+    private void TriggerBoardReflow(int playerId)
+    {
+        if (_ctrl == null || _anims == null) return;
+        var ids = _ctrl.Board(playerId).Take(5).Select(e => (long)e.EntityId).ToList();
+        _anims.PlayLayoutReflow(ids);
+    }
+
     /// <summary>该点是否落在某个合法候选（棋子 / 主战者）上。</summary>
     private bool HitAnyCandidate(Vector2 at)
     {

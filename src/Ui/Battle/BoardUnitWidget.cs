@@ -226,7 +226,9 @@ public partial class BoardUnitWidget : Control
                 W * 0.5f * (1f - sxScale),
                 H * 0.5f * (1f - mo.Scale));
 
-            DrawSetTransform(mo.Offset + pivotShift, 0f, new Vector2(sxScale, mo.Scale));
+            // 总位移 = 一次性演出（攻击/受击）+ 布局重排残留。
+            // 两个通道分开存，攻击动画不会把布板位移冲掉。
+            DrawSetTransform(mo.Offset + mo.LayoutOffset + pivotShift, 0f, new Vector2(sxScale, mo.Scale));
 
             Modulate = new Color(1, 1, 1, Mathf.Clamp(mo.Alpha, 0f, 1f));
         }
