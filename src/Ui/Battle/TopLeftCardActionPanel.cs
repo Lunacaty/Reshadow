@@ -35,6 +35,17 @@ public partial class TopLeftCardActionPanel : PanelContainer
     private RichTextLabel _effectRich;
     private HBoxContainer _actionRow;
 
+    /// <summary>「曾受能力影响」列表容器。</summary>
+    private VBoxContainer _historyList;
+
+    /// <summary>点开某条历史后在右侧展开的二级来源详情。</summary>
+    private PanelContainer _secondaryPopup;
+    private Label _secondaryTitle;
+    private RichTextLabel _secondaryRich;
+
+    /// <summary>当前展开的那条历史；用于再次点击时收起。</summary>
+    private AppliedEffectRecord _activeRecord;
+
     public event Action<RuntimeEntity> OnEntityChanged;
 
     public void Setup(BattleSessionController ctrl)
@@ -85,6 +96,14 @@ public partial class TopLeftCardActionPanel : PanelContainer
         _actionRow = new HBoxContainer();
         _actionRow.AddThemeConstantOverride("separation", 8);
         root.AddChild(_actionRow);
+
+        // ── 曾受能力影响（点击展开来源）──
+        _historyList = new VBoxContainer();
+        _historyList.AddThemeConstantOverride("separation", 4);
+        _historyList.Visible = false;
+        root.AddChild(_historyList);
+
+        BuildSecondaryPopup();
     }
 
     /// <summary>
@@ -188,13 +207,215 @@ public partial class TopLeftCardActionPanel : PanelContainer
         }
 
         Visible = true;
+
+        // 历史区随实体切换重建；二级弹窗在 RebuildHistory 里先收起。
+        RebuildHistory(entity);
+    }
+
+    // ---------------------------------------------------------------- 历史溯源
+
+    private void BuildSecondaryPopup()
+    {
+        _secondaryPopup = new PanelContainer();
+        _secondaryPopup.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
+            new Color(0.05f, 0.07f, 0.13f, 0.97f), new Color("D4AF37"), 8, 2, 10));
+        _secondaryPopup.CustomMinimumSize = new Vector2(300, 0);
+        _secondaryPopup.Visible = false;
+        _secondaryPopup.ZIndex = 70;
+        AddChild(_secondaryPopup);
+
+        var v = new VBoxContainer();
+        v.AddThemeConstantOverride("separation", 6);
+        _secondaryPopup.AddChild(v);
+
+        _secondaryTitle = new Label();
+        _secondaryTitle.AddThemeFontSizeOverride("font_size", 13);
+        _secondaryTitle.AddThemeColorOverride("font_color", new Color("FEF08A"));
+        v.AddChild(_secondaryTitle);
+
+        _secondaryRich = new RichTextLabel
+        {
+            BbcodeEnabled = true,
+            FitContent = true,
+            ScrollActive = false,
+            CustomMinimumSize = new Vector2(286, 0),
+        };
+        _secondaryRich.AddThemeFontSizeOverride("normal_font_size", 11);
+        v.AddChild(_secondaryRich);
+    }
+
+    /// <summary>
+    /// 汇总该实体受过的全部影响：历史记录在前，当前生效的常驻光环补在后面。
+    ///
+    /// 光环必须实时扫描 —— 它不在 EffectHistory 里（没有「某次触发」这个时点），
+    /// 而是「因为场上还站着一张卡所以一直生效」，随光环源离场而消失。
+    /// </summary>
+    private System.Collections.Generic.List<AppliedEffectRecord> CollectAllEffects(RuntimeEntity entity)
+    {
+        var list = new System.Collections.Generic.List<AppliedEffectRecord>();
+        if (entity == null) return list;
+
+        foreach (var r in entity.EffectHistory) list.Add(r);
+
+        var st = _ctrl?.State;
+        if (st == null) return list;
+        foreach (var (node, scope) in st.QueryDamageModifiers(entity))
+        {
+            var snap = scope.Source?.Snapshot;
+            var def = snap?.Def ?? st.CardDefOf(snap?.CardId ?? 0);
+            if (def == null) continue;
+            bool dup = false;
+            foreach (var old in list)
+                if (ReferenceEquals(old.SourceCard, def)) { dup = true; break; }
+            if (dup) continue;
+            list.Insert(0, new AppliedEffectRecord
+            {
+                SourceCard = def,
+                SourceAbility = scope.SourceAbility,
+                Tag = "光环",
+            });
+        }
+        return list;
+    }
+
+    private void RebuildHistory(RuntimeEntity entity)
+    {
+        if (_historyList == null) return;
+        foreach (var c in _historyList.GetChildren())
+        {
+            _historyList.RemoveChild(c);
+            c.QueueFree();
+        }
+        _secondaryPopup.Visible = false;
+        _activeRecord = null;
+
+        var records = CollectAllEffects(entity);
+        if (records.Count == 0) { _historyList.Visible = false; return; }
+
+        _historyList.Visible = true;
+        var header = new Label { Text = "▾ 受到的能力影响 (" + records.Count + ")" };
+        header.AddThemeFontSizeOverride("font_size", 11);
+        header.AddThemeColorOverride("font_color", new Color("FDE68A"));
+        _historyList.AddChild(header);
+
+        foreach (var rec in records)
+        {
+            if (rec?.SourceCard == null) continue;
+            var captured = rec;
+            var box = new ArtCenterBannerBox
+            {
+                CardId = rec.SourceCard.CardId,
+                DimAlpha = 0.62f,
+                CustomMinimumSize = new Vector2(310, 38),
+                MouseFilter = MouseFilterEnum.Stop,
+                MouseDefaultCursorShape = CursorShape.PointingHand,
+            };
+            box.AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
+
+            var margin = new MarginContainer();
+            margin.AddThemeConstantOverride("margin_left", 10);
+            margin.AddThemeConstantOverride("margin_right", 10);
+            box.AddChild(margin);
+
+            var title = new Label
+            {
+                Text = DeckEditorViewModel.DisplayName(rec.SourceCard)
+                       + (string.IsNullOrEmpty(rec.Tag) ? "" : "　" + rec.Tag),
+                VerticalAlignment = VerticalAlignment.Center,
+                ClipText = true,
+            };
+            title.AddThemeFontSizeOverride("font_size", 13);
+            title.AddThemeColorOverride("font_color", Colors.White);
+            title.AddThemeConstantOverride("outline_size", 4);
+            title.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0, 0.9f));
+            margin.AddChild(title);
+
+            box.GuiInput += e =>
+            {
+                if (e is InputEventMouseButton mb && mb.Pressed
+                    && mb.ButtonIndex == MouseButton.Left)
+                {
+                    ShowSecondary(captured, box);
+                    box.AcceptEvent();
+                }
+            };
+            _historyList.AddChild(box);
+        }
+    }
+
+    private void ShowSecondary(AppliedEffectRecord rec, Control anchor)
+    {
+        if (ReferenceEquals(_activeRecord, rec) && _secondaryPopup.Visible)
+        {
+            _secondaryPopup.Visible = false;
+            _activeRecord = null;
+            return;
+        }
+        _activeRecord = rec;
+        _secondaryTitle.Text = "《" + DeckEditorViewModel.DisplayName(rec.SourceCard) + "》";
+        _secondaryRich.Text = SvWbTheme.FormatRichCardText(
+            _ctrl.Store.CardPrinter.PrintCardWithHighlight(rec.SourceCard, rec.SourceAbility));
+        _secondaryPopup.Visible = true;
+        _secondaryPopup.Position = new Vector2(Size.X + 10f, anchor.Position.Y);
     }
 
     public void HidePanel()
     {
         _bound = null;
+        if (_secondaryPopup != null) _secondaryPopup.Visible = false;
+        _activeRecord = null;
         Visible = false;
     }
 
     public RuntimeEntity BoundEntity => _bound;
+}
+
+/// <summary>
+/// 用指定 CardId 的立绘中心裁切填充背景、并叠暗色可读遮罩与金边的矩形容器。
+///
+/// 既当主弹窗背景，也当「受能力影响」每一条的底图 ——
+/// 用立绘而不是纯色块，玩家扫一眼就能认出「这张卡影响过我」。
+/// </summary>
+public partial class ArtCenterBannerBox : PanelContainer
+{
+    public int CardId { get; set; }
+    public bool Selected { get; set; }
+    public float DimAlpha { get; set; } = 0.76f;
+
+    public override void _Draw()
+    {
+        var rect = new Rect2(Vector2.Zero, Size);
+        if (rect.Size.X <= 1f || rect.Size.Y <= 1f) return;
+
+        var tex = ShadowverseFan.Ui.CardArtLoader.Load(CardId);
+        if (tex != null)
+        {
+            // 取立绘正中心偏上（y=0.38 是角色面部/胸像的黄金区）做等比裁切填充。
+            var ts = tex.GetSize();
+            float boxAspect = rect.Size.X / rect.Size.Y;
+            float texAspect = ts.X / Mathf.Max(1f, ts.Y);
+            Rect2 src;
+            if (texAspect > boxAspect)
+            {
+                float sw = ts.Y * boxAspect;
+                src = new Rect2((ts.X - sw) * 0.5f, 0f, sw, ts.Y);
+            }
+            else
+            {
+                float sh = ts.X / boxAspect;
+                float sy = Mathf.Clamp(ts.Y * 0.38f - sh * 0.5f, 0f, Mathf.Max(0f, ts.Y - sh));
+                src = new Rect2(0f, sy, ts.X, sh);
+            }
+            DrawTextureRectRegion(tex, rect, src);
+        }
+        else
+        {
+            DrawRect(rect, new Color("141C2E"));
+        }
+
+        // 暗化遮罩：保证前景卡名在任意立绘上都清晰可读。
+        DrawRect(rect, new Color(0.04f, 0.06f, 0.12f, DimAlpha));
+        DrawRect(rect, Selected ? new Color("FDE047") : new Color("D4AF37"),
+                 false, Selected ? 2.5f : 1.5f);
+    }
 }
