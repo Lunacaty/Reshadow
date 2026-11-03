@@ -30,6 +30,7 @@ public sealed class EnglishCompiler
         _target = new TargetParser(lex);
         _actions = new ActionParser(lex, CompileQuotedAbility, _target);
         _actions.VariableResolver = ResolveVariable;
+        _target.VariableResolver = ResolveVariable;
         // 引号内的变量声明也要真正登记（Shakdoh 的 Draw X）。
         _actions.VariableBinder = TryBindVariableDeclaration;
         _prefixes = new PrefixParser(lex, _target);
@@ -643,6 +644,60 @@ public sealed class EnglishCompiler
         // 它由引导句本身决定，落盘时写进 BranchModeNode.Kind。
         ModeDispatchKind modeKind = ModeDispatchKind.Choose;
 
+
+        // 句内「and, once on each of your turns,」拆句。
+        //
+        // 「Whenever an allied Marine follower attacks, give it +1/+0 until the end
+        //  of the turn and, once on each of your turns, add a Majestic Megalorca…」
+        // 前半句每次攻击都触发，后半句每回合限一次 —— 语义上是共用同一触发头的两条能力。
+        // 早先整句直接撞在 `once` 上报「无法推进」。
+        for (int si = 0; si < sentences.Count; si++)
+        {
+            var src = sentences[si];
+            int onceIdx = -1, andIdx = -1;
+            for (int ti = 0; ti + 3 < src.Count; ti++)
+            {
+                if (src[ti].IsWord("once") && src[ti + 1].IsWord("on")
+                    && src[ti + 2].IsWord("each") && src[ti + 3].IsWord("of"))
+                { onceIdx = ti; break; }
+            }
+            if (onceIdx <= 2) continue;
+
+            // 往前找最近的 and（允许中间隔一个逗号）
+            for (int ti = onceIdx - 1; ti >= 0; ti--)
+            {
+                if (src[ti].Kind == TokKind.Comma) continue;
+                if (src[ti].IsWord("and")) { andIdx = ti; }
+                break;
+            }
+            if (andIdx < 0) continue;
+
+            // 后半句：once ... turns, <动作> → 去掉 once 子句，action 保留
+            int actionStart = onceIdx;
+            while (actionStart < src.Count && src[actionStart].Kind != TokKind.Comma) actionStart++;
+            if (actionStart >= src.Count - 1) continue;
+            actionStart++;
+
+            // 触发头 = 第一句开头的 Whenever/When 子句（到第一个逗号为止）
+            int headEnd = 0;
+            while (headEnd < andIdx && src[headEnd].Kind != TokKind.Comma) headEnd++;
+            if (headEnd >= andIdx) continue;
+
+            var second = new List<Token>();
+            for (int ti = 0; ti <= headEnd; ti++) second.Add(src[ti]);
+            for (int ti = actionStart; ti < src.Count; ti++) second.Add(src[ti]);
+
+            // 第一句截到 and 之前
+            var first = new List<Token>();
+            for (int ti = 0; ti < andIdx; ti++) first.Add(src[ti]);
+
+            sentences[si] = first;
+            sentences.Insert(si + 1, second);
+            sentOptions.Insert(si + 1, sentOptions[si]);
+            sentDepth.Insert(si + 1, sentDepth[si]);
+            si++;
+        }
+
         // 变量声明句先整体摘出：它可能出现在选项块内部
         // （"2. Deal X damage ... X is this follower's attack."），
         // 一旦被当成选项的动作解析，就会撞上「解析器无法推进」。
@@ -929,7 +984,7 @@ public sealed class EnglishCompiler
                     result.Add(new AbilityDef
                     {
                         Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
-                        Condition = AndZone(zone, hb.Condition),
+                        Condition = AndZone(zone, hb.Condition, CoreEvent.PassiveAura),
                         Costs = hb.Costs,
                         Body = Array.Empty<EffectNode>(),
                     });
@@ -944,10 +999,11 @@ public sealed class EnglishCompiler
                     && (hb.Condition == null || hb.Condition is ConstBoolExpr))
                     continue;
 
+                var builtTrig = hb.BuildTrigger();
                 result.Add(new AbilityDef
                 {
-                    Trigger = hb.BuildTrigger(),
-                    Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs)),
+                    Trigger = builtTrig,
+                    Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs), builtTrig.Event),
                     Costs = hb.Costs,
                     Body = Array.Empty<EffectNode>(),
                 });
@@ -1055,10 +1111,11 @@ public sealed class EnglishCompiler
                 if (body.Count == 0)
                 {
                     // 建一条空的宿主能力，分档表会挂进它的 Body。
+                    var hostTrig = hb.BuildTrigger();
                     var host = new AbilityDef
                     {
-                        Trigger = hb.BuildTrigger(),
-                        Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs)),
+                        Trigger = hostTrig,
+                        Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs), hostTrig.Event),
                         Costs = hb.Costs,
                         Body = new List<EffectNode>(),
                     };
@@ -2421,9 +2478,19 @@ public sealed class EnglishCompiler
         };
     }
 
-    private static BoolExpr AndZone(SectionZone zone, BoolExpr cond)
+    /// <summary>
+    /// 给 &lt;ev&gt; / &lt;sev&gt; 段内的能力补上「已进化」条件。
+    ///
+    /// 但如果触发器本身就是 OnEvolve / OnSuperEvolve，这个条件已经完全重复 ——
+    /// 印出来会变成「【进化时】若已进化，…」这种蠢话，逼着每个打印器
+    /// 各写一套 StripDomain 去剥它。在源头不生成才是对的。
+    /// </summary>
+    private static BoolExpr AndZone(SectionZone zone, BoolExpr cond,
+                                    CoreEvent trigEvent = CoreEvent.PassiveAura)
     {
         if (zone == SectionZone.Normal) return cond;
+        if (zone == SectionZone.Evolved && trigEvent == CoreEvent.OnEvolve) return cond;
+        if (zone == SectionZone.SuperEvolved && trigEvent == CoreEvent.OnSuperEvolve) return cond;
         var state = zone == SectionZone.Evolved ? UnitState.Evolved : UnitState.SuperEvolved;
         return BoolExpr.And(cond, new HasStateExpr { State = state, Of = TargetSpec.Self });
     }

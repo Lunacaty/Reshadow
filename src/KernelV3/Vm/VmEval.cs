@@ -232,6 +232,18 @@ public sealed class VmEval
                 return ResolveRef(t, scope).Any(r => RefHasTrait(r, ht.Trait));
             }
 
+            case HasCardNameExpr hcn:
+            {
+                var t = hcn.Of ?? TargetSpec.Item;
+                return ResolveRef(t, scope).Any(r =>
+                {
+                    var d = RefDef(r);
+                    if (d == null) return false;
+                    if (hcn.CardId > 0 && d.CardId == hcn.CardId) return true;
+                    return !string.IsNullOrEmpty(hcn.CardName)
+                           && string.Equals(d.Name, hcn.CardName, StringComparison.OrdinalIgnoreCase);
+                });
+            }
             case HasPackExpr hp:
             {
                 var t = hp.Of ?? TargetSpec.Self;

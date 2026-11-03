@@ -108,6 +108,9 @@ public sealed class GameSchema
         ("match_play", 0, 999),
         // 连击（Combo）：本回合已打出的卡数，回合开始时清零。
         ("combo", 0, 999),
+        // 「我方随从本回合攻击过几次」——`if allied followers didn't attack this turn` 的判据。
+        // 用计数器而不是遍历战场：随从攻击后可能马上被消灭，遍历会漏掉。
+        ("turn_ally_attacks", 0, 999),
         // 协作（Rally）：本局对战中已进入过战场的己方随从总数。
         // 不含当前正在上场的这张（入场曲结算完才 +1），护符不算。
         ("rally", 0, 999),
@@ -129,6 +132,10 @@ public sealed class GameSchema
     public static readonly string[] BuiltinKeywords =
     {
         "ward", "rush", "storm", "bane", "drain", "ambush", "aura",
+
+        // 封印光环：入场曲 / 爆能强化无法发动。
+        // 由《米路缇欧&卢泽》纹章授予，运行期在触发与爆能档位两处拦截。
+        "suppress_fanfare", "suppress_enhance",
         "intimidate", "barrier", "cannot_attack", "cannot_destroy", "cannot_be_played",
         "attack_limit", "damage_cap", "ignores ward",
 

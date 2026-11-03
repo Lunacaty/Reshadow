@@ -23,13 +23,49 @@ namespace ShadowverseFan.KernelV3.Lang;
 
 public static class AstEnglishPrinter
 {
-    public static string PrintCard(IReadOnlyList<AbilityDef> abilities)
+    /// <summary>
+    /// 打印整卡效果。
+    ///
+    /// multiline = false（默认）：单行紧凑，供 RoundTripVerifier 与左下角摘要使用。
+    /// multiline = true：「③ AST 端」用的缩进格式，一行一条能力、Body 节点再缩进 2 格。
+    /// </summary>
+    public static string PrintCard(IReadOnlyList<AbilityDef> abilities, bool multiline = false)
     {
         if (abilities == null || abilities.Count == 0) return "";
-        return string.Join(" ", abilities.Select(PrintAbility));
+        if (!multiline) return string.Join(" ", abilities.Select(PrintAbility));
+
+        var sb = new StringBuilder();
+        foreach (var a in abilities)
+            sb.Append(PrintAbilityMultiline(a)).Append('\n');
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>多行缩进打印：触发头一行，Body 的每条节点缩进 2 格。</summary>
+    public static string PrintAbilityMultiline(AbilityDef a, int depth = 0)
+    {
+        if (a == null) return "";
+        string pad = new string(' ', depth * 2);
+        var sb = new StringBuilder();
+        sb.Append(pad).Append(PrintAbilityHeaderOnly(a)).Append(':');
+
+        var body = a.Body ?? Array.Empty<EffectNode>();
+        if (body.Count == 0) return sb.ToString();
+        sb.Append('\n');
+        foreach (var n in body)
+            sb.Append(pad).Append("  ").Append(PrintNode(n)).Append('\n');
+        return sb.ToString().TrimEnd('\n');
     }
 
     public static string PrintAbility(AbilityDef a)
+    {
+        if (a == null) return "";
+        string head = PrintAbilityHeaderOnly(a);
+        var body = a.Body ?? Array.Empty<EffectNode>();
+        return body.Count == 0 ? head : head + ": " + string.Join(" ", body.Select(PrintNode));
+    }
+
+    /// <summary>只打印触发头（含代价与条件），不含 Body。供多行格式与调试使用。</summary>
+    public static string PrintAbilityHeaderOnly(AbilityDef a)
     {
         if (a == null) return "";
         var sb = new StringBuilder();
@@ -74,9 +110,8 @@ public static class AstEnglishPrinter
         if (a.Condition != null && a.Condition is not ConstBoolExpr)
             sb.Append(" if " + PrintBool(a.Condition));
 
-        if (a.Body != null && a.Body.Count > 0)
-            sb.Append(": " + string.Join(" ", a.Body.Select(PrintNode)));
-
+        // 只到触发头为止 —— Body 由 PrintAbility 负责拼接。
+        // 在这里再打一遍会让每条能力的正文重复一次。
         return sb.ToString().Trim();
     }
 
@@ -270,11 +305,20 @@ public static class AstEnglishPrinter
     {
         if (t == null) return "null";
 
+        // 槽位引用就是 $self / $selected / $created 本身，
+        // 再套一层 slot: 前缀、再拖一句 All n=1，纯属噪音。
+        if (t.SourceKind == TargetSourceKind.Slot)
+        {
+            var s = new StringBuilder(t.Slot ?? TargetSpec.SlotSelf);
+            if (t.Where != null && t.Where is not ConstBoolExpr) s.Append(" where " + PrintBool(t.Where));
+            return s.ToString();
+        }
+
         var sb = new StringBuilder();
         switch (t.SourceKind)
         {
             case TargetSourceKind.Slot:
-                sb.Append("slot:" + t.Slot);
+                sb.Append(t.Slot ?? TargetSpec.SlotSelf);
                 break;
             case TargetSourceKind.CardId:
                 // 必须打 Owner 与 Zone：不然 "hand" / "deck" / "hand and deck"
@@ -298,7 +342,13 @@ public static class AstEnglishPrinter
         if (t.DistinctByName) sb.Append(" distinct");
         if (t.Sort != SortKey.None) sb.Append(" sort=" + t.Sort + (t.SortDescending ? "-desc" : ""));
         if (t.TopN > 0) sb.Append(" topN=" + t.TopN);
-        sb.Append(" " + t.Mode + " n=" + PrintNum(t.Count));
+
+        // All 不需要数量；只有 Choose / Random / First 才印 (n)。
+        if (t.Mode == SelectMode.All)
+            sb.Append(" All");
+        else
+            sb.Append(' ').Append(t.Mode).Append('(').Append(PrintNum(t.Count ?? NumExpr.Const(1))).Append(')');
+
         if (t.Where != null && t.Where is not ConstBoolExpr) sb.Append(" where " + PrintBool(t.Where));
         return sb.ToString();
     }
@@ -393,6 +443,8 @@ public static class AstEnglishPrinter
             HasKeywordExpr hk => "has " + hk.Keyword.Name,
             HasTraitExpr ht => "has trait " + ht.Trait.Name,
             HasPackExpr hp => "in pack " + hp.PackId,
+            HasCardNameExpr hcn => "named "
+                + (string.IsNullOrEmpty(hcn.CardName) ? hcn.CardId.ToString() : hcn.CardName),
             HasClanExpr hc => hc.IsSelfClan
                 ? "has clan $self"
                 : (hc.Clans != null && hc.Clans.Count > 0

@@ -94,7 +94,16 @@ public sealed class TargetSpec
     /// </summary>
     public bool DuplicatesOnly { get; init; }
     public Core.SelectMode Mode { get; init; } = Core.SelectMode.All;
-    public NumExpr Count { get; init; } = NumExpr.Const(1);
+
+    /// <summary>
+    /// 选取数量。**默认 null**。
+    ///
+    /// 以前默认 Const(1)，连「全体（All）」和「槽位引用（$self）」都挂着 Count=1，
+    /// 于是打印出来满地都是 `slot:$self All n=1` 这种废话，
+    /// 逼着每个打印器各写一套剥离逻辑。
+    /// 只有 Choose / Random / First 这类真正需要计数的模式才该有值。
+    /// </summary>
+    public NumExpr Count { get; init; }
     /// <summary>
     /// 历史池作用域：把候选池从"场上/手牌"切换到"本局/本回合的历史记录"。
     /// 例："Summon a copy of a random allied amulet destroyed this match"。

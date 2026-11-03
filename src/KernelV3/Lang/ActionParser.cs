@@ -199,6 +199,53 @@ public sealed class ActionParser
         return new ConditionalNode { Condition = cond, Then = thenBody, Else = elseBody };
     }
 
+
+    /// <summary>
+    /// 解析「&lt;Allied|Enemy&gt; followers' Fanfare [and Enhance] abilities don't activate」。
+    /// 不是这种句式时返回 null 并让游标复位，交给后续分支。
+    /// </summary>
+    private List<EffectNode> TryParseSuppressAura(TokenCursor cur)
+    {
+        int save = cur.Position;
+        bool isAlly = cur.Current.IsWord("allied");
+        cur.Advance();
+
+        if (!cur.TryMatchAnyWord("followers'", "follower's", "followers", "follower"))
+        { cur.Seek(save); return null; }
+
+        bool noFanfare = false, noEnhance = false, sawAbility = false;
+        while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
+        {
+            string wd = cur.Current.Text.ToLowerInvariant();
+            if (wd == "fanfare") { noFanfare = true; sawAbility = true; }
+            else if (wd == "enhance") { noEnhance = true; sawAbility = true; }
+            else if (wd is "abilities" or "ability") sawAbility = true;
+            else if (wd is "activate" or "activates" or "don't" or "doesn't" or "do") break;
+            cur.Advance();
+        }
+
+        bool confirmed = sawAbility && (noFanfare || noEnhance);
+        if (!confirmed) { cur.Seek(save); return null; }
+
+        while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
+        if (cur.Current.Kind == TokKind.Period) cur.Advance();
+
+        var tgt = new TargetSpec
+        {
+            SourceKind = TargetSourceKind.Zone,
+            Owner = isAlly ? ZoneScope.Self : ZoneScope.Opponent,
+            Zone = ZoneRef.Board,
+            Mode = SelectMode.All,
+            Where = new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item },
+        };
+
+        var list = new List<EffectNode>();
+        if (noFanfare)
+            list.Add(new ModifyKeywordNode { Target = tgt, Op = KeywordOp.Grant, Keyword = _lex.Keyword("suppress_fanfare") });
+        if (noEnhance)
+            list.Add(new ModifyKeywordNode { Target = tgt, Op = KeywordOp.Grant, Keyword = _lex.Keyword("suppress_enhance") });
+        return list;
+    }
     /// <summary>解析一个动作。返回 null 表示当前位置不是动作起点。</summary>
     public List<EffectNode> ParseOne(TokenCursor cur)
     {
@@ -206,6 +253,15 @@ public sealed class ActionParser
         if (t.Kind != TokKind.Word && t.Kind != TokKind.Keyword) return null;
 
         var w = t.Text.ToLowerInvariant();
+
+        // 「Allied followers' Fanfare and Enhance abilities don't activate」
+        // 这是光环句，不是普通动作：授予场上随从 suppress_fanfare / suppress_enhance。
+        if (w is "allied" or "enemy")
+        {
+            var suppress = TryParseSuppressAura(cur);
+            if (suppress != null) return suppress;
+        }
+
         switch (w)
         {
             case "deal": return ParseDeal(cur);
@@ -991,12 +1047,26 @@ public sealed class ActionParser
                     break;
                 }
 
-                // 消费授予项之间的 , / and
+                // 消费授予项之间的 , / and。
+                // 注意「and ,」的写法（`give it "A" and, until the end of the turn, "B"`）：
+                // 以前先判逗号再判 and，and 之后的逗号没被吃掉，
+                // IsGrantStart 看到逗号返回 false，直接把后一项留给外层撞墙。
                 int sepSave = cur.Position;
-                bool hadComma = cur.Current.Kind == TokKind.Comma;
-                bool hadAnd = cur.Current.IsWord("and");
-                if (hadComma) cur.Advance();
-                if (cur.Current.IsWord("and")) { cur.Advance(); hadAnd = true; }
+                bool hadComma = false, hadAnd = false;
+                while (cur.Current.Kind == TokKind.Comma || cur.Current.IsWord("and"))
+                {
+                    if (cur.Current.Kind == TokKind.Comma) hadComma = true;
+                    if (cur.Current.IsWord("and")) hadAnd = true;
+                    cur.Advance();
+                }
+
+                // 两项授予之间可能插一句时限："and, until the end of the turn, "B""
+                // 它修饰的是**下一项**，这一项本身仍按原持续时间处理。
+                if (hadAnd && cur.Current.IsWord("until"))
+                {
+                    ConsumeDuration(cur);
+                    cur.TryMatch(TokKind.Comma);
+                }
 
                 // "Bane or Ward at random" —— or 后面的关键词作为第二个授予项
                 if (cur.Current.IsWord("or"))
@@ -1297,12 +1367,50 @@ public sealed class ActionParser
             cur.TryMatchAnyWord("of");
             if (cur.Current.Kind == TokKind.CardName)
             {
-                var ct = cur.Current;
+                // 「summon an enemy A or B at random」也走这条路径：
+                // 先把卡名列表收集全，再决定是逐个召唤还是随机二选一。
+                var nameToks = new List<Token> { cur.Current };
                 cur.Advance();
+                bool sawOr = false;
+                while (cur.Current.IsAnyWord("or", "and") || cur.Current.Kind == TokKind.Comma)
+                {
+                    if (cur.Current.IsWord("or")) sawOr = true;
+                    cur.Advance();
+                    if (cur.Current.Kind != TokKind.CardName) break;
+                    nameToks.Add(cur.Current);
+                    cur.Advance();
+                }
+
+                var ct = nameToks[0];
                 // 用 ConsumeDestination 返回的真实区域覆盖默认值：
                 // 「Add 10 copies of X to your deck」必须落到牌组，
                 // 原来这里只吞词不记录，永远落到默认的手牌。
+                bool atRnd = cur.MatchPhrase("at", "random");
                 var dest1 = ConsumeDestination(cur);
+
+                if ((sawOr || atRnd) && nameToks.Count > 1)
+                {
+                    var opts2 = nameToks.Select(nt => (IReadOnlyList<EffectNode>)new List<EffectNode>
+                    {
+                        new SpawnCardNode
+                        {
+                            SourceKind = CardSourceKind.CardId,
+                            CardId = nt.CardId,
+                            CardName = nt.Text,
+                            ToZone = dest1 ?? toZone,
+                            ToOwner = ZoneScope.Self,
+                            Count = NumExpr.Const(1),
+                        },
+                    }).ToList();
+                    nodes.Add(new BranchModeNode
+                    {
+                        Kind = ModeDispatchKind.Random,
+                        PickCount = NumExpr.Const(1),
+                        Options = opts2,
+                    });
+                    return nodes;
+                }
+
                 nodes.Add(new SpawnCardNode
                 {
                     SourceKind = CardSourceKind.CardId,
@@ -1350,6 +1458,7 @@ public sealed class ActionParser
         if (cur.Current.Kind == TokKind.CardName)
         {
             var cardToks = new List<Token>();
+            bool sawOr = false;
             while (!cur.IsAtEnd)
             {
                 if (cur.Current.Kind != TokKind.CardName) break;
@@ -1359,30 +1468,61 @@ public sealed class ActionParser
                 int sepPos = cur.Position;
                 bool comma = cur.TryMatch(TokKind.Comma);
                 bool and = cur.TryMatchWord("and");
-                if (!comma && !and) break;
+                bool or = !and && cur.TryMatchWord("or");
+                if (or) sawOr = true;
+                if (!comma && !and && !or) break;
 
                 // 预判后面是否还是卡名
                 int la = cur.Position;
-                cur.TryMatchAnyWord("a", "an");
+                cur.TryMatchAnyWord("a", "an", "enemy");
                 bool nextIsCard = cur.Current.Kind == TokKind.CardName;
                 cur.Seek(la);
                 if (!nextIsCard) { cur.Seek(sepPos); break; }
-                cur.TryMatchAnyWord("a", "an");
+                cur.TryMatchAnyWord("a", "an", "enemy");
             }
 
             // 不带 copies of 的 "Add a X to your deck" 也走这里，
             // 必须接住 ConsumeDestination 返回的真实区域。
-            var dest2a = ConsumeDestination(cur);
-            foreach (var ct in cardToks)
-                nodes.Add(new SpawnCardNode
+            bool atRandom = cur.MatchPhrase("at", "random");
+            var dest2a = ConsumeDestination(cur) ?? toZone;
+
+            // 「summon A or B at random」：随机召唤其中之一，
+            // 不是「A 和 B 都召唤」。
+            if ((sawOr || atRandom) && cardToks.Count > 1)
+            {
+                var opts = cardToks.Select(ct => (IReadOnlyList<EffectNode>)new List<EffectNode>
                 {
-                    SourceKind = CardSourceKind.CardId,
-                    CardId = ct.CardId,
-                    CardName = ct.Text,
-                    ToZone = dest2a ?? toZone,
-                    ToOwner = ZoneScope.Self,
-                    Count = NumExpr.Const(listCount),
+                    new SpawnCardNode
+                    {
+                        SourceKind = CardSourceKind.CardId,
+                        CardId = ct.CardId,
+                        CardName = ct.Text,
+                        ToZone = dest2a,
+                        ToOwner = ZoneScope.Self,
+                        Count = NumExpr.Const(listCount),
+                    },
+                }).ToList();
+
+                nodes.Add(new BranchModeNode
+                {
+                    Kind = ModeDispatchKind.Random,
+                    PickCount = NumExpr.Const(1),
+                    Options = opts,
                 });
+            }
+            else
+            {
+                foreach (var ct in cardToks)
+                    nodes.Add(new SpawnCardNode
+                    {
+                        SourceKind = CardSourceKind.CardId,
+                        CardId = ct.CardId,
+                        CardName = ct.Text,
+                        ToZone = dest2a,
+                        ToOwner = ZoneScope.Self,
+                        Count = NumExpr.Const(listCount),
+                    });
+            }
 
             // 接续 "and give it ..." / "and evolve it ..."
             while (cur.Current.IsWord("and"))
@@ -1412,9 +1552,46 @@ public sealed class ActionParser
             }
             if (cur.Current.Kind == TokKind.CardName && skipped <= 2)
             {
-                var ct2 = cur.Current;
+                // 「summon an enemy A or B at random」：先收全卡名列表。
+                var names2b = new List<Token> { cur.Current };
                 cur.Advance();
+                bool sawOr2b = false;
+                while (cur.Current.IsAnyWord("or", "and") || cur.Current.Kind == TokKind.Comma)
+                {
+                    if (cur.Current.IsWord("or")) sawOr2b = true;
+                    cur.Advance();
+                    if (cur.Current.Kind != TokKind.CardName) break;
+                    names2b.Add(cur.Current);
+                    cur.Advance();
+                }
+
+                var ct2 = names2b[0];
+                bool atRnd2b = cur.MatchPhrase("at", "random");
                 var dest2b = ConsumeDestination(cur);
+
+                if ((sawOr2b || atRnd2b) && names2b.Count > 1)
+                {
+                    var opts2b = names2b.Select(nt => (IReadOnlyList<EffectNode>)new List<EffectNode>
+                    {
+                        new SpawnCardNode
+                        {
+                            SourceKind = CardSourceKind.CardId,
+                            CardId = nt.CardId,
+                            CardName = nt.Text,
+                            ToZone = dest2b ?? toZone,
+                            ToOwner = ZoneScope.Self,
+                            Count = NumExpr.Const(1),
+                        },
+                    }).ToList();
+                    nodes.Add(new BranchModeNode
+                    {
+                        Kind = ModeDispatchKind.Random,
+                        PickCount = NumExpr.Const(1),
+                        Options = opts2b,
+                    });
+                    return nodes;
+                }
+
                 nodes.Add(new SpawnCardNode
                 {
                     SourceKind = CardSourceKind.CardId,
@@ -2012,6 +2189,36 @@ public sealed class ActionParser
     private List<EffectNode> ParseCostChange(TokenCursor cur, int sign)
     {
         cur.Advance();   // reduce / increase
+
+        // 「减少主战者生命上限」：Reduce the enemy leader's max defense by 2。
+        // 这不是费用变更，以前落进下面的费用分支后整句解析失败。
+        {
+            int svLead = cur.Position;
+            ZoneScope leadOwner = ZoneScope.Self;
+            bool hitLeaderMax = false;
+            if (cur.MatchPhrase("your", "leader's", "max", "defense"))
+            { leadOwner = ZoneScope.Self; hitLeaderMax = true; }
+            else if (cur.MatchPhrase("the", "enemy", "leader's", "max", "defense"))
+            { leadOwner = ZoneScope.Opponent; hitLeaderMax = true; }
+
+            if (hitLeaderMax)
+            {
+                cur.TryMatchAnyWord("by");
+                var deltaL = ParseNumExpr(cur);
+                // 用 ModifyStatsNode 表达：主战者身上 Life 即「生命上限」，
+                // 与上面「set max defense to N」走同一条路径。
+                return new List<EffectNode>
+                {
+                    new ModifyStatsNode
+                    {
+                        Target = leadOwner == ZoneScope.Self ? TargetSpec.SelfLeader : TargetSpec.OpponentLeader,
+                        Op = StatModOp.Add,
+                        Life = sign < 0 ? NumExpr.Sub(NumExpr.Const(0), deltaL) : deltaL,
+                    },
+                };
+            }
+            cur.Seek(svLead);
+        }
 
         // "Reduce your faith's value by N to <动作>"
         if (cur.Current.IsWord("your") && cur.Peek().IsAnyWord("faith's", "crest's"))

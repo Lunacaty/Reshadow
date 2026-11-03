@@ -145,6 +145,15 @@ public interface IVmWorld
     /// <summary>把某玩家的牌库标记为「含胜利的卡牌」（Mjerrabaine 纹章机制）。</summary>
     void SetVictoryCard(int playerId) { }
 
+    /// <summary>
+    /// 实体是否有效持有某关键词（含光环授予）。
+    ///
+    /// 默认实现只看实体自身的 Keyword 集合；BattleState 会连光环一起算。
+    /// 用于「入场曲/爆能强化无法发动」这类封印判定。
+    /// </summary>
+    bool HasEffectiveKeyword(RuntimeEntity target, Core.SymbolId<Core.KeywordTag> kw)
+        => target != null && target.Keywords.Contains(kw);
+
     /// <summary>按快照生成一个复制体（用于「复制一份」）。</summary>
     RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId);
 

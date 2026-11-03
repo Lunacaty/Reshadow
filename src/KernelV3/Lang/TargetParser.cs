@@ -29,6 +29,15 @@ public sealed class TargetParser
     public string DefaultPronounSlot { get; set; }
 
     /// <summary>
+    /// 变量量词 X / Y / Z 的解析器。
+    ///
+    /// 「X is the number of crests you have」这种定义句可能出现在动作**之后**，
+    /// 由 EnglishCompiler 提前扫描登记，这里按需回查。
+    /// 没接的时候退化成 ctr:X（读一个不存在的计数器，恒为 0）。
+    /// </summary>
+    public Func<string, NumExpr> VariableResolver { get; set; }
+
+    /// <summary>
     /// 当前句内已经产生绑定的槽位集合（R-4 / 设计3 5.3）。
     /// 设计3 的强制校验：遇到 it / them 但对应槽位为空时，
     /// 必须直接抛编译异常，绝不静默绑到 $selected。
@@ -335,7 +344,8 @@ public sealed class TargetParser
         if (cur.Current.IsAnyWord("this"))
         {
             cur.Advance();
-            cur.TryMatchAnyWord("follower", "card", "amulet");
+            // `crest` 必须在内：`Destroy this crest` 漏了它就会把 crest 留在句尾报错。
+            cur.TryMatchAnyWord("follower", "card", "amulet", "crest");
             return new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = TargetSpec.SlotSelf, Mode = SelectMode.All };
         }
 
@@ -403,6 +413,22 @@ public sealed class TargetParser
             countSet = true;
             mode = SelectMode.Choose;
         }
+        // 变量量词：「give X random enemy followers」。
+        // X 后面不是连字符（不是「X-cost」）时，既没被量词步吃掉、
+        // 也没被修饰词循环吃掉，游标会卡死在 X 上直接返回 null。
+        else if (cur.Current.IsAnyWord("x", "y", "z") && cur.Peek().Kind != TokKind.Dash)
+        {
+            string vn = cur.Current.Text.ToUpperInvariant();
+            cur.Advance();
+            // 优先用编译器登记好的定义（`X is the number of crests you have`），
+            // 没登记才退回按名字造计数器。
+            count = VariableResolver != null
+                ? VariableResolver(vn)
+                : NumExpr.Ctr(_lex.Counter(vn));
+            countSet = true;
+            mode = SelectMode.Choose;
+            matched = true;
+        }
         else if (cur.Current.IsAnyWord("each"))
         {
             cur.Advance();
@@ -450,6 +476,7 @@ public sealed class TargetParser
                 matched = true; continue;
             }
             if (cur.MatchPhrase("differently", "named")) { distinct = true; matched = true; continue; }
+
             if (cur.MatchPhrase("exact", "copy") || cur.MatchPhrase("exact", "copies")) { matched = true; continue; }
             if (cur.MatchWord("unselected"))
             {
@@ -477,23 +504,37 @@ public sealed class TargetParser
                 matched = true; continue;
             }
 
-            // N-cost / N-base-cost / X-cost（分词器把 X-cost 拆成 X / - / cost）
+            // N-cost / N-base-cost / X-cost，以及费用枚举
+            // 「1-, 3-, or 5-cost card」——分词器把每种写法都拆成 数字 / - / cost。
             if ((cur.Current.Kind == TokKind.Number || cur.Current.IsAnyWord("x", "y", "z"))
                 && cur.Peek().Kind == TokKind.Dash)
             {
-                NumExpr costExpr = cur.Current.Kind == TokKind.Number
-                    ? NumExpr.Const(cur.Current.Value)
-                    : NumExpr.Var(_lex.Counter(cur.Current.Text.ToUpperInvariant()));
-                cur.Advance(); cur.Advance();
+                var costExprs = new List<NumExpr>();
+                while ((cur.Current.Kind == TokKind.Number || cur.Current.IsAnyWord("x", "y", "z"))
+                       && cur.Peek().Kind == TokKind.Dash)
+                {
+                    costExprs.Add(cur.Current.Kind == TokKind.Number
+                        ? NumExpr.Const(cur.Current.Value)
+                        : NumExpr.Var(_lex.Counter(cur.Current.Text.ToUpperInvariant())));
+                    cur.Advance();               // 数字
+                    cur.Advance();               // '-'
+                    if (cur.Current.Kind == TokKind.Comma) cur.Advance();
+                    cur.TryMatchAnyWord("and", "or");
+                }
+
                 bool isBase = cur.MatchWord("base");
                 cur.TryMatch(TokKind.Dash);
                 cur.TryMatchAnyWord("cost", "costs");
-                wheres.Add(new CompareExpr
+
+                var stat = isBase ? StatKey.BaseCost : StatKey.Cost;
+                var cmps = costExprs.Select(ce => (BoolExpr)new CompareExpr
                 {
-                    Left = NumExpr.Prop(isBase ? StatKey.BaseCost : StatKey.Cost, TargetSpec.Item),
+                    Left = NumExpr.Prop(stat, TargetSpec.Item),
                     Op = CompareOp.Eq,
-                    Right = costExpr,
-                });
+                    Right = ce,
+                }).ToArray();
+
+                wheres.Add(cmps.Length == 1 ? cmps[0] : BoolExpr.Or(cmps));
                 matched = true; continue;
             }
 
@@ -847,6 +888,39 @@ public sealed class TargetParser
         int postLoopStart = cur.Position;
         while (true)
         {
+            // "not named <CardName>" / "named <CardName>"
+            // `discard all cards not named Great Testimony` 与
+            // `Fuse: A and B` 都靠这个谓词表达。
+            {
+                int np = cur.Position;
+                bool neg = cur.MatchPhrase("not", "named");
+                if (neg || cur.MatchWord("named"))
+                {
+                    if (cur.Current.Kind == TokKind.CardName)
+                    {
+                        var names = new List<(int Id, string Name)>();
+                        names.Add((cur.Current.CardId, cur.Current.Text));
+                        cur.Advance();
+                        while (cur.Current.IsAnyWord("and", "or"))
+                        {
+                            cur.Advance();
+                            if (cur.Current.Kind != TokKind.CardName) break;
+                            names.Add((cur.Current.CardId, cur.Current.Text));
+                            cur.Advance();
+                        }
+
+                        BoolExpr expr = names.Count == 1
+                            ? new HasCardNameExpr { CardId = names[0].Id, CardName = names[0].Name, Of = TargetSpec.Item }
+                            : BoolExpr.Or(names.Select(x => (BoolExpr)new HasCardNameExpr
+                                { CardId = x.Id, CardName = x.Name, Of = TargetSpec.Item }).ToArray());
+
+                        wheres.Add(neg ? BoolExpr.Not(expr) : expr);
+                        matched = true; continue;
+                    }
+                    cur.Seek(np);
+                }
+            }
+
             // 区域短语可能出现在后置定语之后（"that costs 3 or less from your deck"）
             if (cur.MatchPhrase("from", "your", "deck")) { zone = ZoneRef.Deck; matched = true; continue; }
             if (cur.MatchPhrase("from", "your", "hand")) { zone = ZoneRef.Hand; matched = true; continue; }

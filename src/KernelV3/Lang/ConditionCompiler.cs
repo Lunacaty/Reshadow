@@ -588,6 +588,18 @@ public static class ConditionCompiler
         // 仍然只判自己；两条路径不能合流。
         if (c.MatchPhrase("both", "players"))
             return ParseBothPlayers(c, lex);
+        // 「本回合我方随从没有攻击过」——「安息」系列 4 张纹章的触发条件。
+        if (c.MatchPhrase("allied", "followers", "didn't", "attack", "this", "turn")
+            || c.MatchPhrase("allied", "followers", "did", "not", "attack", "this", "turn"))
+        {
+            return new CompareExpr
+            {
+                Left = NumExpr.Ctr(lex.Counter("turn_ally_attacks")),
+                Op = CompareOp.Eq,
+                Right = NumExpr.Const(0),
+            };
+        }
+
         if (c.MatchPhrase("you", "have"))
         {
             // "you have a Clue amulet in your hand"
@@ -644,14 +656,38 @@ public static class ConditionCompiler
                     Right = NumExpr.Const(n > 0 ? n : 1),
                 };
 
+            // 「N cards or less / or fewer」：TargetParser 会在 `or` 处收尾，
+            // 而且 `or less` 挡在 `in your hand` 前面，区域短语也一起丢了。
+            var cmpOp = CompareOp.Ge;
             var tgt = new TargetParser(lex).TryParse(c);
+            if (c.MatchPhrase("or", "less") || c.MatchPhrase("or", "fewer"))
+            {
+                cmpOp = CompareOp.Le;
+                if (c.MatchPhrase("in", "your", "hand"))
+                    tgt = TargetSpec.InZone(ZoneRef.Hand, ZoneScope.Self);
+            }
+            else if (c.MatchPhrase("or", "more"))
+                cmpOp = CompareOp.Ge;
+
             if (tgt != null)
             {
                 return new CompareExpr
                 {
                     Left = NumExpr.CountOf(tgt),
-                    Op = CompareOp.Ge,
-                    Right = NumExpr.Const(atLeast ? n : (n > 0 ? n : 1)),
+                    Op = cmpOp,
+                    Right = NumExpr.Const(n > 0 ? n : 1),
+                };
+            }
+
+            // 承前省略：「If you have at least 6, restore 1 defense…」
+            // 句尾没有名词，默认指手牌张数。
+            if (c.IsAtEnd && n > 0)
+            {
+                return new CompareExpr
+                {
+                    Left = NumExpr.CountOf(TargetSpec.InZone(ZoneRef.Hand, ZoneScope.Self)),
+                    Op = cmpOp,
+                    Right = NumExpr.Const(n),
                 };
             }
             // 兜底：max play points

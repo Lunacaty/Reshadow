@@ -126,6 +126,13 @@ public sealed class CombatResolver
         // 1. 攻击宣言：计数与潜行解除
         attacker.AttacksThisTurn++;
         attacker.AttackedThisTurn = true;
+
+        // 我方随从本回合攻击次数 +1。
+        // 用计数器而不是「遍历战场数 AttackedThisTurn」：
+        // 随从可能在这一击之后就被消灭，遍历会漏掉它已经攻击过的事实。
+        var allyAtkKey = _schema.Counter("turn_ally_attacks");
+        _state.WriteCounter(attacker.PlayerId, allyAtkKey,
+                            _state.ReadCounter(attacker.PlayerId, allyAtkKey) + 1);
         attacker.AttackedLeaderLastTurn = defender.Zone == ZoneRef.Leader;
         var ambushKw = _schema.Keyword("ambush");
         if (attacker.Keywords.Contains(ambushKw)) attacker.Keywords.Remove(ambushKw);

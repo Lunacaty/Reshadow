@@ -250,11 +250,11 @@ public static class RoundTripVerifier
                     //   Summon a copy of ... destroyed      → 动词是 summon，spawn
                     //   Add a copy of ... to your hand      → 动词是 add，spawn
                     // 只有 Reanimate 那一支没有显式动词，才归到 reanimate 族。
-                    _ => (sp.SourceKind == CardSourceKind.CopyOfTarget
-                          && sp.CopyFrom?.Zone == ZoneRef.Cemetery
-                          && sp.CopyFrom?.History == HistoryScope.DestroyedThisMatch
-                          && string.IsNullOrEmpty(sp.CardName))
-                         ? "reanimate" : "spawn",
+                    // 统一判据就是 ReanimateHelper.IsReanimate（必须带 AddDepartedTrait）。
+                    // 以前这里手写条件、没查 AddDepartedTrait，于是
+                    // 「Summon a follower destroyed this match」被误判成亡者召还 ——
+                    // 8 张卡因此报「AST 动作 reanimate 在原文中无来源」。
+                    _ => Diy.ReanimateHelper.IsReanimate(sp) ? "reanimate" : "spawn",
                 });
                 break;
             case SelectTargetNode: acc.Add("select"); break;

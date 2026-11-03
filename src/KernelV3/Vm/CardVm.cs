@@ -697,6 +697,13 @@ public sealed partial class CardVm
                 bool isSelfAbility = ev.Subject != null
                                      && ev.Subject.Value.EntityId == e.EntityId;
 
+                // 「我方随从的【入场曲】无法发动」光环：
+                // 只封真正的入场曲（TriggerSpec.IsFanfare），法术的 OnPlay 不受影响。
+                if (ev.Kind == CoreEvent.OnPlay && ab.Trigger.IsFanfare
+                    && e.Def?.Kind == CardKind.Follower
+                    && _world.HasEffectiveKeyword(e, Schema.Keyword("suppress_fanfare")))
+                    continue;
+
                 // 只有「事件主体自身的主动能力」才挂载预选答案。
                 // 旁观卡（isSelfAbility == false）与初始化事件绝不触碰，
                 // 否则开场那批 TurnStart 会把答案提前吃光。

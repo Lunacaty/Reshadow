@@ -182,43 +182,30 @@ public sealed class DiyWorkshopController
         }
 
         // 「③ AST 端」收两种文本：
-        //   · 以 { 开头 -> 旧 JSON 存档；
-        //   · 其余 -> 规范 AST 效果语言（CanonicalAstDsl）。
-        // 规范文本只含效果，卡头（名字/费用/身材）沿用当前卡，不在这里改。
+        //   · 以 { 开头 -> 旧 JSON 存档（兼容）；
+        //   · 其余 -> ReshadowScript 的**效果块**（无卡头）。
+        // 效果块只含效果，卡名/费用/身材沿用当前卡，不在这里改。
         string trimmed = json.TrimStart();
         if (!trimmed.StartsWith("{") && !trimmed.StartsWith("["))
         {
-            var errs = new List<string>();
-            var abs = CanonicalAstDsl.ParseAbilities(json, errs);
-            if (abs == null)
+            var head = CurrentDef ?? new CardDef { Kind = CardKind.Follower, Name = "DIY" };
+            var sc = new ReshadowScriptCompiler(Workspace);
+            var made = sc.CompileEffectOnly(json, head);
+            if (made == null)
             {
-                LastErrors.AddRange(errs);
-                LastStatusMessage = "规范 AST 解析失败";
+                LastErrors.AddRange(sc.Errors);
+                LastStatusMessage = "效果块解析失败";
                 return false;
             }
 
-            var head = CurrentDef ?? new CardDef { Kind = CardKind.Follower };
-            CurrentDef = new CardDef
-            {
-                CardId = head.CardId, ArtCardId = head.ArtCardId,
-                Name = head.Name, NameChs = head.NameChs, Kind = head.Kind,
-                BaseCost = head.BaseCost, BaseAttack = head.BaseAttack, BaseLife = head.BaseLife,
-                Clan = head.Clan, Traits = head.Traits,
-                InnateKeywords = head.InnateKeywords, DeckModifiers = head.DeckModifiers,
-                HasFuse = head.HasFuse, FuseMaterialFilter = head.FuseMaterialFilter,
-                CrestDef = head.CrestDef, FaithDef = head.FaithDef,
-                AccelerateDef = head.AccelerateDef, CrystallizeDef = head.CrystallizeDef,
-                PackId = head.PackId, IsToken = head.IsToken, Rarity = head.Rarity,
-                SourceText = head.SourceText,
-                Abilities = abs,
-            };
-            // 同步其余三端；同步过程会重算 AstJsonText，所以最后再覆盖回用户手写的文本，
-            // 避免「刚敲的规范 AST 被格式化结果顶掉」。
+            CurrentDef = made;
+            // 同步其余三端；同步过程会重算 AstJsonText，所以最后覆盖回用户手写的文本，
+            // 避免「刚敲的效果块被格式化结果顶掉」。
             string userText = json;
             SyncAllEndpointsFromCurrentDef();
             AstJsonText = userText;
             AstJsonRaw = AstJsonCodec.Encode(CurrentDef);
-            LastStatusMessage = "✔ 从【规范 AST 端】编译成功（仅效果，卡头沿用原卡）";
+            LastStatusMessage = "✔ 从【AST 端】编译成功（仅效果，卡头沿用原卡）";
             OnCardUpdated?.Invoke();
             return true;
         }
@@ -313,9 +300,10 @@ public sealed class DiyWorkshopController
         BlockModel = new DiyBlockDecompiler(Workspace.Schema).Decompile(CurrentDef);
 
         // ③ AST 端：直接把当前 CardDef 展开成可读的 JSON 语法树。
-        // ③ AST 端展示的是**规范 AST 效果语言**（CanonicalAstDsl），不是 JSON：
-        // 只写效果、首字母大写、2 格缩进，玩家能直接读和改。
-        AstJsonText = CanonicalAstDsl.Print(CurrentDef);
+        // ③ AST 端展示的是 ReshadowScript 的**效果块**（无卡头），不是 JSON：
+        // 复用脚本编译器自带的符号绑定，天然过四端同构门禁，
+        // 不再维护第四套 AST 表示。
+        AstJsonText = new ReshadowScriptCompiler(Workspace).PrintEffectOnly(CurrentDef);
         AstJsonRaw = AstJsonCodec.Encode(CurrentDef);
 
         // ③ 表单端：超纲时标只读并保留原因，绝不静默丢效果

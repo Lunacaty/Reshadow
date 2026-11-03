@@ -58,6 +58,93 @@ public sealed class ReshadowScriptCompiler
 
     public IReadOnlyList<string> Errors => _errors;
 
+
+    // ================================================================ 效果块模式（无卡头）
+
+    /// <summary>
+    /// 只打印**效果块**（不印卡头）。
+    ///
+    /// 卡名/费用/身材/职业归表单管，「③ AST 端」只该读写效果。
+    /// 输出形如：
+    ///   keywords [ward]
+    ///   on play {
+    ///       deal 3 damage to opponent:board Choose(1) where is Follower
+    ///   }
+    /// </summary>
+    public string PrintEffectOnly(CardDef card)
+    {
+        if (card == null) return "";
+        string full = Print(card);
+        int lb = full.IndexOf('{');
+        int rb = full.LastIndexOf('}');
+        if (lb < 0 || rb <= lb) return full;
+        string inner = full.Substring(lb + 1, rb - lb - 1);
+
+        // 去掉统一的 4 格缩进，保持相对层级
+        var lines = inner.Replace("\r\n", "\n").Split('\n')
+                           .Select(l => l.Length >= 4 ? l.Substring(4) : l.TrimStart())
+                           .ToList();
+        while (lines.Count > 0 && lines[0].Trim().Length == 0) lines.RemoveAt(0);
+        while (lines.Count > 0 && lines[^1].Trim().Length == 0) lines.RemoveAt(lines.Count - 1);
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// 把玩家手改的效果块合入卡头模板。
+    ///
+    /// headerTemplate 只提供卡名/费用/身材/职业/卡号；效果全部来自 effectText。
+    /// 返回 null 表示解析失败，错误在 Errors 里。
+    /// </summary>
+    public CardDef CompileEffectOnly(string effectText, CardDef headerTemplate)
+    {
+        if (headerTemplate == null) { _errors.Add("缺卡头模板"); return null; }
+        if (string.IsNullOrWhiteSpace(effectText)) {
+            return new CardDef {
+                CardId = headerTemplate.CardId, ArtCardId = headerTemplate.ArtCardId,
+                Name = headerTemplate.Name, NameChs = headerTemplate.NameChs,
+                Kind = headerTemplate.Kind, BaseCost = headerTemplate.BaseCost,
+                BaseAttack = headerTemplate.BaseAttack, BaseLife = headerTemplate.BaseLife,
+                Clan = headerTemplate.Clan, Traits = headerTemplate.Traits,
+                Rarity = headerTemplate.Rarity, PackId = headerTemplate.PackId,
+                IsToken = headerTemplate.IsToken,
+                Abilities = Array.Empty<AbilityDef>(),
+            };
+        }
+
+        var body = new StringBuilder(effectText.Replace("\r\n", "\n"));
+        string head = "card " + headerTemplate.CardId + " \""
+                    + (headerTemplate.Name ?? "DIY").Replace("\"", "") + "\" ("
+                    + headerTemplate.Kind + ", cost: " + headerTemplate.BaseCost
+                    + ", atk: " + headerTemplate.BaseAttack
+                    + ", life: " + headerTemplate.BaseLife + ") {";
+
+        var indented = new StringBuilder();
+        indented.Append(head).Append('\n');
+        foreach (var line in body.ToString().Split('\n'))
+            indented.Append("    ").Append(line).Append('\n');
+        indented.Append('}');
+
+        var made = Compile(indented.ToString());
+        if (made == null || made.Count == 0) return null;
+        var c = made[0];
+
+        // 卡头以模板为准：效果块不许改卡名/费用/身材
+        return new CardDef {
+            CardId = headerTemplate.CardId, ArtCardId = headerTemplate.ArtCardId,
+            Name = headerTemplate.Name, NameChs = headerTemplate.NameChs,
+            Kind = headerTemplate.Kind, BaseCost = headerTemplate.BaseCost,
+            BaseAttack = headerTemplate.BaseAttack, BaseLife = headerTemplate.BaseLife,
+            Clan = headerTemplate.Clan, Traits = headerTemplate.Traits,
+            Rarity = headerTemplate.Rarity, PackId = headerTemplate.PackId,
+            IsToken = headerTemplate.IsToken, SourceText = headerTemplate.SourceText,
+            InnateKeywords = c.InnateKeywords, DeckModifiers = c.DeckModifiers,
+            HasFuse = c.HasFuse, FuseMaterialFilter = c.FuseMaterialFilter,
+            CrestDef = c.CrestDef, FaithDef = c.FaithDef,
+            AccelerateDef = c.AccelerateDef, CrystallizeDef = c.CrystallizeDef,
+            Abilities = c.Abilities,
+        };
+    }
+
     // ================================================================ 解析
 
     /// <summary>解析一整份脚本，返回其中声明的全部卡（通常只有一张）。</summary>

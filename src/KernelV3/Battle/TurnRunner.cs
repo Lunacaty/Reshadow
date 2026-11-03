@@ -64,6 +64,9 @@ public sealed class TurnRunner
         var comboKey = _schema.Counter("combo");
         _state.WriteCounter(playerId, comboKey, 0);
 
+        // 本回合我方随从攻击次数清零 —— 「本回合我方随从没攻击过」的判据。
+        _state.WriteCounter(playerId, _schema.Counter("turn_ally_attacks"), 0);
+
         p.ManualEvolvedThisTurn = false;
         p.UsedExtraPpThisTurn = false;
         p.EngagedEntityIdsThisTurn.Clear();
@@ -759,9 +762,14 @@ public sealed class TurnRunner
     }
 
     /// <summary>该卡声明了哪些 Enhance (N) 档位。</summary>
-    private static IEnumerable<int> EnhanceTiers(RuntimeEntity card)
+    private IEnumerable<int> EnhanceTiers(RuntimeEntity card)
     {
         if (card.Def?.Abilities == null) yield break;
+
+        // 被「爆能强化无法发动」光环覆盖时，一档都不给 ——
+        // 于是调用方算出来的 bestTier 等于基础费用，不会进入爆能分支。
+        if (_state != null && _state.HasEffectiveKeyword(card, _schema.Keyword("suppress_enhance")))
+            yield break;
         foreach (var ab in card.Def.Abilities)
         {
             if (ab?.Costs == null) continue;

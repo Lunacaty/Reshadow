@@ -74,6 +74,8 @@ public sealed class Glossary
         g.Add("Super Skybound Art", "解放奥义");
 
         // ---------- 关键词能力 ----------
+        g.Add("Suppress Fanfare", "入场曲无法发动");
+        g.Add("Suppress Enhance", "爆能强化无法发动");
         g.Add("Ward", "守护");
         g.Add("Storm", "疾驰");
         g.Add("Rush", "突进");

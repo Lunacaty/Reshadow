@@ -178,6 +178,20 @@ public sealed class IsPreviousExpr : BoolExpr
     public string Slot { get; init; } = "$selected";
 }
 
+/// <summary>
+/// 实体是某张特定卡（按卡号或卡名匹配）。
+///
+/// 一个谓词同时解决两类句式：
+///   · `discard all cards not named Great Testimony`（配 NotExpr 取反）
+///   · `Fuse: A and B`（配 OrExpr 表达「材料是 A 或 B」）
+/// </summary>
+public sealed class HasCardNameExpr : BoolExpr
+{
+    public int CardId { get; init; }
+    public string CardName { get; init; } = "";
+    public TargetSpec Of { get; init; }
+}
+
 /// <summary>实体所属卡包匹配指定 PackId（用于「只从某个卡包发现卡片」）。</summary>
 public sealed class HasPackExpr : BoolExpr
 {
