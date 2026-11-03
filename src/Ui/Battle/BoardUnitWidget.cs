@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Core;
@@ -519,6 +520,62 @@ public partial class BoardUnitWidget : Control
     /// 参数 src 是「已按比例裁好的源矩形」，dst 是目标矩形。
     /// 对每一行：算出该行在轮廓内的左右边界，只画这一段。
     /// </summary>
+    /// <summary>
+    /// 棋子立绘预裁切缓存：把方形立绘按拱形轮廓一次性裁成透明底图。
+    ///
+    /// 原来每帧跑 62 行扫描线、发 62 次 DrawTextureRectRegion；
+    /// 场上 10 个棋子就是 620 次绘制指令，动画期间每帧重跑。
+    /// 裁一次缓存起来，之后每帧只需 1 次 DrawTextureRect。
+    /// </summary>
+    private static readonly Dictionary<(int, bool), Texture2D> _clippedCache = new();
+
+    private static Texture2D GetClippedArt(int cardId, bool isAmulet)
+    {
+        var key = (cardId, isAmulet);
+        if (_clippedCache.TryGetValue(key, out var hit)) return hit;
+
+        var tex = ShadowverseFan.Ui.CardArtLoader.Load(cardId);
+        if (tex == null) { _clippedCache[key] = null; return null; }
+
+        var img = tex.GetImage();
+        if (img == null || img.IsEmpty()) { _clippedCache[key] = null; return null; }
+        img = img.Duplicate() as Image;
+        if (img == null) { _clippedCache[key] = null; return null; }
+        if (img.IsCompressed()) img.Decompress();
+        img.Convert(Image.Format.Rgba8);
+
+        var art = OutlineBounds(InnerOutline(isAmulet));
+        var poly = InnerOutline(isAmulet);
+        var src = FitSourceRect(tex.GetSize(), art.Size);
+
+        // 目标尺寸就是 art 的尺寸（96 宽棋子的立绘框）。
+        int dstW = Mathf.Max(1, Mathf.RoundToInt(art.Size.X));
+        int dstH = Mathf.Max(1, Mathf.RoundToInt(art.Size.Y));
+        var outImg = Image.CreateEmpty(dstW, dstH, false, Image.Format.Rgba8);
+
+        for (int y = 0; y < dstH; y++)
+        {
+            var (left, right) = SpanAt(poly, art.Position.Y + y + 0.5f);
+            if (right - left <= 0.5f) continue;
+            int x0 = Mathf.Clamp(Mathf.FloorToInt(left), 0, dstW - 1);
+            int x1 = Mathf.Clamp(Mathf.CeilToInt(right), 0, dstW);
+            if (x1 <= x0) continue;
+
+            for (int x = x0; x < x1; x++)
+            {
+                float u = src.Position.X + (x + 0.5f) / dstW * src.Size.X;
+                float v = src.Position.Y + (y + 0.5f) / dstH * src.Size.Y;
+                int px = Mathf.Clamp(Mathf.FloorToInt(u), 0, img.GetWidth() - 1);
+                int py = Mathf.Clamp(Mathf.FloorToInt(v), 0, img.GetHeight() - 1);
+                outImg.SetPixel(x, y, img.GetPixel(px, py));
+            }
+        }
+
+        var outTex = ImageTexture.CreateFromImage(outImg);
+        _clippedCache[key] = outTex;
+        return outTex;
+    }
+
     private void DrawArtClippedToOutline(Texture2D tex, Rect2 dst, Rect2 src, bool isAmulet)
     {
         const int ROW = 2;
@@ -729,6 +786,15 @@ public partial class BoardUnitWidget : Control
             // 所以用扫描线：每一行只画该行在轮廓内的那一段。
             //
             // 行高 2px 足够 —— 棋子只有 96 宽，再细肉眼也看不出阶梯。
+            // 预裁切缓存：命中时每帧只剩 1 次 DrawTextureRect。
+            var clipped = GetClippedArt(def.CardId, isAmulet);
+            if (clipped != null)
+            {
+                DrawTextureRect(clipped, art, false);
+                return;
+            }
+
+            // 缓存不可用（图片读不出来）时退回扫描线，至少不会白块。
             DrawArtClippedToOutline(tex, art, new Rect2(sx, sy, sw, sh), isAmulet);
             return;
         }

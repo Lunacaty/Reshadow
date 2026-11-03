@@ -47,6 +47,34 @@ public partial class CardVisualWidget : Control
         QueueRedraw();
     }
 
+    /// <summary>清空外部订阅。控件复用时先清再接，避免回调叠加。</summary>
+    public void ClearClickHandlers()
+    {
+        OnLeftClick = null;
+        OnRightClick = null;
+        OnHoverEntered = null;
+        OnHoverExited = null;
+    }
+
+    public override void _Ready()
+    {
+        MouseEntered += () => { _hovered = true; QueueRedraw(); OnHoverEntered?.Invoke(Card, this); };
+        MouseExited += () => { _hovered = false; QueueRedraw(); OnHoverExited?.Invoke(Card); };
+    }
+
+    /// <summary>
+    /// 复用同一个实例换绑另一张卡：只换数据，不重建节点。
+    ///
+    /// 手牌展开/收起时若每帧 QueueFree + new，0.15 秒内会造出上百个控件；
+    /// 手牌区的控件数量本来就跟手牌数一致，换绑即可。
+    /// </summary>
+    public void Rebind(CardDef def, ShadowverseFan.KernelV3.Vm.RuntimeEntity rt, ChineseCardPrinter printer)
+    {
+        if (def == null) return;
+        Setup(def, printer, _inDeckCount, _maxCopyLimit, _showCopyPips);
+        BindRuntimeEntity(rt);
+    }
+
     public void Setup(
         CardDef def, ChineseCardPrinter printer,
         int inDeckCount = 0, int maxCopyLimit = 3, bool showCopyPips = true)
@@ -69,8 +97,9 @@ public partial class CardVisualWidget : Control
         // 玩家换一张图、重启即生效，不需要重新导出。
         _artTexture = CardArtLoader.Load(def.CardId);
 
-        MouseEntered += () => { _hovered = true; QueueRedraw(); OnHoverEntered?.Invoke(Card, this); };
-        MouseExited  += () => { _hovered = false; QueueRedraw(); OnHoverExited?.Invoke(Card); };
+        // 悬停订阅放在 _Ready 里只做一次。
+        // Setup 可能在同一实例上被反复调用（手牌控件复用），
+        // 写在这里会让每次调用多叠一层订阅，悬停回调指数增长。
 
         QueueRedraw();
     }

@@ -146,16 +146,33 @@ public partial class BattlefieldCanvas : Control
             DrawAimDashedLine(AimTarget);
     }
 
-    private void DrawEllipse(Vector2 c, float rx, float ry, Color col)
+    /// <summary>56 段单位圆的 (cos, sin)，进程内只算一次。</summary>
+    private static readonly Vector2[] UnitCircle56 = BuildUnitCircle(56);
+
+    private static Vector2[] BuildUnitCircle(int seg)
     {
-        const int seg = 56;
         var pts = new Vector2[seg];
         for (int i = 0; i < seg; i++)
         {
             float a = i * Mathf.Tau / seg;
-            pts[i] = new Vector2(c.X + Mathf.Cos(a) * rx, c.Y + Mathf.Sin(a) * ry);
+            pts[i] = new Vector2(Mathf.Cos(a), Mathf.Sin(a));
         }
-        DrawColoredPolygon(pts, col);
+        return pts;
+    }
+
+    /// <summary>复用的顶点缓冲：_Draw 每帧都跑，不能再 new。</summary>
+    private readonly Vector2[] _ellipsePts = new Vector2[56];
+
+    private void DrawEllipse(Vector2 c, float rx, float ry, Color col)
+    {
+        // 每帧 new Vector2[56] 是纯垃圾：三个椭圆就是 168 个对象，
+        // 拖拽手牌时每帧都跑。单位圆预先算好，只做缩放平移写入复用缓冲。
+        for (int i = 0; i < _ellipsePts.Length; i++)
+        {
+            var u = UnitCircle56[i];
+            _ellipsePts[i] = new Vector2(c.X + u.X * rx, c.Y + u.Y * ry);
+        }
+        DrawColoredPolygon(_ellipsePts, col);
     }
 
     /// <summary>
@@ -270,8 +287,10 @@ public partial class BattlefieldCanvas : Control
         DrawRect(r, new Color(0.06f, 0.08f, 0.08f, 0.88f));
         DrawRect(r, new Color(0.40f, 0.44f, 0.40f, 0.65f), false, 1f);
 
-        int deck = Controller.State.EnumerateZone(ZoneRef.Deck, playerId).Count();
-        int grave = Controller.State.EnumerateZone(ZoneRef.Cemetery, playerId).Count();
+        // 直接读列表长度：EnumerateZone 会建枚举器 + LINQ Count，
+        // _Draw 每帧跑两次，属于纯开销。
+        int deck = Controller.State.Players[playerId].Deck.Count;
+        int grave = Controller.State.Players[playerId].Cemetery.Count;
         int crest = Controller.Crests(playerId).Count;
 
         string txt = showHand

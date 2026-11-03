@@ -340,12 +340,14 @@ public partial class BattleScreenRoot : Control
             {
                 float speed = 6.5f;          // 约 0.15 秒走完
                 _handAnim = Mathf.MoveToward(_handAnim, target, speed * dt);
-                RebuildHand();
+                // 过渡期间只做纯几何重排：这里每帧调 RebuildHand 会把
+                // 全部手牌控件销毁重建，0.15 秒内造出上百个对象。
+                LayoutHandWidgetsOnly();
             }
             else if (_handAnim != target)
             {
                 _handAnim = target;
-                RebuildHand();
+                LayoutHandWidgetsOnly();
             }
         }
 
@@ -1366,11 +1368,86 @@ public partial class BattleScreenRoot : Control
         }
     }
 
+    /// <summary>手牌控件池。数量只跟手牌张数走，不随布局变化重建。</summary>
+    private readonly List<CardVisualWidget> _handWidgets = new();
+    private Control _handTray;
+
     private void RebuildHand()
     {
         if (_handLayer == null || _ctrl == null) return;
-        foreach (var c in _handLayer.GetChildren()) c.QueueFree();
-        _handHitRects.Clear();
+
+        var hand = _ctrl.Hand(0);
+        int n = hand.Count;
+
+        // 多退少补：只在手牌张数变化时增删控件。
+        // 原来无条件 foreach QueueFree 再 new，展开/收起过渡的 0.15 秒里
+        // 每帧都会把全部手牌销毁重建，一秒钟造出上百个控件。
+        while (_handWidgets.Count > n)
+        {
+            var last = _handWidgets[^1];
+            _handWidgets.RemoveAt(_handWidgets.Count - 1);
+            if (IsInstanceValid(last)) last.QueueFree();
+        }
+        while (_handWidgets.Count < n)
+        {
+            var nw = new CardVisualWidget();
+            _handLayer.AddChild(nw);
+            _handWidgets.Add(nw);
+        }
+
+        // 逐张换绑：牌变了才重新 Setup，同一个实体只刷新运行时数值。
+        for (int i = 0; i < n; i++)
+        {
+            var card = hand[i];
+            var wd = _handWidgets[i];
+            if (!IsInstanceValid(wd)) continue;
+            wd.Rebind(card.Def, card, _store.CardPrinter);
+            BindHandCardClicks(wd, card);
+        }
+
+        LayoutHandWidgetsOnly();
+    }
+
+    /// <summary>给手牌控件挂点击与右键回调（先清空再挂，避免复用后叠加）。</summary>
+    private void BindHandCardClicks(CardVisualWidget wd, RuntimeEntity card)
+    {
+        wd.ClearClickHandlers();
+
+        var bound = card;
+        wd.OnLeftClick += _ =>
+        {
+            if (!_seq.Busy && _pending != null && IsInstanceValid(_pending)
+                && _pending.TryPickBoardOrHandEntity(bound.EntityId))
+                return;
+
+            _actionPanel.ShowForEntity(bound);
+            if (!IsInputBlocked && _ctrl.IsInFuseMode && !ReferenceEquals(_ctrl.FuseBaseCard, bound))
+            {
+                _ctrl.ToggleFuseMaterial(bound);
+                _actionPanel.ShowForEntity(_ctrl.FuseBaseCard);
+                RebuildHand();
+                return;
+            }
+            if (IsInputBlocked) return;
+
+            // 若这次按下发生在「缩小态 -> 放大态」那一瞬间，
+            // 用按下时按原布局算出的那张牌，而不是重建后正好压在这个位置的牌。
+            var pressed = _pressedCard;
+            _pressedCard = null;
+            _draggingCard = pressed ?? bound;
+            _draggingPlay = true;
+        };
+        wd.OnRightClick += _ => _actionPanel.ShowForEntity(bound);
+    }
+
+    /// <summary>
+    /// 纯几何重排：只改位置与尺寸，零节点分配。
+    ///
+    /// 展开/收起的每帧插值走这里，绝不再调 RebuildHand。
+    /// </summary>
+    private void LayoutHandWidgetsOnly()
+    {
+        if (_handLayer == null || _ctrl == null) return;
 
         var hand = _ctrl.Hand(0);
         int n = hand.Count;
@@ -1378,9 +1455,7 @@ public partial class BattleScreenRoot : Control
         var vp = GetEffectiveViewportSize();
         float sx = vp.X / DesignW;
 
-        // 手牌尺寸与距窗口底部距离（HandTrayBottomGap = 8px）保持恒定，不随窗口宽度纵向膨胀！
-        // 卡片尺寸按过渡进度插值（0=常态 1=放大），
-        // 展开/收起因此是连续变化，而不是瞬间跳变。
+        // 手牌尺寸与距窗口底部距离（HandTrayBottomGap = 8px）保持恒定，不随窗口宽度纵向膨胀。
         float t = Ease.OutCubic(Mathf.Clamp(_handAnim, 0f, 1f));
         float cardW = Mathf.Lerp(88f, 138f, t);
         float cardH = Mathf.Lerp(116f, 182f, t);
@@ -1397,66 +1472,32 @@ public partial class BattleScreenRoot : Control
         float trayH = cardH + 14f;
         float trayTop = bottomY - trayH;
 
-        // 托盘只做视觉底衬。
-        //
-        // 展开/收起统一由 _Input 在「手牌区内按下」时处理（见 HandleHandAreaPress）——
-        // 这样无论按在卡片上、卡片间隙还是留白上都能展开，
-        // 不需要在卡片上方另铺一条可点带（那样很难看）。
-        var tray = new Control
+        if (_handTray == null || !IsInstanceValid(_handTray))
         {
-            Position = new Vector2(trayLeft, trayTop),
-            Size = new Vector2(trayW, trayH),
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        _handLayer.AddChild(tray);
+            _handTray = new Control { MouseFilter = MouseFilterEnum.Ignore };
+            _handLayer.AddChild(_handTray);
+        }
+        _handTray.Position = new Vector2(trayLeft, trayTop);
+        _handTray.Size = new Vector2(trayW, trayH);
 
-        // 记下当前手牌区矩形，供 _Input 判断「按下是否落在手牌区」
+        // 记下当前手牌区矩形，供 _Input 判断「按下是否落在手牌区」。
         _handRect = new Rect2(trayLeft, trayTop, trayW, trayH);
+        _handHitRects.Clear();
 
         if (n == 0) return;
 
         float stepX = n == 1 ? 0f : Mathf.Min(idealStep, (trayW - 20f - cardW) / (n - 1));
         float startX = trayLeft + 10f;
 
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < n && i < _handWidgets.Count; i++)
         {
-            var card = hand[i];
-            var w = new CardVisualWidget();
-            w.Setup(card.Def, _store.CardPrinter, 0, 3, showCopyPips: false);
-            w.BindRuntimeEntity(card);
-            w.Position = new Vector2(startX + i * stepX, trayTop + 7f);
-            w.SetCardSize(cardW, cardH);
-            _handHitRects.Add((new Rect2(w.Position, new Vector2(cardW, cardH)), card));
-
-            var bound = card;
-            w.OnLeftClick += _ =>
-            {
-                if (!_seq.Busy && _pending != null && IsInstanceValid(_pending)
-                    && _pending.TryPickBoardOrHandEntity(bound.EntityId))
-                    return;
-
-                _actionPanel.ShowForEntity(bound);
-                if (!IsInputBlocked && _ctrl.IsInFuseMode && !ReferenceEquals(_ctrl.FuseBaseCard, bound))
-                {
-                    _ctrl.ToggleFuseMaterial(bound);
-                    _actionPanel.ShowForEntity(_ctrl.FuseBaseCard);
-                    RebuildHand();
-                    return;
-                }
-                if (IsInputBlocked) return;
-
-                // 若这次按下发生在「缩小态 → 放大态」那一瞬间，
-                // 用按下时按原布局算出的那张牌，而不是重建后正好压在这个位置的牌。
-                var pressed = _pressedCard;
-                _pressedCard = null;
-                _draggingCard = pressed ?? bound;
-                _draggingPlay = true;
-            };
-            w.OnRightClick += _ => _actionPanel.ShowForEntity(bound);
-            _handLayer.AddChild(w);
+            var wd = _handWidgets[i];
+            if (!IsInstanceValid(wd)) continue;
+            wd.Position = new Vector2(startX + i * stepX, trayTop + 7f);
+            wd.SetCardSize(cardW, cardH);
+            _handHitRects.Add((new Rect2(wd.Position, new Vector2(cardW, cardH)), hand[i]));
         }
     }
-
     /// <summary>该点是否落在某个合法候选（棋子 / 主战者）上。</summary>
     private bool HitAnyCandidate(Vector2 at)
     {

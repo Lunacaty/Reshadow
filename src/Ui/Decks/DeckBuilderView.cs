@@ -30,6 +30,9 @@ public partial class DeckBuilderView : Control
     private LineEdit _nameEdit;
     private CostCurveWidget _curve;
     private GridContainer _cardGrid;
+
+    /// <summary>左侧卡池网格的控件缓存（按卡号）。只在筛选条件变化时重建。</summary>
+    private readonly Dictionary<int, CardVisualWidget> _gridWidgets = new();
     private VBoxContainer _deckList;
     private Label _statsLabel;
     private Label _errorLabel;
@@ -309,8 +312,26 @@ public partial class DeckBuilderView : Control
     {
         RefreshExtraClanTabs();
         RefreshTopBar();
-        RefreshCardGrid();
+        // 投入 / 移除一张卡不该重建整个卡池网格 ——
+        // 那是上百个 CardVisualWidget 的销毁重建，连续点选时非常卡。
+        // 只有第一次（缓存为空）才真建，其余走原位更新。
+        if (_gridWidgets.Count == 0) RefreshCardGrid();
+        else UpdateCardGridInPlace();
         RefreshDeckList();
+    }
+
+    /// <summary>原作「投入 / 移除」只改的豆子数与锁定态，原位刷新即可。</summary>
+    private void UpdateCardGridInPlace()
+    {
+        var allowed = _vm.CurrentProfile.AllowedClans;
+        bool cross = _vm.CurrentProfile.AllowCrossCraft;
+        foreach (var (cid, w) in _gridWidgets)
+        {
+            if (!IsInstanceValid(w) || w.Card == null) continue;
+            bool locked = !cross && w.Card.Clan.IsValid && !allowed.Contains(w.Card.Clan.Name);
+            w.SetLocked(locked);
+            w.UpdateDeckCopyState(_vm.GetCopyCount(cid), _vm.GetMaxLimitForCard(cid));
+        }
     }
 
     /// <summary>
@@ -389,6 +410,7 @@ public partial class DeckBuilderView : Control
     private void RefreshCardGrid()
     {
         foreach (var c in _cardGrid.GetChildren()) c.QueueFree();
+        _gridWidgets.Clear();
 
         var pool = _vm.CurrentPool;
         var allowed = _vm.CurrentProfile.AllowedClans;
@@ -401,6 +423,7 @@ public partial class DeckBuilderView : Control
             w.Setup(def, _store.CardPrinter,
                     _vm.GetCopyCount(def.CardId), _vm.GetMaxLimitForCard(def.CardId));
             w.SetLocked(locked);
+            _gridWidgets[def.CardId] = w;
 
             var d = def;
             w.OnLeftClick += _ =>

@@ -223,6 +223,7 @@ public sealed class BattleSessionController
             reason = "无法打出（费用不足、时机不对或该卡不可用）";
             return false;
         }
+        InvalidateLegalActions();
         ResolveAiPendingIfAny();
         return true;
     }
@@ -231,7 +232,7 @@ public sealed class BattleSessionController
     {
         if (card == null) return false;
         if (!IsMyTurn || IsWaitingForInput) return false;
-        return Runner.GetLegalActions().Any(a =>
+        return GetLegalActionsCached().Any(a =>
             a.Kind == PlayerActionKind.PlayCard && a.Subject?.EntityId == card.EntityId);
     }
 
@@ -243,7 +244,7 @@ public sealed class BattleSessionController
         if (attacker == null || defender == null) { reason = "目标无效"; return false; }
         // Attack 是 void：先确认「这一对 (attacker, defender) 在合法动作里」，
         // 再调用。否则调用会被内部守卫静默吞掉，UI 却以为打出去了。
-        bool legal = Runner.GetLegalActions().Any(a =>
+        bool legal = GetLegalActionsCached().Any(a =>
             a.Kind == PlayerActionKind.Attack
             && a.Subject?.EntityId == attacker.EntityId
             && a.Target?.EntityId == defender.EntityId);
@@ -264,7 +265,7 @@ public sealed class BattleSessionController
     {
         if (unit == null) return false;
         if (!IsMyTurn || IsWaitingForInput) return false;
-        return Runner.GetLegalActions().Any(a =>
+        return GetLegalActionsCached().Any(a =>
             a.Kind == PlayerActionKind.Attack && a.Subject?.EntityId == unit.EntityId);
     }
 
@@ -273,7 +274,7 @@ public sealed class BattleSessionController
     {
         var set = new HashSet<long>();
         if (attacker == null) return set;
-        foreach (var a in Runner.GetLegalActions())
+        foreach (var a in GetLegalActionsCached())
         {
             if (a.Kind != PlayerActionKind.Attack) continue;
             if (a.Subject?.EntityId != attacker.EntityId) continue;
@@ -287,20 +288,20 @@ public sealed class BattleSessionController
     public bool CanEvolveUnit(RuntimeEntity e)
         => e != null && e.Zone == ZoneRef.Board
            && !e.IsEvolved && !e.IsSuperEvolved
-           && Runner.GetLegalActions().Any(a =>
+           && GetLegalActionsCached().Any(a =>
                 a.Kind == PlayerActionKind.Evolve && a.Subject?.EntityId == e.EntityId);
 
     public bool CanSuperEvolveUnit(RuntimeEntity e)
         => e != null && e.Zone == ZoneRef.Board
            && !e.IsEvolved && !e.IsSuperEvolved
-           && Runner.GetLegalActions().Any(a =>
+           && GetLegalActionsCached().Any(a =>
                 a.Kind == PlayerActionKind.SuperEvolve && a.Subject?.EntityId == e.EntityId);
 
     public bool TryEvolve(RuntimeEntity e, bool super)
     {
         if (e == null) return false;
         bool ok = Runner.Evolve(e, super);
-        if (ok) ResolveAiPendingIfAny();
+        if (ok) { InvalidateLegalActions(); ResolveAiPendingIfAny(); }
         return ok;
     }
 
@@ -310,7 +311,7 @@ public sealed class BattleSessionController
     {
         cost = 0;
         if (e == null || e.Zone != ZoneRef.Board) return false;
-        return Runner.GetLegalActions().Any(a =>
+        return GetLegalActionsCached().Any(a =>
             a.Kind == PlayerActionKind.EngageAmulet && a.Subject?.EntityId == e.EntityId);
     }
 
@@ -318,14 +319,14 @@ public sealed class BattleSessionController
     {
         if (e == null) return false;
         bool ok = Runner.EngageAmulet(e);
-        if (ok) ResolveAiPendingIfAny();
+        if (ok) { InvalidateLegalActions(); ResolveAiPendingIfAny(); }
         return ok;
     }
 
     public bool CanStartFuse(RuntimeEntity card)
     {
         if (card == null || card.Zone != ZoneRef.Hand) return false;
-        return Runner.GetLegalActions().Any(a =>
+        return GetLegalActionsCached().Any(a =>
             a.Kind == PlayerActionKind.FuseCards && a.Subject?.EntityId == card.EntityId);
     }
 
@@ -383,8 +384,53 @@ public sealed class BattleSessionController
         ResolveAiPendingIfAny();
     }
 
+    // ---------------------------------------------------------------- 规则求值缓存
+
+    private List<PlayerAction> _cachedLegalActions;
+    private int _cachedEventCount = -1;
+    private int _cachedTurn = -1;
+    private int _cachedActivePlayer = -1;
+    private int _cachedPp = -1;
+
+    /// <summary>
+    /// 带版本脏标记的合法动作查询。
+    ///
+    /// MatchRunner.GetLegalActions 每次都要对所有手牌求法术目标、
+    /// 两两组合求融合材料、对全场随从跑 CanAttack（内含光环扫描）。
+    /// 而一次界面刷新里 CanPlayCard / CanAttackWith / CanEvolveUnit …
+    /// 会被调用十几遍 —— 全在裸调它。缓存后单帧规则求值开销降一个数量级。
+    ///
+    /// 失效条件挑「局面真的变了」的四个信号：事件数、回合数、当前玩家、PP。
+    /// 挂起选择时一律重算：那意味着局面刚被推进到待输入点。
+    /// </summary>
+    private List<PlayerAction> GetLegalActionsCached()
+    {
+        int evCnt = State.EventLog.Count;
+        int turn = State.TurnNumber;
+        int ap = State.ActivePlayer;
+        int pp = ReadCounter(ap, "pp");
+
+        if (_cachedLegalActions == null
+            || _cachedEventCount != evCnt
+            || _cachedTurn != turn
+            || _cachedActivePlayer != ap
+            || _cachedPp != pp
+            || Runner.IsWaitingForInput)
+        {
+            _cachedLegalActions = Runner.GetLegalActions();
+            _cachedEventCount = evCnt;
+            _cachedTurn = turn;
+            _cachedActivePlayer = ap;
+            _cachedPp = pp;
+        }
+        return _cachedLegalActions;
+    }
+
+    /// <summary>动作已执行：立刻作废缓存，避免读到上一帧的旧结论。</summary>
+    private void InvalidateLegalActions() => _cachedLegalActions = null;
+
     public bool CanUseExtraPp()
-        => Runner.GetLegalActions().Any(a => a.Kind == PlayerActionKind.UseExtraPp);
+        => GetLegalActionsCached().Any(a => a.Kind == PlayerActionKind.UseExtraPp);
 
     public bool TryUseExtraPp()
     {
