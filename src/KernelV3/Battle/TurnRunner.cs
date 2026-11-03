@@ -450,6 +450,90 @@ public sealed class TurnRunner
     /// 走各自的结算路径，结算完把 Def 还原 —— 这张卡若之后被回手，
     /// 手牌里仍然应当是本体卡面。
     /// </summary>
+
+    // ---------------------------------------------------------------- 手牌呈现状态
+
+    /// <summary>手牌在当前 PP 下的可打出形态（决定手牌光圈颜色与显示费用）。</summary>
+    public enum HandPlayMode
+    {
+        Unplayable = 0,
+        Normal = 1,      // 可按本体打出：翠绿光圈
+        Enhance = 2,     // PP 已达爆能档位：灿金黄光圈，费用球显示爆能费
+        Accelerate = 3,  // 本体费不够但可激奏：天青蓝光圈
+        Crystallize = 4, // 本体费不够但可结晶：天青蓝光圈
+    }
+
+    /// <summary>
+    /// 计算一张手牌在当前 PP 下的显示费用与可打出模式。
+    /// PP 变化时由前端逐张调用，刷新费用球颜色与光圈。
+    /// </summary>
+    public (HandPlayMode Mode, int DisplayCost) EvaluateHandCardPresentation(
+        int playerId, RuntimeEntity card, bool isMyActiveTurn)
+    {
+        if (card?.Def == null) return (HandPlayMode.Unplayable, 0);
+
+        var p = _state.Players[playerId];
+        int pp = _state.ReadCounter(playerId, _schema.Counter("pp"));
+        bool folOrAmu = card.Def.Kind is Ast.CardKind.Follower or Ast.CardKind.Amulet;
+        bool boardFull = p.Board.Count >= _state.Rules.MaxBoardSize;
+
+        // 1. 当前 PP 能支付的最高爆能档位。
+        int bestEnhance = 0;
+        foreach (var tier in EnhanceTiers(card))
+            if (pp >= tier && tier > bestEnhance) bestEnhance = tier;
+
+        int bodyPay = bestEnhance > card.Cost ? bestEnhance : card.Cost;
+        bool canPlayNow = isMyActiveTurn && p.Hand.Contains(card)
+                          && !card.Keywords.Contains(_schema.Keyword("cannot_be_played"));
+
+        // 2. PP 够付本体（或爆能档位）。
+        if (pp >= bodyPay)
+        {
+            // 满场下不了随从/护符本体；激奏不占场，能付就切激奏。
+            if (folOrAmu && boardFull)
+            {
+                if (card.Def.AccelerateDef != null && pp >= card.Def.AccelerateDef.BaseCost)
+                {
+                    bool accOk = canPlayNow && CheckAltSpellTarget(card, card.Def.AccelerateDef);
+                    return (accOk ? HandPlayMode.Accelerate : HandPlayMode.Unplayable,
+                            card.Def.AccelerateDef.BaseCost);
+                }
+                return (HandPlayMode.Unplayable, bodyPay);
+            }
+
+            bool spellOk = card.Def.Kind != Ast.CardKind.Spell || HasLegalTargetForSpell(card);
+            if (!canPlayNow || !spellOk)
+                return (HandPlayMode.Unplayable, bodyPay);
+
+            return (bestEnhance > card.Cost ? HandPlayMode.Enhance : HandPlayMode.Normal, bodyPay);
+        }
+
+        // 3. 本体费不够 -> 激奏 / 结晶是另一条合法路径。
+        if (card.Def.AccelerateDef != null && pp >= card.Def.AccelerateDef.BaseCost)
+        {
+            bool accOk = canPlayNow && CheckAltSpellTarget(card, card.Def.AccelerateDef);
+            return (accOk ? HandPlayMode.Accelerate : HandPlayMode.Unplayable,
+                    card.Def.AccelerateDef.BaseCost);
+        }
+
+        if (card.Def.CrystallizeDef != null && pp >= card.Def.CrystallizeDef.BaseCost && !boardFull)
+        {
+            return (canPlayNow ? HandPlayMode.Crystallize : HandPlayMode.Unplayable,
+                    card.Def.CrystallizeDef.BaseCost);
+        }
+
+        return (HandPlayMode.Unplayable, card.Cost);
+    }
+
+    private bool CheckAltSpellTarget(RuntimeEntity card, Ast.CardDef altDef)
+    {
+        var saved = card.Def;
+        card.Def = altDef;
+        bool ok = HasLegalTargetForSpell(card);
+        card.Def = saved;
+        return ok;
+    }
+
     private bool PlayAsAltMode(int playerId, RuntimeEntity card, Ast.CardDef altDef,
                                bool isAccelerate, CardVm vm)
     {

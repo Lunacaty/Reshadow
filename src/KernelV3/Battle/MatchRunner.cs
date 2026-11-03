@@ -615,6 +615,14 @@ public sealed class MatchRunner
         return ok;
     }
 
+
+    // ---------------------------------------------------------------- 手牌呈现状态（转发 TurnRunner）
+
+    /// <summary>计算一张手牌在当前 PP 下的显示费用与可打出模式（决定手牌光圈）。</summary>
+    public (TurnRunner.HandPlayMode Mode, int DisplayCost) EvaluateHandCardPresentation(
+        int playerId, Vm.RuntimeEntity card, bool isMyActiveTurn)
+        => _turns.EvaluateHandCardPresentation(playerId, card, isMyActiveTurn);
+
     public bool UseExtraPp()
     {
         if (Phase != MatchPhase.Playing || IsWaitingForInput) return false;

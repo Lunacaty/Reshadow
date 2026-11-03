@@ -1498,6 +1498,11 @@ public partial class BattleScreenRoot : Control
             if (!IsInstanceValid(wd)) continue;
             wd.Rebind(card.Def, card, _store.CardPrinter);
             BindHandCardClicks(wd, card);
+
+            // 专题二：按当前 PP 刷新这张手牌的形态与显示费用（决定光圈颜色）。
+            var (mode, displayCost) = _ctrl.Runner.EvaluateHandCardPresentation(
+                _ctrl.MyPlayerId, card, _ctrl.IsMyTurn && !_ctrl.IsWaitingForInput);
+            wd.SetHandPlayState(mode, displayCost);
         }
 
         LayoutHandWidgetsOnly();

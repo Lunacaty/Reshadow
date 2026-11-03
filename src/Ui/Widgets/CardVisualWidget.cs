@@ -32,6 +32,31 @@ public partial class CardVisualWidget : Control
     private int _maxCopyLimit = 3;
     private bool _locked;
     private bool _hovered;
+
+    // ---- 手牌呈现状态（专题二）：由 BattleScreenRoot 按 PP 实时刷新 ----
+    private ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode _playMode =
+        ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Unplayable;
+    private int? _overrideDisplayCost;
+    private float _glowPulse;
+
+    /// <summary>设置手牌可打出形态与显示费用（决定光圈颜色与费用球）。</summary>
+    public void SetHandPlayState(ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode mode, int displayCost)
+    {
+        if (_playMode == mode && _overrideDisplayCost == displayCost) return;
+        _playMode = mode;
+        _overrideDisplayCost = displayCost;
+        QueueRedraw();
+    }
+
+    public override void _Process(double delta)
+    {
+        // 光圈呼吸动画只在可打出时走，不可打出时绝不空转重绘。
+        if (_playMode != ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Unplayable)
+        {
+            _glowPulse += (float)delta * 3.8f;
+            QueueRedraw();
+        }
+    }
     private Texture2D _artTexture;
     private bool _showCopyPips = true;
 
@@ -175,9 +200,12 @@ public partial class CardVisualWidget : Control
 
         DrawTopNameBanner(frameL, frameT, frameW, font);
         DrawBottomOrnamentAndGem(frameL, frameB, frameW, clanCol);
-        // 实时费用：手牌减费后必须变数，并变色提示。
-        int shownCost = _runtimeEntity?.Cost ?? Card.BaseCost;
-        Color costColor = shownCost < Card.BaseCost ? new Color("4ADE80")
+        // 实时费用：爆能/激奏/结晶时显示对应档位费，其余按实时身材。
+        int shownCost = _overrideDisplayCost ?? _runtimeEntity?.Cost ?? Card.BaseCost;
+        Color costColor = _playMode == ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Enhance ? new Color("FDE047")
+                        : (_playMode == ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Accelerate
+                           || _playMode == ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Crystallize) ? new Color("7DD3FC")
+                        : shownCost < Card.BaseCost ? new Color("4ADE80")
                         : shownCost > Card.BaseCost ? new Color("F87171") : Colors.White;
         DrawEmeraldCostOrb(new Vector2(frameL + 14f, frameT + 24f), 21f, shownCost, font, costColor);
 
@@ -220,6 +248,25 @@ public partial class CardVisualWidget : Control
     private void DrawCardShadowAndGlow(float l, float t, float w, float h, Color clanCol)
     {
         DrawRect(new Rect2(l + 4f, t + 6f, w, h), new Color(0, 0, 0, 0.55f));
+
+        // 四态呼吸光圈：绿=可按本体出，金=爆能强化，蓝=激奏/结晶。
+        if (_playMode != ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Unplayable)
+        {
+            Color glowCol = _playMode switch
+            {
+                ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Normal => new Color("22C55E"),
+                ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Enhance => new Color("FACC15"),
+                ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Accelerate => new Color("38BDF8"),
+                ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Crystallize => new Color("38BDF8"),
+                _ => Colors.Transparent,
+            };
+            float pulse = 0.60f + 0.35f * Mathf.Sin(_glowPulse);
+            // 外层发散光晕 + 内层高亮流光框。
+            DrawRect(new Rect2(l - 7f, t - 7f, w + 14f, h + 14f), glowCol with { A = pulse * 0.28f });
+            DrawRect(new Rect2(l - 4f, t - 4f, w + 8f, h + 8f), glowCol with { A = pulse * 0.65f }, false, 3.2f);
+            DrawRect(new Rect2(l - 1.5f, t - 1.5f, w + 3f, h + 3f), Colors.White with { A = pulse * 0.85f }, false, 1.5f);
+        }
+
         if (_hovered)
             DrawRect(new Rect2(l - 3f, t - 3f, w + 6f, h + 6f), new Color(1.0f, 0.84f, 0.35f, 0.45f));
     }
