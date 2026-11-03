@@ -24,6 +24,12 @@ public sealed class RemoteBattleClient : IDisposable
     private bool _running;
 
     public int MyPlayerId { get; private set; } = -1;
+
+    /// <summary>我方牌组（握手时上送以供权威端校验）。</summary>
+    public ShadowverseFan.KernelV3.Packs.ConstructedDeck MyDeck { get; set; }
+
+    /// <summary>我方卡池指纹（握手时上送，权威端比对）。</summary>
+    public string PoolHash { get; set; } = "";
     public bool Connected => _client?.Connected == true;
 
     /// <summary>最近一次收到的快照。</summary>
@@ -47,7 +53,10 @@ public sealed class RemoteBattleClient : IDisposable
             _stream = _client.GetStream();
             _running = true;
 
-            await SendLine("HELLO|" + seat);
+            // 握手要带上卡池指纹与我方牌组：权威端据此比对卡包是否被改过、
+            // 牌组是否符合本卡池构筑规则。缺了这两项就等于放弃了铁律一。
+            string deckJson = MyDeck != null ? JsonSerializer.Serialize(MyDeck) : "";
+            await SendLine("HELLO|" + seat + "|" + (PoolHash ?? "") + "|" + deckJson);
             _ = Task.Run(ReceiveLoop);
             return true;
         }

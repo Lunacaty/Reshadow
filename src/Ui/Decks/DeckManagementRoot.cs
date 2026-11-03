@@ -85,6 +85,11 @@ public partial class DeckManagementRoot : Control
             var deck = _store.SavedDecks.FirstOrDefault();
             if (deck == null) return;
 
+            // 握手要带上卡池指纹与我方牌组，供权威端校验（铁律一）。
+            client.MyDeck = deck;
+            var pool = _store.GetPoolView(deck.PoolId);
+            client.PoolHash = ShadowverseFan.KernelV3.Net.PoolIntegrityHasher.ComputePoolHash(pool);
+
             var view = new Battle.BattleScreenRoot();
             Swap(view);
             view.BootRemote(_store, deck, deck, client);

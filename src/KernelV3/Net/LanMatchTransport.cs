@@ -100,13 +100,44 @@ public sealed class AuthoritativeMatchHost : IDisposable
                             await SendLine(stream, "ERR|seat taken");
                             continue;
                         }
+
+                        // 铁律一：开局卡池指纹比对。
+                        // 任何一方用记事本改本地 pack.json（把 1 费妖精改成 99/99、
+                        // 或改 MatchRules 的生命值）都会让哈希对不上，当场拒绝。
+                        if (!string.IsNullOrEmpty(msg.Value.PoolHash))
+                        {
+                            string mine = PoolIntegrityHasher.ComputePoolHash(State.Pool);
+                            if (!string.Equals(mine, msg.Value.PoolHash, StringComparison.OrdinalIgnoreCase))
+                            {
+                                await SendLine(stream, "ERR|卡池校验失败：双方卡包/规则不一致（" +
+                                               mine.Substring(0, Math.Min(8, mine.Length)) + " vs " +
+                                               msg.Value.PoolHash.Substring(0, Math.Min(8, msg.Value.PoolHash.Length)) + "）");
+                                continue;
+                            }
+                        }
+
+                        // 铁律一（续）：牌组合法性。客机自报的牌组必须在权威端
+                        // 按本卡池规则重新校验 —— 塞满 10 张虹卡会被这里拦下。
+                        if (msg.Value.Deck != null)
+                        {
+                            try
+                            {
+                                // 非法牌组会在内部抛异常；能返回就说明通过。
+                                Packs.DeckRuleResolver.ResolveAndValidate(msg.Value.Deck, State.Pool);
+                            }
+                            catch (Exception ex)
+                            {
+                                await SendLine(stream, "ERR|牌组校验失败：" + ex.Message);
+                                continue;
+                            }
+                        }
+
                         myPlayerId = want;
                         lock (_gate) _clients[myPlayerId] = client;
                         _eventCursor[myPlayerId] = 0;
                         await SendLine(stream, "ACK|" + myPlayerId);
                         PushSnapshotTo(myPlayerId);
-                    }
-                    else if (msg.Value.Kind == NetMsgKind.Action && myPlayerId >= 0)
+                    }                    else if (msg.Value.Kind == NetMsgKind.Action && myPlayerId >= 0)
                     {
                         ApplyAction(myPlayerId, msg.Value.Action);
                     }
@@ -236,26 +267,44 @@ public sealed class AuthoritativeMatchHost : IDisposable
         catch { }
     }
 
-    private static (NetMsgKind Kind, int PlayerId, NetActionPacket Action)? TryParse(string line)
+    /// <summary>解析出的一条消息。握手需要额外携带卡池哈希与牌组，故用结构体而非元组。</summary>
+    private readonly struct ParsedMsg
+    {
+        public ParsedMsg(NetMsgKind kind) { Kind = kind; PlayerId = -1; Action = null; PoolHash = null; Deck = null; }
+        public NetMsgKind Kind { get; }
+        public int PlayerId { get; init; }
+        public NetActionPacket Action { get; init; }
+        public string PoolHash { get; init; }
+        public Packs.ConstructedDeck Deck { get; init; }
+    }
+
+    private static ParsedMsg? TryParse(string line)
     {
         try
         {
             if (line.StartsWith("HELLO|"))
             {
+                // 格式：HELLO|<seat>|<poolHash>|<deckJson>
                 var parts = line.Split('|');
                 int pid = parts.Length > 1 && int.TryParse(parts[1], out var v) ? v : -1;
-                return (NetMsgKind.Hello, pid, null);
+                string hash = parts.Length > 2 ? parts[2] : null;
+                Packs.ConstructedDeck deck = null;
+                if (parts.Length > 3 && parts[3].Length > 0)
+                {
+                    try { deck = JsonSerializer.Deserialize<Packs.ConstructedDeck>(parts[3]); }
+                    catch { deck = null; }
+                }
+                return new ParsedMsg(NetMsgKind.Hello) { PlayerId = pid, PoolHash = hash, Deck = deck };
             }
             if (line.StartsWith("ACTION|"))
             {
                 var a = JsonSerializer.Deserialize<NetActionPacket>(line.Substring(7));
-                return (NetMsgKind.Action, -1, a);
+                return new ParsedMsg(NetMsgKind.Action) { Action = a };
             }
         }
         catch { }
         return null;
     }
-
     public void Dispose()
     {
         _running = false;
