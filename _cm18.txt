@@ -1,0 +1,23 @@
+fix(129-复查): ParseInto 覆盖率 326/390 -> 390/390
+
+逐段复查时写了批量往返测试（官方卡池全量 Print -> ParseAbilities），
+暴露出第一轮实现只覆盖 326 张，64 张读不回来。逐类补齐：
+
+1. ModifyCost / Transform / DamageAura / SwapStats 缺 BuildNode 分支（KindOf 认识、构造没写）。
+2. Reanimate 打印成 `Reanimate(2)` 但 KindOf 不认 —— 补该模式并接 ReanimateHelper.Build。
+3. invoke / replace deck with ... / macro 三类完全没接。
+4. GrantAbilityNode / GrantCounterAbilityNode / InvokeAbilityNode / ReplaceDeckNode /
+   MacroNode 在 PrintNodeIndented 里没有分支，落到 default 打成内联单行 ——
+   子能力里的 move/deal 顶格冒出来，回读时认不出。改为块级打印：
+     Grant to $self:
+       TurnEnd turn=Opponent:
+         Move $self to Cemetery
+   解析端加 grantblock / grantcounterblock 两个块头 + AbilityFromNodes。
+5. Spawn 卡名为空时打印 `Spawn 2 "" to Board`，回读正则匹配失败。
+   改为无卡名时省略引号（只留 id），正则同步放宽。
+
+验证：官方卡池 390 张带能力的卡，Print -> ParseAbilities 往返**零错误零 null**。
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 / UI 3-3 / 战斗 UI 31-31 /
+逐卡矩阵 31-32（既有测试集自造卡）

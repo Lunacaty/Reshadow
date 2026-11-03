@@ -296,9 +296,14 @@ public static class CanonicalAstDsl
                 }
                 else
                 {
-                    sb.Append(pad).Append("Spawn ").Append(PrintNumClean(sp.Count))
-                      .Append(" \"").Append(sp.CardName).Append("\" to ").Append(sp.ToZone)
-                      .Append(sp.CardId > 0 ? " (id=" + sp.CardId + ")" : "").Append('\n');
+                    // CardName 可能为空（卡号优先的来源）：退回用 id 表达，
+                    // 否则会打印出 `Spawn 2 "" to Board`，回读时正则匹配失败。
+                    string nm = sp.CardName ?? "";
+                    sb.Append(pad).Append("Spawn ").Append(PrintNumClean(sp.Count));
+                    if (nm.Length > 0) sb.Append(" \"").Append(nm).Append('"');
+                    sb.Append(" to ").Append(sp.ToZone);
+                    if (sp.CardId > 0) sb.Append(" (id=").Append(sp.CardId).Append(')');
+                    sb.Append('\n');
                 }
                 return;
 
@@ -349,6 +354,33 @@ public static class CanonicalAstDsl
                   .Append('\n');
                 return;
 
+
+            case GrantAbilityNode ga:
+            {
+                // 子能力必须打成分块，而不是塞进一行 ——
+                // 塞一行时子能力里的 move/deal 会顶格冒出来，回读就认不出了。
+                sb.Append(pad).Append("Grant to ").Append(PrintTargetClean(ga.Target));
+                if (ga.Duration != DurationKind.Permanent) sb.Append(" dur=").Append(ga.Duration);
+                sb.Append(":\n");
+                if (ga.Granted != null) PrintAbilityBlock(sb, ga.Granted, indent + 1);
+                return;
+            }
+            case GrantCounterAbilityNode gca:
+            {
+                sb.Append(pad).Append("GrantCounter ").Append(gca.Counter.Name).Append(":\n");
+                if (gca.Granted != null) PrintAbilityBlock(sb, gca.Granted, indent + 1);
+                return;
+            }
+            case InvokeAbilityNode ia:
+                sb.Append(pad).Append("invoke ").Append(ia.Event).Append(" on ")
+                  .Append(PrintTargetClean(ia.Target)).Append('\n');
+                return;
+            case ReplaceDeckNode rd2:
+                sb.Append(pad).Append("replace deck with ").Append(rd2.DeckName).Append('\n');
+                return;
+            case MacroNode mac:
+                sb.Append(pad).Append("macro ").Append(mac.Macro.Name).Append('\n');
+                return;
             case MarkVictoryCardNode mv2:
                 sb.Append(pad).Append("MarkVictory owner=").Append(mv2.Owner).Append('\n');
                 return;
@@ -495,6 +527,8 @@ public static class CanonicalAstDsl
         if (isBlockHead)
         {
             if (first is "If" or "Else" or "Loop" or "Modes") return first.ToLowerInvariant();
+            if (first == "Grant") return "grantblock";
+            if (first == "GrantCounter") return "grantcounterblock";
             head = body;
             return "trigger";
         }
@@ -505,6 +539,11 @@ public static class CanonicalAstDsl
             or "Spawn" or "GainCrest" or "ModifyStats" or "SwapStats" or "ModifyCost"
             or "Keyword" or "Counter" or "Evolve" or "SuperEvolve" or "Transform"
             or "DamageAura" or "Select" or "Reanimate" or "MarkVictory" => first.ToLowerInvariant(),
+            "invoke" => "invoke",
+            "grant" => "grant",
+            "macro" => "macro",
+            "replace" when body.StartsWith("replace deck with ") => "replacedeck",
+            _ when body.StartsWith("Reanimate(") => "reanimate",
             _ => null,
         };
     }
@@ -633,8 +672,11 @@ public static class CanonicalAstDsl
             {
                 // Spawn 1 "Anne's Summoning" to Board (id=90034130)
                 string rest = Strip("Spawn ", d.Raw);
+                // 卡名可省略（只剩 id 的来源卡）：
+                //   Spawn 1 "Fairy" to Board (id=123)
+                //   Spawn 2 to Board (id=456)
                 var mn = System.Text.RegularExpressions.Regex.Match(rest,
-                    "^(\\S+)\\s+\"(.+?)\"\\s+to\\s+(\\w+)(?:\\s+\\(id=(\\d+)\\))?$");
+                    "^(\\S+)(?:\\s+\"(.*?)\")?\\s+to\\s+(\\w+)(?:\\s+\\(id=(\\d+)\\))?$");
                 if (!mn.Success) { errors?.Add("Spawn 语法错误：" + d.Raw); return null; }
                 var z = Enum.TryParse<ZoneRef>(mn.Groups[3].Value, true, out var zv2) ? zv2 : ZoneRef.Board;
                 return new SpawnCardNode
@@ -709,6 +751,138 @@ public static class CanonicalAstDsl
                     Target = ofI >= 0 ? ParseTarget(tail.Substring(ofI + 4)) : null,
                 };
             }
+
+            case "modifycost":
+            {
+                // ModifyCost Add -1 to $self
+                string rest = Strip("ModifyCost ", d.Raw);
+                var mp = rest.Split(' ', 3);
+                if (mp.Length < 3) { errors?.Add("ModifyCost 语法错误：" + d.Raw); return null; }
+                int ti = mp[2].IndexOf(" to ", StringComparison.Ordinal);
+                string tgtS = ti >= 0 ? mp[2].Substring(ti + 4) : mp[2];
+                int durI = tgtS.IndexOf(" dur=", StringComparison.Ordinal);
+                if (durI >= 0) tgtS = tgtS.Substring(0, durI);
+                var op = Enum.TryParse<CostModOp>(mp[0], true, out var opv) ? opv : CostModOp.Add;
+                return new ModifyCostNode
+                {
+                    Op = op,
+                    Value = ParseNum(mp[1]),
+                    Target = ParseTarget(tgtS.Trim()),
+                };
+            }
+            case "transform":
+            {
+                // Transform $self into "Fairy" (id=123)
+                string rest = Strip("Transform ", d.Raw);
+                int ii = rest.IndexOf(" into ", StringComparison.Ordinal);
+                if (ii < 0) { errors?.Add("Transform 缺少 'into'：" + d.Raw); return null; }
+                string tgtS = rest.Substring(0, ii);
+                string rhs = rest.Substring(ii + 6).Trim();
+                var mn = System.Text.RegularExpressions.Regex.Match(rhs, "^\"(.+?)\"(?:\\s+\\(id=(\\d+)\\))?$");
+                return new TransformNode
+                {
+                    Target = ParseTarget(tgtS),
+                    IntoCardName = mn.Success ? mn.Groups[1].Value : rhs.Trim('\"'),
+                    IntoCardId = mn.Success && mn.Groups[2].Success ? int.Parse(mn.Groups[2].Value) : 0,
+                };
+            }
+            case "damageaura":
+            {
+                // DamageAura TakenCap All reduce 3 to $self
+                string rest = Strip("DamageAura ", d.Raw);
+                var mp = rest.Split(' ', 5);
+                if (mp.Length < 5) { errors?.Add("DamageAura 语法错误：" + d.Raw); return null; }
+                var kind = Enum.TryParse<DamageAuraKind>(mp[0], true, out var kv) ? kv : DamageAuraKind.TakenDelta;
+                var mask = Enum.TryParse<DamageSourceMask>(mp[1], true, out var mv) ? mv : DamageSourceMask.All;
+                bool red = mp[2].Equals("reduce", StringComparison.OrdinalIgnoreCase);
+                string tail = mp[3] + (mp.Length > 4 ? " " + mp[4] : "");
+                int ti = tail.IndexOf(" to ", StringComparison.Ordinal);
+                return new DamageModifierNode
+                {
+                    Kind = kind, SourceMask = mask, IsReduction = red,
+                    Amount = ParseNum(ti > 0 ? tail.Substring(0, ti) : tail),
+                    Target = ti > 0 ? ParseTarget(tail.Substring(ti + 4)) : TargetSpec.Self,
+                };
+            }
+            case "reanimate":
+            {
+                // Reanimate(2) —— 亡者召还：从墓地按费用上限召唤
+                var mn = System.Text.RegularExpressions.Regex.Match(d.Raw, @"^Reanimate\((.+)\)$");
+                if (!mn.Success) { errors?.Add("Reanimate 语法错误：" + d.Raw); return null; }
+                return ReanimateHelper.Build(ParseNum(mn.Groups[1].Value));
+            }
+            case "invoke":
+            {
+                // invoke OnPlay on slot:$self All n=1
+                string rest = Strip("invoke ", d.Raw);
+                var mp = rest.Split(' ', 3);
+                var ev = Enum.TryParse<CoreEvent>(mp[0], true, out var evv) ? evv : CoreEvent.OnPlay;
+                string tgt = mp.Length > 1 ? mp[1] : "";
+                if (tgt.StartsWith("on ")) tgt = tgt.Substring(3);
+                return new InvokeAbilityNode { Event = ev, Target = ParseTarget(tgt) };
+            }
+
+            case "grant":
+            {
+                // grant to slot:$created All n=1 "turnend turn=Opponent: ..."
+                string rest = Strip("grant ", d.Raw);
+                int qi = rest.IndexOf('"');
+                string tgtS = qi > 0 ? rest.Substring(0, qi) : rest;
+                if (tgtS.StartsWith("to ")) tgtS = tgtS.Substring(3);
+                string inner = "";
+                if (qi >= 0)
+                {
+                    int q2 = rest.LastIndexOf('"');
+                    inner = q2 > qi ? rest.Substring(qi + 1, q2 - qi - 1) : rest.Substring(qi + 1);
+                }
+                var granted = ParseNested(inner, errors);
+                return new GrantAbilityNode
+                {
+                    Target = ParseTarget(tgtS.Trim()),
+                    Granted = granted.Count > 0 ? granted[0] : null,
+                };
+            }
+            case "macro":
+            {
+                string name = Strip("macro ", d.Raw).Trim();
+                return new MacroNode { Macro = new SymbolId<MacroTag>(0, name) };
+            }
+
+            case "grantblock":
+            {
+                // Grant to $self [dur=...]: <子能力块>
+                string rest = Strip("Grant to ", d.Raw);
+                int durI = rest.IndexOf(" dur=", StringComparison.Ordinal);
+                var dur = DurationKind.Permanent;
+                if (durI >= 0)
+                {
+                    if (Enum.TryParse<DurationKind>(rest.Substring(durI + 5).Trim(), true, out var dv)) dur = dv;
+                    rest = rest.Substring(0, durI);
+                }
+                var kids = BuildNodes(d.Children, errors);
+                return new GrantAbilityNode
+                {
+                    Target = ParseTarget(rest.Trim()),
+                    Duration = dur,
+                    Granted = kids.Count > 0 ? AbilityFromNodes(kids) : null,
+                };
+            }
+            case "grantcounterblock":
+            {
+                string cn = Strip("GrantCounter ", d.Raw).Trim();
+                var kids = BuildNodes(d.Children, errors);
+                return new GrantCounterAbilityNode
+                {
+                    Counter = new SymbolId<CounterTag>(0, cn),
+                    Granted = kids.Count > 0 ? AbilityFromNodes(kids) : null,
+                };
+            }
+            case "replacedeck":
+                return new ReplaceDeckNode { DeckName = Strip("replace deck with ", d.Raw) };
+            case "swapstats":
+                return new ModifyStatsNode { Op = StatModOp.Swap, Target = ParseTarget(Strip("SwapStats ", d.Raw)) };
+            case "select2":
+                return null;
             case "evolve":
                 return new EvolveNode { Target = ParseTarget(Strip("Evolve ", d.Raw)) };
             case "superevolve":
@@ -725,6 +899,34 @@ public static class CanonicalAstDsl
         }
     }
 
+
+    /// <summary>
+    /// 把 `granted` 子能力的规范文本递归解析回来。
+    /// 打印端把子能力打成了 `grant to X "turnend: ..."` 这种内联引号形式，
+    /// 解析时把引号里的内容当成一段独立的能力文本再走一遍 ParseAbilities。
+    /// </summary>
+    public static List<AbilityDef> ParseNested(string inner, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(inner)) return new List<AbilityDef>();
+        // 内联子能力没有换行：把「: 」之后的内容补成缩进行再解析。
+        var sb = new System.Text.StringBuilder();
+        var parts = inner.Split(':');
+        if (parts.Length >= 2)
+        {
+            sb.Append(parts[0].Trim()).Append(":\n");
+            string tail = string.Join(":", parts.Skip(1)).Trim();
+            foreach (var one in SplitTop(tail, " "))
+                if (one.Trim().Length > 0) sb.Append("  ").Append(one.Trim()).Append('\n');
+        }
+        else sb.Append(inner);
+        return ParseAbilities(sb.ToString(), errors) ?? new List<AbilityDef>();
+    }
+    /// <summary>把一串动作节点包成一条无触发头的子能力（Grant 用）。</summary>
+    private static AbilityDef AbilityFromNodes(List<EffectNode> nodes)
+    {
+        if (nodes == null || nodes.Count == 0) return null;
+        return new AbilityDef { Body = nodes };
+    }
     private static string Strip(string prefix, string s)
         => s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? s.Substring(prefix.Length).Trim() : s.Trim();
 
