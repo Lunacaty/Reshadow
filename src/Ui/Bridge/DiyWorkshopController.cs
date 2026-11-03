@@ -29,6 +29,9 @@ public sealed class DiyWorkshopController
     public CardFormModel FormModel { get; private set; }
     public CardBlockWorkspace BlockModel { get; private set; }
     public string ScriptText { get; set; } = "";
+
+    /// <summary>当前卡片的 AST JSON 文本（第三端改为直接编辑语法树）。</summary>
+    public string AstJsonText { get; set; } = "";
     public DiyWorkspace.CnlCardSpec CnlSpec { get; set; }
 
     public bool FormIsReadOnly { get; private set; }
@@ -165,6 +168,43 @@ public sealed class DiyWorkshopController
         return true;
     }
 
+    /// <summary>从 AST JSON 文本编译。失败时 LastErrors 里带出具体原因。</summary>
+    public bool CompileFromAstJson(string json)
+    {
+        LastErrors.Clear();
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            LastStatusMessage = "AST JSON 为空";
+            return false;
+        }
+
+        CardDef def;
+        try
+        {
+            def = AstJsonCodec.Decode(json);
+        }
+        catch (Exception ex)
+        {
+            LastErrors.Add("AST JSON 解析失败：" + ex.Message);
+            LastStatusMessage = "AST JSON 解析失败";
+            return false;
+        }
+
+        if (def == null)
+        {
+            LastErrors.Add("AST JSON 解析结果为空");
+            LastStatusMessage = "AST JSON 解析失败";
+            return false;
+        }
+
+        CurrentDef = def;
+        AstJsonText = json;
+        SyncAllEndpointsFromCurrentDef();
+        LastStatusMessage = "✔ 从【AST 语法树端】编译成功，已同步至其余三端";
+        OnCardUpdated?.Invoke();
+        return true;
+    }
+
     public bool CompileFromScript(string script)
     {
         LastErrors.Clear();
@@ -224,6 +264,9 @@ public sealed class DiyWorkshopController
 
         // ② 积木端
         BlockModel = new DiyBlockDecompiler(Workspace.Schema).Decompile(CurrentDef);
+
+        // ③ AST 端：直接把当前 CardDef 展开成可读的 JSON 语法树。
+        AstJsonText = AstJsonCodec.Encode(CurrentDef);
 
         // ③ 表单端：超纲时标只读并保留原因，绝不静默丢效果
         var fc = new DiyFormCompiler(Workspace.Schema, Workspace.Lexicon);

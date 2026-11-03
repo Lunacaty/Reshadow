@@ -32,7 +32,7 @@ public partial class DiyWorkshopView : Control
     private VBoxContainer _endpointHost;
     /// <summary>积木工作台实例。复用而非每次重建：它内部保存着当前能力域与选中积木。</summary>
     private BlockTreeEditorWidget _blockEditor;
-    private TextEdit _scriptEdit;
+    private TextEdit _astJsonEdit;
     private OptionButton _packPicker;
     private Control _hover;
 
@@ -208,7 +208,7 @@ public partial class DiyWorkshopView : Control
 
         AddEndpointTab(tabs, "① 表单向导端", DiyEndpointKind.Form);
         AddEndpointTab(tabs, "② Scratch 积木", DiyEndpointKind.Block);
-        AddEndpointTab(tabs, "③ 脚本代码端", DiyEndpointKind.Script);
+        AddEndpointTab(tabs, "③ AST 语法树端", DiyEndpointKind.Script);
         AddEndpointTab(tabs, "④ 官方英文", DiyEndpointKind.EnglishCnl);
 
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
@@ -295,27 +295,87 @@ public partial class DiyWorkshopView : Control
         }
     }
 
+    /// <summary>
+    /// ③ AST 语法树端：直接编辑 CardDef 的 AST JSON。
+    ///
+    /// 取代原来的 ReshadowScript 脚本端 —— 那套自定义语法是手写的文本版 AST，
+    /// 每加一个 EffectNode 字段都要同时改解析与打印两端，漏一个逗号就报错。
+    /// AST JSON 由 AstJsonCodec 跟随类型，加字段只在那里各补一行。
+    /// </summary>
     private void BuildScriptEndpoint()
     {
         var hint = new Label
         {
-            Text = "ReshadowScript 源码。改完点下方【立即编译并同步四端】。",
+            Text = "直接编写卡片的抽象语法树（AST JSON，支持 // 注释与尾随逗号）。" +
+                   "点击下方模板按钮可在光标处一键插入对应节点：",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
         hint.AddThemeFontSizeOverride("font_size", 11);
         hint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
         _endpointHost.AddChild(hint);
 
-        _scriptEdit = new TextEdit
+        var tplBar = new HFlowContainer();
+        tplBar.AddThemeConstantOverride("h_separation", 6);
+        tplBar.AddThemeConstantOverride("v_separation", 4);
+        _endpointHost.AddChild(tplBar);
+
+        AddAstSnippetBtn(tplBar, "入场曲能力壳",
+            "{\n  \"trigger\": { \"event\": \"OnPlay\" },\n  \"body\": [\n    " +
+            "{ \"$op\": \"DealDamage\", \"target\": { \"owner\": \"Opponent\", \"zone\": \"Board\", " +
+            "\"mode\": \"Choose\", \"count\": 1 }, \"amount\": 3 }\n  ]\n}");
+
+        AddAstSnippetBtn(tplBar, "伤害 DealDamage",
+            "{ \"$op\": \"DealDamage\", \"target\": \"$self\", \"amount\": 2 }");
+
+        AddAstSnippetBtn(tplBar, "抽牌 Draw",
+            "{ \"$op\": \"MoveZone\", \"target\": { \"owner\": \"Self\", \"zone\": \"Deck\", " +
+            "\"mode\": \"First\", \"count\": 2 }, \"to_zone\": \"Hand\" }");
+
+        AddAstSnippetBtn(tplBar, "身材 ModifyStats",
+            "{ \"$op\": \"ModifyStats\", \"target\": \"$self\", \"op\": \"Add\", \"atk\": 2, \"life\": 2 }");
+
+        AddAstSnippetBtn(tplBar, "关键词 ModifyKeyword",
+            "{ \"$op\": \"ModifyKeyword\", \"target\": \"$self\", \"op\": \"Grant\", \"keyword\": \"ward\" }");
+
+        AddAstSnippetBtn(tplBar, "伤害光环 DamageModifier",
+            "{ \"$op\": \"DamageModifier\", \"target\": \"$self\", \"kind\": \"TakenCap\", " +
+            "\"source_mask\": \"All\", \"amount\": 3, \"is_reduction\": true }");
+
+        AddAstSnippetBtn(tplBar, "模式分支 BranchMode",
+            "{ \"$op\": \"BranchMode\", \"mode\": \"Choose\", \"pick_count\": 1, \"options\": [" +
+            "[ { \"$op\": \"RestoreLife\", \"target\": \"$self\", \"amount\": 4 } ], " +
+            "[ { \"$op\": \"DealDamage\", \"target\": \"$self\", \"amount\": 4 } ] ] }");
+
+        AddAstSnippetBtn(tplBar, "锁定随机数 RandomRange",
+            "{ \"$num\": \"RandomRange\", \"min\": 2, \"max\": 10, \"roll_id\": 0 }");
+
+        AddAstSnippetBtn(tplBar, "条件 Conditional",
+            "{ \"$op\": \"Conditional\", \"condition\": { \"$bool\": \"Compare\", " +
+            "\"left\": { \"$num\": \"Counter\", \"counter\": \"combo\" }, \"cmp\": \"Ge\", " +
+            "\"right\": { \"$num\": \"Const\", \"v\": 3 } }, \"then\": [] }");
+
+        _astJsonEdit = new TextEdit
         {
-            Text = _ctrl.ScriptText,
-            CustomMinimumSize = new Vector2(0, 380),
+            Text = _ctrl.AstJsonText,
+            CustomMinimumSize = new Vector2(0, 360),
             SizeFlagsVertical = SizeFlags.ExpandFill,
+            WrapMode = TextEdit.LineWrappingMode.None,
         };
-        _scriptEdit.AddThemeFontSizeOverride("font_size", 13);
-        _endpointHost.AddChild(_scriptEdit);
+        _astJsonEdit.AddThemeFontSizeOverride("font_size", 13);
+        _endpointHost.AddChild(_astJsonEdit);
     }
 
+    private void AddAstSnippetBtn(Control host, string label, string snippet)
+    {
+        var b = new Button { Text = "+ " + label, CustomMinimumSize = new Vector2(0, 28) };
+        SvWbTheme.StyleButton(b);
+        b.Pressed += () =>
+        {
+            if (_astJsonEdit == null || !IsInstanceValid(_astJsonEdit)) return;
+            _astJsonEdit.InsertTextAtCaret(snippet);
+        };
+        host.AddChild(b);
+    }
     private void BuildFormEndpoint()
     {
         var def = _ctrl.CurrentDef;
@@ -599,7 +659,7 @@ public partial class DiyWorkshopView : Control
         switch (_active)
         {
             case DiyEndpointKind.Script:
-                if (_scriptEdit != null) ok = _ctrl.CompileFromScript(_scriptEdit.Text);
+                if (_astJsonEdit != null) ok = _ctrl.CompileFromAstJson(_astJsonEdit.Text);
                 break;
             case DiyEndpointKind.Form:
                 ok = ApplyFormEdits();
