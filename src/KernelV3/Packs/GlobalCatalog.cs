@@ -133,6 +133,12 @@ public sealed class GlobalCatalog
                     CardIndex.RegisterExplicit(pack.PackId, c.LocalId, eid);
                 _idOf[c] = eid;
                 if (eid > 0) Lexicon.AddCard(c.NameEng, eid);
+
+                // 卡名中文注入 Glossary。
+                // 缺这一句，纹章名 / 衍生 Token 名在卡面上全是英文 ——
+                // 纹章名就是本卡名，卡名有译文却查不到，白瞎了数据。
+                if (!string.IsNullOrEmpty(c.NameChs) && !string.IsNullOrEmpty(c.NameEng))
+                    Glossary.Add(c.NameEng, c.NameChs);
             }
         }
         Lexicon.Build();

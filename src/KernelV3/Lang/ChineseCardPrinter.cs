@@ -1155,6 +1155,7 @@ public sealed class ChineseCardPrinter
                 parts.Add(hs.State switch
                 {
                     UnitState.Damaged => "已受伤的",
+                    UnitState.AttackedLeaderLastTurn => "上回合攻击过主战者的",
                     UnitState.Evolved => "已进化的",
                     UnitState.SuperEvolved => "已超进化的",
                     // 缺这一条时，《古旧天剑》的「爆能强化的卡牌」会印成光秃秃的「卡牌」。
@@ -1235,14 +1236,7 @@ public sealed class ChineseCardPrinter
                 return "是" + (hk.Kind == CardKind.Follower ? "随从" : hk.Kind == CardKind.Spell ? "法术" : "护符");
             case HasTraitExpr ht: return "具有" + TraitZh(ht.Trait.Name) + "兵种";
             case HasKeywordExpr hkw: return "拥有【" + KeywordZh(hkw.Keyword.Name) + "】";
-            case HasStateExpr hs: return hs.State switch
-            {
-                UnitState.Damaged => "已受伤",
-                UnitState.Evolved => "已进化",
-                UnitState.SuperEvolved => "已超进化",
-                UnitState.Enhanced => "已【爆能强化】",
-                _ => hs.State.ToString(),
-            };
+            case HasStateExpr hs: return StateZh(hs.State);
             case NotSameEntityExpr: return "不是同一个目标";
             case DeckRuleExpr dr: return "牌组满足规则";
             default: return "";
@@ -1446,6 +1440,19 @@ public sealed class ChineseCardPrinter
         "evolve_count" => "进化次数",
         "wrath" => "血怒",
         "damage_dealt_this_turn" => "本回合造成的伤害",
+        // 以下内码以前直接漏到卡面上（玩家看到的是 pp_at_play 这种变量名）。
+        "pp_at_play" => "打出时能量点",
+        "match_play" => "本局打出次数",
+        "turn_play" => "本回合打出次数",
+        "skybound_gauge" => "奥义值",
+        "attacked_leader_last_turn" => "上回合攻击过主战者",
+        "attacked_follower_last_turn" => "上回合攻击过随从",
+        "s_max_defense" => "主战者生命上限",
+        "enemy_leader" => "敌方主战者",
+        "distinct_base_costs_played" => "本局打出过的不同费用数",
+        "cards_played_this_turn" => "本回合打出的张数",
+        "destroyed_followers" => "已破坏的随从数",
+        "fused_cards" => "已融合的张数",
         _ => _glossary.ToChinese(name),
     };
 
@@ -1494,6 +1501,8 @@ public sealed class ChineseCardPrinter
         "Bloodcraft" => "吸血鬼",
         "Havencraft" => "主教",
         "Portalcraft" => "复仇者",
+        // Shadowverse: Worlds Beyond 把死灵与吸血鬼合并为 Abysscraft（深渊）。
+        "Abysscraft" => "深渊",
         "Neutral" => "中立",
         _ => _glossary.ToChinese(en),
     };
@@ -1556,26 +1565,84 @@ public sealed class ChineseCardPrinter
     };
 
     /// <summary>兵种中文化。查不到保留原名（DIY 兵种本来就没有官方译名）。</summary>
+    /// <summary>
+    /// 兵种中文名。
+    ///
+    /// 官方 16 个兵种全部收录（用户提供的官方对照）。
+    /// 之前只列了 10 个，且 artifact 译成「神器」、officer 译成「指挥官」、
+    /// loot 译成「战利品」—— 与官方中文卡面不一致，玩家认不出。
+    /// 未收录的走 Glossary（DIY 自定义兵种走 DefineTrait 注册）。
+    /// </summary>
     public string TraitZh(string en) => (en ?? "").ToLowerInvariant() switch
     {
-        "pixie" => "妖精",
-        "artifact" => "神器",
-        "loot" => "战利品",
-        "clue" => "线索",
-        "golem" => "魔像",
-        "officer" => "指挥官",
-        "departed" => "死者",
-        "commander" => "司令官",
-        "machina" => "机械",
+        "officer" => "士兵",
+        "luminous" => "鲁米那斯",
         "levin" => "雷维翁",
-        // 默认走 Glossary：DefineTrait("Mecha", "机甲") 注册的自定义兵种
-        // 译名就在那里。硬编码 default 会让 DIY 兵种直接吐英文。
+        "pixie" => "妖精",
+        "departed" => "亡者",
+        "earth sigil" => "土之印",
+        "mysteria" => "玛纳利亚",
+        "golem" => "巨像",
+        "shikigami" => "式神",
+        "artifact" => "创造物",
+        "puppetry" => "人偶",
+        "marine" => "海洋",
+        "loot" => "财宝",
+        "encroacher" => "侵蚀者",
+        "anathema" => "安纳提玛",
+        "clue" => "证据",
+        // 非官方兵种（DIY / 旧版本遗留）走 Glossary。
+        "machina" => "机械",
+        "commander" => "司令官",
         _ => _glossary.ToChinese(en),
     };
 
+    /// <summary>
+    /// 卡名转中文。
+    ///
+    /// 查找顺序：小写内建表 → Glossary（CardPool 从全卡包 name_eng→name_chs 注入）
+    /// → 原名兜底。
+    ///
+    /// 以前只查那张小内建表，于是纹章名、衍生 Token 名在卡面上全是英文 ——
+    /// Glossary 里明明已经装好全部 982 张卡的对照，却从没被查过。
+    /// </summary>
+    /// <summary>
+    /// 单位状态的中文名。
+    ///
+    /// 缺映射时以前走 `hs.State.ToString()`，直接把枚举名印到卡面上
+    /// （玩家看到的是 AttackedLeaderLastTurn 这种内部标识）。
+    /// 未收录的一律给「未知状态」而不是原样输出。
+    /// </summary>
+    public string StateZh(UnitState st) => st switch
+    {
+        UnitState.None => "",
+        UnitState.Damaged => "已受伤",
+        UnitState.Evolved => "已进化",
+        UnitState.SuperEvolved => "已超进化",
+        UnitState.Silenced => "已被沉默",
+        UnitState.AttackedThisTurn => "本回合已攻击",
+        UnitState.EnteredThisTurn => "本回合登场",
+        UnitState.CostModified => "费用已变更",
+        UnitState.HasFuse => "带有融合",
+        UnitState.HasLastWords => "带有谢幕曲",
+        UnitState.HasOnSpellboost => "带有魔力增幅",
+        UnitState.Destroyed => "已破坏",
+        UnitState.AttackedLeaderLastTurn => "上回合攻击过主战者",
+        UnitState.Enhanced => "已【爆能强化】",
+        _ => "未知状态",
+    };
+
     public string CardZh(string en)
-        => string.IsNullOrWhiteSpace(en) ? ""
-           : CardNameZh.TryGetValue(en.Trim(), out var zh) ? zh : en.Trim();
+    {
+        if (string.IsNullOrWhiteSpace(en)) return "";
+        string key = en.Trim();
+        if (CardNameZh.TryGetValue(key, out var zh)) return zh;
+
+        string fromGlossary = _glossary.ToChinese(key);
+        if (!string.IsNullOrEmpty(fromGlossary) && fromGlossary != key) return fromGlossary;
+
+        return key;
+    }
 
     private string DeckNameZh(string en) => en switch
     {
