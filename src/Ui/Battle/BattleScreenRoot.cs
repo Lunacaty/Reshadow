@@ -302,7 +302,8 @@ public partial class BattleScreenRoot : Control
         {
             if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
             {
-                if (_handExpanded) { _handExpanded = false; RebuildHand(); }
+                // 手牌收起统一由 _Input 按「是否在手牌区内」判定，
+                // 这里再收一次会与它抢时序（_Input 先跑，这里后跑）。
                 _actionPanel.HidePanel();
             }
         };
@@ -1445,6 +1446,21 @@ public partial class BattleScreenRoot : Control
         }
 
         if (@event is not InputEventMouseButton mb || mb.ButtonIndex != MouseButton.Left) return;
+
+        // ---- 手牌展开态：点在**手牌区之外**任意位置即收起 ----
+        //
+        // 原来这条逻辑挂在 _field.GuiInput 上，只有点战场背景才生效；
+        // 点顶部菜单栏、右侧栏、左上角面板按钮都不会收起，玩家得
+        // 专门找一块空地戳一下才行。收到这里按矩形判定，
+        // 「手牌区以外」就一律回到常态，符合直觉。
+        //
+        // 拖拽中不收起：手上的牌还举着，这时候收手牌会把它一起抹掉。
+        if (mb.Pressed && _handExpanded && !_draggingPlay && !_handRect.HasPoint(mb.Position))
+        {
+            _handExpanded = false;
+            RebuildHand();
+            return;
+        }
 
         // ---- 手牌区：按下即展开 ----
         //
