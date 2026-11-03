@@ -2584,6 +2584,8 @@ public sealed class ReshadowScriptCompiler
                 return ind + "invoke(" + EventWord(ia.Event) + ", "
                        + PrintTargetExpr(ia.Target ?? TargetSpec.Self) + ")\n";
 
+            case MarkVictoryCardNode mv:
+                return ind + "mark_victory(\"" + mv.Owner + "\")\n";
             case ReplaceDeckNode rd:
                 return ind + "replace_deck(\"" + rd.DeckName + "\")\n";
 

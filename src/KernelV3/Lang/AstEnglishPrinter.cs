@@ -239,6 +239,10 @@ public static class AstEnglishPrinter
             case ReplaceDeckNode rd:
                 sb.Append("replace deck with " + rd.DeckName);
                 break;
+            case MarkVictoryCardNode mv:
+                // 胜利卡没有卡号也没有卡面，只能按语义打印。
+                sb.Append("mark victory card owner=" + mv.Owner);
+                break;
             case MacroNode mac:
                 sb.Append("macro " + mac.Macro.Name);
                 break;

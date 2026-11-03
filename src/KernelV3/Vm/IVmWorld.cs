@@ -142,6 +142,9 @@ public interface IVmWorld
     /// </summary>
     void ReplaceDeck(int playerId, string deckName, IReadOnlyList<int> cardIds);
 
+    /// <summary>把某玩家的牌库标记为「含胜利的卡牌」（Mjerrabaine 纹章机制）。</summary>
+    void SetVictoryCard(int playerId) { }
+
     /// <summary>按快照生成一个复制体（用于「复制一份」）。</summary>
     RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId);
 

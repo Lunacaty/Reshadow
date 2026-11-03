@@ -1787,6 +1787,17 @@ public sealed class ActionParser
 
         // into 之后是结果
         var rhs = rest.Skip(intoIdx + 1).ToList();
+
+        // 「transform the Reaper Card at the bottom of your deck into a Victory Card」
+        // 是 Mjerrabaine 纹章的胜负改判机制，不是把卡改成另一张真实卡：
+        // 胜利卡没有卡号也没有卡面，走普通 transform 必然解析失败。
+        if (rhs.Any(t => t.IsWord("victory")))
+        {
+            return new List<EffectNode>
+            {
+                new MarkVictoryCardNode { Owner = Core.ZoneScope.Self },
+            };
+        }
         var rc = new TokenCursor(rhs);
         rc.TryMatchAnyWord("an", "a");
         rc.TryMatchAnyWord("exact");

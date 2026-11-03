@@ -225,6 +225,20 @@ public sealed class MoveZoneNode : EffectNode
 // ---------- 10. 变形 ----------
 
 /// <summary>变形为另一张卡。</summary>
+
+/// <summary>
+/// 把目标牌换成「胜利的卡牌」（官方 Mjerrabaine 纹章机制）。
+///
+/// 影之诗规则：牌库抽空时本该判负，但如果牌库里有「胜利的卡牌」，
+/// 那次抽牌改为判胜。这个节点标记的是**玩家的胜利状态**，
+/// 不是把某张卡改成另一张真实卡牌 —— 它没有卡号、没有卡面。
+/// </summary>
+public sealed class MarkVictoryCardNode : EffectNode
+{
+    /// <summary>作用对象：必须是主战者（Own = Self / Opponent）。</summary>
+    public Core.ZoneScope Owner { get; init; } = Core.ZoneScope.Self;
+}
+
 public sealed class TransformNode : EffectNode
 {
     public TargetSpec Target { get; init; }

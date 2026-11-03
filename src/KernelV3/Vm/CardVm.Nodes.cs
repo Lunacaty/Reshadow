@@ -68,6 +68,7 @@ public sealed partial class CardVm
             case ReplaceDeckNode n: return DoReplaceDeck(n, scope);
             case EvolveNode n: return DoEvolve(n, scope);
             case TransformNode n: return DoTransform(n, scope);
+            case MarkVictoryCardNode n: return DoMarkVictoryCard(n, scope);
             case ConditionalNode n: return DoConditional(n, scope);
             case LoopNode n: return DoLoop(n, frame);
             case BranchModeNode n: return DoBranch(n, frame);
@@ -972,6 +973,20 @@ public sealed partial class CardVm
     /// 这里不静默装空牌库 —— 空牌库会让玩家下一回合直接 DECK_OUT 判负，
     /// 一个"看起来成功"的失败比报错危险得多。
     /// </summary>
+    /// <summary>
+    /// 把目标的牌库标记为「含胜利的卡牌」。
+    ///
+    /// 影之诗规则：牌库抽空时判负；若牌库里是胜利的卡牌，该次抽牌改判胜利。
+    /// 这不是「把某张卡改成另一张真实卡牌」——胜利卡没有卡号也没有卡面，
+    /// 它只是玩家身上的一个状态位，所以不能走 DoTransform。
+    /// </summary>
+    private bool DoMarkVictoryCard(MarkVictoryCardNode n, VmScope scope)
+    {
+        int pid = scope.ResolvePlayer(n.Owner);
+        _world.SetVictoryCard(pid);
+        return false;
+    }
+
     private bool DoReplaceDeck(ReplaceDeckNode n, VmScope scope)
     {
         int pid = scope.ResolvePlayer(n.Owner);

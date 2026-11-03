@@ -825,6 +825,10 @@ public sealed class DiyBlockCompiler
             case "act_replace_deck":
                 return new ReplaceDeckNode { DeckName = b.Text ?? "", Owner = ZoneScope.Self };
 
+            case "act_mark_victory":
+                // Mjerrabaine 纹章的胜负改判：把牌库标记为「含胜利的卡牌」。
+                return new MarkVictoryCardNode { Owner = ZoneScope.Self };
+
             case "act_invoke":
                 // Target 缺了就是空操作：DoInvoke 第一行 Resolve(n.Target)。
                 return new InvokeAbilityNode
@@ -1633,6 +1637,9 @@ public sealed class DiyBlockDecompiler
                     blk.Branches.Add(Stacks(opt));
                 return blk;
             }
+
+            case MarkVictoryCardNode _:
+                return new Block { Opcode = "act_mark_victory" };
 
             case ReplaceDeckNode rd:
                 return new Block { Opcode = "act_replace_deck", Text = rd.DeckName };

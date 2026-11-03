@@ -1,0 +1,35 @@
+feat(127): 胜利的卡牌机制 —— MarkVictoryCardNode
+
+官方 Mjerrabaine 纹章：
+  When you gain this crest, replace your deck with the Mjerrabaine Deck
+  and transform the Reaper Card at the bottom of your deck into a Victory Card.
+
+前半句早已支持（ReplaceDeckNode）。后半句一直解析失败：
+  ERR: transform into：既不是卡名也不是可解析的目标集合
+原因是「胜利的卡牌」不是一张真实卡牌（没有卡号、没有卡面），
+走普通 TransformNode 必然找不到目标。
+
+新增 MarkVictoryCardNode：标记**玩家**的胜利状态，而不是改某张卡。
+配合内核已有的 DrawCards 规则：
+  p.Deck.Count == 0 -> HasVictoryCard ? WonByVictoryCard : LostByDeckOut
+（这段逻辑本来就对，缺的只是「谁能把 HasVictoryCard 置真」的入口。）
+
+配套四端同构（check_matrix 抓出来的 4 处遗漏）：
+  ActionParser 解析 into a Victory Card；
+  CardVm.Nodes 执行 DoMarkVictoryCard；
+  IVmWorld.SetVictoryCard（默认空实现，BattleState 已有真实现）；
+  AstEnglishPrinter / ReshadowScriptCompiler 打印；
+  DiyBlockModel CompileStack + Stack 双向（act_mark_victory 积木）。
+
+验证：
+  transform this follower into a Fairy            -> TransformNode
+  transform the Reaper Card ... into a Victory Card -> MarkVictoryCardNode
+  官方总表 1021 张、Mjerrabaine 本体 2 条能力（OnPlay/OnEvolve）均正常。
+  check_matrix.py PASSED 211 checks。
+
+测试集 81000031 未改动 —— 那张卡的文本是测试集自造的，
+与官方机制无关，按用户要求不再处理。
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 / UI 3-3 / 战斗 UI 31-31 /
+四端矩阵 211-211 / 逐卡矩阵 31-32（既有 Mjerrabaine 测试卡）
