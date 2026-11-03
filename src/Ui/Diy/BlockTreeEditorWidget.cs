@@ -1041,9 +1041,9 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         if (cur != null)
         {
             if (cur.Opcode == "tgt_slot")
-                BuildInlineText(box, "槽位", cur.Text, v => { cur.Text = v; setter(cur); });
+                BuildEnumCombo(box, "引用槽位", DiyZh.Slots, cur.Text ?? "$self", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "tgt_leader")
-                BuildInlineText(box, "归属", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+                BuildEnumCombo(box, "主战者归属", DiyZh.Owners, cur.EnumA ?? "Self", v => { cur.EnumA = v; setter(cur); });
             else if (cur.Opcode == "tgt_query")
             {
                 // tgt_query 的 IntA 是区域码、IntB 是归属码。
@@ -1148,12 +1148,12 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildInlineInt(box, "变量槽", cur.IntC, v => { cur.IntC = v; setter(cur); });
             }
             else if (cur.Opcode == "num_counter")
-                BuildInlineText(box, "计数器", cur.Text, v => { cur.Text = v; setter(cur); });
+                BuildEnumCombo(box, "计数器", DiyZh.Counters, cur.Text ?? "pp", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "num_prop")
-                BuildInlineText(box, "属性", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+                BuildEnumCombo(box, "读取属性", DiyZh.Stats, cur.EnumA ?? "Attack", v => { cur.EnumA = v; setter(cur); });
             else if (cur.Opcode == "num_arith")
             {
-                BuildInlineText(box, "运算符", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+                BuildEnumCombo(box, "运算符", DiyZh.ArithOps, cur.EnumA ?? "Add", v => { cur.EnumA = v; setter(cur); });
                 var n1 = new VBoxContainer(); box.AddChild(n1);
                 BuildNumberSlotEditor(n1, "左值", cur.Number, v => { cur.Number = v; setter(cur); });
                 var n2 = new VBoxContainer(); box.AddChild(n2);
@@ -1195,7 +1195,9 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             else if (op == "bool_has_kw") made.Text = "ward";
             else if (op == "bool_has_trait") made.Text = "Fairy";
             else if (op == "bool_has_clan") made.Text = "Forestcraft";
-            else if (op == "bool_has_state") made.Text = "Evolved";
+            // 编译器读的是 EnumA（DiyBlockCompiler.CompileCond），不是 Text。
+            // 早先写进 Text 会让积木端拼出的条件全落进默认的 Damaged。
+            else if (op == "bool_has_state") made.EnumA = "Evolved";
             else if (op == "bool_and" || op == "bool_or") made.Stacks = new List<Block>();
             else if (op == "bool_not") made.Condition = new Block { Opcode = "bool_true" };
             setter(made);
@@ -1224,8 +1226,15 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 var n2 = new VBoxContainer(); box.AddChild(n2);
                 BuildNumberSlotEditor(n2, "右值", cur.Number2, v => { cur.Number2 = v; setter(cur); });
             }
-            else if (cur.Opcode == "bool_has_kw" || cur.Opcode == "bool_has_trait"
-                  || cur.Opcode == "bool_has_clan" || cur.Opcode == "bool_has_state")
+            // 四种「拥有 X」条件字段位置各不相同，不能共用一个手填框：
+            //   bool_has_kw / bool_has_trait 读 Text；
+            //   bool_has_clan 读 Clan（本编辑器暂留文本）；
+            //   bool_has_state 读 **EnumA**（写 Text 会静默落进默认 Damaged）。
+            else if (cur.Opcode == "bool_has_kw")
+                BuildEnumCombo(box, "关键词", DiyZh.Keywords, cur.Text ?? "ward", v => { cur.Text = v; setter(cur); });
+            else if (cur.Opcode == "bool_has_state")
+                BuildEnumCombo(box, "状态", DiyZh.States, cur.EnumA ?? "Evolved", v => { cur.EnumA = v; setter(cur); });
+            else if (cur.Opcode == "bool_has_trait" || cur.Opcode == "bool_has_clan")
                 BuildInlineText(box, "取值", cur.Text, v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "bool_not")
             {

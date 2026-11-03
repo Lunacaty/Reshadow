@@ -58,9 +58,14 @@ public partial class CardGalleryView : Control
 
         AddChild(bar);
 
+        var filterBar = BuildFilterBar();
+        filterBar.SetAnchorsPreset(LayoutPreset.TopLeft);
+        filterBar.OffsetTop = 36f;
+        AddChild(filterBar);
+
         var split = new HBoxContainer();
         split.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        split.OffsetTop = 44f;
+        split.OffsetTop = 76f;
         split.AddThemeConstantOverride("separation", 12);
         AddChild(split);
 
@@ -80,6 +85,72 @@ public partial class CardGalleryView : Control
         RefreshGrid();
     }
 
+
+    // ---------------- 多维筛选器（126 专题六） ----------------
+
+    private OptionButton _clanPicker;
+    private OptionButton _costPicker;
+    private OptionButton _rarityPicker;
+    private OptionButton _packPicker;
+    private CheckBox _altOnlyCheck;
+    private CheckBox _tokenCheck;
+
+    private Control BuildFilterBar()
+    {
+        var flow = new HFlowContainer();
+        flow.AddThemeConstantOverride("h_separation", 6);
+        flow.AddThemeConstantOverride("v_separation", 4);
+
+        // 职业
+        _clanPicker = new OptionButton { CustomMinimumSize = new Vector2(110, 28) };
+        SvWbTheme.StyleButton(_clanPicker); SvWbTheme.StyleOptionPopup(_clanPicker);
+        _clanPicker.AddItem("全部职业", 0);
+        var clans = (_store.Catalog.AllCards.Values
+            .Select(c => c.Clan.IsValid ? c.Clan.Name : "Neutral")
+            .Distinct().OrderBy(x => x, StringComparer.Ordinal)).ToList();
+        for (int i = 0; i < clans.Count; i++) _clanPicker.AddItem(clans[i], i + 1);
+        _clanPicker.ItemSelected += _ => RefreshGrid();
+        flow.AddChild(_clanPicker);
+
+        // 费用
+        _costPicker = new OptionButton { CustomMinimumSize = new Vector2(96, 28) };
+        SvWbTheme.StyleButton(_costPicker); SvWbTheme.StyleOptionPopup(_costPicker);
+        _costPicker.AddItem("全部费用", 0);
+        for (int i = 0; i <= 8; i++) _costPicker.AddItem(i == 8 ? "8+ 费" : i + " 费", i + 1);
+        _costPicker.ItemSelected += _ => RefreshGrid();
+        flow.AddChild(_costPicker);
+
+        // 稀有度
+        _rarityPicker = new OptionButton { CustomMinimumSize = new Vector2(100, 28) };
+        SvWbTheme.StyleButton(_rarityPicker); SvWbTheme.StyleOptionPopup(_rarityPicker);
+        _rarityPicker.AddItem("全部稀有度", 0);
+        _rarityPicker.AddItem("青铜", 1); _rarityPicker.AddItem("白银", 2);
+        _rarityPicker.AddItem("黄金", 3); _rarityPicker.AddItem("虹彩", 4);
+        _rarityPicker.ItemSelected += _ => RefreshGrid();
+        flow.AddChild(_rarityPicker);
+
+        // 卡包
+        _packPicker = new OptionButton { CustomMinimumSize = new Vector2(120, 28) };
+        SvWbTheme.StyleButton(_packPicker); SvWbTheme.StyleOptionPopup(_packPicker);
+        _packPicker.AddItem("全部卡包", 0);
+        var packs = (_store.Catalog.Packs?.Keys ?? Enumerable.Empty<string>())
+            .OrderBy(x => x, StringComparer.Ordinal).ToList();
+        for (int i = 0; i < packs.Count; i++) _packPicker.AddItem(packs[i], i + 1);
+        _packPicker.ItemSelected += _ => RefreshGrid();
+        flow.AddChild(_packPicker);
+
+        // 特殊筛选
+        _altOnlyCheck = new CheckBox { Text = "★ 仅看含异画" };
+        _altOnlyCheck.Toggled += _ => RefreshGrid();
+        flow.AddChild(_altOnlyCheck);
+
+        _tokenCheck = new CheckBox { Text = "含衍生 Token" };
+        _tokenCheck.Toggled += _ => RefreshGrid();
+        flow.AddChild(_tokenCheck);
+
+        return flow;
+    }
+
     private void RefreshGrid()
     {
         foreach (var c in _grid.GetChildren()) { _grid.RemoveChild(c); c.QueueFree(); }
@@ -89,15 +160,55 @@ public partial class CardGalleryView : Control
         string q = (_search?.Text ?? "").Trim();
         int kindSel = _kindPicker?.Selected ?? 0;
 
-        var cards = _store.Catalog.AllCards.Values
-            .Where(c => !c.IsToken)
-            .Where(c => kindSel == 0 || (int)c.Kind == kindSel)
-            .Where(c => q.Length == 0
-                        || (c.Name ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
-                        || (c.NameChs ?? "").Contains(q)
-                        || _store.CardPrinter.PrintCard(c).Contains(q))
-            .OrderBy(c => c.CardId)
-            .ToList();
+        // 逐维叠加：任何一种筛选都是「再加一层 where」，互不覆盖。
+        IEnumerable<CardDef> query = _store.Catalog.AllCards.Values;
+
+        if (_tokenCheck?.ButtonPressed != true) query = query.Where(c => !c.IsToken);
+        if (kindSel != 0) query = query.Where(c => (int)c.Kind == kindSel);
+
+        // 职业
+        if (_clanPicker != null && _clanPicker.Selected > 0)
+        {
+            string want = _clanPicker.GetItemText(_clanPicker.Selected);
+            query = query.Where(c =>
+                string.Equals(c.Clan.IsValid ? c.Clan.Name : "Neutral", want, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // 费用（下标 1..9 对应 0..8，8 是 8+）
+        if (_costPicker != null && _costPicker.Selected > 0)
+        {
+            int costSel = _costPicker.Selected - 1;
+            query = costSel >= 8
+                ? query.Where(c => c.BaseCost >= 8)
+                : query.Where(c => c.BaseCost == costSel);
+        }
+
+        // 稀有度
+        if (_rarityPicker != null && _rarityPicker.Selected > 0)
+        {
+            int rar = _rarityPicker.Selected;
+            query = query.Where(c => c.Rarity == rar);
+        }
+
+        // 卡包
+        if (_packPicker != null && _packPicker.Selected > 0)
+        {
+            string pack = _packPicker.GetItemText(_packPicker.Selected);
+            query = query.Where(c => string.Equals(c.PackId, pack, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // 仅看含异画
+        if (_altOnlyCheck?.ButtonPressed == true)
+            query = query.Where(c => CardArtLoader.GetAvailableVariants(c.CardId).Count > 1);
+
+        // 搜索
+        if (q.Length > 0)
+            query = query.Where(c =>
+                (c.Name ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                || (c.NameChs ?? "").Contains(q)
+                || _store.CardPrinter.PrintCard(c).Contains(q));
+
+        var cards = query.OrderBy(c => c.CardId).ToList();
 
         foreach (var def in cards)
         {
@@ -109,6 +220,56 @@ public partial class CardGalleryView : Control
             w.OnLeftClick += _ => ShowDetail(_shown[idx]);
             _grid.AddChild(w);
         }
+    }
+
+
+    /// <summary>
+    /// 在图鉴里直接导入/替换某张卡的异画。
+    ///
+    /// 落盘到该卡所属卡包的 cards/ 目录（自包含），命名 <ArtCardId>_3.png；
+    /// 保存后清缓存并把该卡的偏好切到异画，网格与详情立刻刷新。
+    /// </summary>
+    private void OpenImportAltArt(CardDef def)
+    {
+        if (def == null) return;
+
+        var dlg = new FileDialog
+        {
+            FileMode = FileDialog.FileModeEnum.OpenFile,
+            Access = FileDialog.AccessEnum.Filesystem,
+            Filters = new[] { "*.png, *.jpg, *.jpeg, *.webp ; 图片文件" },
+            Title = "选择异画图片（" + (def.NameChs ?? def.Name) + "）",
+            Size = new Vector2I(760, 480),
+        };
+        dlg.FileSelected += srcPath =>
+        {
+            try
+            {
+                var img = Image.LoadFromFile(srcPath);
+                if (img == null || img.IsEmpty()) { dlg.QueueFree(); return; }
+
+                // 沿用源素材原号，跨创作者撞号时各读各的目录。
+                int artId = def.ArtCardId > 0 ? def.ArtCardId : def.CardId;
+                string packId = string.IsNullOrEmpty(def.PackId) ? "testset-v2" : def.PackId;
+
+                string dir = System.IO.Path.Combine(
+                    ShadowverseFan.Ui.ContentPaths.Root, "data", "packs", packId, "cards");
+                System.IO.Directory.CreateDirectory(dir);
+                string dst = System.IO.Path.Combine(dir, artId + "_3.png");
+                img.SavePng(dst);
+
+                CardArtLoader.ClearCache();
+                CardArtLoader.SetPreferredVariant(def.CardId, 3);
+
+                ShowDetail(def);
+                RefreshGrid();
+            }
+            catch { }
+            dlg.QueueFree();
+        };
+        dlg.Canceled += () => dlg.QueueFree();
+        AddChild(dlg);
+        dlg.PopupCentered();
     }
 
     private void ShowDetail(CardDef def)
@@ -157,15 +318,16 @@ public partial class CardGalleryView : Control
         if (tex != null) art.Texture = tex;
         _detail.AddChild(art);
 
-        // 立绘版本切换台（原画 ⇄ 异画）。
-        var variants = CardArtLoader.GetAvailableVariants(def.CardId);
-        if (variants.Count > 1)
+        // 立绘版本切换台（原画 ⇄ 异画）+
+        // ★ 无论有没有现成异画文件都要显示 —— 早先整个区块包在
+        //   variants.Count > 1 里，没异画的卡连「导入异画」的入口都没有。
         {
             var vHead = new Label { Text = "立绘版本" };
             vHead.AddThemeFontSizeOverride("font_size", 13);
             vHead.AddThemeColorOverride("font_color", new Color("FDE68A"));
             _detail.AddChild(vHead);
 
+            var variants = CardArtLoader.GetAvailableVariants(def.CardId);
             var vRow = new HFlowContainer();
             vRow.AddThemeConstantOverride("h_separation", 6);
             int cur = CardArtLoader.GetPreferredVariant(def.CardId);
@@ -177,11 +339,18 @@ public partial class CardGalleryView : Control
                 b.Pressed += () =>
                 {
                     CardArtLoader.SetPreferredVariant(def.CardId, captured);
-                    ShowDetail(def);
-                    RefreshGrid();
+                    ShowDetail(def);   // 详情大图跟着换
+                    RefreshGrid();     // 网格立绘也换（文档 Bug 6 点名的第二点）
                 };
                 vRow.AddChild(b);
             }
+
+            // 图鉴里直接导入/替换异画：选一张本地图片落盘为 _3，并立刻切过去。
+            var importBtn = new Button { Text = "🎨 导入/替换异画", CustomMinimumSize = new Vector2(0, 28) };
+            SvWbTheme.StyleButton(importBtn);
+            importBtn.Pressed += () => OpenImportAltArt(def);
+            vRow.AddChild(importBtn);
+
             _detail.AddChild(vRow);
         }
 

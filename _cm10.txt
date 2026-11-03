@@ -1,0 +1,37 @@
+fix(127): 六个实机断路 —— Enhanced 活体分支、DIY 字段错位、AST 丢字段、联机四断、异画持久化、图鉴筛选
+
+Bug1 Enhanced 漏写活体重载：RefMatchState 是活体优先，而「活体」
+  MatchState(RuntimeEntity) 里没有 UnitState.Enhanced 分支 ——
+  打出瞬间（随从在战场/法术在结算栈）走的一定是那一支，落进 _ => false，
+  《古旧天剑》从「每张牌都触发」变成「永远不触发」。已补两处活体分支。
+  ChineseCardPrinter 补中文：「【爆能强化】的」/「已【爆能强化】」。
+
+Bug2 DIY 字段错位：bool_has_state 编辑器写 made.Text，编译器读 b.EnumA，
+  积木端拼出的「已进化」编译后全落进默认 Damaged。已改为 EnumA。
+  剩余 5 处手填框换中文下拉：槽位(DiyZh.Slots 新增)/主战者归属/计数器/
+  读取属性/四则运算符，外加 bool_has_kw 与 bool_has_state 各自独立分支。
+
+Bug3 AstJsonCodec 丢字段：SpawnCardNode 漏 AddDepartedTrait（亡者召还会退化成
+  普通复制）；手写 card_name 不经 Lexicon 转 CardId（召唤出空壳）；
+  NumOp 漏 SplitOf/DistinctCount/MaxGroupSize/Clamp。
+  Decode 增加 lex 参数，ResolveCardId 按卡名查号，四处调用点全部传 Lexicon。
+
+Bug4 联机四断：
+  ① DoHost 刚 StartBroadcast 就 Shutdown()，房间存活不到 1ms，客机永远扫不到；
+  ② 扫描列表「加入」无卡池校验，且 DeckManagementRoot 取 FirstOrDefault() 而非
+     lobby.PendingJoinDeck；新增统一入口 TryJoinRoom（卡池比对 + 指纹比对）；
+  ③ 联机模式下本地 AI 仍在跑，房主会替客机乱出牌 —— StepOpponentIfNeeded 加守卫；
+  ④ 房主操作后不广播、客机指令改 State 后不通知主线程 ——
+     Rebuild 末尾 BroadcastSnapshot，SnapshotPushed 走 CallDeferred。
+  另新增 BootHost（跳过换牌遮罩 + 挂接权威端）。
+
+Bug5 异画偏好不落盘 + ClearCache 漏清：补 decks/art_variants.json 读写，
+  ClearCache 一并清 _evolvedCache/_evolvedMissing/_variantCache。
+
+Bug6 图鉴：补职业/费用/稀有度/卡包/仅看含异画/含 Token 六个维度；
+  立绘版本台不再包在 variants.Count>1 里（没异画的卡连导入入口都没有），
+  新增「导入/替换异画」按钮，切换后同时刷新详情大图与网格。
+
+lang-5 与 Mjerrabaine 为既有失败（lang-5 在基线 3b065c8 复测同样失败）。
+其余全绿：VM 50-50 / 文档验收 102-102 / Combat 16-16 / 效用 12-12 /
+完整对局 7-7 / DIY 8-8 / 卡池 22-22 / UI 3-3 / 战斗 UI 31-31

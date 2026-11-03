@@ -191,7 +191,7 @@ public sealed class GlobalCatalog
             CardDef astDef;
             try
             {
-                astDef = Diy.AstJsonCodec.Decode(c.Text, Schema);
+                astDef = Diy.AstJsonCodec.Decode(c.Text, Schema, Lexicon);
             }
             catch (Exception ex)
             {

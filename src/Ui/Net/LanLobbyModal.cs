@@ -232,9 +232,13 @@ public partial class LanLobbyModal : Control
             LanDiscoveryService.MatchPort, poolId, hash);
 
         if (_status != null)
-            _status.Text = "房间已开播（" + poolId + "），等待对手连入";
+            _status.Text = "⏳ 房间已创建（卡池: " + poolId + "，指纹: "
+                         + hash.Substring(0, Math.Min(8, hash.Length))
+                         + "），正在广播等待对手加入…";
 
-        Shutdown();
+        // ★ 绝不能在这里 Shutdown()：那会把刚启动的广播当场停掉，
+        // 房间存活不到 1 毫秒，客机永远扫不到。广播要一直开到对手握手成功，
+        // 由 DeckManagementRoot.StartHostedBattle 关掉大厅时再停。
         OnHostRoom?.Invoke(poolId, deck);
     }
 
@@ -316,7 +320,8 @@ public partial class LanLobbyModal : Control
             var join = new Button { Text = "加入", CustomMinimumSize = new Vector2(80, 26) };
             SvWbTheme.StyleButton(join);
             var captured = info;
-            join.Pressed += () => { Shutdown(); OnJoinRoom?.Invoke(captured); };
+            // 走统一的 TryJoinRoom：它会先校验卡池一致性再发起连接。
+            join.Pressed += () => TryJoinRoom(captured);
             row.AddChild(join);
 
             _roomList.AddChild(row);
@@ -361,6 +366,51 @@ public partial class LanLobbyModal : Control
 
     /// <summary>本次加入使用的牌组（DeckManagementRoot 取走后清空）。</summary>
     public ShadowverseFan.KernelV3.Packs.ConstructedDeck PendingJoinDeck { get; private set; }
+
+
+    /// <summary>
+    /// 统一的加入入口：先校验「卡池相同 + 指纹一致 + 已选牌组」，再发起连接。
+    /// 扫描列表与直连按钮都走这里，避免两条路径的校验不一致。
+    /// </summary>
+    private void TryJoinRoom(LanRoomInfo info)
+    {
+        if (info == null) return;
+
+        if (_poolPicker.Selected <= 0 || _deckPicker.Selected <= 0)
+        {
+            if (_status != null) _status.Text = "✘ 请先在上方选择与房间一致的赛制卡池与出战牌组";
+            return;
+        }
+
+        string myPoolId = _poolPicker.GetItemText(_poolPicker.Selected);
+
+        // 广播包里的卡池与我们选的不一致 -> 直接拒绝，别让玩家进去才发现打不了。
+        if (!string.IsNullOrEmpty(info.PoolId)
+            && !string.Equals(myPoolId, info.PoolId, StringComparison.OrdinalIgnoreCase))
+        {
+            if (_status != null)
+                _status.Text = "✘ 卡池不匹配：房间为 [" + info.PoolId + "]，你选的是 [" + myPoolId + "]";
+            return;
+        }
+
+        // 指纹比对：把「改过卡包」的玩家挡在门外。
+        if (!string.IsNullOrEmpty(info.PoolHashPrefix))
+        {
+            string localHash = ShadowverseFan.KernelV3.Net.PoolIntegrityHasher
+                .ComputePoolHash(_store.GetPoolView(myPoolId));
+            if (!string.Equals(localHash, info.PoolHashPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                if (_status != null)
+                    _status.Text = "✘ 防作弊拦截：本地卡池 [" + myPoolId + "] 与房主不一致，拒绝加入";
+                return;
+            }
+        }
+
+        PendingJoinDeck = _filteredDecks[_deckPicker.Selected - 1];
+        info.PoolId = myPoolId;
+        Shutdown();
+        OnJoinRoom?.Invoke(info);
+    }
 
     private void Shutdown()
     {

@@ -173,6 +173,37 @@ public partial class BattleScreenRoot : Control
         }
     }
 
+
+    /// <summary>房主端权威服务（客机模式为 null）。</summary>
+    private ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost _authHost;
+
+    /// <summary>
+    /// 房主模式启动：本地就是权威对局，客机通过快照跟随。
+    ///
+    /// 与 Boot 的差别：跳过单人换牌遮罩、挂接权威服务端、
+    /// 并在每次 Rebuild 后向客机推送脱敏快照。
+    /// </summary>
+    public void BootHost(GameSessionStore store, ConstructedDeck mine, ConstructedDeck foe,
+                         ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost host)
+    {
+        _authHost = host;
+        Boot(store, mine, foe);
+
+        // 联机不做本地换牌遮罩：双方直接进第 1 回合。
+        if (_ctrl.IsInMulligan)
+            _ctrl.ConfirmPlayerMulligan(Array.Empty<RuntimeEntity>());
+
+        _authHost?.Attach(_ctrl.State, _ctrl.Runner);
+        if (_authHost != null)
+        {
+            // 客机指令在后台线程改了 State，必须切回主线程再动场景树。
+            _authHost.SnapshotPushed += () => CallDeferred(MethodName.RebuildFromHost);
+        }
+        Rebuild();
+    }
+
+    private void RebuildFromHost() => Rebuild();
+
     private ShadowverseFan.Ui.Net.RemoteBattleClient _remoteClient;
 
     // ---------------------------------------------------------------- 远程模式输入路由
@@ -470,6 +501,15 @@ public partial class BattleScreenRoot : Control
 
     private void StepOpponentIfNeeded(double delta)
     {
+        // 联机模式下绝不跑本地 AI：
+        // 房主的 _remoteClient 为 null，回合切到客机时这段会把客机当 AI 操作，
+        // 替对手乱出牌；客机自己也不该有任何本地推进。
+        if (IsRemote || _authHost != null) return;
+        StepOpponentIfNeededCore(delta);
+    }
+
+    private void StepOpponentIfNeededCore(double delta)
+    {
         if (_ctrl == null || _ctrl.IsFinished) return;
         if (_ctrl.IsInMulligan) return;
         if (_ctrl.IsMyTurn || _ctrl.IsWaitingForInput) { _aiTimer = 0; return; }
@@ -501,6 +541,10 @@ public partial class BattleScreenRoot : Control
         _field.QueueRedraw();
 
         RefreshOverlays();
+
+        // 房主每次状态变化后把脱敏快照推给客机。
+        // 没有这一句，客机永远停在开局那一帧。
+        _authHost?.BroadcastSnapshot();
     }
 
     private void ApplyChoiceHighlightToLeaders()

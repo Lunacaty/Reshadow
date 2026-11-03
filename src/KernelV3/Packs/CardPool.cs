@@ -456,7 +456,7 @@ public static class CardPoolBuilder
             Ast.CardDef astDef;
             try
             {
-                astDef = Diy.AstJsonCodec.Decode(c.Text, schema);
+                astDef = Diy.AstJsonCodec.Decode(c.Text, schema, sharedLex);
             }
             catch (Exception ex)
             {

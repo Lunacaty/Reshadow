@@ -183,7 +183,7 @@ public sealed class DiyWorkshopController
         {
             // 必须传 Schema：SymbolId 只按 Id 判等，
             // 不带 Schema 建的符号 Id 全是 0，storm 会变成 ward。
-            def = AstJsonCodec.Decode(json, Workspace.Schema);
+            def = AstJsonCodec.Decode(json, Workspace.Schema, Workspace.Lexicon);
         }
         catch (Exception ex)
         {
@@ -349,7 +349,7 @@ public sealed class DiyWorkshopController
         // 只验脚本端等于放任 AST 编解码悄悄丢字段 —— 玩家在语法树端点一次编译，
         // 构筑规则或某个孔位就没了，而且没有任何报错。
         string json = AstJsonCodec.Encode(CurrentDef);
-        var fromAst = AstJsonCodec.Decode(json, Workspace.Schema);
+        var fromAst = AstJsonCodec.Decode(json, Workspace.Schema, Workspace.Lexicon);
         if (fromAst == null) { diff = "AST 端解码失败"; return false; }
         if (!DiyWorkspace.StructurallyEqual(CurrentDef, fromAst, out diff))
         {

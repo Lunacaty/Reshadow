@@ -1144,6 +1144,8 @@ public sealed class ChineseCardPrinter
                     UnitState.Damaged => "已受伤的",
                     UnitState.Evolved => "已进化的",
                     UnitState.SuperEvolved => "已超进化的",
+                    // 缺这一条时，《古旧天剑》的「爆能强化的卡牌」会印成光秃秃的「卡牌」。
+                    UnitState.Enhanced => "【爆能强化】的",
                     UnitState.HasFuse => "拥有【融合】的",
                     UnitState.HasLastWords => "拥有【谢幕曲】的",
                     UnitState.HasOnSpellboost => "拥有【魔力增幅】的",
@@ -1225,6 +1227,7 @@ public sealed class ChineseCardPrinter
                 UnitState.Damaged => "已受伤",
                 UnitState.Evolved => "已进化",
                 UnitState.SuperEvolved => "已超进化",
+                UnitState.Enhanced => "已【爆能强化】",
                 _ => hs.State.ToString(),
             };
             case NotSameEntityExpr: return "不是同一个目标";

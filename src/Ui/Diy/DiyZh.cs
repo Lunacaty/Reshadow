@@ -45,6 +45,16 @@ public static class DiyZh
         ("PassiveAura", "【常驻光环】"),
     };
 
+    /// <summary>目标槽位（tgt_slot 的 Text 字段）。</summary>
+    public static readonly (string Key, string Zh)[] Slots =
+    {
+        ("$self", "本卡牌"),
+        ("$selected", "刚选中的目标"),
+        ("$created", "刚生成的卡牌"),
+        ("$trigger", "触发源卡牌"),
+        ("$opposing", "交战敌方随从"),
+    };
+
     public static readonly (string Key, string Zh)[] Zones =
     {
         ("Board", "战场"),

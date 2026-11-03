@@ -129,8 +129,42 @@ public static class CardArtLoader
     private static readonly Dictionary<int, int> _preferredVariant = new();
 
     /// <summary>某卡当前选用的变体代号（默认 0 原画）。</summary>
+    private static bool _prefsLoaded;
+    private static string PrefsPath => ContentPaths.FilePath("decks", "art_variants.json");
+
+    /// <summary>首次访问时把玩家选过的异画偏好从磁盘读回来。</summary>
+    private static void EnsurePrefsLoaded()
+    {
+        if (_prefsLoaded) return;
+        _prefsLoaded = true;
+        try
+        {
+            if (!File.Exists(PrefsPath)) return;
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(PrefsPath));
+            foreach (var prop in doc.RootElement.EnumerateObject())
+                if (int.TryParse(prop.Name, out int cid) && prop.Value.TryGetInt32(out int v) && v > 0)
+                    _preferredVariant[cid] = v;
+        }
+        catch { }
+    }
+
+    private static void SavePrefs()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(PrefsPath)!);
+            var dict = new Dictionary<string, int>();
+            foreach (var kv in _preferredVariant) dict[kv.Key.ToString()] = kv.Value;
+            File.WriteAllText(PrefsPath, System.Text.Json.JsonSerializer.Serialize(dict));
+        }
+        catch { }
+    }
+
     public static int GetPreferredVariant(int cardId)
-        => _preferredVariant.TryGetValue(cardId, out int v) ? v : 0;
+    {
+        EnsurePrefsLoaded();
+        return _preferredVariant.TryGetValue(cardId, out int v) ? v : 0;
+    }
 
     /// <summary>
     /// 切换某卡的立绘版本（0=原画，3=异画I…）。一处切换，全场景生效：
@@ -138,9 +172,12 @@ public static class CardArtLoader
     /// </summary>
     public static void SetPreferredVariant(int cardId, int variantCode)
     {
+        EnsurePrefsLoaded();
         if (variantCode <= 0) _preferredVariant.Remove(cardId);
         else _preferredVariant[cardId] = variantCode;
         ShadowverseFan.Ui.Battle.BoardUnitWidget.InvalidateArtCache(cardId);
+        // 落盘：不存的话重启游戏后图鉴里选好的异画会全部丢失。
+        SavePrefs();
     }
 
     /// <summary>探测某卡磁盘上可用的立绘档位（图鉴渲染切换按钮用）。</summary>
@@ -237,5 +274,10 @@ public static class CardArtLoader
     {
         _cache.Clear();
         _missing.Clear();
+        // 早先只清了这两张表：在 DIY 里上传进化后立绘或异画后预览不刷新，
+        // 因为进化/异画各有自己的缓存与缺失表。
+        _evolvedCache.Clear();
+        _evolvedMissing.Clear();
+        _variantCache.Clear();
     }
 }

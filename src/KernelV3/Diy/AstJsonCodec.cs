@@ -201,6 +201,8 @@ public static class AstJsonCodec
                 d["count"] = EncodeNum(x.Count);
                 if (x.OutSlot != TargetSpec.SlotCreated) d["out_slot"] = x.OutSlot;
                 if (x.OfferCount != 3) d["offer"] = x.OfferCount;
+                // 亡者召还标志：不写这条，AST 往返一次 Reanimate 就退化成普通复制。
+                if (x.AddDepartedTrait) d["add_departed"] = true;
                 break;
 
             case MoveZoneNode x:
@@ -339,6 +341,25 @@ private static object EncodeNum(NumExpr e)
                 d["take_max"] = e.TakeMax;
                 d["args"] = (e.Args ?? Array.Empty<NumExpr>()).Select(a => EncodeNum(a)).ToList();
                 break;
+            // 下面四种早先全落进 default，AST 往返一次就退化成无参数的裸 NumExpr：
+            //   SplitOf      天晶深渊的 X/Y/Z 按信仰值随机拆分，丢了等于伤害恒 0；
+            //   DistinctCount「不同卡名数量」；
+            //   MaxGroupSize 「同费用的最大张数」；
+            //   Clamp        clamp(值, 下界, 上界)。
+            case NumOp.SplitOf:
+                d["counter"] = e.Counter.Name ?? "";
+                d["index"] = e.Value;
+                if (e.Of != null) d["of"] = EncodeTarget(e.Of);
+                break;
+            case NumOp.DistinctCount:
+            case NumOp.MaxGroupSize:
+                if (e.Of != null) d["of"] = EncodeTarget(e.Of);
+                if (e.Op == NumOp.MaxGroupSize && e.Stat != StatKey.None) d["stat"] = e.Stat.ToString();
+                break;
+            case NumOp.Clamp:
+                if (e.Args != null && e.Args.Count > 0)
+                    d["args"] = e.Args.Select(a => EncodeNum(a)).ToList();
+                break;
             default:
                 if (e.Args != null && e.Args.Count > 0)
                     d["args"] = e.Args.Select(a => EncodeNum(a)).ToList();
@@ -473,10 +494,14 @@ private static object EncodeNum(NumExpr e)
     /// </summary>
     [ThreadStatic] private static GameSchema _schema;
 
-    public static CardDef Decode(string json, GameSchema schema = null)
+    /// <summary>解码期间的词法表：把 summon/transform 里写的卡名翻成真实卡号。</summary>
+    [ThreadStatic] private static Lang.Lexicon _lex;
+
+    public static CardDef Decode(string json, GameSchema schema = null, Lang.Lexicon lex = null)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         _schema = schema;
+        _lex = lex;
         try
         {
             var root = JsonReader.AsMap(JsonReader.Parse(json));
@@ -486,7 +511,22 @@ private static object EncodeNum(NumExpr e)
         finally
         {
             _schema = null;
+            _lex = null;
         }
+    }
+
+    /// <summary>
+    /// 卡号解析：显式 card_id 优先；否则用 Lexicon 按卡名查。
+    /// 手写 AST 的常规写法是只写 "card_name": "Fairy"，
+    /// 不解这一层，召唤节点会带着 CardId=0 进对局，召出来是空壳。
+    /// </summary>
+    private static int ResolveCardId(int explicitId, string cardName)
+    {
+        if (explicitId > 0) return explicitId;
+        if (!string.IsNullOrWhiteSpace(cardName) && _lex != null
+            && _lex.TryGetCardId(cardName.Trim(), out int id))
+            return id;
+        return 0;
     }
 
     // 没有 Schema 时退回 -1（Invalid），至少不会串成 ward；
@@ -712,11 +752,15 @@ private static object EncodeNum(NumExpr e)
                 };
             }
             case "SpawnCard":
+            {
+                string spName = JsonReader.Str(m, "card_name", "");
                 return new SpawnCardNode
                 {
                     SourceKind = JsonReader.Enum(m, "source", CardSourceKind.CardId),
-                    CardId = JsonReader.Int(m, "card_id"),
-                    CardName = JsonReader.Str(m, "card_name", ""),
+                    // 手写 AST 通常只写 card_name：必须经 Lexicon 翻成真实卡号，
+                    // 否则 CardId 留在 0，进对局召唤出来的是空壳。
+                    CardId = ResolveCardId(JsonReader.Int(m, "card_id"), spName),
+                    CardName = spName,
                     IsCrest = JsonReader.Bool(m, "is_crest"),
                     IsExactCopy = JsonReader.Bool(m, "exact"),
                     CopyFrom = m.TryGetValue("copy_from", out var cf) ? DecodeTarget(cf) : null,
@@ -725,7 +769,10 @@ private static object EncodeNum(NumExpr e)
                     Count = DecodeNum(m.TryGetValue("count", out var a9) ? a9 : null) ?? NumExpr.Const(1),
                     OutSlot = JsonReader.Str(m, "out_slot", TargetSpec.SlotCreated),
                     OfferCount = JsonReader.Int(m, "offer", 3),
+                    // 亡者召还标志：漏了它，切一次 AST 端点「召还」就退化成普通复制。
+                    AddDepartedTrait = JsonReader.Bool(m, "add_departed"),
                 };
+            }
             case "MoveZone":
                 return new MoveZoneNode
                 {
@@ -738,7 +785,8 @@ private static object EncodeNum(NumExpr e)
                 return new TransformNode
                 {
                     Target = DecodeTarget(m.TryGetValue("target", out var t11) ? t11 : null),
-                    IntoCardId = JsonReader.Int(m, "into_card_id"),
+                    IntoCardId = ResolveCardId(JsonReader.Int(m, "into_card_id"),
+                                               JsonReader.Str(m, "into_card_name", "")),
                     IntoCardName = JsonReader.Str(m, "into_card_name", ""),
                     CopySource = m.TryGetValue("copy_source", out var cs2) ? DecodeTarget(cs2) : null,
                 };
@@ -1045,6 +1093,32 @@ private static object EncodeNum(NumExpr e)
                     TakeMax = JsonReader.Bool(m, "take_max", true),
                     Args = args,
                 };
+            }
+            case "SplitOf":
+            {
+                var cn = JsonReader.Str(m, "counter", "");
+                return new NumExpr
+                {
+                    Op = NumOp.SplitOf,
+                    Counter = string.IsNullOrEmpty(cn) ? SymbolId<CounterTag>.Invalid : Ctr(cn),
+                    Value = JsonReader.Int(m, "index"),
+                    Of = m.TryGetValue("of", out var so) ? DecodeTarget(so) : null,
+                };
+            }
+            case "DistinctCount":
+            case "MaxGroupSize":
+                return new NumExpr
+                {
+                    Op = op == "DistinctCount" ? NumOp.DistinctCount : NumOp.MaxGroupSize,
+                    Of = m.TryGetValue("of", out var dof) ? DecodeTarget(dof) : null,
+                    Stat = JsonReader.Enum(m, "stat", StatKey.None),
+                };
+            case "Clamp":
+            {
+                var cargs = new List<NumExpr>();
+                if (m.TryGetValue("args", out var car) && JsonReader.AsList(car) is { } cal)
+                    foreach (var x in cal) { var d = DecodeNum(x); if (d != null) cargs.Add(d); }
+                return new NumExpr { Op = NumOp.Clamp, Args = cargs };
             }
             default:
                 return null;

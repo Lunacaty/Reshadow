@@ -83,7 +83,10 @@ public partial class DeckManagementRoot : Control
             var client = new Net.RemoteBattleClient();
             _remoteClient = client;
 
-            var deck = _store.SavedDecks.FirstOrDefault();
+            // 必须用大厅里选好的牌组（PendingJoinDeck），而不是随手取第一副 ——
+            // 早先取 FirstOrDefault() 会让玩家选的牌组形同虚设。
+            var deck = lobby.PendingJoinDeck
+                       ?? _store.SavedDecks.FirstOrDefault(d => d.PoolId == info.PoolId);
             if (deck == null) return;
 
             // 握手要带上卡池指纹与我方牌组，供权威端校验（铁律一）。
@@ -102,7 +105,10 @@ public partial class DeckManagementRoot : Control
         // 建房：自己是房主，本地就是权威端 —— 起服务端并直接进正常对局。
         lobby.OnHostRoom += (poolId, deck) =>
         {
-            lobby.QueueFree();
+            // ★ 不要在这里 QueueFree：广播必须在等待期持续，
+            // 大厅一关广播就停，客机永远扫不到房间。
+            // 等 ClientMatched -> StartHostedBattle 时再关。
+            _pendingLobby = lobby;
 
             // 126 轮：房主**不再先跟本地 AI 开打**。
             // 旧流程「先 StartBattle(本地AI) 再顺手开监听」意味着客机连上时
@@ -134,19 +140,29 @@ public partial class DeckManagementRoot : Control
     private ShadowverseFan.KernelV3.Packs.ConstructedDeck _hostingDeck;
 
     /// <summary>客机握手通过后（主线程回调）：用双方真实牌组开局。</summary>
+    private Net.LanLobbyModal _pendingLobby;
+
     private void StartHostedBattle()
     {
         var clientDeck = _authoritativeHost?.ClientDeck;
         if (_hostingDeck == null || clientDeck == null) return;
 
+        // 对手已握手成功，这里才关掉还在广播的大厅。
+        if (_pendingLobby != null && IsInstanceValid(_pendingLobby))
+        {
+            _pendingLobby.QueueFree();
+            _pendingLobby = null;
+        }
+
         var view = new Battle.BattleScreenRoot();
         Swap(view);
-        view.Boot(_store, _hostingDeck, clientDeck);
-        view.OnExitToDecks += ShowMainMenu;
-
-        // 开局后把真实对局交给权威端继续结算。
-        var ctrl = GetBattleController();
-        if (ctrl != null) _authoritativeHost?.Attach(ctrl.State, ctrl.Runner);
+        view.BootHost(_store, _hostingDeck, clientDeck, _authoritativeHost);
+        view.OnExitToDecks += () =>
+        {
+            _authoritativeHost?.Dispose();
+            _authoritativeHost = null;
+            ShowMainMenu();
+        };
     }
 
     /// <summary>当前战斗界面的控制器（建房时要把它的 State 交给权威端）。</summary>
