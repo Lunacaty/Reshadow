@@ -542,6 +542,21 @@ public sealed class TargetParser
                 continue;
             }
 
+            // "a Fused follower"：融合产物（fuse_count > 0 的随从）。
+            // 早先这个词靠「未知修饰词静默跳过」被吞掉，条件退化成「任一随从」；
+            // 删掉吞词循环后必须正式建模，否则整句解析直接失败。
+            if (cur.Current.IsAnyWord("fused"))
+            {
+                cur.Advance();
+                wheres.Add(new CompareExpr
+                {
+                    Left = NumExpr.Ctr(_lex.Counter("FUSE_COUNT")),
+                    Op = CompareOp.Ge,
+                    Right = NumExpr.Const(1),
+                });
+                matched = true; continue;
+            }
+
             // 状态：super-evolved / evolved / unevolved / damaged
             if (cur.Current.IsAnyWord("super") && cur.Peek().Kind == TokKind.Dash)
             {

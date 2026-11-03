@@ -1,0 +1,16 @@
+fix(126-1): lang-5 融合变身表 —— TargetParser 补 Fused 前置定语
+
+根因不是分档逻辑，而是**整句解析失败**（ok=False）。
+报错停在 'a'：「Summon a Fused follower」的宾语无法解析。
+
+TargetParser 里只有 "with fuse"（后置定语），没有 "Fused follower"（前置定语）分支。
+这个词以前靠 6c「未知修饰词静默跳过」被吞掉 —— 条件退化成「任一随从」，
+所以句子的语法错误被掩盖了；126 轮我删掉吞词循环后，问题立刻暴露成编译失败。
+
+补正式分支：Fused -> fuse_count >= 1 的 CompareExpr。
+计数器经 _lex.Counter("FUSE_COUNT") 取（TargetParser 只有 _lex，没有 _schema）。
+
+验证：lang-5 ok=True noSeq=True chain=True f2=[Beta] f3=[Gamma]。
+全量回归回到基线：VM 50-50 / 文档验收 102-102 / Combat 16-16 / 效用 12-12 /
+逐卡矩阵 31-32（仅剩既有 Mjerrabaine）/ 完整对局 7-7 / DIY 8-8 /
+卡池 22-22 / UI 3-3 / 战斗 UI 31-31
