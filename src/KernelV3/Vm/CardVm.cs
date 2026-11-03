@@ -675,6 +675,16 @@ public sealed partial class CardVm
                 if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey)) continue;
                 CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey);
 
+                // 代价已付、即将压栈执行：这一刻就是「这条能力正式发动」。
+                // 前端据此在左下角弹浮窗，并把「发动了哪一句」写进对局日志。
+                _world.EmitEvent(new VmEvent
+                {
+                    Kind = CoreEvent.OnAbilityActivated,
+                    Subject = EntityRef.From(e),
+                    PlayerId = e.PlayerId,
+                    ActivatedAbility = ab,
+                });
+
                 // 只有「在自己卡上监听的牌库能力」(Invoke) 走同名去重。
                 // 场上两个同名随从的 Whenever 必须各触发一次，不能被这条吃掉。
                 if (ab.Trigger.ActiveZone == Core.ActiveZoneScope.Deck)

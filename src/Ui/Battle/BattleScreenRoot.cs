@@ -35,6 +35,9 @@ public partial class BattleScreenRoot : Control
     private Control _handLayer;
     private Control _overlayLayer;
 
+    /// <summary>左下角效果发动浮窗栈。</summary>
+    private AbilityActivationToastStack _toastStack;
+
     private readonly BoardAnimDirector _anims = new();
     private readonly AnimQueue _seq = new();
 
@@ -271,6 +274,10 @@ public partial class BattleScreenRoot : Control
         _overlayLayer = new Control { MouseFilter = MouseFilterEnum.Ignore };
         _overlayLayer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(_overlayLayer);
+
+        _toastStack = new AbilityActivationToastStack();
+        _toastStack.Setup(_ctrl);
+        AddChild(_toastStack);
 
         _vfx = new BattleVfxDirector();
         AddChild(_vfx);
@@ -717,28 +724,17 @@ public partial class BattleScreenRoot : Control
             {
                 if (sid >= 0 && ev.Object != null)
                 {
+                    var subjRef = ev.Subject;
                     var objRef = ev.Object;
+                    int atkPid = ownerPid;
                     int defPid = objRef.Value.Snapshot?.PlayerId ?? (1 - ownerPid);
 
-                    // 坐标必须在**播放的那一刻**取，不能在入队时算死。
-                    //
-                    // 连拍几张随从后立刻排队攻击时，棋子的槽位会随
-                    // 前序入场 / 死亡而平移；入队时的坐标等播到时已经不准，
-                    // 冲撞方向会歪，甚至打到空位。
                     _seq.Enqueue(new Seq()
-                        .Do(() =>
-                        {
-                            Vector2 atkCenter = CenterOf(ev.Subject, ownerPid);
-                            Vector2 defCenter = CenterOf(objRef, defPid);
-                            Vector2 delta = defCenter - atkCenter;
-                            _anims.PlayLunge(sid, delta,
-                                () => _vfx.PlayAttackLunge(null, atkCenter, defCenter));
-                        })
+                        .Then(CreateAttackLungeAnim(sid, subjRef, atkPid, objRef, defPid))
                         .Wait(0.26f));
                 }
                 break;
             }
-
             case CoreEvent.OnDamaged:
             {
                 int dmg = ev.Amount;
@@ -869,20 +865,24 @@ public partial class BattleScreenRoot : Control
 
             case CoreEvent.OnPlay:
             {
-                // 敌方出牌：从敌方手牌区飞出一张背面，停 1 秒后消散。
-                // 我方出牌由拖拽本身表现，不需要额外动画。
+                // 按值捕获这张卡的定义。用成员变量的话，一回合内连续出牌
+                // 会让后一张覆盖前一张，前面排队的动画全部画成同一张卡。
                 bool isMine = ev.PlayerId < 0 || ev.PlayerId == _ctrl.MyPlayerId;
-                // 记下这张卡的完整定义：动画要画正面，不能只是一块空面板。
-                _pendingPlayDef = ev.Subject?.Snapshot?.Def;
-                if (_pendingPlayDef == null && ev.Subject != null)
-                    _pendingPlayDef = _ctrl.State.CardDefOf(ev.Subject.Value.Snapshot?.CardId ?? 0);
-                if (!isMine)
-                {
-                    _seq.Enqueue(new Seq()
-                        .Then(CreateEnemyPlayIn())
-                        .Wait(1.0f)
-                        .Then(CreateEnemyPlayOut()));
-                }
+                var playedDef = ev.Subject?.Snapshot?.Def
+                             ?? _ctrl.State.CardDefOf(ev.Subject?.Snapshot?.CardId ?? 0);
+                if (!isMine && playedDef != null)
+                    _seq.Enqueue(BuildEnemyPlayCardSeq(playedDef));
+                break;
+            }
+            case CoreEvent.OnAbilityActivated:
+            {
+                // 按值捕获：AbilityDef 与卡定义都可能在后续被改写。
+                var abDef = ev.ActivatedAbility;
+                var cardDef = ev.Subject?.Snapshot?.Def
+                           ?? _ctrl.State.CardDefOf(ev.Subject?.Snapshot?.CardId ?? 0);
+                int pid2 = ev.PlayerId >= 0 ? ev.PlayerId : ownerPid;
+                if (cardDef != null && abDef != null)
+                    _seq.Enqueue(new Seq().Do(() => _toastStack?.PushToast(cardDef, abDef, pid2)));
                 break;
             }
 
@@ -1061,63 +1061,168 @@ public partial class BattleScreenRoot : Control
     ///
     /// 敌方手牌是盖着的，所以用牌背表现；停 1 秒由外层 Seq.Wait 负责。
     /// </summary>
-    /// <summary>当前这次敌方出牌的卡定义，供 CreateEnemyPlayIn 画正面。</summary>
-    private ShadowverseFan.KernelV3.Ast.CardDef _pendingPlayDef;
-
-    private Anim CreateEnemyPlayIn()
+    /// <summary>
+    /// 在顶层 _overlayLayer 上创建攻击冲撞替身。
+    ///
+    /// 为什么不用原座位的棋子直接位移：
+    /// 攻击者可能在这一击里被打死，RebuildBoards 会当场把它的控件删掉，
+    /// 等动画播到时场上已经没有那个控件了 —— 表现就是「对着空气播」。
+    /// 另外 _boardFoe 的层级在主战者与手牌之下，往下冲撞会钻到别的东西背面。
+    /// 因此在 ZIndex 62 的浮层上另起一个替身，无论生死敌我都稳定可见。
+    ///
+    /// 三段：后仰蓄力 -> 高速俯冲 -> 弹回原位。
+    /// </summary>
+    private Anim CreateAttackLungeAnim(
+        long atkId, EntityRef? atkRef, int atkPid,
+        EntityRef? defRef, int defPid)
     {
-        if (_overlayLayer == null)
-            return new Anim(0f, Ease.Linear, _ => { });
+        BoardUnitWidget actor = null;
+        Vector2 startTopLeft = Vector2.Zero;
+        Vector2 targetDelta = Vector2.Zero;
+        bool hitFired = false;
 
-        // 必须是**正面明牌**：敌方打出的这张卡已经公开，
-        // 画成空面板等于给玩家看一张牌背，完全看不出打的是什么。
-        var def = _pendingPlayDef;
-        if (def == null) return new Anim(0f, Ease.Linear, _ => { });
-
-        var widget = new CardVisualWidget();
-        widget.Setup(def, _ctrl.Store.CardPrinter, showCopyPips: false);
-        widget.SetCardSize(96f, 128f);
-        widget.MouseFilter = MouseFilterEnum.Ignore;
-        widget.ZIndex = 58;
-        widget.Name = "EnemyPlayGhost";
-
-        var from = EnemyHandAnchor();
-        widget.Position = from;
-        widget.Modulate = new Color(1, 1, 1, 0f);
-        _overlayLayer.AddChild(widget);
-
-        var to = from + new Vector2(0f, 56f);
-
-        return new Anim(0.30f, Ease.OutCubic, v =>
+        void SetStationaryVisible(bool vis)
         {
-            if (!IsInstanceValid(widget)) return;
-            widget.Position = from.Lerp(to, v);
-            widget.Scale = Vector2.One * (1f + 0.25f * v);
-            widget.Modulate = new Color(1, 1, 1, v);
+            foreach (var wd in BoardUnitsOf(_boardAlly).Concat(BoardUnitsOf(_boardFoe)))
+                if (wd.Entity != null && wd.Entity.EntityId == atkId) wd.Visible = vis;
+            if (_dyingProxies.TryGetValue(atkId, out var dp) && IsInstanceValid(dp))
+                dp.Visible = vis;
+        }
+
+        return new Anim(0.34f, Ease.Linear, v =>
+        {
+            if (actor == null)
+            {
+                // 第一帧才建节点：入队时建会让多段动画同时抢同一个位置。
+                RuntimeEntity ent = null;
+                if (!_lastBoardEntities.TryGetValue(atkId, out ent) && atkRef?.Snapshot != null)
+                {
+                    var sn = atkRef.Value.Snapshot;
+                    var df = sn.Def ?? _ctrl.State.CardDefOf(sn.CardId);
+                    if (df != null)
+                    {
+                        ent = new RuntimeEntity
+                        {
+                            EntityId = sn.EntityId,
+                            EntrySerial = sn.EntrySerial,
+                            Def = df,
+                            PlayerId = sn.PlayerId,
+                            Attack = sn.Attack,
+                            Life = Math.Max(1, sn.Life),
+                            MaxLife = sn.MaxLife,
+                            Cost = sn.Cost,
+                            IsEvolved = sn.IsEvolved,
+                            IsSuperEvolved = sn.IsSuperEvolved,
+                        };
+                    }
+                }
+                if (ent?.Def == null || _overlayLayer == null) return;
+
+                Vector2 atkCenter = CenterOf(atkRef, atkPid);
+                Vector2 defCenter = CenterOf(defRef, defPid);
+                startTopLeft = _unitTops.TryGetValue(atkId, out var tl)
+                    ? tl
+                    : atkCenter - new Vector2(BoardUnitWidget.UnitW * 0.5f,
+                                              BoardUnitWidget.UnitH * 0.5f);
+                targetDelta = defCenter - atkCenter;
+
+                actor = new BoardUnitWidget();
+                actor.Setup(ent, false, false);
+                actor.VisualLifeOffset = _pendingLifeDelta.GetValueOrDefault(atkId, 0);
+                actor.MouseFilter = MouseFilterEnum.Ignore;
+                actor.Position = startTopLeft;
+                actor.ZIndex = 62;
+                _overlayLayer.AddChild(actor);
+
+                SetStationaryVisible(false);
+            }
+
+            if (!IsInstanceValid(actor)) return;
+
+            Vector2 offset;
+            float scale;
+            var dir = targetDelta.Length() > 0.01f ? targetDelta.Normalized() : Vector2.Zero;
+            if (v < 0.25f)
+            {
+                float k = Ease.OutQuad(v / 0.25f);
+                offset = -dir * (18f * k);
+                scale = 1f + 0.12f * k;
+            }
+            else if (v < 0.52f)
+            {
+                float k = Ease.InQuad((v - 0.25f) / 0.27f);
+                Vector2 windup = -dir * 18f;
+                offset = windup.Lerp(targetDelta * 0.84f, k);
+                scale = 1.12f + 0.06f * k;
+            }
+            else
+            {
+                if (!hitFired)
+                {
+                    hitFired = true;
+                    Vector2 atkC = CenterOf(atkRef, atkPid);
+                    Vector2 defC = CenterOf(defRef, defPid);
+                    _vfx?.PlayAttackLunge(null, atkC, defC);
+                }
+                float k = Ease.OutCubic((v - 0.52f) / 0.48f);
+                offset = targetDelta * (0.84f * (1f - k));
+                scale = 1.18f - 0.18f * k;
+            }
+
+            actor.Position = startTopLeft + offset;
+            actor.Scale = new Vector2(scale, scale);
+        }, () =>
+        {
+            if (actor != null && IsInstanceValid(actor)) actor.QueueFree();
+            SetStationaryVisible(true);
         });
     }
-    /// <summary>敌方出牌第二步：停留结束后向上淡出消散。</summary>
-    private Anim CreateEnemyPlayOut()
+
+    /// <summary>
+    /// 敌方出牌：从我方手牌区方向飞出一张**完整正面卡**，停留 1 秒后淡出。
+    ///
+    /// 节点必须在轮到这一段播放时才创建 ——
+    /// 入队时创建会让连续出牌的几张卡同时抢同一个起点，
+    /// 而且 CreateEnemyPlayOut 在入队那一刻读坐标时第一段还没跑，拿到的是起点。
+    /// </summary>
+    private Seq BuildEnemyPlayCardSeq(ShadowverseFan.KernelV3.Ast.CardDef def)
     {
-        if (_overlayLayer == null)
-            return new Anim(0f, Ease.Linear, _ => { });
+        CardVisualWidget widget = null;
+        Vector2 from = Vector2.Zero;
+        Vector2 showPos = Vector2.Zero;
 
-        var card = _overlayLayer.GetNodeOrNull<Control>("EnemyPlayGhost");
-        if (card == null || !IsInstanceValid(card))
-            return new Anim(0f, Ease.Linear, _ => { });
+        return new Seq()
+            .Then(new Anim(0.28f, Ease.OutCubic, v =>
+            {
+                if (widget == null && _overlayLayer != null)
+                {
+                    from = EnemyHandAnchor();
+                    showPos = from + new Vector2(0f, 68f);
 
-        var from = card.Position;
-        var to = from + new Vector2(0f, -26f);
-
-        return new Anim(0.26f, Ease.InCubic, v =>
-        {
-            if (!IsInstanceValid(card)) return;
-            card.Position = from.Lerp(to, v);
-            card.Scale = Vector2.One * (1.25f - 0.25f * v);
-            card.Modulate = new Color(1, 1, 1, 1f - v);
-        }, () => { if (IsInstanceValid(card)) card.QueueFree(); });
+                    widget = new CardVisualWidget();
+                    widget.Setup(def, _ctrl.Store.CardPrinter, showCopyPips: false);
+                    widget.SetCardSize(138f, 182f);
+                    widget.MouseFilter = MouseFilterEnum.Ignore;
+                    widget.Position = from;
+                    widget.ZIndex = 64;
+                    _overlayLayer.AddChild(widget);
+                }
+                if (widget == null || !IsInstanceValid(widget)) return;
+                widget.Position = from.Lerp(showPos, v);
+                widget.Scale = Vector2.One * (0.85f + 0.15f * v);
+                widget.Modulate = new Color(1, 1, 1, v);
+            }))
+            .Wait(1.0f)
+            .Then(new Anim(0.26f, Ease.InCubic, v =>
+            {
+                if (widget == null || !IsInstanceValid(widget)) return;
+                widget.Position = showPos.Lerp(showPos + new Vector2(0f, -28f), v);
+                widget.Modulate = new Color(1, 1, 1, 1f - v);
+            }, () =>
+            {
+                if (widget != null && IsInstanceValid(widget)) widget.QueueFree();
+            }));
     }
-
     private Anim CreateDrawFlyIn()
     {
         if (_overlayLayer == null)
@@ -1189,11 +1294,13 @@ public partial class BattleScreenRoot : Control
             w.VisualLifeOffset = _pendingLifeDelta.GetValueOrDefault(w.Entity.EntityId, 0);
             w.HideEvolveVisual = _pendingEvolveVisual.Contains(w.Entity.EntityId);
 
-            if (w.Size.X > 0 && w.GlobalPosition.X > 1f)
-            {
-                _unitTops[w.Entity.EntityId] = w.GlobalPosition;
-                _unitCenters[w.Entity.EntityId] = w.GlobalPosition + w.Size * 0.5f;
-            }
+            // 不再用控件的实时坐标回写 _unitTops / _unitCenters。
+            //
+            // RebuildBoards 刚把棋子塞进 HBoxContainer 的同一帧里，
+            // Godot 还没排版，所有 w.GlobalPosition 都是 (0,0)/(容器左上角)，
+            // 这一段会把 ComputeSlotTopLeft 算出的确定坐标全覆盖成容器原点 ——
+            // 攻击动画据此算出的位移就变成从屏幕左上角飞出去。
+            // 坐标一律只信 ComputeSlotTopLeft。
         }
     }
 
@@ -1700,6 +1807,9 @@ public partial class BattleScreenRoot : Control
     private void LayoutBattlefield()
     {
         var vp = GetEffectiveViewportSize();
+
+        // 浮窗栈锚在左下角纹章区正上方，跟随视口高度。
+        _toastStack?.UpdateAnchor(vp);
         float sx = vp.X / DesignW;
         float sy = vp.Y / DesignH;
 

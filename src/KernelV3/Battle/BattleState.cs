@@ -1106,10 +1106,97 @@ public sealed class BattleState : IVmWorld
     {
         if (ev == null) return;
         EventLog.Add(ev);
+        AppendBattleLog(ev);
+
+        // OnAbilityActivated / OnCardBurned 是**纯演出与日志事件**：
+        // 只进 EventLog 给前端消费，绝不转发给 TriggerSink ——
+        // 否则「每当一个能力发动时」这类监听会被自己的记录行为再触发一次，
+        // 形成无限递归。
+        if (ev.Kind == CoreEvent.OnAbilityActivated || ev.Kind == CoreEvent.OnCardBurned)
+            return;
+
         TriggerSink?.Invoke(ev);
     }
 
     public void ClearEvents() => EventLog.Clear();
+
+    /// <summary>本局对局日志（中文可读），书页统计的「日志」页签直接读它。</summary>
+    public List<string> BattleLogs { get; } = new();
+
+    private void AppendBattleLog(VmEvent ev)
+    {
+        if (ev == null) return;
+        string Side(int pid) => pid == 0 ? "【我方】" : pid == 1 ? "【敌方】" : "";
+        string NameOf(EntityRef? r)
+        {
+            if (r?.Snapshot == null) return "目标";
+            if (r.Value.Snapshot.Zone == ZoneRef.Leader)
+                return r.Value.Snapshot.PlayerId == 0 ? "我方主战者" : "敌方主战者";
+            var d = r.Value.Snapshot.Def ?? CardDefOf(r.Value.Snapshot.CardId);
+            string nm = d != null && !string.IsNullOrWhiteSpace(d.NameChs) ? d.NameChs : r.Value.Snapshot.Name;
+            return "《" + nm + "》";
+        }
+        int pid = ev.PlayerId >= 0 ? ev.PlayerId : (ev.Subject?.Snapshot?.PlayerId ?? ActivePlayer);
+
+        switch (ev.Kind)
+        {
+            case CoreEvent.TurnStart:
+                BattleLogs.Add("\u2014\u2014 第 " + TurnNumber + " 回合 " + Side(pid) + " 开始 \u2014\u2014");
+                break;
+            case CoreEvent.OnDraw:
+                BattleLogs.Add(Side(pid) + " 抽取了 " + (pid == 0 ? NameOf(ev.Subject) : "1 张卡牌"));
+                break;
+            case CoreEvent.OnCardBurned:
+                BattleLogs.Add(Side(pid) + " 手牌已满，烧毁了 " + NameOf(ev.Subject));
+                break;
+            case CoreEvent.OnDiscard:
+                BattleLogs.Add(Side(pid) + " 舍弃了 " + NameOf(ev.Subject));
+                break;
+            case CoreEvent.OnPlay:
+                BattleLogs.Add(Side(pid) + " 使用了 " + NameOf(ev.Subject));
+                break;
+            case CoreEvent.OnAttack:
+                BattleLogs.Add(Side(pid) + " " + NameOf(ev.Subject) + " 攻击了 " + NameOf(ev.Object));
+                break;
+            case CoreEvent.OnAbilityActivated:
+            {
+                string line = ev.ActivatedAbility != null
+                    ? new Lang.ChineseCardPrinter().PrintAbility(ev.ActivatedAbility) : "";
+                BattleLogs.Add(Side(pid) + " " + NameOf(ev.Subject) + " 发动效果：" + line);
+                break;
+            }
+            case CoreEvent.OnDamaged:
+                BattleLogs.Add(NameOf(ev.Subject) + " 受到 " + ev.Amount + " 点伤害");
+                break;
+            case CoreEvent.OnHealed:
+                BattleLogs.Add(NameOf(ev.Subject) + " 回复了 " + ev.Amount + " 点生命值");
+                break;
+            case CoreEvent.OnStatsModified:
+            {
+                string sa = (ev.Amount >= 0 ? "+" : "") + ev.Amount;
+                string sl2 = (ev.SecondaryAmount >= 0 ? "+" : "") + ev.SecondaryAmount;
+                BattleLogs.Add(NameOf(ev.Subject) + " 身材变更：" + sa + "/" + sl2);
+                break;
+            }
+            case CoreEvent.OnKeywordModified:
+                BattleLogs.Add(ev.Amount == -99
+                    ? NameOf(ev.Subject) + " 受到沉默（失去全部能力）"
+                    : NameOf(ev.Subject) + (ev.Amount > 0 ? " 获得" : " 失去") + "关键词【" + ev.CounterName + "】");
+                break;
+            case CoreEvent.OnEvolve:
+                BattleLogs.Add(Side(pid) + " " + NameOf(ev.Subject) + " 进行了【进化】");
+                break;
+            case CoreEvent.OnSuperEvolve:
+                BattleLogs.Add(Side(pid) + " " + NameOf(ev.Subject) + " 进行了【超进化】");
+                break;
+            case CoreEvent.OnDestroy:
+                BattleLogs.Add(Side(pid) + " " + NameOf(ev.Subject) + " 被破坏");
+                break;
+            case CoreEvent.OnBanish:
+                BattleLogs.Add(Side(pid) + " " + NameOf(ev.Subject) + " 消失");
+                break;
+        }
+    }
 
     // ---------- 实体生命周期 ----------
 
@@ -1749,6 +1836,18 @@ public sealed class BattleState : IVmWorld
         int owner = e.PlayerId;
         var snap = e.TakeSnapshot();
 
+        // 必须在**移到墓地之前**拍快照：EntityRef.From(e) 会当场取一份 Snapshot，
+        // 而 PlaceInZone 之后 Snapshot.Zone 已经变成 Cemetery。
+        // 前端靠 Snapshot.Zone == Board 判断「要不要生成阵亡替身」，
+        // 晚了这一步那条判断永远为假 —— 攻击动画就对着已经被删掉的控件播。
+        var boardRef = EntityRef.From(e);
+
+        // 但 EntrySerial 必须跟着自增走：
+        // 触发扫描用 (EntityId, EntrySerial) 锁定「这具尸体正是本次事件的主体」，
+        // 用自增前的旧号会让谢幕曲 / 离场时能力全部匹配失败。
+        // 所以快照用旧的（Zone 还停在 Board），身份用新的。
+        EntityRef WithNewSerial(EntityRef r) => new EntityRef(r.EntityId, e.EntrySerial, r.Snapshot);
+
         Detach(e);
         e.EntrySerial++;
         PlaceInZone(e, ZoneRef.Cemetery, owner);
@@ -1763,11 +1862,12 @@ public sealed class BattleState : IVmWorld
         // 旧定义留在 LastFieldDef，稍后 FlushNextTrigger 扫描时靠它找到谢幕曲。
         RestoreOriginalDef(e);
 
-        EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = EntityRef.From(e) });
+        EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = WithNewSerial(boardRef), PlayerId = owner });
         EmitEvent(new VmEvent
         {
             Kind = CoreEvent.OnDestroy,
-            Subject = EntityRef.From(e),
+            Subject = WithNewSerial(boardRef),
+            PlayerId = owner,
             KnockedBackBySuperEvolve = bySuperEvolved,
         });
     }
@@ -1933,6 +2033,13 @@ public sealed class BattleState : IVmWorld
 
         int owner = e.PlayerId;
         var snap = e.TakeSnapshot();
+
+        // 必须**在移到墓地之前**拍 EntityRef：
+        // EntityRef.From(e) 会当场取一份 Snapshot，而 PlaceInZone 之后
+        // Snapshot.Zone 已经变成 Cemetery。前端靠 Snapshot.Zone == Board
+        // 判断「要不要生成阵亡替身」，晚了这一步那条判断永远为假 ——
+        // 于是攻击动画对着一个已经被删掉的控件播，看起来就是「没动画」。
+        var boardRef = EntityRef.From(e);
 
         Detach(e);
         e.EntrySerial++;
@@ -2233,6 +2340,15 @@ public sealed class BattleState : IVmWorld
             // MoveEntity 会把这张牌按容量铁律直接送进墓地 + shadow+1。
             bool handFull = p.Hand.Count >= Rules.MaxHandSize;
             var card = p.Deck[0];
+            // 烧牌事件必须在移动之前发：MoveEntity 之后这张牌的 Zone 已经变墓地，
+            // 日志里就分不清「被烧掉的」和「正常进墓地的」了。
+            if (handFull)
+                EmitEvent(new VmEvent
+                {
+                    Kind = CoreEvent.OnCardBurned,
+                    Subject = EntityRef.From(card),
+                    PlayerId = playerId,
+                });
             MoveEntity(card, ZoneRef.Hand, playerId);
 
             // 官方规则：爆掉的那张**不是抽到的牌** —— 它没进手牌，

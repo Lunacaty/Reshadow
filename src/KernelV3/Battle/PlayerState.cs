@@ -73,6 +73,9 @@ public sealed class PlayerState
     /// </summary>
     public List<RuntimeEntity> FuseMaterial { get; } = new();
 
+    /// <summary>本局该玩家已使用（打出）过的卡牌定义列表，按打出顺序记录。</summary>
+    public List<Ast.CardDef> PlayedThisMatch { get; } = new();
+
     /// <summary>玩家级计数器：pp / max_pp / ep / sep / shadow / combo / rally / faith / clues …</summary>
     public Dictionary<int, int> Counters { get; } = new();
 

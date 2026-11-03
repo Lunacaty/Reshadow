@@ -135,6 +135,11 @@ public enum CoreEvent
 
     /// <summary>手牌被公开。</summary>
     OnCardRevealed,
+    /// <summary>某张卡的某条具体能力正式发动（供左下角浮窗与对局日志展示）。</summary>
+    OnAbilityActivated,
+
+    /// <summary>手牌已满导致抽牌被烧毁进墓地。</summary>
+    OnCardBurned,
 }
 
 /// <summary>触发者在哪个区域监听。</summary>

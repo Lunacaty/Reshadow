@@ -147,6 +147,9 @@ public sealed class VmEvent
     /// </summary>
     public int SecondaryAmount { get; init; }
 
+    /// <summary>OnAbilityActivated 专用：本次发动的那条具体 AbilityDef。</summary>
+    public Ast.AbilityDef ActivatedAbility { get; init; }
+
     /// <summary>
     /// 这次进化是不是玩家手动花 EP/SEP 触发的。
     /// 只有手动进化才发动卡面的 Evolve: / Super-Evolve: 冒号头；

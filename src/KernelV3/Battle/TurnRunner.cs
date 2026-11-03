@@ -349,6 +349,9 @@ public sealed class TurnRunner
         // pp_at_play 记录打出前的 PP，供 Enhance 分支判定能走哪一档
         _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), pp);
         _state.WriteCounter(playerId, ppKey, pp - pay);
+
+        // 记入本局已使用卡牌（书页「使用」页签按它统计）。
+        _state.Players[playerId].PlayedThisMatch.Add(card.Def);
         card.EnteredTurn = _state.TurnNumber;
 
         // ── 3. 连击 +1（包含当前这张）──
@@ -468,6 +471,10 @@ public sealed class TurnRunner
 
         _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), pp);
         _state.WriteCounter(playerId, ppKey, pp - cost);
+
+        // 激奏/结晶同样算「使用过这张卡」，记的仍是本体定义 ——
+        // 统计页要显示「你打了几张 X」，而不是「几张激奏版 X」。
+        p.PlayedThisMatch.Add(card.Def);
         _state.WriteCounter(playerId, _schema.Counter("combo"),
             _state.ReadCounter(playerId, _schema.Counter("combo")) + 1);
 
