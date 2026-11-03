@@ -32,11 +32,19 @@ echo "=== 导出 ==="
   "E:/text/reshadow/game/build/Reshadow.exe" 2>&1 | tail -1
 
 echo "=== 拷贝资源 ==="
-cp -r assets "$OUT/assets"
+# 只拷运行时真正读取的那一个目录。
+# 源码里对 assets 的引用只有两处：CardArtLoader 的 res://assets/cards/<id>.png
+# 与 ContentPaths.CardArtPath。其余 art / kernel / bg / frames / packs / *.json
+# 在 src 与 tscn 里引用次数都是 0，属于开发期素材，进包只白占体积。
+mkdir -p "$OUT/assets"
+cp -r assets/cards "$OUT/assets/cards"
 cp -r data   "$OUT/data"
 
 echo "=== 剔除开发期资源 ==="
-rm -rf "$OUT/assets/kernel" "$OUT/assets/art"
+# 兜底：若上面的清单以后又放宽成整目录拷贝，这几条仍会把素材挡在外面。
+rm -rf "$OUT/assets/kernel" "$OUT/assets/art" "$OUT/assets/bg"
+rm -rf "$OUT/assets/frames" "$OUT/assets/packs" "$OUT/assets/en"
+rm -f  "$OUT/assets"/*.json
 rm -rf "$OUT/data/cards"
 rm -rf "$OUT/data/packs/core-wb" "$OUT/data/packs/testset-v2"
 rm -f  "$OUT/data/pools/all-clans.pool.json" \
@@ -56,6 +64,7 @@ echo "-- 卡包 --";  ls "$OUT/data/packs/"
 echo "-- 卡池 --";  ls "$OUT/data/pools/"
 echo "-- 牌组 --";  ls "$OUT/decks/"
 echo "-- 卡图 --";  ls "$OUT/assets/cards/"*.png | wc -l
+echo "-- assets 子项 --"; ls "$OUT/assets/"
 echo "-- 体积 --";  du -sh "$OUT"
 echo
 echo PACKED
