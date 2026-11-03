@@ -29,6 +29,7 @@ import fnmatch
 import io
 import json as _json
 import os
+import re
 import subprocess
 import sys
 
@@ -144,6 +145,94 @@ def sample_cards(text, limit, indent):
     return text, None
 
 
+
+RE_XML_TAG_ONLY = re.compile(
+    r'^\s*///\s*</?(summary|param|returns|remarks|para|list|item|typeparam|'
+    r'seealso|see|exception|inheritdoc|code|example|value)\b[^>]*/?>\s*$')
+
+
+def slim_cs_comments(body):
+    """压缩 .cs 的注释，在不改变可读性主干的前提下减体积。
+
+    保留：文件顶部说明框（整块）、分隔框（视觉骨架）、
+          每段注释的首行与末行、段内强调行。
+    去掉：整行只有 XML 标签的、注释块中间纯推导过程的行。
+
+    首尾成对保留是硬约束：只留首行会让「开始某玩家的回合」后面
+    直接跟孤立的「</summary>」，读起来像被截断的半句话。
+    """
+    lines = body.split("\n")
+    n = len(lines)
+
+    def is_c(l):
+        t = l.strip()
+        return t.startswith("///") or t.startswith("//")
+
+    def is_rule(l):
+        t = l.strip()
+        if not (t.startswith("//") and not t.startswith("///")):
+            return False
+        core = t.lstrip("/").strip()
+        return len(core) >= 6 and len(set(core)) <= 2
+
+    out = []
+    i = 0
+    seen_code = False
+    while i < n:
+        l = lines[i]
+        if RE_XML_TAG_ONLY.match(l):
+            i += 1
+            continue
+        if not is_c(l):
+            if l.strip():
+                seen_code = True
+            out.append(l)
+            i += 1
+            continue
+
+        if is_rule(l):
+            j = i
+            while j < n and is_rule(lines[j]):
+                out.append(lines[j])
+                j += 1
+            i = j
+            continue
+
+        j = i
+        while j < n and is_c(lines[j]):
+            j += 1
+        block = lines[i:j]
+
+        if not seen_code:
+            out.extend(block)
+            i = j
+            continue
+
+        if len(block) == 1:
+            keep = block
+            if RE_XML_TAG_ONLY.match(block[0]):
+                keep = []
+        else:
+            keep = [block[0]]
+            for x in block[1:-1]:
+                t = x.strip()
+                if t.startswith("// ★") or t.startswith("/// ★"):
+                    keep.append(x)
+                elif any(k in t for k in ("注意", "必须", "不能", "禁止", "铁律")):
+                    keep.append(x)
+            # 末行可能是孤立的 </summary>：它本身没有信息量，
+            # 保留它只会让读者以为正文被截断了。
+            if not RE_XML_TAG_ONLY.match(block[-1]):
+                keep.append(block[-1])
+        ded = []
+        for x in keep:
+            if not ded or ded[-1] != x:
+                ded.append(x)
+        out.extend(ded)
+        i = j
+    return "\n".join(out)
+
+
 def build_tree(paths):
     tree = {}
     for p in paths:
@@ -191,6 +280,10 @@ def main():
                          '改名 / 增删附件都不必改构建脚本')
     ap.add_argument('--attach-title', default='附件：设计原文与对话资料',
                     help='--attach 引入文档的章节标题')
+    ap.add_argument('--slim-comments', action='store_true',
+                    help='压缩 .cs 注释：去掉 XML 标签行；// 块只保留首行与末行')
+    ap.add_argument('--show-size', action='store_true',
+                    help='在每段文件标题下写体积（默认不写，减少噪声）')
     ap.add_argument('--quiet', action='store_true')
     args = ap.parse_args()
 
@@ -272,6 +365,8 @@ def main():
         ext = os.path.splitext(rel)[1].lower()
         lang = LANG.get(ext, LANG.get(os.path.basename(rel).lower(), 'text'))
         body = io.open(os.path.join(root, rel), encoding='utf-8', errors='replace').read()
+        if args.slim_comments and ext == '.cs':
+            body = slim_cs_comments(body)
         note = None
         base = os.path.basename(rel).lower()
         if args.sample_cards and ext == '.json' and ('cards' in base or 'card' in base):
@@ -280,11 +375,16 @@ def main():
             body, note = sample_json(body, args.json_sample, args.json_indent)
         if body.endswith('\n'):
             body = body[:-1]
-        out.write("### `" + rel + "`\n\n")
-        sub = fmt_size(size)
-        if note:
-            sub += "　·　" + note
-        out.write("<sub>" + sub + "</sub>\n\n")
+        # 标题下不再写文件大小：每个文件省一行 <sub>，
+        # 162 个文件累积起来是纯噪声。体积看目录树与总览即可。
+        if args.show_size:
+            out.write("### `" + rel + "`\n\n")
+            sub = fmt_size(size)
+            if note:
+                sub += "　·　" + note
+            out.write("<sub>" + sub + "</sub>\n\n")
+        else:
+            out.write("### `" + rel + "`\n\n")
         out.write("```" + lang + "\n" + body + "\n```\n\n")
 
     # 追加仓库外文档（设计原文 / 对话资料）
@@ -326,7 +426,7 @@ def main():
         out.write("---\n\n## " + args.attach_title + "\n\n")
         out.write("> 这些文档不在 git 仓库内，由 --attach 显式引入。\n\n")
         for ap_, base, body, sz in attached:
-            out.write("### `" + base + "`\n\n<sub>" + fmt_size(sz) + "</sub>\n\n")
+            out.write("### `" + base + "`\n\n")
             # 用四个反引号包裹：附件自带的 ``` 代码块不会提前闭合，
             # 且内容里的 ## 标题被当作普通文本，不会打乱正文层级。
             out.write("````text\n" + body + "\n````\n\n")
