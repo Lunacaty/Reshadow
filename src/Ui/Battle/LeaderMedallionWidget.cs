@@ -205,6 +205,7 @@ public partial class LeaderMedallionWidget : Control
 
         if (_dimmed)
             DrawRect(new Rect2(0, 0, Size.X, Size.Y), new Color(0.02f, 0.03f, 0.06f, 0.62f));
+        DrawAuraShieldBadge();
     }
 
     private void DrawEvolutionOrb(Vector2 c, int count, Color tint, string label, Font font)
@@ -249,5 +250,25 @@ public partial class LeaderMedallionWidget : Control
         if (mb.Position.DistanceTo(sepC) <= OrbRadius + 3f) { OnEvolveOrbClicked?.Invoke(true); AcceptEvent(); }
         else if (mb.Position.DistanceTo(epC) <= OrbRadius + 3f) { OnEvolveOrbClicked?.Invoke(false); AcceptEvent(); }
         else { OnLeaderClicked?.Invoke(); AcceptEvent(); }
+    }
+
+    /// <summary>主战者挂着减伤/上限光环时，在红盾上方挂一枚护盾徽章。</summary>
+    private void DrawAuraShieldBadge()
+    {
+        var st = BoardUnitWidget.CurrentController?.State;
+        var e = Leader;
+        if (st == null || e == null) return;
+
+        bool any = false;
+        foreach (var pair in st.QueryDamageModifiers(e))
+        {
+            any = true;
+            break;
+        }
+        if (!any) return;
+
+        var tex = KeywordSvgAtlas.Get("badge_shield");
+        if (tex == null) return;
+        DrawTextureRect(tex, new Rect2(new Vector2(Size.X + 2f, 4f), new Vector2(22, 22)), false);
     }
 }

@@ -316,6 +316,12 @@ public partial class BoardUnitWidget : Control
         if (_canAttack && !_selected)
             DrawRect(new Rect2(-2, -2, W + 4, H + 4), new Color(0.20f, 0.83f, 0.60f, 0.85f), false, 2.5f);
 
+        // ---- 关键词与光环贴图 ----
+        //
+        // 全部走 KeywordSvgAtlas 的 SVG 光栅化贴图：外框装甲铺满棋子，
+        // 角落徽章贴在攻击力附近。之前这里一条关键词都不画，
+        // 守护/屏障/潜行在战场上完全不可见。
+        DrawKeywordVisuals();
         // 时机能力触发光效：一圈扩散的光环
         if (_triggerFlash > 0f)
         {
@@ -323,6 +329,69 @@ public partial class BoardUnitWidget : Control
             float r = (1f - a) * 42f;
             DrawArc(new Vector2(W * 0.5f, H * 0.5f), 40f + r, 0, Mathf.Tau, 36,
                     new Color(0.35f, 1.0f, 0.55f, a * 0.9f), 3f);
+        }
+    }
+
+    /// <summary>绘制关键词外框与角落徽章。</summary>
+    private void DrawKeywordVisuals()
+    {
+        var e = Entity;
+        if (e == null) return;
+        var schema = CurrentController?.Schema;
+        if (schema == null) return;
+
+        bool Has(string kw)
+            => e.Keywords.Contains(schema.Keyword(kw));
+
+        // 外框装甲：铺在棋子外围，稍微超出边界制造「装甲包边」的观感
+        void Frame(string key)
+        {
+            var tex = KeywordSvgAtlas.Get(key);
+            if (tex != null)
+                DrawTextureRect(tex, new Rect2(-4, -6, W + 8, H + 12), false);
+        }
+
+        if (Has("ward")) Frame("frame_ward");
+        if (Has("barrier")) Frame("frame_barrier");
+        if (Has("ambush")) Frame("frame_ambush");
+        if (Has("aura")) Frame("frame_aura");
+        if (Has("immune_effects") || Has("immune_effects_except_stats")
+            || Has("immune_damage") || Has("immune_ability_damage")
+            || Has("immune_combat_damage"))
+        {
+            Frame("frame_immune");
+            var ring = KeywordSvgAtlas.Get("ring_immune");
+            if (ring != null)
+                DrawTextureRect(ring, new Rect2(W * 0.5f - 66, H * 0.5f - 66, 132, 132), false);
+        }
+
+        // 角落徽章：从小到大横排在左下角
+        int slot = 0;
+        void Badge(string key)
+        {
+            var tex = KeywordSvgAtlas.Get(key);
+            if (tex == null) return;
+            var pos = new Vector2(2 + slot * 22, H - 26);
+            DrawTextureRect(tex, new Rect2(pos, new Vector2(20, 20)), false);
+            slot++;
+        }
+
+        if (Has("bane")) Badge("badge_bane");
+        if (Has("drain")) Badge("badge_drain");
+        if (Has("free_evolve") || Has("free_super_evolve")) Badge("badge_free_evolve");
+
+        // 减伤 / 上限光环：生命值正上方一枚琥珀符文小盾
+        var st = CurrentController?.State;
+        if (st != null)
+        {
+            var mods = new System.Collections.Generic.List<ShadowverseFan.KernelV3.Ast.DamageModifierNode>();
+            foreach (var pair in st.QueryDamageModifiers(e)) mods.Add(pair.Node);
+            if (mods.Count > 0)
+            {
+                var sh = KeywordSvgAtlas.Get("badge_shield");
+                if (sh != null)
+                    DrawTextureRect(sh, new Rect2(new Vector2(W - 26, 2), new Vector2(22, 22)), false);
+            }
         }
     }
 
