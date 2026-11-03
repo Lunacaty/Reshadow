@@ -1453,6 +1453,10 @@ public sealed class ChineseCardPrinter
         "cards_played_this_turn" => "本回合打出的张数",
         "destroyed_followers" => "已破坏的随从数",
         "fused_cards" => "已融合的张数",
+        "ced_engage" => "本局启动次数",
+        // 兜底：解析器曾把「the enemy leader's max defense」整句当成计数器名。
+        // 那不是计数器，这里给一个可读名，真正的修复在 ConditionCompiler/ActionParser。
+        "enemy_leader's_max_defense" => "敌方主战者生命上限",
         _ => _glossary.ToChinese(name),
     };
 

@@ -1,0 +1,29 @@
+feat(130-核心3 完成): 权威数据源整合 + 卡面汉化归零
+
+【数据源】
+  新增 wb_cards_full.json —— 78 张第 11 弹新卡完整信息（47 字段，
+  含 name_*/tribe_*/cost/atk/life/rarity/class/skills/alt_modes/cv/flavor，
+  全部带简体中文）。这是唯一权威新卡数据源。
+  新增 wb_tokens_source.json —— SVA 全卡表 982 张（对照用）。
+  保留 wb_authoritative.json 作效果原文对照。
+  docs/132-权威数据源.md 记录三者范围与差异。
+
+【整合动作】
+  1. 78 张 name_chs==name_eng 的缺译卡全部填入权威中文名（剩 0）。
+  2. 95 张 9000 段衍生卡 is_token 由 False 改为 True ——
+     之前标错导致「禁止衍生卡投入构筑」校验形同虚设。
+  3. rarity 对齐 1 处；tribe/cost/atk/life 已一致。
+  4. 计数器内码补 ced_engage / enemy_leader's_max_defense。
+
+【验收】
+  有能力的卡 = 1006，卡面含英文 = 0。核心 3 达标。
+  逐卡矩阵 32-32（Mjerrabaine 也过了，之前是 31-32）。
+
+【遗留】
+  11044120 的「X is the enemy leader's max defense minus its defense」
+  被解析器当成计数器名，X 值实际恒为 0。卡面已用中文兜底，
+  根因在 ConditionCompiler 的 X 定义句处理，记入 docs/131 第八节。
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 逐卡矩阵 32-32 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 / UI 3-3 /
+战斗 UI 30-31（BUG-2 依赖 official 池的纹章语法缺口）
