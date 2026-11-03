@@ -297,7 +297,13 @@ public static class RegressPacks
         {
             PoolId = "p1", EnabledPackIds = new List<string> { "a", "b" },
         }, ctrClash);
-        bool c3 = !r3.Ok && r3.Errors.Any(e => e.Contains("计数器冲突"));
+        // 126 轮改语义：上下限不一致不再报错，改为**取并集 + 提示**。
+        // A 要 0..10、B 要 0..99 时合并成 0..99，两边都能跑。
+        bool c3 = r3.Ok
+                  && r3.Notices.Any(n => n.Contains("计数器上下限已合并"))
+                  && r3.Pool != null
+                  && r3.Pool.Schema.CounterLimits.TryGetValue("rage", out var merged)
+                  && merged.min == 0 && merged.max == 99;
 
         return (c1 && c2 && c3,
                 "同名不同号=" + c1 + " 同号不同卡=" + c2 + " 计数器冲突=" + c3);

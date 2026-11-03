@@ -334,12 +334,30 @@ public sealed class DiyWorkshopController
         diff = "";
         if (CurrentDef == null) { diff = "当前无卡牌定义"; return false; }
 
+        // ① 脚本端往返
         var sc = new ReshadowScriptCompiler(Workspace);
         string printed = sc.Print(CurrentDef);
         var recompiled = sc.Compile(printed).FirstOrDefault();
         if (recompiled == null) { diff = "脚本重编译失败"; return false; }
+        if (!DiyWorkspace.StructurallyEqual(CurrentDef, recompiled, out diff))
+        {
+            diff = "脚本端：" + diff;
+            return false;
+        }
 
-        return DiyWorkspace.StructurallyEqual(CurrentDef, recompiled, out diff);
+        // ② AST 端往返（126 轮补齐）：
+        // 只验脚本端等于放任 AST 编解码悄悄丢字段 —— 玩家在语法树端点一次编译，
+        // 构筑规则或某个孔位就没了，而且没有任何报错。
+        string json = AstJsonCodec.Encode(CurrentDef);
+        var fromAst = AstJsonCodec.Decode(json, Workspace.Schema);
+        if (fromAst == null) { diff = "AST 端解码失败"; return false; }
+        if (!DiyWorkspace.StructurallyEqual(CurrentDef, fromAst, out diff))
+        {
+            diff = "AST 端：" + diff;
+            return false;
+        }
+
+        return true;
     }
 
     // ---------------------------------------------------------------- 自定义词条

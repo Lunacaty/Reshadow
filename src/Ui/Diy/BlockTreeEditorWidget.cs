@@ -1046,10 +1046,53 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildInlineText(box, "归属", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
             else if (cur.Opcode == "tgt_query")
             {
-                BuildInlineInt(box, "区域(0场1手2牌3墓)", cur.IntA, v => { cur.IntA = v; setter(cur); });
-                BuildInlineInt(box, "归属(0我1敌2双)", cur.IntB, v => { cur.IntB = v; setter(cur); });
-                BuildInlineText(box, "卡种", cur.Text, v => { cur.Text = v; setter(cur); });
-                BuildInlineText(box, "选法", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+                // tgt_query 的 IntA 是区域码、IntB 是归属码。
+                // 早先是「手填数字」的输入框，玩家得记住 0=战场 1=手牌… 现在换中文下拉。
+                var zoneOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                for (int zi = 0; zi < DiyZh.Zones.Length; zi++) zoneOpt.AddItem(DiyZh.Zones[zi].Zh, zi);
+                zoneOpt.Selected = Mathf.Clamp(cur.IntA, 0, DiyZh.Zones.Length - 1);
+                zoneOpt.ItemSelected += s2 =>
+                {
+                    cur.IntA = Mathf.Clamp((int)s2, 0, DiyZh.Zones.Length - 1);
+                    setter(cur);
+                };
+                box.AddChild(zoneOpt);
+
+                var ownerOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                for (int oi = 0; oi < DiyZh.Owners.Length; oi++) ownerOpt.AddItem(DiyZh.Owners[oi].Zh, oi);
+                ownerOpt.Selected = Mathf.Clamp(cur.IntB, 0, DiyZh.Owners.Length - 1);
+                ownerOpt.ItemSelected += s3 =>
+                {
+                    cur.IntB = Mathf.Clamp((int)s3, 0, DiyZh.Owners.Length - 1);
+                    setter(cur);
+                };
+                box.AddChild(ownerOpt);
+
+                var kindOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                for (int ki = 0; ki < DiyZh.Kinds.Length; ki++) kindOpt.AddItem(DiyZh.Kinds[ki].Zh, ki);
+                int kIdx = DiyZh.IndexOf(DiyZh.Kinds, cur.Text);
+                if (kIdx >= 0) kindOpt.Selected = kIdx;
+                kindOpt.ItemSelected += s4 =>
+                {
+                    int ki = (int)s4;
+                    if (ki < 0 || ki >= DiyZh.Kinds.Length) return;
+                    cur.Text = DiyZh.Kinds[ki].Key;
+                    setter(cur);
+                };
+                box.AddChild(kindOpt);
+
+                var modeOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                for (int mi = 0; mi < DiyZh.SelectModes.Length; mi++) modeOpt.AddItem(DiyZh.SelectModes[mi].Zh, mi);
+                int mIdx = DiyZh.IndexOf(DiyZh.SelectModes, cur.EnumA);
+                if (mIdx >= 0) modeOpt.Selected = mIdx;
+                modeOpt.ItemSelected += s5 =>
+                {
+                    int mi = (int)s5;
+                    if (mi < 0 || mi >= DiyZh.SelectModes.Length) return;
+                    cur.EnumA = DiyZh.SelectModes[mi].Key;
+                    setter(cur);
+                };
+                box.AddChild(modeOpt);
                 var nb = new VBoxContainer();
                 box.AddChild(nb);
                 BuildNumberSlotEditor(nb, "选取数量", cur.Number, v => { cur.Number = v; setter(cur); });
@@ -1163,7 +1206,19 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         {
             if (cur.Opcode == "bool_compare")
             {
-                BuildInlineText(box, "比较符", cur.EnumA, v => { cur.EnumA = v; setter(cur); });
+                // 比较符也是手填英文 Ge/Le 的重灾区，换中文下拉。
+                var cmpOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                for (int ci = 0; ci < DiyZh.Compares.Length; ci++) cmpOpt.AddItem(DiyZh.Compares[ci].Zh, ci);
+                int cIdx = DiyZh.IndexOf(DiyZh.Compares, cur.EnumA);
+                if (cIdx >= 0) cmpOpt.Selected = cIdx;
+                cmpOpt.ItemSelected += s6 =>
+                {
+                    int ci = (int)s6;
+                    if (ci < 0 || ci >= DiyZh.Compares.Length) return;
+                    cur.EnumA = DiyZh.Compares[ci].Key;
+                    setter(cur);
+                };
+                box.AddChild(cmpOpt);
                 var n1 = new VBoxContainer(); box.AddChild(n1);
                 BuildNumberSlotEditor(n1, "左值", cur.Number, v => { cur.Number = v; setter(cur); });
                 var n2 = new VBoxContainer(); box.AddChild(n2);

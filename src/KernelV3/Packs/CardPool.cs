@@ -223,9 +223,15 @@ public static class CardPoolBuilder
                 if (schema.CounterLimits.TryGetValue(ctr.Name, out var ex)
                     && (ex.min != ctr.Min || ex.max != ctr.Max))
                 {
-                    res.Errors.Add("计数器冲突：卡包 [" + pack.PackId + "] 把 '" + ctr.Name
-                                   + "' 定义为 (" + ctr.Min + ".." + ctr.Max + ")，与已有定义 ("
-                                   + ex.min + ".." + ex.max + ") 矛盾！");
+                    // 126 轮：上下限不一致不再报错，改为**取并集 + 提示**。
+                    // A 包要 0..10、B 包要 0..99 时，谁都不是错的 —— 合并成 0..99
+                    // 两边都能跑；报错只会逼创作者互相协调，而他们往往互不相识。
+                    int uMin = Math.Min(ex.min, ctr.Min);
+                    int uMax = Math.Max(ex.max, ctr.Max);
+                    schema.CounterLimits[ctr.Name] = (uMin, uMax);
+                    res.Notices.Add("计数器上下限已合并：'" + ctr.Name + "' 卡包 [" + pack.PackId
+                                    + "] 声明 (" + ctr.Min + ".." + ctr.Max + ")，已有 ("
+                                    + ex.min + ".." + ex.max + ") → 并集 (" + uMin + ".." + uMax + ")");
                     continue;
                 }
                 schema.Counter(ctr.Name);

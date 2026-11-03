@@ -37,10 +37,15 @@ public sealed class SymbolRegistry<T>
 
         if (_byName.TryGetValue(name, out var existing))
         {
-            if (existing.Source != source)
-                throw new SymbolConflictException(
-                    $"符号 '{name}' 已由 '{existing.Source}' 定义，无法被 '{source}' 重复定义。" +
-                    $"若你的 Mod 需要同名符号，请在 GameSchema 里显式声明别名。");
+            // 126 轮：同名符号改为**天然同义合并（Idempotent Merge）**。
+            //
+            // 早先不同来源注册同一个英文名会直接抛异常，逼创作者互相协调 ——
+            // 但职业/兵种/关键词本就是共享词条体系：A 包和 B 包都声明
+            // "Mechanist" 时，它们指的必然是同一个概念，没有分叉的必要。
+            // 现在直接复用已有 Id，谁先注册谁定 Id，后注册的静默合并。
+            //
+            // 关键字/计数器这类**有数值语义**的符号不在此列 —— 它们由
+            // GameSchema 单独处理（上下限不一致时取并集并给出提示）。
             return new SymbolId<T>(existing.Id, existing.Name);
         }
 
