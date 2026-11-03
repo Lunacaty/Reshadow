@@ -57,11 +57,40 @@ public partial class DeckManagementRoot : Control
         menu.Boot(_store);
 
         menu.OnStartBattle    += ShowBattleSelect;
+        menu.OnLanBattle      += ShowLanLobby;
         menu.OnDeckManagement += ShowDeckList;
         menu.OnDiyWorkshop    += ShowDiyWorkshop;
         menu.OnPackManager    += ShowPackManager;
         menu.OnQuit           += () => GetTree().Quit();
     }
+
+    /// <summary>局域网 / Radmin 联机大厅：建房或加入房间。</summary>
+    private void ShowLanLobby()
+    {
+        var lobby = new Net.LanLobbyModal();
+        AddChild(lobby);
+        lobby.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        lobby.Boot(_store);
+
+        lobby.OnCancelled += () => lobby.QueueFree();
+
+        // 加入房间：连上权威端后由 RemoteBattleClient 持续接收裁剪快照。
+        // 客机本地不持有真实 BattleState，改内存没有意义。
+        lobby.OnJoinRoom += info =>
+        {
+            lobby.QueueFree();
+            var client = new Net.RemoteBattleClient();
+            _remoteClient = client;
+            _ = client.ConnectAsync(info.Ip, info.Port, 1);
+        };
+
+        lobby.OnHostRoom += (poolId, deck) =>
+        {
+            lobby.QueueFree();
+        };
+    }
+
+    private Net.RemoteBattleClient _remoteClient;
 
     /// <summary>对战选择窗：先卡池、再双方牌组，然后直接开局。</summary>
     private void ShowBattleSelect()

@@ -18,6 +18,7 @@ namespace ShadowverseFan.Ui;
 public partial class MainMenuView : Control
 {
     public event Action OnStartBattle;
+    public event Action OnLanBattle;
     public event Action OnDeckManagement;
     public event Action OnDiyWorkshop;
     public event Action OnPackManager;
@@ -88,6 +89,7 @@ public partial class MainMenuView : Control
         col.AddThemeConstantOverride("separation", 14);
 
         col.AddChild(MakeButton("⚔  开 始 对 战", true, SvWbTheme.AccentGold, () => OnStartBattle?.Invoke()));
+        col.AddChild(MakeButton("🌐  局 域 网 联 机", false, SvWbTheme.AccentCyan, () => OnLanBattle?.Invoke()));
         col.AddChild(MakeButton("🃏  牌 组 管 理", false, null, () => OnDeckManagement?.Invoke()));
         col.AddChild(MakeButton("🛠  DIY 造卡工坊", false, SvWbTheme.AccentPurple, () => OnDiyWorkshop?.Invoke()));
         col.AddChild(MakeButton("⚙  卡包 / 卡池管理", false, null, () => OnPackManager?.Invoke()));
