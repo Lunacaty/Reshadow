@@ -589,9 +589,13 @@ public sealed class DiyBlockCompiler
                     {
                         "Random" => ModeDispatchKind.Random,
                         "Sequence" => ModeDispatchKind.Sequence,
+                        "RandomUnused" => ModeDispatchKind.RandomUnused,
+                        "SequenceUnused" => ModeDispatchKind.SequenceUnused,
                         _ => ModeDispatchKind.Choose,
                     },
-                    PickCount = NumExpr.Const(Math.Max(1, b.IntA)),
+                    // 优先读 Number 槽位：PickCount 可能是动态表达式
+                    // （「发动 Y 个，Y 为此卡费用」），只读 IntA 会把它压成常数。
+                    PickCount = CompileNumber(b.Number) ?? NumExpr.Const(Math.Max(1, b.IntA)),
                     Options = opts,
                 };
             }
@@ -1621,6 +1625,9 @@ public sealed class DiyBlockDecompiler
                     Opcode = "c_mode",
                     EnumA = bm.Kind.ToString(),
                     IntA = bm.PickCount != null && bm.PickCount.Op == NumOp.Const ? bm.PickCount.Value : 1,
+                    // 同时保留动态表达式：只写 IntA 会让 prop(cost, $self)
+                    // 在往返一次后退化成常数 1，积木端再也看不出原本的语义。
+                    Number = Num(bm.PickCount),
                 };
                 foreach (var opt in bm.Options ?? Array.Empty<IReadOnlyList<EffectNode>>())
                     blk.Branches.Add(Stacks(opt));
