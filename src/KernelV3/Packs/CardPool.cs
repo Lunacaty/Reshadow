@@ -395,6 +395,54 @@ public static class CardPoolBuilder
         // 卡包可以声明 source_format: "reshadow_script"，
         // 让 DIY 作者用脚本语言（含 deck_mod / discover）写卡。
         // 不分支的话这类卡会无脑丢给 EnglishCompiler，当场编译报错。
+        // 卡包也可以声明 source_format: "ast_json"：
+        // DIY 作者的 AST 语法树文本（与 AstJsonCodec.Encode 同一格式）。
+        // 与脚本端共用同一套 Schema —— 否则 storm 会被解析成 ward（SymbolId 只按 Id 判等）。
+        if (string.Equals(c.SourceFormat, "ast_json", StringComparison.OrdinalIgnoreCase))
+        {
+            Ast.CardDef astDef;
+            try
+            {
+                astDef = Diy.AstJsonCodec.Decode(c.Text, schema);
+            }
+            catch (Exception ex)
+            {
+                errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》AST JSON 解析失败：" + ex.Message);
+                return null;
+            }
+
+            if (astDef == null)
+            {
+                errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》AST JSON 为空");
+                return null;
+            }
+
+            var mergedMods2 = (astDef.DeckModifiers != null && astDef.DeckModifiers.Count > 0)
+                ? astDef.DeckModifiers
+                : (c.DeckModifiers ?? new List<DeckBuildModifier>());
+            var mergedKws2 = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k))
+                .Concat(astDef.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+                .Distinct().ToList();
+
+            return new CardDef
+            {
+                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = astDef.Kind,
+                BaseCost = c.Cost > 0 ? c.Cost : astDef.BaseCost,
+                BaseAttack = astDef.BaseAttack,
+                BaseLife = astDef.BaseLife,
+                Clan = string.IsNullOrEmpty(c.Clan) ? astDef.Clan : schema.Clan(c.Clan),
+                Traits = (astDef.Traits ?? Array.Empty<SymbolId<TraitTag>>()).ToList(),
+                Abilities = astDef.Abilities ?? Array.Empty<AbilityDef>(),
+                InnateKeywords = mergedKws2,
+                DeckModifiers = mergedMods2,
+                HasFuse = astDef.HasFuse,
+                FuseMaterialFilter = astDef.FuseMaterialFilter,
+                AccelerateDef = astDef.AccelerateDef,
+                CrystallizeDef = astDef.CrystallizeDef,
+                CrestDef = astDef.CrestDef,
+                FaithDef = astDef.FaithDef,
+            };
+        }
         if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
         {
             // 必须**复用当前卡池的 schema 与 lexicon**。

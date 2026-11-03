@@ -183,6 +183,52 @@ public sealed class GlobalCatalog
         }
 
         // 脚本格式的卡不能丢给 EnglishCompiler —— 当场会编译报错。
+        // 与 CardPool.CompileCard 同构：卡包可声明 source_format: "ast_json"。
+        // 必须复用本总表的 Schema —— SymbolId 只按 Id 判等，
+        // 新造一套会让 storm 解析成 Id=1，而本仓的 ward 才是 0/storm 是 1 的对应关系只在本 Schema 成立。
+        if (string.Equals(c.SourceFormat, "ast_json", StringComparison.OrdinalIgnoreCase))
+        {
+            CardDef astDef;
+            try
+            {
+                astDef = Diy.AstJsonCodec.Decode(c.Text, Schema);
+            }
+            catch (Exception ex)
+            {
+                Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》AST JSON 解析失败：" + ex.Message);
+                return null;
+            }
+
+            if (astDef == null)
+            {
+                Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》AST JSON 为空");
+                return null;
+            }
+
+            var mergedMods3 = (astDef.DeckModifiers != null && astDef.DeckModifiers.Count > 0)
+                ? astDef.DeckModifiers
+                : (c.DeckModifiers ?? new List<DeckBuildModifier>());
+            var mergedKws3 = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k))
+                .Concat(astDef.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+                .Distinct().ToList();
+
+            return new CardDef
+            {
+                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = astDef.Kind,
+                BaseCost = c.Cost > 0 ? c.Cost : astDef.BaseCost,
+                BaseAttack = c.Attack > 0 ? c.Attack : astDef.BaseAttack,
+                BaseLife = c.Life > 0 ? c.Life : astDef.BaseLife,
+                Abilities = astDef.Abilities,
+                Traits = traits.Count > 0 ? traits : astDef.Traits,
+                Clan = clan.IsValid ? clan : astDef.Clan,
+                InnateKeywords = mergedKws3,
+                DeckModifiers = mergedMods3,
+                HasFuse = astDef.HasFuse, FuseMaterialFilter = astDef.FuseMaterialFilter,
+                CrestDef = astDef.CrestDef, FaithDef = astDef.FaithDef,
+                AccelerateDef = astDef.AccelerateDef, CrystallizeDef = astDef.CrystallizeDef,
+                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
+            };
+        }
         if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
         {
             // 与 CardPool.CompileCard 保持完全一致：
