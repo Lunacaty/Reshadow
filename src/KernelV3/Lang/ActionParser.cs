@@ -1370,14 +1370,16 @@ public sealed class ActionParser
                 cur.TryMatchAnyWord("a", "an");
             }
 
-            ConsumeDestination(cur);
+            // 不带 copies of 的 "Add a X to your deck" 也走这里，
+            // 必须接住 ConsumeDestination 返回的真实区域。
+            var dest2a = ConsumeDestination(cur);
             foreach (var ct in cardToks)
                 nodes.Add(new SpawnCardNode
                 {
                     SourceKind = CardSourceKind.CardId,
                     CardId = ct.CardId,
                     CardName = ct.Text,
-                    ToZone = toZone,
+                    ToZone = dest2a ?? toZone,
                     ToOwner = ZoneScope.Self,
                     Count = NumExpr.Const(listCount),
                 });
@@ -1412,13 +1414,13 @@ public sealed class ActionParser
             {
                 var ct2 = cur.Current;
                 cur.Advance();
-                ConsumeDestination(cur);
+                var dest2b = ConsumeDestination(cur);
                 nodes.Add(new SpawnCardNode
                 {
                     SourceKind = CardSourceKind.CardId,
                     CardId = ct2.CardId,
                     CardName = ct2.Text,
-                    ToZone = toZone,
+                    ToZone = dest2b ?? toZone,
                     ToOwner = ZoneScope.Self,
                     Count = NumExpr.Const(1),
                 });
@@ -1435,13 +1437,13 @@ public sealed class ActionParser
             {
                 var ct3 = cur.Current;
                 cur.Advance();
-                ConsumeDestination(cur);
+                var dest2c = ConsumeDestination(cur);
                 nodes.Add(new SpawnCardNode
                 {
                     SourceKind = CardSourceKind.CardId,
                     CardId = ct3.CardId,
                     CardName = ct3.Text,
-                    ToZone = toZone,
+                    ToZone = dest2c ?? toZone,
                     ToOwner = ZoneScope.Self,
                     Count = NumExpr.Const(1),
                 });

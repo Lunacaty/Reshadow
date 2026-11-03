@@ -451,6 +451,11 @@ public sealed partial class CardVm
                         });
                     break;
                 case KeywordOp.Remove:
+                    // 与 SilenceAll 同一道免疫闸门：
+                    // 少了这一行，「移除守护 / 移除谢幕曲」可以绕过
+                    // SilenceAll 的拦截，把免疫随从的词条一个个剥光。
+                    if (_world is Battle.BattleState bsRm
+                        && bsRm.IsImmuneToEffectFrom(t, scope?.Source)) break;
                     t.Keywords.Remove(n.Keyword);
                     t.KeywordValues.Remove(n.Keyword);
                     // 谢幕曲是一条 AbilityDef（OnDestroy），不是关键词 ——

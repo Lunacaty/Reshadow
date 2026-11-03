@@ -154,6 +154,10 @@ public sealed class ChineseCardPrinter
         {
             if (n is ModifyKeywordNode mk && mk.Op == KeywordOp.Grant)
                 parts.Add(PrintKeyword(mk));
+            else if (n is DamageModifierNode dm)
+                // 写在 PassiveAura 里的常驻减伤 / 伤害上限，
+                // 必须出现在卡面顶行的常驻段，否则读者看到的是一张白卡。
+                parts.Add(PrintNode(dm));
             else if (n is ModifyCounterNode mc && mc.Op == CounterOp.Set)
                 parts.Add("初始【" + CounterZh(mc.Counter.Name) + "】值为" + PrintNum(mc.Delta) + "。");
         }
