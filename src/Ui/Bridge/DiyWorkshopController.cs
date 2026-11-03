@@ -471,6 +471,106 @@ public sealed class DiyWorkshopController
         return CompileFromBlocks(BlockModel);
     }
 
+    // ---------------------------------------------------------------- 全树操作（支持任意嵌套）
+
+    /// <summary>当前选中的插入焦点列表；null 表示未指定。</summary>
+    public List<Block> ActiveInsertList { get; private set; }
+
+    /// <summary>把某个列表设为当前的插入焦点（画布上的「设为插入点」按钮）。</summary>
+    public void SetActiveInsertList(List<Block> list) => ActiveInsertList = list;
+
+    /// <summary>取某个能力域（0 本体 / 1 纹章 / 2 信仰 / 3 激奏 / 4 结晶 / 5 构筑）的根列表。</summary>
+    public List<Block> RootListOf(int scope)
+    {
+        var ws = BlockModel;
+        if (ws == null) return null;
+        return scope switch
+        {
+            0 => ws.Hats,
+            1 => ws.CrestHats,
+            2 => ws.FaithHats,
+            3 => ws.AccelerateHats,
+            4 => ws.CrystallizeHats,
+            5 => ws.DeckModBlocks,
+            _ => ws.Hats,
+        };
+    }
+
+    /// <summary>
+    /// 按 opcode 追加一颗积木（调色盘点击）。
+    ///
+    /// 目标列表的选法是有讲究的：
+    ///   · 根列表只收事件帽（hat_*）—— 往 Hats 里塞 act_damage 会被编译器
+    ///     判成「不是事件帽积木」而整体失败；
+    ///   · 动作块与控制流必须落到某个事件帽的 Stacks 里。
+    /// 所以：有显式插入焦点就听它；否则按 opcode 自己挑合适的落点。
+    /// </summary>
+    public bool InsertBlock(string opcode, int scope = 0)
+    {
+        if (BlockModel == null) return false;
+        var blk = DiyBlockTree.CreateDefaultBlock(opcode);
+        if (blk == null) return false;
+
+        List<Block> target = ActiveInsertList;
+        if (target == null)
+        {
+            var root = RootListOf(scope);
+            if (root == null) return false;
+            if (opcode.StartsWith("hat_"))
+            {
+                target = root;
+            }
+            else
+            {
+                // 动作块 / 控制流：落到这个能力域最后一顶事件帽的 Stacks。
+                // 没有帽子就自动补一顶，否则玩家点了调色盘什么都看不到。
+                if (root.Count == 0 || !(root[root.Count - 1].Opcode ?? "").StartsWith("hat_"))
+                    root.Add(DiyBlockTree.CreateDefaultBlock("hat_self_event"));
+                var hat = root[root.Count - 1];
+                hat.Stacks ??= new List<Block>();
+                target = hat.Stacks;
+            }
+        }
+
+        target.Add(blk);
+        return CompileFromBlocks(BlockModel);
+    }
+
+    /// <summary>在整棵树里递归上下移动（支持嵌套在 if / repeat / mode 里的积木）。</summary>
+    public bool MoveBlockInTree(Block blk, int dir)
+    {
+        if (BlockModel == null || blk == null) return false;
+        if (!DiyBlockTree.Move(BlockModel, blk, dir)) return false;
+        return CompileFromBlocks(BlockModel);
+    }
+
+    /// <summary>在整棵树里递归删除。</summary>
+    public bool RemoveBlockFromTree(Block blk)
+    {
+        if (BlockModel == null || blk == null) return false;
+        if (!DiyBlockTree.Remove(BlockModel, blk)) return false;
+        return CompileFromBlocks(BlockModel);
+    }
+
+    /// <summary>在同级位置复制一份（深拷贝）。</summary>
+    public bool DuplicateBlockInTree(Block blk)
+    {
+        if (BlockModel == null || blk == null) return false;
+        if (!DiyBlockTree.Duplicate(BlockModel, blk)) return false;
+        return CompileFromBlocks(BlockModel);
+    }
+
+    /// <summary>整棵树定位某个积木的父列表（UI 判断能否上下移/删除时用）。</summary>
+    public List<Block> ParentContainerOf(Block blk)
+        => BlockModel == null ? null : DiyBlockTree.FindParentContainer(BlockModel, blk);
+
+    /// <summary>某个积木在兄弟列表里的位置（-1 表示不在树里）。</summary>
+    public int IndexOfBlock(Block blk)
+    {
+        var list = ParentContainerOf(blk);
+        return list == null ? -1 : list.IndexOf(blk);
+    }
+
     /// <summary>当前第一顶事件帽下的动作块条数（供 UI 与门禁查询）。</summary>
     public int ActionCountOfHat(int hatIndex)
     {
