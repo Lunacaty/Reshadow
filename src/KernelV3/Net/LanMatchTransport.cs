@@ -38,6 +38,15 @@ public sealed class AuthoritativeMatchHost : IDisposable
     /// <summary>状态推进后广播快照（UI 层可挂在这里刷新画面）。</summary>
     public event Action SnapshotPushed;
 
+    /// <summary>客机握手全部通过（卡池一致 + 牌组合法）。参数是客机的真实牌组。</summary>
+    public event Action<ShadowverseFan.KernelV3.Packs.ConstructedDeck> ClientMatched;
+
+    /// <summary>客机握手通过后带上的真实牌组（房主据此开局）。</summary>
+    public ShadowverseFan.KernelV3.Packs.ConstructedDeck ClientDeck { get; private set; }
+
+    private Packs.CardPool _hostPoolView;
+    public ShadowverseFan.KernelV3.Packs.ConstructedDeck HostDeck { get; private set; }
+
     public void Start(BattleState state, MatchRunner runner, int port = LanDiscoveryService.MatchPort)
     {
         State = state;
@@ -49,6 +58,34 @@ public sealed class AuthoritativeMatchHost : IDisposable
         _running = true;
 
         _ = Task.Run(AcceptLoop);
+    }
+
+    /// <summary>
+    /// 126 轮：房主**先等客机**再开局。BeginHosting 只起监听与握手校验，
+    /// State/Runner 等客机通过校验后由房主 UI 创建（Attach 时才接入）。
+    /// 握手哈希用本方卡池视图计算。
+    /// </summary>
+    public void BeginHosting(Packs.CardPool poolView,
+        ShadowverseFan.KernelV3.Packs.ConstructedDeck hostDeck,
+        int port = LanDiscoveryService.MatchPort)
+    {
+        _hostPoolView = poolView;
+        HostDeck = hostDeck;
+        Port = port;
+
+        _listener = new TcpListener(IPAddress.Any, port);
+        _listener.Start();
+        _running = true;
+
+        _ = Task.Run(AcceptLoop);
+    }
+
+    /// <summary>开局后把真实对局接入权威端，此后快照广播照常工作。</summary>
+    public void Attach(BattleState state, MatchRunner runner)
+    {
+        State = state;
+        Runner = runner;
+        BroadcastSnapshot();
     }
 
     private async Task AcceptLoop()
@@ -102,11 +139,23 @@ public sealed class AuthoritativeMatchHost : IDisposable
                         }
 
                         // 铁律一：开局卡池指纹比对。
+                        // 126 轮起**空哈希也直接拒绝**——允许跳过校验等于给改卡包留后门。
                         // 任何一方用记事本改本地 pack.json（把 1 费妖精改成 99/99、
                         // 或改 MatchRules 的生命值）都会让哈希对不上，当场拒绝。
-                        if (!string.IsNullOrEmpty(msg.Value.PoolHash))
+                        if (string.IsNullOrEmpty(msg.Value.PoolHash))
                         {
-                            string mine = PoolIntegrityHasher.ComputePoolHash(State.Pool);
+                            await SendLine(stream, "ERR|握手缺少卡池指纹，拒绝连接");
+                            continue;
+                        }
+                        {
+                            // 等待期 State 还没建：哈希从 BeginHosting 备好的卡池视图取。
+                            object poolSrc = (object)State?.Pool ?? _hostPoolView;
+                            string mine = poolSrc switch
+                            {
+                                Packs.CardPoolRuntime rt => PoolIntegrityHasher.ComputePoolHash(rt),
+                                Packs.CardPool cp => PoolIntegrityHasher.ComputePoolHash(cp),
+                                _ => "",
+                            };
                             if (!string.Equals(mine, msg.Value.PoolHash, StringComparison.OrdinalIgnoreCase))
                             {
                                 await SendLine(stream, "ERR|卡池校验失败：双方卡包/规则不一致（" +
@@ -118,12 +167,20 @@ public sealed class AuthoritativeMatchHost : IDisposable
 
                         // 铁律一（续）：牌组合法性。客机自报的牌组必须在权威端
                         // 按本卡池规则重新校验 —— 塞满 10 张虹卡会被这里拦下。
-                        if (msg.Value.Deck != null)
+                        // 126 轮起牌组也必填：没有对手牌组就没法开局。
+                        if (msg.Value.Deck == null)
+                        {
+                            await SendLine(stream, "ERR|握手缺少牌组数据，拒绝连接");
+                            continue;
+                        }
                         {
                             try
                             {
                                 // 非法牌组会在内部抛异常；能返回就说明通过。
-                                Packs.DeckRuleResolver.ResolveAndValidate(msg.Value.Deck, State.Pool);
+                                object dp = (object)State?.Pool ?? _hostPoolView;
+                                var dpool = dp as Packs.CardPool
+                                        ?? (dp as Packs.CardPoolRuntime)?.ToCardPoolView();
+                                Packs.DeckRuleResolver.ResolveAndValidate(msg.Value.Deck, dpool);
                             }
                             catch (Exception ex)
                             {
@@ -131,6 +188,10 @@ public sealed class AuthoritativeMatchHost : IDisposable
                                 continue;
                             }
                         }
+
+                        // 全部通过：记住客机牌组，供「真实双人开局」使用。
+                        ClientDeck = msg.Value.Deck;
+                        ClientMatched?.Invoke(msg.Value.Deck);
 
                         myPlayerId = want;
                         lock (_gate) _clients[myPlayerId] = client;

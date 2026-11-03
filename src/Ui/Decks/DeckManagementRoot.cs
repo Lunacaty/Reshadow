@@ -103,18 +103,50 @@ public partial class DeckManagementRoot : Control
         {
             lobby.QueueFree();
 
-            var foe = _store.SavedDecks.FirstOrDefault(d => d != deck) ?? deck;
-            StartBattle(deck, foe);
-
+            // 126 轮：房主**不再先跟本地 AI 开打**。
+            // 旧流程「先 StartBattle(本地AI) 再顺手开监听」意味着客机连上时
+            // 对局早已开始，客机的牌组根本没用上 —— 那不是联机，是单机带监听。
+            // 正确顺序：先起监听等待握手，客机通过校验后用「房主牌组 + 客机牌组」开局。
             var host = new ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost();
             _authoritativeHost = host;
-            var ctrl = GetBattleController();
-            if (ctrl != null) host.Start(ctrl.State, ctrl.Runner);
+            _hostingPoolId = poolId;
+            _hostingDeck = deck;
+
+            host.ClientMatched += clientDeck =>
+            {
+                // 握手已通过（卡池指纹一致 + 客机牌组合法），现在才真正开局。
+                // ClientMatched 从网络线程触发，必须切回主线程再动场景树。
+                CallDeferred(MethodName.StartHostedBattle);
+            };
+
+            // 复用 Start 的监听与握手校验：先把本方卡池与状态备好。
+            // State/Runner 在开局时才创建（StartHostedBattle 里），
+            // 所以这里给 host 一个「待开局」的挂起状态，握手哈希取自卡池视图。
+            var poolView = _store.GetPoolView(poolId);
+            host.BeginHosting(poolView, deck);
         };
     }
 
     private Net.RemoteBattleClient _remoteClient;
     private ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost _authoritativeHost;
+    private string _hostingPoolId;
+    private ShadowverseFan.KernelV3.Packs.ConstructedDeck _hostingDeck;
+
+    /// <summary>客机握手通过后（主线程回调）：用双方真实牌组开局。</summary>
+    private void StartHostedBattle()
+    {
+        var clientDeck = _authoritativeHost?.ClientDeck;
+        if (_hostingDeck == null || clientDeck == null) return;
+
+        var view = new Battle.BattleScreenRoot();
+        Swap(view);
+        view.Boot(_store, _hostingDeck, clientDeck);
+        view.OnExitToDecks += ShowMainMenu;
+
+        // 开局后把真实对局交给权威端继续结算。
+        var ctrl = GetBattleController();
+        if (ctrl != null) _authoritativeHost?.Attach(ctrl.State, ctrl.Runner);
+    }
 
     /// <summary>当前战斗界面的控制器（建房时要把它的 State 交给权威端）。</summary>
     private ShadowverseFan.Ui.Bridge.BattleSessionController GetBattleController()

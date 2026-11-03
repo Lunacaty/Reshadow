@@ -99,6 +99,7 @@ public partial class LanLobbyModal : Control
         row.AddThemeConstantOverride("separation", 8);
 
         _poolPicker = new OptionButton { CustomMinimumSize = new Vector2(220, 32) };
+        _poolPicker.ItemSelected += idx => RefreshDecks((int)idx);
         SvWbTheme.StyleButton(_poolPicker);
         SvWbTheme.StyleOptionPopup(_poolPicker);
         row.AddChild(_poolPicker);
@@ -163,40 +164,75 @@ public partial class LanLobbyModal : Control
         }
     }
 
+    /// <summary>与下拉框下标对应的牌组缓存（RefreshDecks 填充）。</summary>
+    private readonly List<ShadowverseFan.KernelV3.Packs.ConstructedDeck> _filteredDecks = new();
+
     private void RefreshDecks()
     {
         if (_poolPicker == null || _deckPicker == null) return;
         _poolPicker.Clear();
-        _poolPicker.AddItem("先选卡池…", 0);
+        _poolPicker.AddItem("① 先选卡池…", 0);
 
         var pools = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).ToList();
         for (int i = 0; i < pools.Count; i++) _poolPicker.AddItem(pools[i], i + 1);
 
+        RefreshDecks(-1);
+    }
+
+    /// <summary>
+    /// 严格先选卡池：牌组下拉只列出**属于该卡池且校验合法**的牌组。
+    /// 早先不分卡池全列，选了不匹配的牌组进对局才被规则拦截，白白绕一圈。
+    /// </summary>
+    private void RefreshDecks(long poolIdx)
+    {
+        if (_deckPicker == null) return;
         _deckPicker.Clear();
-        _deckPicker.AddItem("选我方牌组…", 0);
-        for (int i = 0; i < _store.SavedDecks.Count; i++)
+        _filteredDecks.Clear();
+        _deckPicker.AddItem("② 选择该卡池下的出战牌组…", 0);
+
+        if (poolIdx <= 0) return;
+        string poolId = _poolPicker.GetItemText((int)poolIdx);
+        var poolView = _store.GetPoolView(poolId);
+        if (poolView == null) return;
+
+        foreach (var d in _store.SavedDecks.Where(
+                     x => string.Equals(x.PoolId, poolId, StringComparison.OrdinalIgnoreCase)))
         {
-            var d = _store.SavedDecks[i];
-            _deckPicker.AddItem(d.Name, i + 1);
+            try
+            {
+                // 不合法的牌组（张数不足/同名超限/职业不符）直接不列。
+                ShadowverseFan.KernelV3.Packs.DeckRuleResolver.ResolveAndValidate(d, poolView);
+            }
+            catch { continue; }
+
+            _filteredDecks.Add(d);
+            _deckPicker.AddItem(d.Name, _filteredDecks.Count);
         }
     }
 
     private void DoHost()
     {
-        if (_deckPicker.Selected <= 0)
+        if (_poolPicker.Selected <= 0)
         {
-            if (_status != null) _status.Text = "请先选择我方牌组";
+            if (_status != null) _status.Text = "✘ 请先选择赛制卡池";
             return;
         }
-        var deck = _store.SavedDecks[_deckPicker.Selected - 1];
-        string poolId = _poolPicker.Selected > 0 ? _poolPicker.GetItemText(_poolPicker.Selected) : "";
+        if (_deckPicker.Selected <= 0)
+        {
+            if (_status != null) _status.Text = "✘ 请选择该卡池下的出战牌组";
+            return;
+        }
+        var deck = _filteredDecks[_deckPicker.Selected - 1];
+        string poolId = _poolPicker.GetItemText(_poolPicker.Selected);
 
-        var addrs = LanNetworkHelper.GetLocalIpv4Addresses();
-        string hostIp = addrs.Count > 0 ? addrs[0].Ip : "0.0.0.0";
-        _discovery.StartBroadcast(System.Environment.MachineName, LanDiscoveryService.MatchPort, poolId, "");
+        // 广播包带上本机卡池指纹：客机加入前先比对，不一致直接提示。
+        string hash = ShadowverseFan.KernelV3.Net.PoolIntegrityHasher
+            .ComputePoolHash(_store.GetPoolView(poolId));
+        _discovery.StartBroadcast(System.Environment.MachineName,
+            LanDiscoveryService.MatchPort, poolId, hash);
 
         if (_status != null)
-            _status.Text = "房间已开播，监听端口 " + LanDiscoveryService.MatchPort + "，本机 " + hostIp;
+            _status.Text = "房间已开播（" + poolId + "），等待对手连入";
 
         Shutdown();
         OnHostRoom?.Invoke(poolId, deck);
@@ -296,10 +332,35 @@ public partial class LanLobbyModal : Control
             return;
         }
 
-        var info = new LanRoomInfo { Ip = ip, Port = LanDiscoveryService.MatchPort, HostName = ip };
+        // 加入前先把「卡池 + 牌组」两道校验做掉：
+        // 卡池没选/牌组没选根本不该发起连接；选了之后本地指纹一致才准进。
+        if (_poolPicker.Selected <= 0)
+        {
+            if (_status != null) _status.Text = "✘ 请先选择与房间相同的赛制卡池";
+            return;
+        }
+        if (_deckPicker.Selected <= 0)
+        {
+            if (_status != null) _status.Text = "✘ 请选择该卡池下的出战牌组";
+            return;
+        }
+
+        string poolId = _poolPicker.GetItemText(_poolPicker.Selected);
+        var myDeck = _filteredDecks[_deckPicker.Selected - 1];
+        var info = new LanRoomInfo
+        {
+            Ip = ip,
+            Port = LanDiscoveryService.MatchPort,
+            HostName = ip,
+            PoolId = poolId,
+        };
+        PendingJoinDeck = myDeck;
         Shutdown();
         OnJoinRoom?.Invoke(info);
     }
+
+    /// <summary>本次加入使用的牌组（DeckManagementRoot 取走后清空）。</summary>
+    public ShadowverseFan.KernelV3.Packs.ConstructedDeck PendingJoinDeck { get; private set; }
 
     private void Shutdown()
     {

@@ -141,6 +141,38 @@ public sealed class NetStateSnapshot
 /// </summary>
 public static class PoolIntegrityHasher
 {
+    /// <summary>
+    /// 对局用哈希：按 126 轮要求覆盖**启用卡包清单 + 全部规则属性 + 池内全部卡**。
+    /// 任何一项不一致（哪怕只改了 MaxBoardSize）都会让握手当场失败。
+    /// </summary>
+    public static string ComputePoolHash(Packs.CardPoolRuntime pool)
+    {
+        if (pool == null) return "";
+        var sb = new StringBuilder();
+        sb.Append("pool:").Append(pool.PoolId).Append('\n');
+
+        // 启用卡包清单（排序后拼接，顺序不影响结果）。
+        sb.Append("packs:")
+          .Append(string.Join(",",
+              (pool.EnabledPackIds ?? new HashSet<string>())
+                  .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)))
+          .Append('\n');
+
+        // 全部规则属性（反射按名字排序，新增规则自动进哈希）。
+        var rules = pool.Rules ?? MatchRules.CreateStandard();
+        foreach (var prop in typeof(MatchRules).GetProperties()
+                     .OrderBy(p => p.Name, StringComparer.Ordinal))
+        {
+            if (!prop.CanRead || prop.GetIndexParameters().Length > 0) continue;
+            sb.Append(prop.Name).Append('=').Append(prop.GetValue(rules)).Append(';');
+        }
+        sb.Append('\n');
+
+        AppendCards(sb, pool.AllCards?.Values);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
+    }
+
+    /// <summary>旧签名：普通 CardPool 视图。保留给非对局路径（DIY 预览等）。</summary>
     public static string ComputePoolHash(CardPool pool)
     {
         if (pool == null) return "";
@@ -148,25 +180,29 @@ public static class PoolIntegrityHasher
         sb.Append("pool:").Append(pool.PoolId).Append('\n');
 
         var rules = pool.BaseRules ?? MatchRules.CreateStandard();
-        sb.Append("rules:")
-          .Append(rules.LeaderInitialLife).Append(',')
-          .Append(rules.MaxPpCap).Append(',')
-          .Append(rules.MinDeckSize).Append(',')
-          .Append(rules.MaxDeckSize).Append('\n');
+        foreach (var prop in typeof(MatchRules).GetProperties()
+                     .OrderBy(p => p.Name, StringComparer.Ordinal))
+        {
+            if (!prop.CanRead || prop.GetIndexParameters().Length > 0) continue;
+            sb.Append(prop.Name).Append('=').Append(prop.GetValue(rules)).Append(';');
+        }
+        sb.Append('\n');
 
-        var cards = pool.Catalog?.AllCards?.Values?.OrderBy(c => c.CardId).ToList()
-                    ?? new List<CardDef>();
-        foreach (var c in cards)
+        AppendCards(sb, pool.Catalog?.AllCards?.Values);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
+    }
+
+    private static void AppendCards(StringBuilder sb, IEnumerable<CardDef> cards)
+    {
+        foreach (var c in (cards ?? Enumerable.Empty<CardDef>()).OrderBy(c => c.CardId))
         {
             sb.Append(c.CardId).Append('|')
               .Append((int)c.Kind).Append('|')
               .Append(c.BaseCost).Append('|')
               .Append(c.BaseAttack).Append('|')
               .Append(c.BaseLife).Append('|')
+              .Append(c.HasFuse).Append('|')
               .Append(AstEnglishPrinter.PrintCard(c.Abilities)).Append('\n');
         }
-
-        byte[] bytes = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
-        return Convert.ToHexString(bytes);
     }
 }
