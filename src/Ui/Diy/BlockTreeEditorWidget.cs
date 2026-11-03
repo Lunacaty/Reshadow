@@ -428,6 +428,11 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         bar.AddChild(toRoot);
         _canvasCol.AddChild(bar);
 
+        // 这两个面板必须在「域为空」的提前返回**之前**渲染：
+        // 激奏/结晶费用框正是用来把空域开启的 —— 藏在空域提示后面就等于永远看不见。
+        if (_scopeTab == 5) BuildKeywordsPanel();
+        if (_scopeTab == 3 || _scopeTab == 4) BuildAcceleratePanel();
+
         if (root.Count == 0)
         {
             var hint = new Label { Text = "（此能力域为空：从左侧调色盘点「事件帽」开始）", AutowrapMode = TextServer.AutowrapMode.WordSmart };
@@ -436,9 +441,6 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             _canvasCol.AddChild(hint);
             return;
         }
-
-        if (_scopeTab == 5) BuildKeywordsPanel();
-        if (_scopeTab == 3 || _scopeTab == 4) BuildAcceleratePanel();
 
         foreach (var b in root.ToList()) _canvasCol.AddChild(RenderBlock(b, 0));
     }
