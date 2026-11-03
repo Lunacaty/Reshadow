@@ -167,6 +167,10 @@ public static class DiyBlockModel
         ["act_swap_stats"] = BlockShape.Stack,
         ["act_mod_cost"] = BlockShape.Stack,
         ["act_grant_kw"] = BlockShape.Stack,
+        // 118 轮新增的两个动作块与随机数胶囊
+        ["act_reveal"] = BlockShape.Stack,
+        ["act_damage_aura"] = BlockShape.Stack,
+        ["num_rand"] = BlockShape.Pill,
         ["act_remove_kw"] = BlockShape.Stack,
         ["act_silence"] = BlockShape.Stack,
         ["act_evolve"] = BlockShape.Stack,
@@ -1158,6 +1162,9 @@ public sealed class DiyBlockCompiler
         switch (b.Opcode)
         {
             case "num_const": return NumExpr.Const(b.IntA);
+            case "num_rand":
+                // IntA = 下界, IntB = 上界, IntC = 变量槽(0=X 1=Y 2=Z)
+                return NumExpr.RandRange(b.IntA, b.IntB, b.IntC);
             case "num_counter": return NumExpr.Ctr(_schema.Counter(b.Text ?? ""));
             case "num_prop":
             {
@@ -1860,6 +1867,12 @@ public sealed class DiyBlockDecompiler
         switch (e.Op)
         {
             case NumOp.Const: return new Block { Opcode = "num_const", IntA = e.Value };
+            case NumOp.RandomRange: return new Block
+            {
+                Opcode = "num_rand", IntA = e.Value, IntC = e.RollId,
+                IntB = e.Args != null && e.Args.Count > 0 && e.Args[0].Op == NumOp.Const
+                    ? e.Args[0].Value : e.Value,
+            };
             case NumOp.Counter: return new Block { Opcode = "num_counter", Text = e.Counter.Name };
             case NumOp.Property:
                 return new Block { Opcode = "num_prop", EnumA = e.Stat.ToString(), Target = Target(e.Of) };

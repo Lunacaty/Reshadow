@@ -989,7 +989,9 @@ public sealed class TurnRunner
 
         if (_state.TurnNumber < _state.Rules.EvolveUnlockTurn(playerId)) return false;
 
-        if (unit != null && unit.Keywords.Contains(_schema.Keyword("free_evolve"))) return true;
+        // 走 HasEffectiveKeyword：光环授予的「无需进化点进化」同样要生效。
+        if (unit != null && _state.HasEffectiveKeyword(unit, _schema.Keyword("free_evolve")))
+            return true;
 
         var epKey = _schema.Counter("ep");
         return _state.ReadCounter(playerId, epKey) > 0;
@@ -1007,7 +1009,8 @@ public sealed class TurnRunner
 
         if (_state.TurnNumber < _state.Rules.SuperEvolveUnlockTurn(playerId)) return false;
 
-        if (unit != null && unit.Keywords.Contains(_schema.Keyword("free_super_evolve"))) return true;
+        if (unit != null && _state.HasEffectiveKeyword(unit, _schema.Keyword("free_super_evolve")))
+            return true;
 
         var sepKey = _schema.Counter("sep");
         return _state.ReadCounter(playerId, sepKey) > 0;
@@ -1043,7 +1046,7 @@ public sealed class TurnRunner
         if (super)
         {
             // 「无需超进化点即可超进化」：不扣点，其余流程完全不变。
-            if (!e.Keywords.Contains(_schema.Keyword("free_super_evolve")))
+            if (!_state.HasEffectiveKeyword(e, _schema.Keyword("free_super_evolve")))
             {
                 var sepKey = _schema.Counter("sep");
                 _state.WriteCounter(playerId, sepKey, _state.ReadCounter(playerId, sepKey) - 1);
@@ -1057,7 +1060,7 @@ public sealed class TurnRunner
         else
         {
             // 「无需进化点即可进化」：不扣点。
-            if (!e.Keywords.Contains(_schema.Keyword("free_evolve")))
+            if (!_state.HasEffectiveKeyword(e, _schema.Keyword("free_evolve")))
             {
                 var epKey = _schema.Counter("ep");
                 _state.WriteCounter(playerId, epKey, _state.ReadCounter(playerId, epKey) - 1);

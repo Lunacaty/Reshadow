@@ -1142,7 +1142,8 @@ public sealed class ReshadowScriptCompiler
             var flag = p.Next();
             add = flag == "add";
         }
-        p.TryChar(')');
+        // 这里**不能**再吃一次 ')'：外层 ParseAtomStatement 末尾已经统一消费，
+        // 多吞一个会让紧随其后的能力块丢一个括号，整张卡解析错位。
         return new DamageModifierNode
         {
             Target = tgt ?? TargetSpec.Self,
@@ -2450,7 +2451,7 @@ public sealed class ReshadowScriptCompiler
                 return ind + "reveal(" + PrintTargetExpr(rv.Target) + ")\n";
 
             case DamageModifierNode dm:
-                return ind + "damage_aura(" + PrintTargetExpr(dm.Target)
+                return ind + "damage_mod(" + PrintTargetExpr(dm.Target)
                        + ", " + dm.Kind + ", " + dm.SourceMask
                        + ", " + PrintNumExpr(dm.Amount)
                        + (dm.IsReduction ? "" : ", add") + ")\n";
@@ -2459,7 +2460,7 @@ public sealed class ReshadowScriptCompiler
                 if (k.Op == KeywordOp.SilenceAll) return ind + "silence(" + PrintTargetExpr(k.Target) + ")\n";
                 if (k.Op == KeywordOp.Remove) return ind + "remove_kw(" + PrintTargetExpr(k.Target) + ", " + k.Keyword.Name + ")\n";
                 return ind + "grant_kw(" + PrintTargetExpr(k.Target) + ", " + k.Keyword.Name
-                       + (k.Value != null && k.Value.Op == NumOp.Const ? ", " + k.Value.Value : "")
+                       + (k.Value != null ? ", " + PrintNumExpr(k.Value) : "")
                        + DurArg(k.Duration) + ")\n";
 
             case MoveZoneNode mv:
@@ -2660,7 +2661,7 @@ public sealed class ReshadowScriptCompiler
                     _ => "choose",
                 };
                 sb.Append(ind).Append("mode ").Append(kind)
-                  .Append('(').Append(EvalInt(b.PickCount, 1)).Append(") {\n");
+                  .Append('(').Append(PrintNumExpr(b.PickCount)).Append(") {\n");
                 for (int i = 0; i < (b.Options?.Count ?? 0); i++)
                 {
                     sb.Append(Indent(depth + 1)).Append(i + 1).Append(": {\n");
@@ -2840,6 +2841,15 @@ public sealed class ReshadowScriptCompiler
         if (e == null) return "0";
         switch (e.Op)
         {
+            case NumOp.RandomRange:
+            {
+                // 必须原样打回 rand(min, max, X)，否则导出后再编译会丢掉
+                // 上下界与变量槽，「时空掌握者」的费用/身材全变成无来源的随机。
+                string rv = e.RollId switch { 1 => "Y", 2 => "Z", _ => "X" };
+                string hi = e.Args != null && e.Args.Count > 0
+                    ? PrintNumExpr(e.Args[0]) : e.Value.ToString();
+                return "rand(" + e.Value + ", " + hi + ", " + rv + ")";
+            }
             case NumOp.Const: return e.Value.ToString(CultureInfo.InvariantCulture);
             case NumOp.Counter: return "counter(" + e.Counter.Name + ")";
             // count / maxgroup 的目标可能是具名卡池（card("X", ... history: ...)），
