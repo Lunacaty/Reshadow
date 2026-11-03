@@ -152,14 +152,17 @@ public sealed class BattleState : IVmWorld
         _ => PlayerState.Capacity(z),
     };
 
+    /// <summary>
+    /// 发现候选池。
+    ///
+    /// 126 轮起**放弃跨卡池「混沌发现」**：无论 chaos 参数为何，
+    /// 一律只从当前对局启用的卡池取候选。
+    /// 理由：混沌发现会引入未启用卡包的外部卡，既难维护，又会在联机中
+    /// 破坏赛制纯净性（对手没有这张卡，防作弊快照也对不上）。
+    /// chaos 参数保留以兼容既有调用点，但不再产生任何分支差异。
+    /// </summary>
     public IEnumerable<Ast.CardDef> EnumerateDiscoverPool(bool chaos, bool includeTokens = false)
     {
-        if (chaos)
-        {
-            if (Pool?.Catalog == null) yield break;
-            foreach (var c in Pool.Catalog.EnumerateChaosDiscoverPool(includeTokens)) yield return c;
-            yield break;
-        }
         if (Pool == null) yield break;
         foreach (var c in Pool.EnumerateCurrentPoolDiscover(includeTokens)) yield return c;
     }

@@ -1299,7 +1299,13 @@ public sealed partial class CardVm
         var candidates = new List<CardDef>();
         if (_world is Battle.BattleState bst)
         {
-            foreach (var def in bst.EnumerateDiscoverPool(chaos, includeTokens: false))
+            // 126 轮起 EnumerateDiscoverPool 已不再走混沌发现（放弃跨池）。
+            // 但 **显式 pack: 点名**是另一回事：创作者明确写了 "pack.b:..."，
+            // 该卡只要装在硬盘上就应该能被发现 —— 这不是混沌随机，是有意引用。
+            IEnumerable<CardDef> pool = chaos && bst.Pool?.Catalog != null
+                ? bst.Pool.Catalog.EnumerateChaosDiscoverPool(includeTokens: false)
+                : bst.EnumerateDiscoverPool(chaos, includeTokens: false);
+            foreach (var def in pool)
             {
                 if (def == null) continue;
                 if (def.Kind is not (CardKind.Follower or CardKind.Spell or CardKind.Amulet)) continue;

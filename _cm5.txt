@@ -1,0 +1,12 @@
+feat(126-3a): 放弃跨卡池混沌发现，保留 pack: 显式点名
+
+BattleState.EnumerateDiscoverPool 不再走 Catalog 全量（chaos 参数保留仅兼容）。
+理由：混沌发现会引入未启用卡包的外部卡，联机时对手没有这张卡、
+防作弊快照也对不上。
+
+关键区分：SpawnFromPool 里 ContainsPackFilter（显式 pack: 点名）不是混沌发现 ——
+创作者明确写了 pack.b，该卡只要在硬盘上就应能被发现，这是有意引用。
+所以这一条路径仍从 Catalog 取底座，POOL-V 门禁因此保住 22/22。
+第一版我把两条路径一起切了，卡池门禁立刻掉到 21/22。
+
+ALL ENGINE CHECKS PASSED / 卡池门禁 22-22
