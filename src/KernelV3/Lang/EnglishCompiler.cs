@@ -1261,12 +1261,13 @@ public sealed class EnglishCompiler
                                && mk.Target.SourceKind == TargetSourceKind.Slot
                                && mk.Target.Slot == TargetSpec.SlotSelf);
 
+            var mainTrig = selfOnlyRestriction
+                ? new TriggerSpec { Event = CoreEvent.PassiveAura }
+                : hb.BuildTrigger();
             var built = new AbilityDef
             {
-                Trigger = selfOnlyRestriction
-                    ? new TriggerSpec { Event = CoreEvent.PassiveAura }
-                    : hb.BuildTrigger(),
-                Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs)),
+                Trigger = mainTrig,
+                Condition = AndZone(zone, AndCosts(hb.Condition, hb.Costs), mainTrig.Event),
                 Costs = hb.Costs,
                 Body = body,
             };
@@ -1587,10 +1588,11 @@ public sealed class EnglishCompiler
             options = opts;
         }
 
+        var modeTrig = trigger ?? new TriggerSpec { Event = CoreEvent.OnPlay };
         result.Add(new AbilityDef
         {
-            Trigger = trigger ?? new TriggerSpec { Event = CoreEvent.OnPlay },
-            Condition = AndZone(zone, condition),
+            Trigger = modeTrig,
+            Condition = AndZone(zone, condition, modeTrig.Event),
             Costs = costs,
             Body = new List<EffectNode>
             {
@@ -2097,6 +2099,30 @@ public sealed class EnglishCompiler
                     return;
                 }
             }
+        }
+
+        // "X is the enemy leader's max defense minus its defense."
+        //
+        // 必须绑成「生命上限 − 当前生命」的差值表达式。
+        // 不绑的话变量量词会退化成 ctr:X（读一个不存在的计数器，恒为 0），
+        // 这张卡的 X 伤害永远是 0。
+        if (sent.Count > 2 && sent[0].IsAnyWord("x", "y", "z")
+            && joined.Contains("max defense"))
+        {
+            bool isEnemy = joined.Contains("enemy leader");
+            var leader = isEnemy ? TargetSpec.OpponentLeader : TargetSpec.SelfLeader;
+            var vn2 = sent[0].Text.ToUpperInvariant();
+
+            if (joined.Contains("minus"))
+            {
+                _variableBindings[vn2] = NumExpr.Sub(
+                    NumExpr.Prop(StatKey.MaxLife, leader),
+                    NumExpr.Prop(StatKey.Life, leader));
+                return;
+            }
+            // 只写了 max defense 时就是生命上限本身
+            _variableBindings[vn2] = NumExpr.Prop(StatKey.MaxLife, leader);
+            return;
         }
 
         // "X, Y, and Z are determined randomly and add up to your faith's value"

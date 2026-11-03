@@ -921,21 +921,13 @@ public sealed class ReshadowScriptCompiler
     /// </summary>
     private static BoolExpr AddDomainCondition(BoolExpr cond, CoreEvent ev, bool manualOnly)
     {
-        // 不看 manualOnly：自动进化（"Evolve this follower"）触发的 OnEvolve
-        // 与手动进化带的是同一条域条件，EnglishCompiler 两边都加。
-
-        Core.UnitState? domain = ev switch
-        {
-            CoreEvent.OnSuperEvolve => Core.UnitState.SuperEvolved,
-            CoreEvent.OnEvolve => Core.UnitState.Evolved,
-            _ => null,
-        };
-        if (domain == null) return cond ?? BoolExpr.True;
-
-        var dom = new HasStateExpr { State = domain.Value, Of = TargetSpec.Self };
-        var items = new List<BoolExpr> { BoolExpr.True, dom };
-        if (cond != null && !(cond is ConstBoolExpr cb && cb.Value)) items.Add(cond);
-        return new AndExpr(items);
+        // 触发器本身就是 OnEvolve / OnSuperEvolve 时，域条件完全重复：
+        // 加了会印出「【进化时】若已进化，…」，也与 EnglishCompiler 的
+        // AndZone（已按 trigEvent 跳过）对不上，四端同构门禁会当场报错。
+        // 这里不再附加任何域条件 —— ev 只用于说明「为什么不需要」。
+        _ = ev;
+        _ = manualOnly;
+        return cond ?? BoolExpr.True;
     }
 
     private CostSpec ParseCostSpec(Cursor p, string kind)
