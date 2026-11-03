@@ -47,7 +47,7 @@ public partial class CardInspectorModal : Control
         panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             SvWbTheme.BgPanel, SvWbTheme.AccentCyan, 12, 2, 18));
         panel.SetAnchorsPreset(LayoutPreset.Center);
-        panel.CustomMinimumSize = new Vector2(880, 540);
+        SvWbTheme.KeepCentered(this, panel, new Vector2(880, 540));
         panel.Position = new Vector2(
             (GetViewportRect().Size.X - 880) / 2,
             (GetViewportRect().Size.Y - 540) / 2);

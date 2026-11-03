@@ -58,7 +58,7 @@ public partial class CreateDeckWizardModal : Control
         // 且要用 Size 显式指定尺寸 —— 只设 CustomMinimumSize 时
         // PanelContainer 会按锚点拉伸填满父容器（这里就是整屏）。
         panel.SetAnchorsPreset(LayoutPreset.TopLeft);
-        panel.Size = new Vector2(880, 540);
+        SvWbTheme.KeepCentered(this, panel, new Vector2(880, 540));
         panel.Position = new Vector2(
             Mathf.Max(0, (GetViewportRect().Size.X - 880) / 2),
             Mathf.Max(0, (GetViewportRect().Size.Y - 540) / 2));

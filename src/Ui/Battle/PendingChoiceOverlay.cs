@@ -138,10 +138,11 @@ public partial class PendingChoiceOverlay : Control
 
             var banner = new PanelContainer
             {
-                Position = new Vector2(380, 108),
                 Size = new Vector2(520, 48),
                 MouseFilter = MouseFilterEnum.Stop,
             };
+            SvWbTheme.KeepCentered(this, banner, new Vector2(520, 48),
+                new Vector2(0f, -252f));
             banner.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
                 new Color(0.06f, 0.10f, 0.18f, 0.94f), new Color("FDE047"), 10, 2, 10));
             AddChild(banner);

@@ -36,8 +36,7 @@ public partial class DefineEntryDialog : Control
         var panel = new PanelContainer();
         AddChild(panel);
         panel.SetAnchorsPreset(LayoutPreset.TopLeft);
-        panel.Size = new Vector2(520, 380);
-        panel.Position = new Vector2(380, 170);
+        SvWbTheme.KeepCentered(this, panel, new Vector2(520, 380));
         panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             SvWbTheme.BgPanel, new Color("D4AF37"), 12, 2, 16));
 

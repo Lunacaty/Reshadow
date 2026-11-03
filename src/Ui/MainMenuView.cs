@@ -84,8 +84,20 @@ public partial class MainMenuView : Control
         var col = new VBoxContainer();
         AddChild(col);
         col.SetAnchorsPreset(LayoutPreset.TopLeft);
-        col.Position = new Vector2(480, 300);
         col.Size = new Vector2(320, 0);
+
+        // 不再写死 (480,300)：那个坐标是按 1280x720 算的，1920x1080 下会整体偏左上。
+        // 改成跟随视口尺寸居中，全屏切换也不跑偏。
+        void CenterButtons()
+        {
+            if (!IsInstanceValid(col)) return;
+            var vp = Size;
+            if (vp.X <= 0 || vp.Y <= 0) vp = GetViewportRect().Size;
+            col.Position = new Vector2(Mathf.Max(12f, (vp.X - 320f) * 0.5f),
+                                       Mathf.Max(12f, vp.Y * 0.42f));
+        }
+        Resized += CenterButtons;
+        CenterButtons();
         col.AddThemeConstantOverride("separation", 14);
 
         col.AddChild(MakeButton("⚔  开 始 对 战", true, SvWbTheme.AccentGold, () => OnStartBattle?.Invoke()));

@@ -36,7 +36,10 @@ public partial class MulliganOverlay : Control
         dim.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(dim);
 
-        var banner = new PanelContainer { Position = new Vector2(340, 68), Size = new Vector2(600, 74) };
+        // 横幅水平居中、贴上方；用 KeepCentered 带负偏移实现「不居中但跟随窗口」。
+        var banner = new PanelContainer { Size = new Vector2(600, 74) };
+        SvWbTheme.KeepCentered(this, banner, new Vector2(600, 74),
+            new Vector2(0f, -292f));
         banner.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             new Color(0.07f, 0.10f, 0.18f, 0.95f), new Color("D4AF37"), 12, 2, 12));
         AddChild(banner);
@@ -70,10 +73,11 @@ public partial class MulliganOverlay : Control
         _confirmBtn = new Button
         {
             Text = "✔ 全部保留并开局",
-            Position = new Vector2(520, 565),
             CustomMinimumSize = new Vector2(240, 52),
             Size = new Vector2(240, 52),
         };
+        SvWbTheme.KeepCentered(this, _confirmBtn, new Vector2(240, 52),
+            new Vector2(0f, 205f));
         SvWbTheme.StyleButton(_confirmBtn, isPrimary: true, customAccent: SvWbTheme.AccentGold);
         _confirmBtn.AddThemeFontSizeOverride("font_size", 18);
         _confirmBtn.Pressed += Confirm;
