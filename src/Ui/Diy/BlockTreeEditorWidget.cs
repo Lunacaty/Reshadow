@@ -231,6 +231,110 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         }),
     };
 
+
+    /// <summary>
+    /// 激奏 / 结晶费用设置。原来页签只显示「激奏」两个字，
+    /// 玩家在积木端根本没法开启或改价。
+    /// </summary>
+    private void BuildAcceleratePanel()
+    {
+        var col = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        col.AddThemeConstantOverride("separation", 6);
+
+        var title = new Label { Text = "激奏 / 结晶费用" };
+        title.AddThemeFontSizeOverride("font_size", 13);
+        title.AddThemeColorOverride("font_color", new Color("FDE68A"));
+        col.AddChild(title);
+
+        var hint = new Label
+        {
+            Text = "设为 -1 表示不启用。启用后可在页签里往对应能力域添加积木。",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        hint.AddThemeFontSizeOverride("font_size", 11);
+        hint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+        col.AddChild(hint);
+
+        col.AddChild(BuildCostSpin("激奏费用",
+            _ws?.AccelerateCost ?? -1,
+            v =>
+            {
+                if (_ws == null || _ctrl == null) return;
+                _ws.AccelerateCost = v;
+                _ctrl.CompileFromBlocks(_ws);
+                _ws = _ctrl.BlockModel ?? _ws;
+                Refresh();
+            }));
+
+        col.AddChild(BuildCostSpin("结晶费用",
+            _ws?.CrystallizeCost ?? -1,
+            v =>
+            {
+                if (_ws == null || _ctrl == null) return;
+                _ws.CrystallizeCost = v;
+                _ctrl.CompileFromBlocks(_ws);
+                _ws = _ctrl.BlockModel ?? _ws;
+                Refresh();
+            }));
+
+        _canvasCol.AddChild(col);
+    }
+
+    private static Control BuildCostSpin(string label, int cur, Action<int> setter)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+
+        var lbl = new Label { Text = label, CustomMinimumSize = new Vector2(88, 0), VerticalAlignment = VerticalAlignment.Center };
+        lbl.AddThemeFontSizeOverride("font_size", 12);
+        row.AddChild(lbl);
+
+        var spin = new SpinBox
+        {
+            MinValue = -1, MaxValue = 20, Step = 1, Value = cur,
+            CustomMinimumSize = new Vector2(120, 0),
+        };
+        spin.ValueChanged += v => setter((int)v);
+        row.AddChild(spin);
+        return row;
+    }
+
+    /// <summary>
+    /// 构筑与词条：关键词勾选 + 费用/攻防基础值。
+    /// 原来这个页签只能看一串关键词文本，改不了。
+    /// </summary>
+    private void BuildKeywordsPanel()
+    {
+        var col = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        col.AddThemeConstantOverride("separation", 6);
+
+        var title = new Label { Text = "常驻关键词（构筑期生效）" };
+        title.AddThemeFontSizeOverride("font_size", 13);
+        title.AddThemeColorOverride("font_color", new Color("FDE68A"));
+        col.AddChild(title);
+
+        foreach (var (key, zh) in DiyZh.Keywords)
+        {
+            var cb = new CheckBox { Text = zh, ButtonPressed = _ws?.Keywords?.Contains(key) == true };
+            string captured = key;
+            cb.Toggled += on =>
+            {
+                if (_ws == null || _ctrl == null) return;
+                _ws.Keywords ??= new List<string>();
+                if (on)
+                {
+                    if (!_ws.Keywords.Contains(captured)) _ws.Keywords.Add(captured);
+                }
+                else _ws.Keywords.Remove(captured);
+
+                _ctrl.CompileFromBlocks(_ws);
+                _ws = _ctrl.BlockModel ?? _ws;
+            };
+            col.AddChild(cb);
+        }
+
+        _canvasCol.AddChild(col);
+    }
     private Control BuildPaletteColumn()
     {
         var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(215, 460) };
@@ -332,6 +436,9 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             _canvasCol.AddChild(hint);
             return;
         }
+
+        if (_scopeTab == 5) BuildKeywordsPanel();
+        if (_scopeTab == 3 || _scopeTab == 4) BuildAcceleratePanel();
 
         foreach (var b in root.ToList()) _canvasCol.AddChild(RenderBlock(b, 0));
     }
@@ -459,6 +566,84 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         foreach (var b in list.ToList()) wrap.AddChild(RenderBlock(b, depth + 1));
     }
 
+
+    /// <summary>
+    /// 事件帽的发动代价增删器（爆能强化 / 唤灵 / 连击 / 吟唱）。
+    ///
+    /// 原来积木端完全没法给帽子加代价 ——「爆能强化4」这种最常见的
+    /// 影之诗机制在 Scratch 端根本表达不出来，只能回脚本端手写。
+    /// </summary>
+    private void BuildHatCostPanel(VBoxContainer col, Block b)
+    {
+        var head = new Label { Text = "发动代价" };
+        head.AddThemeFontSizeOverride("font_size", 11);
+        head.AddThemeColorOverride("font_color", new Color("FCA5A5"));
+        col.AddChild(head);
+
+        b.Costs ??= new List<(string kind, int amount)>();
+
+        var zhMap = new (string Key, string Zh)[]
+        {
+            ("enhance", "爆能强化"),
+            ("necromancy", "唤灵"),
+            ("combo", "连击"),
+            ("rally", "协作"),
+            ("countdown", "吟唱"),
+            ("earth_rite", "土之秘术"),
+        };
+
+        for (int i = 0; i < b.Costs.Count; i++)
+        {
+            int idx = i;
+            var (kind, amount) = b.Costs[i];
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 4);
+
+            var opt = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            for (int k = 0; k < zhMap.Length; k++) opt.AddItem(zhMap[k].Zh, k);
+            int sel = DiyZh.IndexOf(zhMap, kind);
+            if (sel >= 0) opt.Selected = sel;
+            opt.ItemSelected += s0 =>
+            {
+                int k = (int)s0;
+                if (k < 0 || k >= zhMap.Length || idx >= b.Costs.Count) return;
+                b.Costs[idx] = (zhMap[k].Key, b.Costs[idx].amount);
+                Apply();
+            };
+            row.AddChild(opt);
+
+            var spin = new SpinBox { MinValue = 0, MaxValue = 99, Step = 1, Value = amount, CustomMinimumSize = new Vector2(90, 0) };
+            spin.ValueChanged += v =>
+            {
+                if (idx >= b.Costs.Count) return;
+                b.Costs[idx] = (b.Costs[idx].kind, (int)v);
+                Apply();
+            };
+            row.AddChild(spin);
+
+            var del = new Button { Text = "x", CustomMinimumSize = new Vector2(26, 26) };
+            SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
+            del.Pressed += () =>
+            {
+                if (idx < b.Costs.Count) b.Costs.RemoveAt(idx);
+                Apply();
+                Refresh();
+            };
+            row.AddChild(del);
+
+            col.AddChild(row);
+        }
+
+        var add = new Button { Text = "+ 添加发动代价", CustomMinimumSize = new Vector2(0, 26) };
+        SvWbTheme.StyleButton(add);
+        add.Pressed += () =>
+        {
+            b.Costs.Add(("enhance", 4));
+            Apply();
+            Refresh();
+        };
+        col.AddChild(add);
+    }
     private void RedrawInspector()
     {
         if (_inspectorCol == null) return;
@@ -514,6 +699,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 if (b.Opcode == "hat_watch_event")
                     BuildTargetSlotEditor(col, "监听的随从", b.Target,
                                           v => { b.Target = v; Apply(); });
+                BuildHatCostPanel(col, b);
                 break;
 
             case "c_if_else":
