@@ -369,7 +369,9 @@ public partial class DeckBuilderView : Control
         // 投入 / 移除一张卡不该重建整个卡池网格 ——
         // 那是上百个 CardVisualWidget 的销毁重建，连续点选时非常卡。
         // 只有第一次（缓存为空）才真建，其余走原位更新。
-        _currentPage = 0;
+        // ⚠ 这里**绝不能**重置 _currentPage：
+        // RefreshAll 每次加减投入张数都会跑，重置会让玩家翻到第 2 页点一张卡
+        // 就被弹回第 1 页。页码只在筛选条件变更时重置。
         if (_gridWidgets.Count == 0) RefreshCardGrid();
         else UpdateCardGridInPlace();
         RefreshDeckList();

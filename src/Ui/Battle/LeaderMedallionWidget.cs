@@ -55,7 +55,10 @@ public partial class LeaderMedallionWidget : Control
 
     public override void _Process(double delta)
     {
-        if (!_isCandidate) return;
+        // 攻击瞄准态同样需要呼吸动画：
+        // 用突进随从指着敌方主战者、或敌方有守护随从时，主战者头像上
+        // 也要有准星/红叉的脉动反馈，不能只在候选态才动。
+        if (!_isCandidate && !_isAttackLegal && !_isAttackHovered) return;
         _pulseTime += (float)delta;
         QueueRedraw();
     }
@@ -219,6 +222,42 @@ public partial class LeaderMedallionWidget : Control
                      gold, false, 3f);
             DrawRect(new Rect2(FrameL - 13f, FrameT - 13f, FrameW + 26f, FrameH + 26f),
                      new Color(0.98f, 0.85f, 0.28f, pulse * 0.32f), false, 1.5f);
+        }
+
+        // 攻击瞄准态：与随从一致 —— 合法绯红呼吸框 + 双环准星，非法红叉 + 原因。
+        if (_isAttackLegal)
+        {
+            float ap = 0.55f + 0.45f * Mathf.Sin(_pulseTime * 5f);
+            var crimson = new Color(0.98f, 0.30f, 0.35f, ap);
+            DrawRect(new Rect2(FrameL - 8f, FrameT - 8f, FrameW + 16f, FrameH + 16f),
+                     crimson, false, 3f);
+            if (_isAttackHovered)
+            {
+                var ctr = new Vector2(FrameCx, FrameT + FrameH * 0.5f);
+                DrawArc(ctr, 34f, 0, Mathf.Tau, 32, crimson, 2.5f);
+                DrawArc(ctr, 26f, 0, Mathf.Tau, 32, new Color(1f, 0.85f, 0.35f, ap), 1.5f);
+                DrawLine(ctr + new Vector2(-40, 0), ctr + new Vector2(-22, 0), crimson, 2f);
+                DrawLine(ctr + new Vector2(22, 0), ctr + new Vector2(40, 0), crimson, 2f);
+                DrawLine(ctr + new Vector2(0, -40), ctr + new Vector2(0, -22), crimson, 2f);
+                DrawLine(ctr + new Vector2(0, 22), ctr + new Vector2(0, 40), crimson, 2f);
+            }
+        }
+        else if (_isAttackHovered)
+        {
+            var deny = new Color(0.92f, 0.25f, 0.25f, 0.95f);
+            DrawLine(new Vector2(FrameL - 6f, FrameT - 6f),
+                     new Vector2(FrameL + FrameW + 6f, FrameT + FrameH + 6f), deny, 3.5f);
+            DrawLine(new Vector2(FrameL + FrameW + 6f, FrameT - 6f),
+                     new Vector2(FrameL - 6f, FrameT + FrameH + 6f), deny, 3.5f);
+            if (!string.IsNullOrEmpty(_attackDenyReason))
+            {
+                var fs = ThemeDB.FallbackFont;
+                var sz = fs.GetStringSize(_attackDenyReason, HorizontalAlignment.Left, -1, 11);
+                var bp = new Vector2(FrameCx - sz.X * 0.5f - 4f, FrameT - 24f);
+                DrawRect(new Rect2(bp, new Vector2(sz.X + 8f, 18f)), new Color(0.10f, 0.02f, 0.02f, 0.92f));
+                DrawString(fs, bp + new Vector2(4f, 13f), _attackDenyReason,
+                           HorizontalAlignment.Left, -1, 11, new Color(1f, 0.75f, 0.75f));
+            }
         }
 
         if (_dimmed)

@@ -245,34 +245,48 @@ public sealed class RuntimeEntity
     /// </summary>
     public bool IsRevealed { get; set; }
 
-    public EntitySnapshot TakeSnapshot() => new()
+    /// <summary>
+    /// 拍快照。<paramref name="extraTraits"/> 用于「先贴兵种再拍快照」的场景 ——
+    /// 亡者召还要在 CreateEntity 之后才能确定「亡者」兵种，
+    /// 但 EnteredThisMatch 的快照在 CreateEntity 中间就拍下了。
+    /// 与其事后重拍整份快照，不如让调用方在拍的那一刻就把附加兵种带上。
+    /// </summary>
+    public EntitySnapshot TakeSnapshot(params SymbolId<TraitTag>[] extraTraits)
     {
-        EntityId = EntityId,
-        EntrySerial = EntrySerial,
-        CardId = Def?.CardId ?? 0,
-        Def = Def,
-        Name = Def?.Name ?? "",
-        Kind = Def?.Kind ?? Ast.CardKind.Follower,
-        Zone = Zone,
-        PlayerId = PlayerId,
-        Attack = Attack,
-        Life = Life,
-        MaxLife = MaxLife,
-        Cost = Cost,
-        BaseAttack = Def?.BaseAttack ?? 0,
-        BaseLife = Def?.BaseLife ?? 0,
-        BaseCost = Def?.BaseCost ?? 0,
-        IsEvolved = IsEvolved,
-        IsSuperEvolved = IsSuperEvolved,
-        IsSilenced = IsSilenced,
-        PlayedWithEnhance = PlayedWithEnhance,
-        Keywords = new List<SymbolId<KeywordTag>>(Keywords),
-        Traits = new List<SymbolId<TraitTag>>(Traits),
-        Counters = new Dictionary<SymbolId<CounterTag>, int>(Counters),
-        KeywordValues = new Dictionary<SymbolId<KeywordTag>, int>(KeywordValues),
-        TempModifiers = new List<TemporaryModifier>(TempModifiers),
-        EffectHistory = new List<AppliedEffectRecord>(EffectHistory),
-    };
+        var traits = new List<SymbolId<TraitTag>>(Traits);
+        if (extraTraits != null)
+            foreach (var t in extraTraits)
+                if (!traits.Contains(t)) traits.Add(t);
+
+        return new EntitySnapshot
+        {
+            EntityId = EntityId,
+            EntrySerial = EntrySerial,
+            CardId = Def?.CardId ?? 0,
+            Def = Def,
+            Name = Def?.Name ?? "",
+            Kind = Def?.Kind ?? Ast.CardKind.Follower,
+            Zone = Zone,
+            PlayerId = PlayerId,
+            Attack = Attack,
+            Life = Life,
+            MaxLife = MaxLife,
+            Cost = Cost,
+            BaseAttack = Def?.BaseAttack ?? 0,
+            BaseLife = Def?.BaseLife ?? 0,
+            BaseCost = Def?.BaseCost ?? 0,
+            IsEvolved = IsEvolved,
+            IsSuperEvolved = IsSuperEvolved,
+            IsSilenced = IsSilenced,
+            PlayedWithEnhance = PlayedWithEnhance,
+            Keywords = new List<SymbolId<KeywordTag>>(Keywords),
+            Traits = traits,
+            Counters = new Dictionary<SymbolId<CounterTag>, int>(Counters),
+            KeywordValues = new Dictionary<SymbolId<KeywordTag>, int>(KeywordValues),
+            TempModifiers = new List<TemporaryModifier>(TempModifiers),
+            EffectHistory = new List<AppliedEffectRecord>(EffectHistory),
+        };
+    }
 }
 
 /// <summary>

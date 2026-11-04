@@ -324,10 +324,17 @@ public sealed class TurnRunner
         int pay = card.Cost;
         int bestTier = 0;
         foreach (var tier in EnhanceTiers(card)) if (pp >= tier && tier > bestTier) bestTier = tier;
-        if (bestTier > pay) pay = bestTier;
+
+        // 只要命中合法档位（bestTier > 0）且不低于当前牌面费用，就算发动了爆能。
+        // 旧判据 `bestTier > card.Cost` 会漏掉「手牌被加费到与档位同额」的情形：
+        // 4 费卡带 Enhance(5) 在手里被加费成 5 费，5 PP 打出时 5 > 5 为假，
+        // 于是一档都不算发动。
+        bool isEnhanced = bestTier > 0 && bestTier >= card.Cost;
+        if (isEnhanced) pay = bestTier;
+
         // 记录本卡本次是以【爆能强化】打出（供 "Whenever you play an Enhanced card" 判定）。
         // 必须在扣费前记：进墓地/被回手的路径都不会再回来改这个标志。
-        card.PlayedWithEnhance = bestTier > card.Cost;
+        card.PlayedWithEnhance = isEnhanced;
 
         // 本体费用不够时，激奏 / 结晶是**合法的另一条出牌路径**。
         // 规则的顺序是：能按本体打出就必须按本体，只有不够时才允许这两者。
@@ -356,8 +363,13 @@ public sealed class TurnRunner
         if (card.Def.Kind == Ast.CardKind.Spell && !HasLegalTargetForSpell(card)) return false;
 
         // ── 扣费──
-        // pp_at_play 记录打出前的 PP，供 Enhance 分支判定能走哪一档
-        _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), pp);
+        // pp_at_play 是**本次生效的爆能档位**，不是玩家当前 PP。
+        //
+        // 旧实现无条件写 pp：4 费卡在手握 7 PP 时打出（正常出，没有爆能），
+        // pp_at_play 也被写成 7，VM 里的 `if pp_at_play >= 7` 分支被白嫖执行；
+        // 场上有《米路缇欧》封印爆能时更是直接绕过封印。
+        // 未发动爆能就必须写 0，让所有爆能分支走 else。
+        _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), isEnhanced ? bestTier : 0);
         _state.WriteCounter(playerId, ppKey, pp - pay);
 
         // 记入本局已使用卡牌（书页「使用」页签按它统计）。

@@ -2164,8 +2164,9 @@ public sealed class BattleState : IVmWorld
     }
 
     /// <summary>IVmWorld 接口实现：默认完整复制。</summary>
-    RuntimeEntity IVmWorld.SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId)
-        => SpawnCopy(source, toZone, toPlayerId, exact: true);
+    RuntimeEntity IVmWorld.SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId,
+                                     bool exact, bool addDepartedTrait)
+        => SpawnCopy(source, toZone, toPlayerId, exact, addDepartedTrait);
 
     /// <summary>
     /// 复制一个实体。
@@ -2180,13 +2181,53 @@ public sealed class BattleState : IVmWorld
     /// 两者都**不继承**「本回合已攻击 / 已启动」：复制体是一次全新入场，
     /// EnteredTurn 由 PlaceInZone 盖成当前回合，召唤失调照常生效。
     /// </summary>
-    public RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId, bool exact = true)
+
+    /// <summary>
+    /// 给实体贴上「亡者（Departed）」兵种。
+    ///
+    /// 被亡者召还的随从**同时拥有原兵种与亡者**（多兵种），不是替换。
+    /// 贴完后必须回头修正 <c>EnteredThisMatch</c> 里已拍下的那份快照 ——
+    /// PlaceInZone 在 CreateEntity 时就拍了快照，那时还没贴亡者，
+    /// 任何「本局进入战场的亡者随从数」统计都会漏数。
+    /// </summary>
+    public void TagDeparted(RuntimeEntity e)
+    {
+        if (e == null) return;
+        var departed = Schema.Trait("Departed");
+        if (!e.Traits.Contains(departed)) e.Traits.Add(departed);
+
+        // 同步历史快照：EnteredThisMatch 的快照在 CreateEntity 内部就拍下了，
+        // 那时还没贴亡者。不修这份快照，任何「本局进入战场的亡者随从数」都会漏数。
+        var p = e.PlayerId >= 0 && e.PlayerId < Players.Length ? Players[e.PlayerId] : null;
+        if (p?.EnteredThisMatch == null) return;
+
+        for (int i = p.EnteredThisMatch.Count - 1; i >= 0; i--)
+        {
+            var snap = p.EnteredThisMatch[i];
+            if (snap.EntityId != e.EntityId) continue;
+            if (snap.Traits.Contains(departed)) return;
+
+            // EntitySnapshot 是带 init 属性的 class（不是 record），不能 with，
+            // 用 TakeSnapshot 重拍一份即可 —— 此刻实体已带亡者兵种。
+            p.EnteredThisMatch[i] = e.TakeSnapshot();
+            return;
+        }
+    }
+
+    public RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId,
+                                   bool exact = true, bool addDepartedTrait = false)
     {
         var s = source.Snapshot;
         if (s == null) return null;
 
         // 白板复制：只用卡号生成，CreateEntity 按卡面印刷值装配。
-        if (!exact) return CreateEntity(s.CardId, toZone, toPlayerId);
+        if (!exact)
+        {
+            var plain = CreateEntity(s.CardId, toZone, toPlayerId);
+            if (plain != null && addDepartedTrait) TagDeparted(plain);
+            if (plain != null) NotifySummoned(plain);
+            return plain;
+        }
 
         var e = CreateEntity(s.CardId, toZone, toPlayerId);
         if (e == null) return null;
@@ -2246,6 +2287,16 @@ public sealed class BattleState : IVmWorld
         e.AttackedThisTurn = false;
         e.AttacksThisTurn = 0;
         e.EngagedThisTurn = false;
+
+        // 亡者召还：贴上「亡者」兵种。
+        // ⚠ 必须在 CreateEntity 之后的**最末尾**做，但快照已经拍过了 ——
+        // 所以还要回头修正 EnteredThisMatch 里的那份快照（见下方 SyncEnteredSnapshot）。
+        if (addDepartedTrait) TagDeparted(e);
+
+        // 复制 / 亡者召还上场的随从同样是「进入战场」，
+        // 必须走与正常召唤一致的通知：rally 计数、OnEnterField、OnSummon。
+        // 早先完全没调，导致所有被召还的随从既不增加协作数、也不触发出场效果。
+        NotifySummoned(e);
 
         return e;
     }

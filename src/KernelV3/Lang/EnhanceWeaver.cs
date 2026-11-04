@@ -84,10 +84,18 @@ public static class EnhanceWeaver
                 var bev = b.Trigger?.Event ?? CoreEvent.OnPlay;
                 if (bev != ev) continue;
 
-                // 已经被 InsteadWeaver / MetaModeWeaver 编成「if/else 分档树」的能力，
-                // 替代语义已经就位，绝不能再按累加型爆能折叠一次 ——
-                // 那会把「改为 3 点」重新并成「1 点 + 3 点」。
-                if (IsAlreadyWoven(b)) continue;
+                // 已被 InsteadWeaver / MetaModeWeaver 编成 if/else 分档树的能力：
+                // 它就是「基础 + 替代型爆能」的合成体，语义已完整。
+                //
+                // 这里**必须把它吸收成 baseAb**，不能 continue 跳过 ——
+                // 一张卡同时有「替代型 Enhance(5)」与「累加型 Enhance(7)」时，
+                // 跳过会让 Enhance(7) 单独留成第二条 OnPlay 能力，
+                // 7 费打出时 VM 先后触发两条入场曲（浮窗弹两次、效果重复）。
+                if (IsAlreadyWoven(b))
+                {
+                    if (baseIdx < 0) { baseAb = b; baseIdx = j; }
+                    continue;
+                }
 
                 if (IsEnhanceTier(b, out var amt)) tiers.Add((amt, b, j));
                 else if (baseIdx < 0 && !HasAnyCost(b)) { baseAb = b; baseIdx = j; }
@@ -143,13 +151,17 @@ public static class EnhanceWeaver
                 // 把各个 Enhance 档位写回 Costs。
                 // 运行时 TurnRunner 靠它算出本次实付最高档；
                 // 清成空的话付费永远停在基础费，爆能变成白孪。
-                Costs = tiers
-                    .Select(t => new CostSpec
+                // baseAb 身上可能已经带着「替代型爆能」的档位（Enhance(5)），
+                // 必须一并带上，否则 TurnRunner.EnhanceTiers 只看到累加档，
+                // 5 费打出时不会算作爆能。
+                Costs = (baseAb?.Costs ?? Array.Empty<CostSpec>())
+                    .Where(c => c.Kind == CostKind.UsePp)
+                    .Concat(tiers.Select(t => new CostSpec
                     {
                         Kind = CostKind.UsePp,
                         Label = "enhance",
                         Amount = NumExpr.Const(t.amount),
-                    })
+                    }))
                     .ToArray(),
                 // 不要在外面再套一层 `if true then ...`：
                 // elseBody 本身已经是完整的阶梯分支，外层恒真条件只是打印噪音，

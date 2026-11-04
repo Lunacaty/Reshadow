@@ -52,7 +52,7 @@ public partial class CardGalleryView : Control
         bar.AddChild(back);
 
         _search = new LineEdit { PlaceholderText = "搜卡名 / 效果…", CustomMinimumSize = new Vector2(220, 30) };
-        _search.TextChanged += _ => RefreshGrid();
+        _search.TextChanged += _ => { _currentPage = 0; RefreshGrid(); };
         bar.AddChild(_search);
 
         _kindPicker = new OptionButton { CustomMinimumSize = new Vector2(120, 30) };
@@ -62,7 +62,7 @@ public partial class CardGalleryView : Control
         _kindPicker.AddItem("随从", 1);
         _kindPicker.AddItem("法术", 2);
         _kindPicker.AddItem("护符", 3);
-        _kindPicker.ItemSelected += _ => RefreshGrid();
+        _kindPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
         bar.AddChild(_kindPicker);
 
         AddChild(bar);
@@ -148,7 +148,7 @@ public partial class CardGalleryView : Control
             .Select(c => c.Clan.IsValid ? c.Clan.Name : "Neutral")
             .Distinct().OrderBy(x => x, StringComparer.Ordinal)).ToList();
         for (int i = 0; i < clans.Count; i++) _clanPicker.AddItem(clans[i], i + 1);
-        _clanPicker.ItemSelected += _ => RefreshGrid();
+        _clanPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
         flow.AddChild(_clanPicker);
 
         // 费用
@@ -156,7 +156,7 @@ public partial class CardGalleryView : Control
         SvWbTheme.StyleButton(_costPicker); SvWbTheme.StyleOptionPopup(_costPicker);
         _costPicker.AddItem("全部费用", 0);
         for (int i = 0; i <= 8; i++) _costPicker.AddItem(i == 8 ? "8+ 费" : i + " 费", i + 1);
-        _costPicker.ItemSelected += _ => RefreshGrid();
+        _costPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
         flow.AddChild(_costPicker);
 
         // 稀有度
@@ -165,7 +165,7 @@ public partial class CardGalleryView : Control
         _rarityPicker.AddItem("全部稀有度", 0);
         _rarityPicker.AddItem("青铜", 1); _rarityPicker.AddItem("白银", 2);
         _rarityPicker.AddItem("黄金", 3); _rarityPicker.AddItem("虹彩", 4);
-        _rarityPicker.ItemSelected += _ => RefreshGrid();
+        _rarityPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
         flow.AddChild(_rarityPicker);
 
         // 卡包
@@ -175,12 +175,12 @@ public partial class CardGalleryView : Control
         var packs = (_store.Catalog.Packs?.Keys ?? Enumerable.Empty<string>())
             .OrderBy(x => x, StringComparer.Ordinal).ToList();
         for (int i = 0; i < packs.Count; i++) _packPicker.AddItem(packs[i], i + 1);
-        _packPicker.ItemSelected += _ => RefreshGrid();
+        _packPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
         flow.AddChild(_packPicker);
 
         // 特殊筛选
         _altOnlyCheck = new CheckBox { Text = "★ 仅看含异画" };
-        _altOnlyCheck.Toggled += _ => RefreshGrid();
+        _altOnlyCheck.Toggled += _ => { _currentPage = 0; RefreshGrid(); };
         flow.AddChild(_altOnlyCheck);
 
         _tokenCheck = new CheckBox { Text = "含衍生 Token" };

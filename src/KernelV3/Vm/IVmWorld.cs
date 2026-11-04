@@ -155,7 +155,8 @@ public interface IVmWorld
         => target != null && target.Keywords.Contains(kw);
 
     /// <summary>按快照生成一个复制体（用于「复制一份」）。</summary>
-    RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId);
+    RuntimeEntity SpawnCopy(EntityRef source, ZoneRef toZone, int toPlayerId,
+                            bool exact = true, bool addDepartedTrait = false);
 
     /// <summary>把实体变形为另一张卡。</summary>
     void TransformEntity(RuntimeEntity e, int intoCardId);

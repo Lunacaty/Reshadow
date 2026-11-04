@@ -1006,7 +1006,9 @@ public partial class BoardUnitWidget : Control
         var e = Entity;
         if (e == null || e.IsSilenced) return list;
 
-        if (_badge == UnitAbilityBadge.LastWords) list.Add(("last_words", 0));
+        // 谢幕曲被移除（或从未有过）的随从不再轮播红书页。
+        if (_badge == UnitAbilityBadge.LastWords && !e.LastWordsRemoved)
+            list.Add(("last_words", 0));
         else if (_badge == UnitAbilityBadge.Triggered) list.Add(("triggered", 0));
 
         var schema = CurrentController?.Schema;

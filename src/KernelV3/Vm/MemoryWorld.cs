@@ -243,7 +243,8 @@ public sealed class MemoryWorld : IVmWorld
         foreach (var id in cardIds) SpawnCard(id, ZoneRef.Deck, playerId);
     }
 
-    public RuntimeEntity SpawnCopy(EntityRef src, ZoneRef toZone, int toPlayerId)
+    public RuntimeEntity SpawnCopy(EntityRef src, ZoneRef toZone, int toPlayerId,
+                                   bool exact = true, bool addDepartedTrait = false)
     {
         var s = src.Snapshot;
         if (s == null) return null;

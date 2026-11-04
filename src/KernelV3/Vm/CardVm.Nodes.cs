@@ -882,9 +882,12 @@ public sealed partial class CardVm
                 if (refs.Count == 0) break;
                 // 接口上只有 3 参数版；exact 区分需要落到具体实现。
                 e = _world is Battle.BattleState bs2
-                    ? bs2.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner), n.IsExactCopy)
-                    : _world.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner));
-                if (n.AddDepartedTrait && e != null) TagDeparted(e);
+                    // 直接传 addDepartedTrait：让 SpawnCopy 在拍 EnteredThisMatch 快照**之前**
+                    // 就带上亡者兵种，而不是等返回后再补 —— 补的话快照里永远没有亡者。
+                    ? bs2.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner),
+                                    n.IsExactCopy, n.AddDepartedTrait)
+                    : _world.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner),
+                                       addDepartedTrait: n.AddDepartedTrait);
             }
             else if (n.SourceKind == CardSourceKind.CopyOfPrevious)
             {

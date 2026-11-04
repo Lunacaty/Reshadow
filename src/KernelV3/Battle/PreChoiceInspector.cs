@@ -54,8 +54,13 @@ public static class PreChoiceInspector
         {
             if (kind == PlayerActionKind.PlayCard)
             {
-                state.WriteCounter(card.PlayerId, ppAtPlayKey,
-                                   state.ReadCounter(card.PlayerId, ppKey));
+                // 与 TurnRunner.PlayCard 保持同一真相：被封印爆能时 pp_at_play 写 0，
+                // 否则预扫会把爆能分支当成可走，弹出根本不该出现的选目标框。
+                int ppNow = state.ReadCounter(card.PlayerId, ppKey);
+                bool suppressed = state.HasEffectiveKeyword(
+                    card, state.Schema.Keyword("suppress_enhance"));
+                int synthetic = suppressed ? 0 : ppNow;
+                state.WriteCounter(card.PlayerId, ppAtPlayKey, synthetic);
                 state.WriteCounter(card.PlayerId, comboKey, savedCombo + 1);
             }
             else if (kind == PlayerActionKind.Evolve) card.IsEvolved = true;
