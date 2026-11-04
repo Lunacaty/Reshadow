@@ -691,24 +691,48 @@ public sealed class TurnRunner
         //     follower」在己方空场时也能空放。
         //   · 写成「任意一个 > 0 就 true」，于是一张要连选两个目标
         //     （先友方再敌方）的法术，只要友方有候选就能打出，敌方空场也放。
+        // 带爆能 / 连击替代的指向性法术，Body 在编织后是顶层 ConditionalNode。
+        // 只遍历顶层会让它绕过目标合法性预检 —— 敌方空场也能空放出去。
+        // 必须按当前 PP / 连击走进**实际会走**的那个分支。
+        var eval = new Vm.VmEval(_state);
+        var scope = new Vm.VmScope
+        {
+            Owner = Core.ZoneScope.Self,
+            Controller = card.PlayerId,
+            Source = Vm.EntityRef.From(card),
+        };
+
         bool sawChoose = false;
+        bool CheckNodes(IReadOnlyList<Ast.EffectNode> nodes)
+        {
+            if (nodes == null) return true;
+            foreach (var node in nodes)
+            {
+                if (node is Ast.ConditionalNode cond)
+                {
+                    bool take = true;
+                    try { take = cond.Condition == null || eval.EvalBool(cond.Condition, scope); }
+                    catch { take = true; }
+                    if (!CheckNodes(take ? cond.Then : cond.Else)) return false;
+                    continue;
+                }
+
+                var spec0 = GetChooseTarget(node);
+                if (spec0 == null || spec0.Mode != SelectMode.Choose) continue;
+                if (spec0.SourceKind == Ast.TargetSourceKind.Slot) continue;
+
+                sawChoose = true;
+                if (CountLegalTargets(spec0, card) <= 0) return false;
+            }
+            return true;
+        }
+
         foreach (var ab in card.Def.Abilities)
         {
             if (ab?.Body == null) continue;
-            foreach (var node in ab.Body)
-            {
-                var spec = GetChooseTarget(node);
-                if (spec == null || spec.Mode != SelectMode.Choose) continue;
-
-                // 引用 $selected 槽位的目标由**前面那条 Select 指令**填，
-                // 出牌前槽位必然是空的 —— 对它预检等于要求「先有结果再执行」，
-                // 会把所有「先选再打」的复合效果卡死。
-                if (spec.SourceKind == Ast.TargetSourceKind.Slot) continue;
-
-                sawChoose = true;
-                if (CountLegalTargets(spec, card) <= 0) return false;
-            }
+            if (!CheckNodes(ab.Body)) return false;
         }
+
         // 走到这里说明「所有 Choose 目标都至少有一个合法候选」。
         // 这里必须返回 true ——
         // 早先写的是 return !sawChoose，于是只要卡带手选目标就恒返回 false，

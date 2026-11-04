@@ -426,10 +426,14 @@ public sealed partial class CardVm
                     if (n.Life != null)
                     {
                         t.Life += life;
-                        // 生命上限必须同步：只加 Life 不加 MaxLife，
-                        // 之后任何 RestoreLife 都会被 MaxLife 截断回去。
-                        if (life > 0) t.MaxLife += life;
-                        else if (life < 0 && t.Life < t.MaxLife) t.MaxLife = t.Life;
+                        // 身材增减（+X/+Y 或 -X/-Y）**总是**同步增减上限。
+                        //
+                        // 旧实现在 life < 0 时写 `if (t.Life < t.MaxLife) t.MaxLife = t.Life;`，
+                        // 把「受伤」与「减上限」混成一件事：
+                        // 5/5 受过 2 点伤变成 3/5，再吃 -0/-1 → 生命 2，
+                        // 判定 `2 < 5` 成立 → MaxLife 被砍成 2，
+                        // 等于额外多扣了 2 点上限，还抹掉了它的「已受伤」状态。
+                        t.MaxLife += life;
                     }
                     break;
 

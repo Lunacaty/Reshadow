@@ -204,6 +204,7 @@ public static class DiyBlockModel
         ["bool_has_pack"] = BlockShape.Hex,
         ["bool_has_clan"] = BlockShape.Hex,
         ["bool_has_state"] = BlockShape.Hex,
+        ["bool_has_card_name"] = BlockShape.Hex,
         ["bool_exists"] = BlockShape.Hex,
         ["bool_true"] = BlockShape.Hex,
 
@@ -1106,6 +1107,16 @@ public sealed class DiyBlockCompiler
                 };
             // 发现的卡包/职业筛选。缺这两支会让积木端造不出
             // 「只从某卡包/某职业发现」的卡 —— 而脚本端与表单端都能造。
+            case "bool_has_card_name":
+                // 具名卡过滤（"Fuse: Ominous Artifact β" / "not named X"）。
+                // 不支持的话这类卡切到积木视图会直接报「积木不支持条件」。
+                return new HasCardNameExpr
+                {
+                    CardId = b.IntA != 0 ? b.IntA : CardIdOf(b.Text),
+                    CardName = b.Text ?? "",
+                    Of = CompileTarget(b.Target) ?? TargetSpec.Item,
+                };
+
             case "bool_has_pack":
                 return new HasPackExpr
                 {
@@ -1851,6 +1862,14 @@ public sealed class DiyBlockDecompiler
                 return new Block { Opcode = "bool_has_kw", Text = hk.Keyword.Name, Target = Target(hk.Of) };
             case HasTraitExpr ht:
                 return new Block { Opcode = "bool_has_trait", Text = ht.Trait.Name, Target = Target(ht.Of) };
+            case HasCardNameExpr hcn:
+                return new Block
+                {
+                    Opcode = "bool_has_card_name",
+                    Text = hcn.CardName,
+                    IntA = hcn.CardId,
+                    Target = Target(hcn.Of),
+                };
             case HasPackExpr hp:
                 return new Block { Opcode = "bool_has_pack", Text = hp.PackId, Target = Target(hp.Of) };
             case HasClanExpr hcl:

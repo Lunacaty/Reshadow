@@ -240,7 +240,7 @@ public sealed class CombatResolver
         bool overflowPaid = false;
 
         // 4. 超进化溢出 1 点（第 2 步用能力破坏对方随从时）
-        if (attacker.IsSuperEvolved && isFollowerTarget && defender.Zone != ZoneRef.Board)
+        if (attacker.IsSuperEvolved && isFollowerTarget && defender.Zone == ZoneRef.Cemetery)
         {
             OverflowDamage(attacker, defender, vm);
             overflowPaid = true;
@@ -298,7 +298,7 @@ public sealed class CombatResolver
         _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
 
         // 10. 超进化溢出 1 点（交战破坏对方随从时）
-        if (!overflowPaid && attacker.IsSuperEvolved && isFollowerTarget && defender.Zone != ZoneRef.Board)
+        if (!overflowPaid && attacker.IsSuperEvolved && isFollowerTarget && defender.Zone == ZoneRef.Cemetery)
             OverflowDamage(attacker, defender, vm);
 
         // 11/12. 被破坏随从的谢幕曲等诱发效果

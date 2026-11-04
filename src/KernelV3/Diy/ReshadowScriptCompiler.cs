@@ -2200,6 +2200,13 @@ public sealed class ReshadowScriptCompiler
 
     private BoolExpr ParseOneCompare(Cursor p)
     {
+        // 取反：与 PrintBoolExpr 的 `not (...)` 成对。
+        if (p.PeekToken() == "not" || p.PeekToken() == "!")
+        {
+            p.Next();
+            return new NotExpr(ParseOneCompare(p));
+        }
+
         // 括号包起来的子条件（可选）
         if (p.TryChar('('))
         {
@@ -3047,6 +3054,10 @@ public sealed class ReshadowScriptCompiler
         }
         if (e is AndExpr a) return string.Join(" and ", a.Items.Select(PrintBoolExpr));
         if (e is OrExpr o) return string.Join(" or ", o.Items.Select(PrintBoolExpr));
+        // 取反条件：「if this follower is unevolved」编译出来就是
+        // NotExpr(HasStateExpr(Evolved))。不处理会掉进 1 >= 1 的兜底 ——
+        // 任何带「未进化时 / 非某状态时」的卡切到脚本视图，条件当场变恒真。
+        if (e is NotExpr nt) return "not (" + PrintBoolExpr(nt.Inner) + ")";
         return "1 >= 1";
     }
 

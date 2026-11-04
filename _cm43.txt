@@ -1,0 +1,38 @@
+feat(146): C-2/C-3/C-4 + E-1/E-2/E-3 六处漏洞修复
+
+C-1（满场获得土之印/证据判为满场蒸发）按用户判定**不是漏洞**：
+规则就是如此，Gemini 理解错了。本轮跳过。
+
+【C-2 已受伤随从受 -0/-Y 时 MaxLife 被截断为残血】
+  DoModifyStats 写的是 `if (life < 0 && t.Life < t.MaxLife) t.MaxLife = t.Life;`。
+  5/5 受过 2 点伤变 3/5，吃 -0/-1 → 生命 2，判定 2 < 5 成立 → MaxLife 砍成 2，
+  等于额外多扣 2 点上限，还抹掉了它的「已受伤」状态。
+  改为身材增减**总是**同步增减上限：t.MaxLife += life。
+
+【C-3 超进化溢出伤害判定过宽】
+  判据写成 `defender.Zone != ZoneRef.Board` —— 防守方被回手或放逐同样为真，
+  超进化随从白嫖 1 点飞脸。对照 76-c 3.1.2，只有**被破坏（进墓场）**才触发。
+  两处统一改为 `defender.Zone == ZoneRef.Cemetery`。
+
+【C-4 带条件分支的指向性法术绕过目标预检】
+  EnhanceWeaver / InsteadWeaver 会把 Body 改写成顶层 ConditionalNode，
+  而 HasLegalTargetForSpell 只遍历顶层，敌方空场也能空放。
+  新增 CheckNodes 递归：按当前局面求值走进实际会走的分支。
+
+【E-1 AstJsonCodec 漏编解码 HasCardNameExpr 与 TriggerSpec.IsFanfare】
+  具名卡过滤掉进 default 变成空节点，解码返回 null —— 
+  DIY 里切一次 AST JSON 页签条件就静默消失；IsFanfare 丢失让 suppress_fanfare 失效。
+  两侧都补齐。实测：回读 HasCardName=Ominous Artifact / IsFanfare=True。
+
+【E-2 ReshadowScriptCompiler 漏处理 NotExpr】
+  PrintBoolExpr 只处理 HasState/Compare/And/Or，NotExpr 落进 `return "1 >= 1"` ——
+  任何「未进化时 / 非某状态时」的卡切到脚本视图条件当场变恒真。
+  Print 侧补 `not (...)`，ParseOneCompare 侧补 not / ! 解析。
+
+【E-3 DiyBlockModel 不支持 HasCardNameExpr】
+  Shapes 登记 bool_has_card_name，Compiler.CompileCond 与 Decompiler.Cond 各补一支。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 逐卡矩阵 32-32 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 /
+UI 3-3 / 战斗 UI 31-31 —— 全绿

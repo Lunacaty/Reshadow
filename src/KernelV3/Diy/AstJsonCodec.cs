@@ -97,6 +97,9 @@ public static class AstJsonCodec
             if (ab.Trigger.DuringTurn != TurnOwnerScope.Any) t["turn"] = ab.Trigger.DuringTurn.ToString();
             if (ab.Trigger.MaxTriggersPerTurn > 0) t["max_per_turn"] = ab.Trigger.MaxTriggersPerTurn;
             if (ab.Trigger.ManualEvolveOnly) t["manual_evolve_only"] = true;
+            // IsFanfare 必须落盘：入场曲封印光环（suppress_fanfare）靠它判定，
+            // JSON 反序列化回来的随从丢了这一位，封印就失效。
+            if (ab.Trigger.IsFanfare) t["is_fanfare"] = true;
             if (ab.Trigger.SubjectFilter != null) t["subject"] = EncodeTarget(ab.Trigger.SubjectFilter);
             d["trigger"] = t;
         }
@@ -484,6 +487,15 @@ private static object EncodeNum(NumExpr e)
                 d["$bool"] = "IsPrevious";
                 d["slot"] = ip.Slot ?? "$selected";
                 break;
+            case HasCardNameExpr hcn:
+                // 具名卡过滤（"Fuse: Ominous Artifact β and γ" / "not named X"）。
+                // 缺这条会掉进 default 变成空节点，解码直接返回 null ——
+                // 在 DIY 编辑器里切一次 AST JSON 页签，条件就静默消失了。
+                d["$bool"] = "HasCardName";
+                if (hcn.CardId > 0) d["card_id"] = hcn.CardId;
+                if (!string.IsNullOrEmpty(hcn.CardName)) d["card_name"] = hcn.CardName;
+                if (hcn.Of != null) d["of"] = EncodeTarget(hcn.Of);
+                break;
             case DeckRuleExpr dr:
                 d["$bool"] = "DeckRule";
                 d["rule"] = dr.Rule.ToString();
@@ -655,6 +667,7 @@ private static object EncodeNum(NumExpr e)
                 DuringTurn = JsonReader.Enum(t, "turn", TurnOwnerScope.Any),
                 MaxTriggersPerTurn = JsonReader.Int(t, "max_per_turn"),
                 ManualEvolveOnly = JsonReader.Bool(t, "manual_evolve_only"),
+                IsFanfare = JsonReader.Bool(t, "is_fanfare"),
                 SubjectFilter = t.TryGetValue("subject", out var sj) ? DecodeTarget(sj) : null,
             };
         }
@@ -1038,6 +1051,17 @@ private static object EncodeNum(NumExpr e)
                 };
             case "IsPrevious":
                 return new IsPreviousExpr { Slot = JsonReader.Str(m, "slot", "$selected") };
+            case "HasCardName":
+            {
+                var cn = JsonReader.Str(m, "card_name", "");
+                int cid = ResolveCardId(JsonReader.Int(m, "card_id"), cn);
+                return new HasCardNameExpr
+                {
+                    CardId = cid,
+                    CardName = cn,
+                    Of = m.TryGetValue("of", out var ofCn) ? DecodeTarget(ofCn) : TargetSpec.Item,
+                };
+            }
             case "DeckRule":
                 return new DeckRuleExpr
                 {
