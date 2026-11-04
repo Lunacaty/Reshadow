@@ -1382,21 +1382,29 @@ public sealed class ActionParser
             cur.TryMatchAnyWord("each");
             cur.TryMatchAnyWord("of");
 
-            // 「Add 3 copies instead.」——卡名承前省略，只写数量与 instead。
-            // 以前这里靠 ?? TargetSpec.Self 兜底静默编成「复制本卡」，
-            // 语义错得离谱却不报错；现在必须显式认出「instead + 无卡名」= 复制前一句的对象。
-            if (cur.Current.IsWord("instead"))
+            // 「Add 3 copies instead.」/「Add 3 copies to your hand instead.」
+            // 卡名承前省略，只写数量与 instead。
+            //
+            // 必须先消费可选的目的地短语再判 instead：
+            // 卡面语序两种都有，只认紧挨着的 instead 会漏掉「to your hand instead」。
+            // 以前这两种都靠 ?? TargetSpec.Self 兜底静默编成「复制本卡」。
             {
-                cur.Advance();
-                nodes.Add(new MacroNode { Macro = _lex.Macro("instead_marker") });
-                nodes.Add(new SpawnCardNode
+                int saveBeforeDest = cur.Position;
+                var preDest = ConsumeDestination(cur);
+                if (cur.Current.IsWord("instead"))
                 {
-                    SourceKind = CardSourceKind.CopyOfPrevious,
-                    ToZone = toZone,
-                    ToOwner = ZoneScope.Self,
-                    Count = copyCount,
-                });
-                return nodes;
+                    cur.Advance();
+                    nodes.Add(new MacroNode { Macro = _lex.Macro("instead_marker") });
+                    nodes.Add(new SpawnCardNode
+                    {
+                        SourceKind = CardSourceKind.CopyOfPrevious,
+                        ToZone = preDest ?? toZone,
+                        ToOwner = ZoneScope.Self,
+                        Count = copyCount,
+                    });
+                    return nodes;
+                }
+                cur.Seek(saveBeforeDest);
             }
 
             if (cur.Current.Kind == TokKind.CardName)

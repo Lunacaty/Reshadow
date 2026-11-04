@@ -1,0 +1,32 @@
+fix(138-复查): 补 ParseSpawnCore 先消费目的地再判 instead
+
+逐段复查 138 号文档，发现漏了第一节的第 2 条漏改项：
+  ParseSpawnCore 分支 1 仍是在读 copies 后**紧接**判 instead，
+  没有先消费可选的 to your hand / to your deck。
+  卡面语序两种都有：
+    Add 4 instead.                     ← 能认
+    Add 4 copies to your hand instead. ← 认不出，落进后面的目标解析报错
+
+已改为：先 ConsumeDestination 拿到 preDest，再判 instead；
+不是这种句式就 Seek 回原位。
+
+实测两种语序都正确编成 if/else：
+  Add 4 instead.                    -> if pp>=5 then spawn 4 else spawn 2
+  Add 4 copies to your hand instead -> if pp>=5 then spawn 4 else spawn 2
+
+【逐段核对的其余项】
+  代码 A  ParseGive OmittedTargetSpec          ✅ 第 997 行
+  代码 B  ApplyLens FindFirst / Select N 特判  ✅ 第 63、85 行
+           LoopNode / ModifyStats / ModifyKw 分支 ✅ 第 154-190 行
+  代码 C  MetaModeWeaver 工作副本重写          ✅ null 占位已归零
+           BuildMetaCondition 优先读 Condition  ✅
+  代码 D  无头 instead 沿用前句 Trigger        ✅ 第 1299 行
+           Merge 前置提取 ConditionalNode 前节点 ✅ 第 474 行
+
+【全卡池复核】
+  instead 卡 52 张，无 if/else 的 7 张全部是跨触发时机替代
+  （Evolve→Super-Evolve 互斥，不会同时执行），属正确设计。
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 逐卡矩阵 32-32 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 /
+UI 3-3 / 战斗 UI 31-31 —— 全绿
