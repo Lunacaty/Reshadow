@@ -1033,10 +1033,21 @@ public sealed class ActionParser
 
             // 3. 解析 1 个或多个并列授予项
             int granted = 0;
+            // 下一组授予项的持续时间。"and, until the end of the turn, "B"" 里的
+            // until 子句只修饰紧跟着的那一项，用完即复位。
+            var nextItemDur = DurationKind.Permanent;
             while (!cur.IsAtEnd)
             {
                 var built = TryParseSingleGrant(cur, targets);
                 if (built == null) break;
+
+                if (nextItemDur != DurationKind.Permanent)
+                {
+                    for (int bi = 0; bi < built.Count; bi++)
+                        built[bi] = WithDuration(built[bi], nextItemDur);
+                    nextItemDur = DurationKind.Permanent;
+                }
+
                 result.AddRange(built);
                 granted++;
 
@@ -1062,9 +1073,11 @@ public sealed class ActionParser
 
                 // 两项授予之间可能插一句时限："and, until the end of the turn, "B""
                 // 它修饰的是**下一项**，这一项本身仍按原持续时间处理。
+                // 返回值必须留下并作用到下一项 —— 早先直接丢弃，
+                // 结果是「永久无法攻击」而不是「本回合无法攻击」。
                 if (hadAnd && cur.Current.IsWord("until"))
                 {
-                    ConsumeDuration(cur);
+                    nextItemDur = ConsumeDuration(cur);
                     cur.TryMatch(TokKind.Comma);
                 }
 
@@ -1365,6 +1378,24 @@ public sealed class ActionParser
         {
             cur.TryMatchAnyWord("each");
             cur.TryMatchAnyWord("of");
+
+            // 「Add 3 copies instead.」——卡名承前省略，只写数量与 instead。
+            // 以前这里靠 ?? TargetSpec.Self 兜底静默编成「复制本卡」，
+            // 语义错得离谱却不报错；现在必须显式认出「instead + 无卡名」= 复制前一句的对象。
+            if (cur.Current.IsWord("instead"))
+            {
+                cur.Advance();
+                nodes.Add(new MacroNode { Macro = _lex.Macro("instead_marker") });
+                nodes.Add(new SpawnCardNode
+                {
+                    SourceKind = CardSourceKind.CopyOfPrevious,
+                    ToZone = toZone,
+                    ToOwner = ZoneScope.Self,
+                    Count = copyCount,
+                });
+                return nodes;
+            }
+
             if (cur.Current.Kind == TokKind.CardName)
             {
                 // 「summon an enemy A or B at random」也走这条路径：
@@ -1426,7 +1457,8 @@ public sealed class ActionParser
                 });
                 return nodes;
             }
-            var copySrc = _target.TryParse(cur) ?? TargetSpec.Self;
+            var copySrc = _target.TryParse(cur)
+     ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
             var dest2 = ConsumeDestination(cur);
             nodes.Add(new SpawnCardNode
             {
@@ -1541,13 +1573,16 @@ public sealed class ActionParser
         {
             int s2b = cur.Position;
             cur.TryMatchAnyWord("an", "a");
-            // 跳过 1-2 个修饰词，看是否能落到卡名
+            // 跳过 1-2 个修饰词，看是否能落到卡名。
+            // 「enemy」不是可丢弃的修饰词：它决定召唤物落在谁场上。
             int skipped = 0;
+            bool isEnemy2b = false;
             while (!cur.IsAtEnd && cur.Current.Kind != TokKind.CardName && skipped < 3
                    && cur.Current.Kind == TokKind.Word)
             {
                 // 遇到动作动词就停
                 if (cur.Current.IsAnyWord("to", "and", "with", "on", "from", "at", "or")) break;
+                if (cur.Current.IsWord("enemy")) isEnemy2b = true;
                 cur.Advance(); skipped++;
             }
             if (cur.Current.Kind == TokKind.CardName && skipped <= 2)
@@ -1579,7 +1614,7 @@ public sealed class ActionParser
                             CardId = nt.CardId,
                             CardName = nt.Text,
                             ToZone = dest2b ?? toZone,
-                            ToOwner = ZoneScope.Self,
+                            ToOwner = isEnemy2b ? ZoneScope.Opponent : ZoneScope.Self,
                             Count = NumExpr.Const(1),
                         },
                     }).ToList();
@@ -1598,7 +1633,7 @@ public sealed class ActionParser
                     CardId = ct2.CardId,
                     CardName = ct2.Text,
                     ToZone = dest2b ?? toZone,
-                    ToOwner = ZoneScope.Self,
+                    ToOwner = isEnemy2b ? ZoneScope.Opponent : ZoneScope.Self,
                     Count = NumExpr.Const(1),
                 });
                 return nodes;
@@ -1867,7 +1902,8 @@ public sealed class ActionParser
     private List<EffectNode> ParseEvolve(TokenCursor cur, bool super)
     {
         cur.Advance();
-        var target = _target.TryParse(cur) ?? TargetSpec.Self;
+        var target = _target.TryParse(cur)
+            ?? throw LangException.At("evolve", "缺少目标", cur, cur.All);
         return new List<EffectNode> { new EvolveNode { Target = target, IsSuperEvolve = super } };
     }
 
@@ -2063,7 +2099,8 @@ public sealed class ActionParser
             cur.Advance();
         cur.TryMatchAnyWord("of");
 
-        var target = _target.TryParse(cur) ?? TargetSpec.Self;
+        var target = _target.TryParse(cur)
+            ?? throw LangException.At("halve", "缺少目标", cur, cur.All);
 
         return new List<EffectNode>
         {
@@ -2091,7 +2128,8 @@ public sealed class ActionParser
     private List<EffectNode> ParseRevealKeyword(TokenCursor cur)
     {
         cur.ExpectWord("reveal");
-        var t = _target.TryParse(cur) ?? TargetSpec.Self;
+        var t = _target.TryParse(cur)
+            ?? throw LangException.At("reveal", "缺少目标", cur, cur.All);
         return new List<EffectNode> { new RevealCardNode { Target = t } };
     }
 
@@ -2284,7 +2322,8 @@ public sealed class ActionParser
         TargetSpec target = TargetSpec.Self;
         if (cur.MatchPhrase("the", "cost", "of") || cur.MatchPhrase("the", "costs", "of"))
         {
-            target = _target.TryParse(cur) ?? TargetSpec.Self;
+            target = _target.TryParse(cur)
+                ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
             // "Mysteria spells in your hand" 这类未注册兵种：跳到区域短语
             if (target.Zone == ZoneRef.Board && !cur.IsAtEnd && cur.Current.IsWord("spells"))
             {
@@ -2448,7 +2487,8 @@ public sealed class ActionParser
         {
             cur.Advance(); cur.Advance();
             cur.TryMatchAnyWord("of");
-            var tgt = _target.TryParse(cur) ?? TargetSpec.Self;
+            var tgt = _target.TryParse(cur)
+                ?? throw LangException.At("set cost", "缺少目标", cur, cur.All);
             cur.TryMatchAnyWord("to");
             var v0 = ParseNumExpr(cur);
             var durSet = ConsumeDuration(cur);
@@ -2458,7 +2498,8 @@ public sealed class ActionParser
             };
         }
 
-        var target = _target.TryParse(cur) ?? TargetSpec.Self;
+        var target = _target.TryParse(cur)
+     ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
         cur.TryMatchAnyWord("to");
         var v = ParseNumExpr(cur);
         return new List<EffectNode>
@@ -2966,7 +3007,8 @@ public sealed class ActionParser
             // TargetParser 在 "leader's" 处只吃 defense/life/attack，
             // 因此剩余的 max/defense 必须在这里补消费，否则句尾残留撞 AssertEnd。
             cur.TryMatchAnyWord("max");
-            target = _target.TryParse(cur) ?? TargetSpec.Self;
+            target = _target.TryParse(cur)
+                ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
             while (cur.Current.IsAnyWord("max", "defense", "life", "attack")) cur.Advance();
         }
         else
@@ -2974,7 +3016,8 @@ public sealed class ActionParser
             while (!cur.IsAtEnd && !cur.Current.IsAnyWord("of")) cur.Advance();
             cur.TryMatchAnyWord("of");
             cur.TryMatchAnyWord("max");
-            target = _target.TryParse(cur) ?? TargetSpec.Self;
+            target = _target.TryParse(cur)
+                ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
         }
 
         if (isLife)
@@ -3030,7 +3073,8 @@ public sealed class ActionParser
             || cur.MatchPhrase("the", "count", "of", "this", "crest"))
             target = TargetSpec.Self;
         else if (cur.MatchPhrase("the", "count", "of") || cur.MatchPhrase("the", "counts", "of"))
-            target = _target.TryParse(cur) ?? TargetSpec.Self;
+            target = _target.TryParse(cur)
+                ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
         else if (cur.MatchPhrase("this", "amulet's") || cur.MatchWord("count"))
         { }
 
@@ -3155,7 +3199,8 @@ public sealed class ActionParser
         TargetSpec target = TargetSpec.Self;
         if (cur.MatchPhrase("the", "attack", "and", "defense", "of"))
         {
-            target = _target.TryParse(cur) ?? TargetSpec.Self;
+            target = _target.TryParse(cur)
+                ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
         }
         else if (cur.MatchPhrase("the", "attack", "and", "defense", "of", "this", "card"))
         {
@@ -3169,15 +3214,32 @@ public sealed class ActionParser
             cur.TryMatchAnyWord("attack");
             cur.TryMatchAnyWord("and");
             cur.TryMatchAnyWord("defense");
-            // 既不是 "the ... of X" 也不是 "this ..." 时，仍尝试解析一个目标
-            if (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
-                target = _target.TryParse(cur) ?? TargetSpec.Self;
+            // 既不是 "the ... of X" 也不是 "this ..." 时，仍尝试解析一个目标。
+            // 但遇到 and / 句号说明后面是追加动作，不是目标 —— 不能在这里报缺目标。
+            if (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period
+                && !cur.Current.IsAnyWord("and", "then"))
+                target = _target.TryParse(cur)
+                    ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
         }
 
-        return new List<EffectNode>
+        var swapNodes = new List<EffectNode>
         {
             new ModifyStatsNode { Target = target, Op = StatModOp.Swap },
         };
+
+        // "swap this follower's attack and defense and give it +1/+0" ——
+        // 交换是句子的一部分，后面还能接追加动作。
+        // 早先在这里直接 return，整句在 and 处断掉。
+        while (cur.Current.IsWord("and"))
+        {
+            int svSwap = cur.Position;
+            cur.Advance();
+            var more = ParseOne(cur);
+            if (more == null) { cur.Seek(svSwap); break; }
+            swapNodes.AddRange(more);
+        }
+
+        return swapNodes;
     }
 
     private List<EffectNode> ParseInvoke(TokenCursor cur)
@@ -3214,7 +3276,8 @@ public sealed class ActionParser
         }
         if (cur.MatchPhrase("restore", "the", "defense", "of"))
         {
-            var target = _target.TryParse(cur) ?? TargetSpec.Self;
+            var target = _target.TryParse(cur)
+     ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
             return new List<EffectNode> { new RestoreLifeNode { Target = target, FullRestore = true, Amount = NumExpr.Const(0) } };
         }
         while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();

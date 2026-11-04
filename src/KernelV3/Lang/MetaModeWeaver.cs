@@ -27,8 +27,15 @@ public static class MetaModeWeaver
     /// <summary>该能力是否只是「Activate/Use all of them」的元模式声明。</summary>
     private static bool IsMetaMode(AbilityDef a)
     {
-        if (a?.Body == null || a.Body.Count != 1) return false;
-        if (a.Body[0] is not InvokeAbilityNode inv) return false;
+        if (a?.Body == null) return false;
+
+        // "Activate all of them instead" 末尾的 instead 会追加一个占位宏，
+        // 先把它滤掉再判形态 —— 否则整句认不出来，元模式永远合不进模式块。
+        var real = a.Body
+            .Where(n => !(n is MacroNode m && m.Macro.Name == "instead_marker"))
+            .ToList();
+        if (real.Count != 1) return false;
+        if (real[0] is not InvokeAbilityNode inv) return false;
         return inv.Event == Core.CoreEvent.OnEngage
             && inv.Target != null
             && inv.Target.SourceKind == TargetSourceKind.Slot
@@ -180,6 +187,11 @@ public static class MetaModeWeaver
                 CostKind.TurnPlayCount => "combo",
                 CostKind.MatchPlayCount => "match_play",
                 CostKind.Necromance => "shadow",
+                // 爆能：必须判 pp_at_play >= N。
+                // 以前落进下面的「有代价就算成立」兜底并返回 BoolExpr.True，
+                // 于是 5 费打出《真王之刃》也会把 3 个模式全开。
+                CostKind.UsePp when string.Equals(c.Label, "enhance", StringComparison.OrdinalIgnoreCase)
+                    => "pp_at_play",
                 _ => null,
             };
             if (counter == null) continue;

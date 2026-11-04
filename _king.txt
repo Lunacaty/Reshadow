@@ -1,0 +1,26 @@
+### 10623310  惨烈的天剑 / Ruthless Eld Sword
+kind=3 cost=1 atk=0 life=0
+TEXT: Select a <b><color=Keyword>Mode</color></b> to activate.
+<ridx=0>1. Draw a card.</ridx>
+<ridx=1>2. Deal 3 damage to a random enemy follower.</ridx>
+<b><color=Keyword>Enhance</color> (3)</b>: Activate all of them instead.
+TEXT_CHS: 【<color=Keyword>模式</color>】选择1个能力发动。
+<ridx=0>（1）抽取1张卡牌。</ridx>
+<ridx=1>（2）对对手的战场上的随机1个随从造成3点伤害。</ridx>
+【<color=Keyword>爆能强化</color>_3】改为发动所有能力。
+
+### 10624110  惨烈的剑王·罗德诺艾尔四世 / Noel IV, Ruthless Warlord
+kind=1 cost=6 atk=4 life=5
+TEXT: <b><color=Keyword>Fanfare</color></b>: Summon a <b><i><color=Keyword>Fearless Soldier</color></i></b> and give it <b><color=Keyword>Bane</color></b>.
+<b><color=Keyword>Enhance</color> (7)</b>: Summon a <b><i><color=Keyword>Fearless Soldier</color></i></b> and give it <b><color=Keyword>Drain</color></b>.
+<b><color=Keyword>Enhance</color> (8)</b>: Summon a <b><i><color=Keyword>Fearless Soldier</color></i></b> and give it <b><color=Keyword>Storm</color></b>.
+<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give all other allied followers on the field +1/+1.</sev>
+TEXT_CHS: 【<color=Keyword>入场曲</color>】召唤1个『<color=Keyword>勇烈的士兵</color>』，使其获得【<color=Keyword>毁灭</color>】。
+【<color=Keyword>爆能强化</color>_7】召唤1个『<color=Keyword>勇烈的士兵</color>』，使其获得【<color=Keyword>虹吸</color>】。
+【<color=Keyword>爆能强化</color>_8】召唤1个『<color=Keyword>勇烈的士兵</color>』，使其获得【<color=Keyword>疾驰</color>】。
+<hr><sev>【<color=Keyword>超进化时</color>】使自己的战场上的其他所有随从+1/+1。</sev>
+
+### 10951110  强袭的特攻队长 / Ruthless Blitzer
+kind=1 cost=2 atk=2 life=2
+TEXT: <b><color=Keyword>Fanfare</color></b>: Deal 2 damage to both leaders.
+TEXT_CHS: 【<color=Keyword>入场曲</color>】对所有主战者造成2点伤害。

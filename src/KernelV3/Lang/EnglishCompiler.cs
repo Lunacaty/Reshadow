@@ -174,11 +174,20 @@ public sealed class EnglishCompiler
             }
         }
 
-        // 跨段替代语义：instead 可能落在与前提句不同的段落
-        // （"Fanfare: Restore 3. Super-Evolve: Restore 4 instead."），
-        // CompileSegment 只见得到自己那一段，接不上，必须在这里再合一次。
+        // 三大编织器在**整卡级**跑一次，顺序必须是 MetaMode → Instead → Enhance。
+        //
+        // 顺序的理由：
+        //   · MetaMode 先跑："Select a Mode ... Enhance (8): Activate all of them instead"
+        //     要先把「全部模式」认出来，否则那句会被 Instead 当成替代动作。
+        //   · Instead 次之：此时 instead_marker 仍在 Body 顶层、Enhance 的 CostSpec 也还在，
+        //     EnhanceWeaver 尚未把它包进两层 ConditionalNode。
+        //   · Enhance 最后：累加型多档（基础 + Enhance 7 + Enhance 8）此时才折叠成阶梯。
+        var woven = MetaModeWeaver.Weave(buffer, _lex);
+        woven = InsteadWeaver.Weave(woven, _lex);
+        woven = EnhanceWeaver.Weave(woven, _lex);
+
         r.Abilities.Clear();
-        r.Abilities.AddRange(InsteadWeaver.Weave(buffer, _lex));
+        r.Abilities.AddRange(woven);
 
         // "X starts at N" 的初值落盘：产出一条 PassiveAura，把初始值写进实体计数器。
         // 不这样做的话，初值只能编译期替换成常量，
@@ -683,7 +692,12 @@ public sealed class EnglishCompiler
             while (headEnd < andIdx && src[headEnd].Kind != TokKind.Comma) headEnd++;
             if (headEnd >= andIdx) continue;
 
+            // 频率前缀 "once on each of your turns," 必须留在第二句里。
+            // 早先把 onceIdx..actionStart 整段跳过，拆出来的第二句没有
+            // MaxTriggersPerTurn=1，一回合攻击 3 次就发 3 次效果。
+            // 语序是「频率前缀在前、Whenever 头在后」，两个都放最前面。
             var second = new List<Token>();
+            for (int ti = onceIdx; ti < actionStart && ti < src.Count; ti++) second.Add(src[ti]);
             for (int ti = 0; ti <= headEnd; ti++) second.Add(src[ti]);
             for (int ti = actionStart; ti < src.Count; ti++) second.Add(src[ti]);
 
@@ -1251,15 +1265,30 @@ public sealed class EnglishCompiler
             // body 全部是指向本卡槽位的 ModifyKeywordNode。动作句永不满足。
             // 不分的话，静态限制词会编成 OnPlay —— 只有从手牌打出才授予，
             // 召唤 / 复活 / 复制进场的同一张卡完全没有这个关键词。
+            //
+            // 封印光环（suppress_fanfare / suppress_enhance）必须是常驻：
+            // 它的目标写的是 `self:board All where is Follower`，不是 $self。
+            // 只认 $self 会让「我方随从的入场曲无法发动」被编成 OnPlay，
+            // 纹章在纹章区永远不生效。
+            static bool IsAuraGrant(EffectNode n)
+            {
+                if (n is not ModifyKeywordNode mk0 || mk0.Op != KeywordOp.Grant || mk0.Target == null)
+                    return false;
+
+                bool isSelfSlot = mk0.Target.SourceKind == TargetSourceKind.Slot
+                                  && mk0.Target.Slot == TargetSpec.SlotSelf;
+                if (isSelfSlot) return true;
+
+                string kw = mk0.Keyword.Name ?? "";
+                return kw.Equals("suppress_fanfare", StringComparison.OrdinalIgnoreCase)
+                       || kw.Equals("suppress_enhance", StringComparison.OrdinalIgnoreCase);
+            }
+
             bool selfOnlyRestriction =
                 !hb.EventExplicit
                 && hb.Costs.Count == 0
                 && (hb.Condition == null || hb.Condition is ConstBoolExpr)
-                && body.All(n => n is ModifyKeywordNode mk
-                               && mk.Op == KeywordOp.Grant
-                               && mk.Target != null
-                               && mk.Target.SourceKind == TargetSourceKind.Slot
-                               && mk.Target.Slot == TargetSpec.SlotSelf);
+                && body.All(IsAuraGrant);
 
             var mainTrig = selfOnlyRestriction
                 ? new TriggerSpec { Event = CoreEvent.PassiveAura }
@@ -1296,19 +1325,17 @@ public sealed class EnglishCompiler
         _fuseTierByCost = false;
         _fuseHeader = null;
 
-        // 元模式（Meta-Mode）先行：把 "... 1. ... 2. ... Enhance (3): Activate all of them instead."
-        // 合成「条件成立时把前一个模式块的选取数放宽为全部」。
-        // 必须在 InsteadWeaver 之前做，否则 "Activate all of them" 会被
-        // 误当成「启动已选中的护符」。
-        // Enhance 累加展开：必须在 MetaMode 之前，否则模式块会先被合并。
-        result = EnhanceWeaver.Weave(result, _lex);
-
-        result = MetaModeWeaver.Weave(result, _lex);
-
-        // 替代语义：把 "... Deal 2 damage. Combo (3) - Deal 4 damage instead."
-        // 合成为 ConditionalNode(cond, Then: 后一句, Else: 前一句)。
-        // 之前 instead 被当空气吃掉，导致两句都执行（合打 6 点）。
-        result = InsteadWeaver.Weave(result, _lex);
+        // 三大编织器（MetaMode / Instead / Enhance）**不在这里跑**。
+        //
+        // 它们在 CompileSegment 里只能看到当前这一段：
+        //   "Fanfare: ..." / "Enhance (7): ..." / "Enhance (8): ..."
+        // 被 Preprocess 按换行切成 3 个独立 Segment，分别进 3 次本方法。
+        // 在这样的粒度上跑编织：
+        //   · 多档爆能看到不彼此的兄弟段，编出 3 条平行能力；
+        //   · EnhanceWeaver 先把 instead 句包进两层 ConditionalNode，
+        //     等整卡级 InsteadWeaver 再跑时 marker 已经看不见了；
+        //   · 单段只剩 1 条能力时，InsteadWeaver 还会把 marker 当场清掉。
+        // 它们统一在 CompileCore 里对整卡 buffer 跑一次（顺序 MetaMode → Instead → Enhance）。
 
         // 段内累积状态不得跨段：漏清会让下一段的档位并进上一张卡的变身表。
         _fuseTiers.Clear();

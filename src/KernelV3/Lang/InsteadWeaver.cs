@@ -270,8 +270,29 @@ public static class InsteadWeaver
         Body = a.Body.Where(n => !(n is MacroNode m && m.Macro.Name == "instead_marker")).ToList(),
     };
 
+    /// <summary>
+    /// 能力体里是否含 instead 占位宏。
+    ///
+    /// 必须**递归穿透 ConditionalNode**：Enhance/Combo 之类的代价句会被
+    /// 包进「if true then if pp_at_play >= N then ...」两层分支，
+    /// 只看顶层会让整句认不出是替代句，替代语义静默失效。
+    /// </summary>
     private static bool HasInsteadMarker(AbilityDef a)
-        => a.Body != null && a.Body.Any(n => n is MacroNode m && m.Macro.Name == "instead_marker");
+        => a?.Body != null && ContainsMarker(a.Body);
+
+    private static bool ContainsMarker(IReadOnlyList<EffectNode> nodes)
+    {
+        if (nodes == null) return false;
+        foreach (var n in nodes)
+        {
+            if (n is MacroNode m && m.Macro.Name == "instead_marker") return true;
+            if (n is ConditionalNode c && (ContainsMarker(c.Then) || ContainsMarker(c.Else))) return true;
+            if (n is LoopNode lp && ContainsMarker(lp.Body)) return true;
+            if (n is BranchModeNode bm && bm.Options != null
+                && bm.Options.Any(ContainsMarker)) return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// prev 是「否则」分支，cur 是「条件成立」分支。两者的动作不能同时执行。
@@ -308,15 +329,15 @@ public static class InsteadWeaver
         var cev = cur.Trigger?.Event ?? Core.CoreEvent.OnPlay;
         if (pev != cev) return MergeAcrossTimings(prev, cur, thenBody, pev, cev);
 
-        // 条件型代价（Combo / Rally / Necromancy）本身就是替代的判定条件。
-        // 卡面："Deal 2 damage. Combo (3) - Deal 4 damage instead."
-        // 这里把 CostSpec 转成 Condition，否则退化成两句都执行。
-        var costCond = BuildCostCondition(cur.Costs, lex);
-        var cond = costCond != null
-            ? (cur.Condition != null && !ReferenceEquals(cur.Condition, BoolExpr.True)
-                ? BoolExpr.And(cur.Condition, costCond)
-                : costCond)
-            : cur.Condition;
+        // 条件型代价（Combo / Rally / Necromancy / Enhance）就是替代的判定条件。
+        //
+        // 但 CompileSegment 的 AndCosts 已经把 cur.Costs 合进 cur.Condition 了，
+        // 再调一次 BuildCostCondition 就会得到
+        //   match_play >= 10 and match_play >= 10
+        // 这种重复条件。只在 cur.Condition 缺失/恒真时才自己构造。
+        bool curCondWeak = cur.Condition == null
+            || (cur.Condition is ConstBoolExpr cb0 && cb0.Value);
+        var cond = curCondWeak ? BuildCostCondition(cur.Costs, lex) : cur.Condition;
 
         if (cond == null || ReferenceEquals(cond, BoolExpr.True))
         {
@@ -333,12 +354,34 @@ public static class InsteadWeaver
             };
         }
 
+        // 「Select 一个目标，再对它造成伤害」这类两段式基础句：
+        // 替代句通常写 "Deal 3 damage instead"，靠 it 指回选中的目标。
+        // 若把 SelectTargetNode 留在 else 分支里，爆能分支就没有可选目标，
+        // 目标退化成了对手全场。把它提到分支外作为公共前置。
+        var prefixNodes = new List<EffectNode>();
+        IReadOnlyList<EffectNode> elseBody = prev.Body ?? Array.Empty<EffectNode>();
+        if (elseBody.Count > 1 && elseBody[0] is SelectTargetNode
+            && !thenBody.Any(n => n is SelectTargetNode))
+        {
+            prefixNodes.Add(elseBody[0]);
+            elseBody = elseBody.Skip(1).ToList();
+        }
+
+        // 合并后的 CostSpec 必须保留 Enhance 档位：
+        // TurnRunner.EnhanceTiers 靠它算爆能档并扣 PP。丢了就永远只扣基础费用。
+        var mergedCosts = (prev.Costs ?? Array.Empty<CostSpec>())
+            .Concat((cur.Costs ?? Array.Empty<CostSpec>())
+                .Where(c => c.Kind == CostKind.UsePp))
+            .ToList();
+
         var branch = new ConditionalNode
         {
             Condition = cond,
             Then = thenBody,
-            Else = prev.Body,
+            Else = elseBody,
         };
+
+        prefixNodes.Add(branch);
 
         // 外层 Trigger / Condition 必须是 prev 的：条件只在内层分支上生效。
         return new List<AbilityDef>
@@ -347,8 +390,8 @@ public static class InsteadWeaver
             {
                 Trigger = prev.Trigger,
                 Condition = prev.Condition,
-                Costs = prev.Costs,
-                Body = new List<EffectNode> { branch },
+                Costs = mergedCosts,
+                Body = prefixNodes,
             },
         };
     }

@@ -1721,6 +1721,19 @@ public sealed class BattleState : IVmWorld
                 if (r.EntityId == target.EntityId) return true;
         }
         catch { return false; }
+
+        // 手牌中的随从不在 Board 上，按区域解析永远匹配不到。
+        // 但「我方随从的爆能强化无法发动」这类光环必须对**手牌**生效 ——
+        // 爆能档位是在出牌前算的，那时卡还在手里。
+        // 这种情况退化为只核对归属方与卡种。
+        if (target.Zone == ZoneRef.Hand && target.Def?.Kind == CardKind.Follower)
+        {
+            bool ownerOk = spec.Owner == ZoneScope.Any
+                           || (spec.Owner == ZoneScope.Self && target.PlayerId == ActivePlayer)
+                           || (spec.Owner == ZoneScope.Opponent && target.PlayerId != ActivePlayer);
+            if (ownerOk) return true;
+        }
+
         return false;
     }
 

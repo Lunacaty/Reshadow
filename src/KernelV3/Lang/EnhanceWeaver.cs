@@ -28,6 +28,14 @@ public static class EnhanceWeaver
     /// <summary>
     /// 合并同一触发时机下的 Enhance 档与基础能力。
     /// </summary>
+    /// <summary>
+    /// 该能力是否已由上游 Weaver 编成「if/else 分档树」。
+    /// 判据是 Body 里存在带非空 Else 的 ConditionalNode。
+    /// </summary>
+    private static bool IsAlreadyWoven(AbilityDef a)
+        => a?.Body != null
+           && a.Body.Any(n => n is ConditionalNode c && c.Else != null && c.Else.Count > 0);
+
     public static List<AbilityDef> Weave(List<AbilityDef> abilities, Lexicon lex)
     {
         // 只有 1 条能力时也要走后面的分支构造：
@@ -75,6 +83,12 @@ public static class EnhanceWeaver
                 var b = abilities[j];
                 var bev = b.Trigger?.Event ?? CoreEvent.OnPlay;
                 if (bev != ev) continue;
+
+                // 已经被 InsteadWeaver / MetaModeWeaver 编成「if/else 分档树」的能力，
+                // 替代语义已经就位，绝不能再按累加型爆能折叠一次 ——
+                // 那会把「改为 3 点」重新并成「1 点 + 3 点」。
+                if (IsAlreadyWoven(b)) continue;
+
                 if (IsEnhanceTier(b, out var amt)) tiers.Add((amt, b, j));
                 else if (baseIdx < 0 && !HasAnyCost(b)) { baseAb = b; baseIdx = j; }
             }
@@ -137,7 +151,10 @@ public static class EnhanceWeaver
                         Amount = NumExpr.Const(t.amount),
                     })
                     .ToArray(),
-                Body = new List<EffectNode> { new ConditionalNode { Condition = BoolExpr.True, Then = elseBody } },
+                // 不要在外面再套一层 `if true then ...`：
+                // elseBody 本身已经是完整的阶梯分支，外层恒真条件只是打印噪音，
+                // 还会让「零条件」的能力看起来像有分支。
+                Body = elseBody,
             });
 
             foreach (var t in tiers) consumed.Add(t.idx);

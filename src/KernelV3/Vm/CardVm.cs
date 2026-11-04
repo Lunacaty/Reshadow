@@ -672,7 +672,8 @@ public sealed partial class CardVm
                 var ppKey = Schema.Counter("pp");
                 var shadowKey = Schema.Counter("shadow");
                 var earthKey = Schema.Counter("earth_sigil");
-                if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey)) continue;
+                // 传 body：已由 Weaver 编好分档条件树时，enhance 只作档位元数据，不再拦截。
+                if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey, ab.Body)) continue;
                 CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey);
 
                 // 代价已付、即将压栈执行：这一刻就是「这条能力正式发动」。

@@ -29,8 +29,33 @@ public static class CostExecutor
         IVmWorld world, int playerId, RuntimeEntity source,
         IReadOnlyList<CostSpec> costs, SymbolId<CounterTag> ppKey, SymbolId<CounterTag> shadowKey,
         SymbolId<CounterTag> earthSigilKey)
+        => CanPayCore(world, playerId, costs, ppKey, shadowKey, earthSigilKey, null);
+
+    /// <summary>
+    /// 带能力体的版本。
+    ///
+    /// 当能力体里已经由 EnhanceWeaver / InsteadWeaver / MetaModeWeaver 编好了
+    /// `pp_at_play >= N` 的分档条件树时，<c>Costs</c> 里的 enhance 只剩「档位元数据」
+    /// 的作用（供 TurnRunner.EnhanceTiers 算档扣费），不能再据此拦截：
+    /// 否则 5 费打「基础 5 费 + Enhance 7 + Enhance 8」的卡会被 pp_at_play &lt; 8 全条拒掉，
+    /// 连最底层的 else 分支都不执行。
+    /// </summary>
+    public static bool CanPay(
+        IVmWorld world, int playerId, RuntimeEntity source,
+        IReadOnlyList<CostSpec> costs, SymbolId<CounterTag> ppKey, SymbolId<CounterTag> shadowKey,
+        SymbolId<CounterTag> earthSigilKey, IReadOnlyList<Ast.EffectNode> body)
+        => CanPayCore(world, playerId, costs, ppKey, shadowKey, earthSigilKey, body);
+
+    private static bool CanPayCore(
+        IVmWorld world, int playerId,
+        IReadOnlyList<CostSpec> costs, SymbolId<CounterTag> ppKey, SymbolId<CounterTag> shadowKey,
+        SymbolId<CounterTag> earthSigilKey, IReadOnlyList<Ast.EffectNode> body)
     {
         if (costs == null || costs.Count == 0) return true;
+
+        bool hasTieredBody = body != null
+            && body.Any(n => n is Ast.ConditionalNode cn && cn.Else != null && cn.Else.Count > 0);
+
         foreach (var c in costs)
         {
             int need = Value(c.Amount);
@@ -43,6 +68,7 @@ public static class CostExecutor
                     // 爆能强化：判「本回合已用能量」而不是当前能量（当前已被扣过）。
                     // 放在这里而不是另起 when 分支，是因为 UsePp 已经匹配了所有同类。
                     if (string.Equals(c.Label, "enhance", StringComparison.OrdinalIgnoreCase)
+                        && !hasTieredBody
                         && world.ReadCounter(playerId, world.Schema.Counter("pp_at_play")) < need)
                         return false;
                     break;

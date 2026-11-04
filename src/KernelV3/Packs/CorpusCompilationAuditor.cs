@@ -69,7 +69,13 @@ public static class CorpusCompilationAuditor
                             issues.Add(new CardAuditIssue(pack.PackId, c.CardId, c.NameEng, c.NameChs,
                                 "RoundTrip", prob));
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    // 审计器本身不能再吞异常：RoundTrip 抛错说明校验链断了，
+                    // 静默忽略会让「本轮零问题」变成假绿。
+                    issues.Add(new CardAuditIssue(pack.PackId, c.CardId, c.NameEng, c.NameChs,
+                        "RoundTrip异常", ex.Message));
+                }
             }
 
             // 3. alt_modes 子卡（纹章 / 信仰 / 激奏 / 结晶）
