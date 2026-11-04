@@ -596,6 +596,19 @@ public partial class BattleScreenRoot : Control
             bool isCand = p.Candidates.Contains(w.Entity.EntityId);
             w.SetChoiceState(isCand, !isCand);
         }
+
+        // 手牌也必须参与候选高亮：
+        // 「从手牌选一张」这类效果，早先只亮了战场与主战者，玩家不知道该点手牌。
+        var hand = _ctrl.Hand(_ctrl.MyPlayerId);
+        for (int i = 0; i < _handWidgets.Count && i < hand.Count; i++)
+        {
+            var wd = _handWidgets[i];
+            if (!IsInstanceValid(wd)) continue;
+            if (!choosing) { wd.SetCandidate(false); continue; }
+            int eid = hand[i].EntityId;
+            bool cand = p.Candidates.Contains(eid);
+            wd.SetCandidate(cand, false);
+        }
     }
 
     /// <summary>

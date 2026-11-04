@@ -22,6 +22,7 @@ public partial class PackAndPoolManagerView : Control
     private GameSessionStore _store;
     private VBoxContainer _packList;
     private string _selectedPackId;
+    private readonly Dictionary<string, CheckBox> _enabledPackChecks = new();
     private VBoxContainer _cardList;
     private VBoxContainer _ruleList;
     private VBoxContainer _namedDeckList;
@@ -164,6 +165,27 @@ public partial class PackAndPoolManagerView : Control
         };
         ruleBar.AddChild(_poolPicker);
 
+        var newPoolBtn = new Button { Text = "➕ 新建卡池", CustomMinimumSize = new Vector2(96, 32) };
+        SvWbTheme.StyleButton(newPoolBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
+        newPoolBtn.AddThemeFontSizeOverride("font_size", 11);
+        newPoolBtn.Pressed += OpenNewPoolDialog;
+        ruleBar.AddChild(newPoolBtn);
+
+        var delPoolBtn = new Button { Text = "🗑 删除卡池", CustomMinimumSize = new Vector2(96, 32) };
+        SvWbTheme.StyleButton(delPoolBtn, customAccent: SvWbTheme.StatusDanger);
+        delPoolBtn.AddThemeFontSizeOverride("font_size", 11);
+        delPoolBtn.Pressed += () =>
+        {
+            if (string.IsNullOrEmpty(_selectedPoolId)) { _ruleStatus.Text = "请先选择一个卡池"; return; }
+            _store.DeletePool(_selectedPoolId, out string msg);
+            _ruleStatus.Text = msg;
+            _selectedPoolId = null;
+            BuildPoolPicker();
+            RefreshRules();
+            RefreshNamedDecks();
+        };
+        ruleBar.AddChild(delPoolBtn);
+
         _saveRulesBtn = new Button { Text = "💾 保存卡池规则", CustomMinimumSize = new Vector2(150, 32) };
         SvWbTheme.StyleButton(_saveRulesBtn, isPrimary: true, customAccent: SvWbTheme.AccentGold);
         _saveRulesBtn.Pressed += OnSaveRules;
@@ -286,6 +308,133 @@ public partial class PackAndPoolManagerView : Control
         }
     }
 
+
+
+    /// <summary>重建卡池下拉框（新建/删除卡池后调用）。</summary>
+    private void BuildPoolPicker()
+    {
+        if (_poolPicker == null) return;
+        _poolPicker.Clear();
+        var keys = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).ToList();
+        for (int i = 0; i < keys.Count; i++)
+        {
+            var cfg = _store.PoolConfigs[keys[i]];
+            _poolPicker.AddItem((string.IsNullOrEmpty(cfg.Name) ? keys[i] : cfg.Name) + " (" + keys[i] + ")", i);
+        }
+        int sel = _selectedPoolId != null ? keys.IndexOf(_selectedPoolId) : -1;
+        if (sel >= 0) _poolPicker.Select(sel);
+        else if (keys.Count > 0 && _selectedPoolId == null) _selectedPoolId = keys[0];
+    }
+
+
+    /// <summary>「本卡池启用的物理卡包」勾选区。原生包锁死勾选。</summary>
+    private void BuildEnabledPacksSection()
+    {
+        if (_ruleList == null || !_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var cfg)) return;
+
+        var head = new Label { Text = "本卡池启用的物理卡包" };
+        head.AddThemeFontSizeOverride("font_size", 13);
+        head.AddThemeColorOverride("font_color", new Color("7DD3FC"));
+        _ruleList.AddChild(head);
+
+        var flow = new HFlowContainer();
+        flow.AddThemeConstantOverride("h_separation", 10);
+        flow.AddThemeConstantOverride("v_separation", 4);
+        _ruleList.AddChild(flow);
+
+        _enabledPackChecks.Clear();
+        foreach (var kv in _store.Catalog.Packs.OrderBy(x => x.Key, StringComparer.Ordinal))
+        {
+            string pid = kv.Key;
+            bool isNative = string.Equals(kv.Value.NativePoolId, cfg.PoolId, StringComparison.OrdinalIgnoreCase);
+            bool on = cfg.EnabledPackIds.Contains(pid, StringComparer.OrdinalIgnoreCase) || isNative;
+
+            var cb = new CheckBox
+            {
+                Text = pid + (isNative ? "（原生必选）" : ""),
+                ButtonPressed = on,
+                Disabled = isNative,
+            };
+            cb.AddThemeFontSizeOverride("font_size", 11);
+            _enabledPackChecks[pid] = cb;
+            flow.AddChild(cb);
+        }
+
+        var applyBtn = new Button { Text = "✔ 应用启用卡包", CustomMinimumSize = new Vector2(0, 28) };
+        SvWbTheme.StyleButton(applyBtn, isPrimary: true, customAccent: SvWbTheme.AccentCyan);
+        applyBtn.AddThemeFontSizeOverride("font_size", 11);
+        applyBtn.Pressed += () =>
+        {
+            var chosen = new List<string>();
+            foreach (var kv2 in _enabledPackChecks)
+                if (kv2.Value.ButtonPressed) chosen.Add(kv2.Key);
+            if (chosen.Count == 0) { _ruleStatus.Text = "至少要启用一个卡包"; return; }
+
+            bool ok = _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, chosen,
+                cfg.Rules, cfg.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>(),
+                out string msg);
+            _ruleStatus.Text = msg;
+            if (ok) RefreshRules();
+        };
+        _ruleList.AddChild(applyBtn);
+
+        var sep = new HSeparator();
+        _ruleList.AddChild(sep);
+    }
+
+    /// <summary>新建卡池弹窗：填 ID 与显示名，其余用标准规则与 core-wb 起步。</summary>
+    private void OpenNewPoolDialog()
+    {
+        var dlg = new AcceptDialog { Title = "新建卡池", Size = new Vector2I(440, 240) };
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 8);
+        dlg.AddChild(box);
+
+        LineEdit Field(string label, string initial)
+        {
+            var row = new HBoxContainer();
+            var lb = new Label { Text = label, CustomMinimumSize = new Vector2(96, 0) };
+            lb.AddThemeFontSizeOverride("font_size", 12);
+            row.AddChild(lb);
+            var ed = new LineEdit { Text = initial ?? "", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            row.AddChild(ed);
+            box.AddChild(row);
+            return ed;
+        }
+
+        var idEdit = Field("卡池 ID", "my-pool");
+        var nameEdit = Field("显示名称", "我的卡池");
+
+        var hint = new Label
+        {
+            Text = "新卡池默认启用 core-wb，规则用标准赛制。建好后可在右侧勾选更多卡包。",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        hint.AddThemeFontSizeOverride("font_size", 11);
+        hint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+        box.AddChild(hint);
+
+        dlg.Confirmed += () =>
+        {
+            string pid = idEdit.Text?.Trim();
+            if (string.IsNullOrEmpty(pid)) { _ruleStatus.Text = "卡池 ID 不能为空"; dlg.QueueFree(); return; }
+            bool ok = _store.SavePoolConfigFull(pid, nameEdit.Text?.Trim(),
+                new List<string> { "core-wb" }, ShadowverseFan.KernelV3.Core.MatchRules.CreateStandard(),
+                new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>(), out string msg);
+            _ruleStatus.Text = msg;
+            if (ok)
+            {
+                _selectedPoolId = pid;
+                BuildPoolPicker();
+                RefreshRules();
+                RefreshNamedDecks();
+            }
+            dlg.QueueFree();
+        };
+        dlg.Canceled += () => dlg.QueueFree();
+        AddChild(dlg);
+        dlg.PopupCentered();
+    }
 
     /// <summary>新建 / 修改卡包元信息的弹窗。</summary>
     private void OpenPackMetaDialog(string existingPackId)
@@ -514,6 +663,8 @@ public partial class PackAndPoolManagerView : Control
             foot.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
             _ruleList.AddChild(foot);
         }
+
+        BuildEnabledPacksSection();
     }
 
     /// <summary>

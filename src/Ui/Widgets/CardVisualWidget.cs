@@ -33,6 +33,24 @@ public partial class CardVisualWidget : Control
     private bool _locked;
     private bool _hovered;
 
+    private bool _isCandidate;
+    private bool _isPicked;
+    private float _candPulse;
+
+    /// <summary>
+    /// 「可选目标」候选态。
+    ///
+    /// 效果要求从手牌里选牌时，手牌也必须参与候选高亮 ——
+    /// 早先只高亮了战场与主战者，玩家不知道该点手牌。
+    /// </summary>
+    public void SetCandidate(bool isCandidate, bool isPicked = false)
+    {
+        if (_isCandidate == isCandidate && _isPicked == isPicked) return;
+        _isCandidate = isCandidate;
+        _isPicked = isPicked;
+        QueueRedraw();
+    }
+
     // ---- 手牌呈现状态（专题二）：由 BattleScreenRoot 按 PP 实时刷新 ----
     private ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode _playMode =
         ShadowverseFan.KernelV3.Battle.TurnRunner.HandPlayMode.Unplayable;
@@ -269,6 +287,25 @@ public partial class CardVisualWidget : Control
 
         if (_hovered)
             DrawRect(new Rect2(l - 3f, t - 3f, w + 6f, h + 6f), new Color(1.0f, 0.84f, 0.35f, 0.45f));
+
+        // 候选态：金色呼吸外框 + 顶部箭头标牌；已选改为翡翠绿对勾。
+        // 效果要求从手牌里选牌时，手牌也必须参与候选高亮 ——
+        // 早先只高亮了战场与主战者，玩家不知道该点手牌。
+        if (_isCandidate)
+        {
+            _candPulse += 0.06f;
+            float p = 0.55f + 0.45f * Mathf.Sin(_candPulse);
+            var col = _isPicked
+                ? new Color(0.20f, 0.83f, 0.60f, p)
+                : new Color(0.98f, 0.85f, 0.28f, p);
+            DrawRect(new Rect2(l - 4f, t - 4f, w + 8f, h + 8f), col, false, 3f);
+            string tag = _isPicked ? "✔ 已选" : "▼ 可选目标";
+            var fs = ThemeDB.FallbackFont;
+            var sz = fs.GetStringSize(tag, HorizontalAlignment.Left, -1, 11);
+            var bp = new Vector2(l + (w - sz.X) * 0.5f - 4f, t - 20f);
+            DrawRect(new Rect2(bp, new Vector2(sz.X + 8f, 17f)), new Color(0.05f, 0.05f, 0.08f, 0.92f));
+            DrawString(fs, bp + new Vector2(4f, 12.5f), tag, HorizontalAlignment.Left, -1, 11, col);
+        }
     }
 
     /// <summary>
