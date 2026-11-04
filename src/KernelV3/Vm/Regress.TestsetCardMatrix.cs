@@ -56,16 +56,16 @@ public static partial class Regress
             (81000022, "Striker Artifact", MatrixStriker),
             (81000023, "Slaus", MatrixSlaus),
             (81000024, "Sandalphon", MatrixSandalphon),
-            (81000025, "Obsessed Test Subject", MatrixObsessed),
+            (81000025, "Testset Obsessed Test Subject", MatrixObsessed),
             (81000030, "Pascale's Dance", MatrixPascale),
             (81000031, "Mjerrabaine", MatrixMjerrabaine),
             (81000032, "Octrice", MatrixOctrice),
-            (81000033, "Glittering Gold", MatrixGold),
+            (81000033, "Testset Glittering Gold", MatrixGold),
             (81000034, "City of Babelon", MatrixBabelon),
             (81000035, "Shakdoh", MatrixShakdoh),
             (81000036, "Adventurers' Guild", MatrixGuild),
-            (81000037, "Ancient Cannon", MatrixCannon),
-            (81000038, "Gear of Ambition", MatrixGear),
+            (81000037, "Testset Ancient Cannon", MatrixCannon),
+            (81000038, "Testset Gear of Ambition", MatrixGear),
             (81000039, "Yuna", MatrixYuna),
         };
 
@@ -807,7 +807,7 @@ _ = (sep, superAoE);
         e.Play(c);
         int h1 = e.St.EnumerateZone(ZoneRef.Hand, 0).Count();
         // 入场曲加入的 Gear of Ambition 必须是**真卡**（带 Fuse 与 Can't be played）
-        var gear = e.St.EnumerateZone(ZoneRef.Hand, 0).FirstOrDefault(x => x.Def?.Name == "Gear of Ambition");
+        var gear = e.St.EnumerateZone(ZoneRef.Hand, 0).FirstOrDefault(x => x.Def?.Name == "Testset Gear of Ambition");
         bool realGear = gear?.Def != null && gear.Def.HasFuse && gear.Def.CardId == 81000038;
         bool gained = h1 >= h0;
 
@@ -839,7 +839,7 @@ _ = (sep, superAoE);
         e.Tr.FuseCards(0, c, new[] { m }, e.Vm);
         e.Vm.StepUntilBlocked();
         int fid = c.Def?.CardId ?? -1;
-        bool transformed = fid == 81000022 && c.Def.Name == "Striker Artifact";
+        bool transformed = fid == 81000022 && c.Def.Name == "Testset Striker Artifact";
         return (cannotPlay && transformed, "禁打=" + cannotPlay + " 变身 id=" + fid + " name=" + c.Def?.Name);
     }
 
