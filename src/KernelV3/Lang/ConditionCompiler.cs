@@ -202,9 +202,13 @@ public static class ConditionCompiler
                     int v = c.Current.Value;
                     c.Advance();
                     c.AdvanceToClauseBoundary();
+                    // 必须优先用卡面登记的表达式。
+                    // 写死 Ctr(vn) 会读一个从不被写入的计数器，条件恒为 false ——
+                    // 「If X is at least 2, evolve this follower」永远不进化（10844110）。
+                    var resolved = VariableResolver?.Invoke(vn);
                     return new CompareExpr
                     {
-                        Left = NumExpr.Ctr(lex.Counter(vn)),
+                        Left = resolved ?? NumExpr.Ctr(lex.Counter(vn)),
                         Op = CompareOp.Ge,
                         Right = NumExpr.Const(v),
                     };

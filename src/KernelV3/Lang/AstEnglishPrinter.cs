@@ -460,7 +460,14 @@ public static class AstEnglishPrinter
                 : (hc.Clans != null && hc.Clans.Count > 0
                     ? "has clan " + string.Join("|", hc.Clans.Select(x => x.Name))
                     : "has clan " + hc.Clan.Name),
-            NotSameEntityExpr => "other than itself",
+            // 排除的是「某槽位里的那个实体」，不是本卡自己。
+            // 一律印 other than itself 会让 "other than it"（排除被使用的那张卡）
+            // 在 AST 上与 "other than this follower" 完全无法区分。
+            NotSameEntityExpr nse => nse.ExcludeSlot == TargetSpec.SlotTrigger
+                ? "other than $trigger"
+                : nse.ExcludeSlot == TargetSpec.SlotOpposing
+                    ? "other than $opposing"
+                    : "other than itself",
             IsPreviousExpr ip => "is selected",
             // "If you selected an allied amulet" —— 对 $selected 槽位做存在性检验。
             // 缺这条会落进默认分支，打印成裸的 "existsexpr"，

@@ -172,9 +172,43 @@ public sealed class EnglishCompiler
         var r = new Result();
         if (string.IsNullOrWhiteSpace(text)) return r;
 
+        // 静态钩子必须在这里**重新**绑定。
+        //
+        // Compile() 在调 CompileCore 之前先跑了 BuildAltModeDefs，
+        // 那里用 new EnglishCompiler(_lex).Compile(...) 编译关联纹章，
+        // 会把 ConditionCompiler.VariableResolver 覆盖指向**那个子编译器**的空绑定表。
+        // 主卡随后的 "If X is at least 2" 于是拿不到 X，退化成 ctr:X（10844110）。
+        ConditionCompiler.VariableResolver = ResolveVariable;
+
         var plain = Preprocess(text);
+        var mergedSegs = MergeOptionSegments(SplitSegments(plain)).ToList();
+
+        // 全卡级变量声明预扫描：
+        // "X is the number of ..." 可能写在任意段落（含 <hr> 之后），
+        // 而条件编译发生在逐段循环里 —— 声明句若排在后面，
+        // 前面段落的 "If X is at least 2" 就绑不上。
+        foreach (var (_, segText) in mergedSegs)
+        {
+            if (string.IsNullOrWhiteSpace(segText)) continue;
+            var preToks = _tokenizer.Tokenize(segText);
+            var curSent = new List<Token>();
+            foreach (var tk in preToks)
+            {
+                if (tk.Kind == TokKind.Eof || tk.Kind == TokKind.Period || tk.Kind == TokKind.OptionMark)
+                {
+                    if (curSent.Count > 0 && IsVariableDeclaration(curSent))
+                        TryBindVariableDeclaration(curSent);
+                    curSent.Clear();
+                    continue;
+                }
+                curSent.Add(tk);
+            }
+            if (curSent.Count > 0 && IsVariableDeclaration(curSent))
+                TryBindVariableDeclaration(curSent);
+        }
+
         var buffer = new List<AbilityDef>();
-        foreach (var (zone, segment) in MergeOptionSegments(SplitSegments(plain)))
+        foreach (var (zone, segment) in mergedSegs)
         {
             if (segment.Trim().Length == 0) continue;
             try

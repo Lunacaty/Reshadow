@@ -530,8 +530,20 @@ public static class InsteadWeaver
             && (MentionsSlot(thenBody, TargetSpec.SlotSelected)
                 || MentionsSlotInBool(cond, TargetSpec.SlotSelected)))
         {
-            prefixNodes.Add(elseBody[0]);
-            elseBody = elseBody.Skip(1).ToList();
+            // 只提 Select 不够：紧随其后、同样消费 $selected 的公共前置动作
+            // （"Select a card in your hand **and discard it**" 里的 discard）
+            // 也必须一起提到分支外，否则它只留在 else 分支，
+            // 选到法术时那张牌根本不会被弃掉（10521110 好施的名人）。
+            int takePrefix = 1;
+            while (takePrefix < elseBody.Count - 1
+                   && MentionsSlot(new[] { elseBody[takePrefix] }, TargetSpec.SlotSelected)
+                   && (thenBody.Count == 0
+                       || elseBody[takePrefix].GetType() != thenBody[0].GetType()))
+            {
+                takePrefix++;
+            }
+            for (int k = 0; k < takePrefix; k++) prefixNodes.Add(elseBody[k]);
+            elseBody = elseBody.Skip(takePrefix).ToList();
         }
         // 前句形如「[抽牌, ConditionalNode(若进化则回 1 血)]」时（10863210 同窗好友），
         // 替代句替换的是末尾那个条件分支，前面的抽牌属于两档都要执行的公共前置。

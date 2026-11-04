@@ -550,7 +550,31 @@ public sealed class PrefixParser
                 b.EventExplicit = true;
                 b.SubjectFilter = _target.TryParse(cur);
             }
-            else if (cur.MatchWord("play")) { b.Event = CoreEvent.OnPlay; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur)?.AsPoolFilter(); }
+            else if (cur.MatchWord("play"))
+            {
+                b.Event = CoreEvent.OnPlay;
+                b.EventExplicit = true;
+                var subj = _target.TryParse(cur)?.AsPoolFilter();
+
+                // "Whenever you play another card"：主语是「你」，
+                // 而 "another card" 没写 allied，TargetParser 按「战场是公共区」
+                // 把归属设成了 Any —— 那会让**对手出牌时也触发我方的护符**。
+                // 这里必须归一成 Self。
+                if (subj != null && subj.Owner == ZoneScope.Any)
+                {
+                    subj = new TargetSpec
+                    {
+                        SourceKind = subj.SourceKind, Owner = ZoneScope.Self, Zone = subj.Zone,
+                        Slot = subj.Slot, CardId = subj.CardId, CardName = subj.CardName,
+                        Where = subj.Where, Sort = subj.Sort, SortDescending = subj.SortDescending,
+                        TopN = subj.TopN, DistinctByName = subj.DistinctByName,
+                        DuplicatesOnly = subj.DuplicatesOnly, Mode = subj.Mode, Count = subj.Count,
+                        History = subj.History, IncludeLeader = subj.IncludeLeader,
+                        OmittedFields = subj.OmittedFields,
+                    };
+                }
+                b.SubjectFilter = subj;
+            }
             else if (cur.MatchWord("discard")) { b.Event = CoreEvent.OnDiscard; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("fuse", "to", "this", "card"))
             {

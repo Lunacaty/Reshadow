@@ -1114,11 +1114,54 @@ public sealed class TargetParser
                 continue;
             }
             // "other than it" / "other than the attack target"
-            if (cur.MatchPhrase("other", "than", "it") || cur.MatchPhrase("other", "than", "the", "attack", "target"))
+            // "other than it" 的语义是「排除那张具体的卡（不是同一实体）」，
+            // 不是「某槽位非空」。
+            // IsPreviousExpr 在 VmEval 里只检查槽位是否非空，
+            // 拿它当「不是同一张卡」用会让每个候选都通过（10503210 大游戏世界）。
+            if (cur.MatchPhrase("other", "than", "it"))
             {
-                wheres.Add(BoolExpr.Not(new IsPreviousExpr { Slot = TargetSpec.SlotTrigger }));
+                // 排除哪一格由执行上下文决定，编译期不能定死：
+                //   "Whenever you play another card, if there's a card on the field
+                //    other than it ..."      -> 排除 $trigger（被使用的那张）
+                //   "destroy all other followers" -> 排除 $self（本卡）
+                // 用 ResolvePronounTarget() 在纯条件编译时还会因为「无前序绑定」直接抛错。
+                wheres.Add(new NotSameEntityExpr
+                {
+                    ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf,
+                    Of = TargetSpec.Item,
+                });
                 matched = true;
                 continue;
+            }
+            if (cur.MatchPhrase("other", "than", "the", "attack", "target"))
+            {
+                wheres.Add(new NotSameEntityExpr
+                {
+                    ExcludeSlot = TargetSpec.SlotOpposing,
+                    Of = TargetSpec.Item,
+                });
+                matched = true;
+                continue;
+            }
+
+            // "with the same base cost" / "with the same cost"。
+            // 必须放在**后置定语循环**：英文原文里它出现在
+            // "a card on the field other than it" **之后**，
+            // 放前置循环里永远遇不到（10503210 大游戏世界）。
+            {
+                bool sameBase = cur.MatchPhrase("with", "the", "same", "base", "cost");
+                if (sameBase || cur.MatchPhrase("with", "the", "same", "cost"))
+                {
+                    var stKey = sameBase ? StatKey.BaseCost : StatKey.Cost;
+                    wheres.Add(new CompareExpr
+                    {
+                        Left = NumExpr.Prop(stKey, TargetSpec.Item),
+                        Op = CompareOp.Eq,
+                        Right = NumExpr.Prop(stKey, TargetSpec.Trigger),
+                    });
+                    matched = true;
+                    continue;
+                }
             }
             // "that didn't attack this turn"
             if (cur.MatchPhrase("that", "didn't", "attack", "this", "turn"))
