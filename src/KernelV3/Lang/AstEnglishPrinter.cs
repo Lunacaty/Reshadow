@@ -455,10 +455,26 @@ public static class AstEnglishPrinter
                     : "has clan " + hc.Clan.Name),
             NotSameEntityExpr => "other than itself",
             IsPreviousExpr ip => "is selected",
+            // "If you selected an allied amulet" —— 对 $selected 槽位做存在性检验。
+            // 缺这条会落进默认分支，打印成裸的 "existsexpr"，
+            // AST 上完全看不出它在校验什么。
+            ExistsExpr ex => PrintExists(ex),
             AndExpr a => "(" + string.Join(" and ", a.Items.Select(PrintBool)) + ")",
             OrExpr o => "(" + string.Join(" or ", o.Items.Select(PrintBool)) + ")",
             NotExpr n => "not " + PrintBool(n.Inner),
             _ => e.GetType().Name.ToLowerInvariant(),
         };
     }
+
+    private static string PrintExists(ExistsExpr ex)
+    {
+        var t = ex.Target;
+        if (t == null) return "exists";
+        string who = t.SourceKind == TargetSourceKind.Slot && t.Slot == TargetSpec.SlotSelected
+            ? "$selected" : PrintTarget(t);
+        string cond = (t.Where != null && t.Where is not ConstBoolExpr)
+            ? " where " + PrintBool(t.Where) : "";
+        return "exists(" + who + cond + ")";
+    }
+
 }

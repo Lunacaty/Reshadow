@@ -67,6 +67,13 @@ public sealed class TurnRunner
         // 本回合我方随从攻击次数清零 —— 「本回合我方随从没攻击过」的判据。
         _state.WriteCounter(playerId, _schema.Counter("turn_ally_attacks"), 0);
 
+        // 「我方上回合是否有随从攻击过主战者」（《利牙》的替代条件）：
+        // 把上一回合的 this 转存进 last，再清零 this。
+        var attackedThis = _schema.Counter("ally_attacked_leader_this_turn");
+        _state.WriteCounter(playerId, _schema.Counter("ally_attacked_leader_last_turn"),
+                            _state.ReadCounter(playerId, attackedThis));
+        _state.WriteCounter(playerId, attackedThis, 0);
+
         p.ManualEvolvedThisTurn = false;
         p.UsedExtraPpThisTurn = false;
         p.EngagedEntityIdsThisTurn.Clear();

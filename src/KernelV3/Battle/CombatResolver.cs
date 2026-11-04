@@ -134,6 +134,14 @@ public sealed class CombatResolver
         _state.WriteCounter(attacker.PlayerId, allyAtkKey,
                             _state.ReadCounter(attacker.PlayerId, allyAtkKey) + 1);
         attacker.AttackedLeaderLastTurn = defender.Zone == ZoneRef.Leader;
+
+        // 玩家级历史记录：本回合是否有我方随从打过主战者。
+        // 与上面的 attacker.AttackedLeaderLastTurn 是**两件事**：
+        // 前者描述「这一个随从这一击打的是谁」，后者是「我方上回合有没有打过脸」，
+        // 供《利牙》这类法术读取（法术自身永远不会有 AttackedLeaderLastTurn）。
+        if (defender.Zone == ZoneRef.Leader)
+            _state.WriteCounter(attacker.PlayerId,
+                                _schema.Counter("ally_attacked_leader_this_turn"), 1);
         var ambushKw = _schema.Keyword("ambush");
         if (attacker.Keywords.Contains(ambushKw)) attacker.Keywords.Remove(ambushKw);
 

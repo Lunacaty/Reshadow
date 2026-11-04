@@ -885,14 +885,27 @@ public sealed partial class CardVm
             {
                 var refs = _eval.ResolveRef(n.CopyFrom, scope);
                 if (refs.Count == 0) break;
-                // 接口上只有 3 参数版；exact 区分需要落到具体实现。
-                e = _world is Battle.BattleState bs2
-                    // 直接传 addDepartedTrait：让 SpawnCopy 在拍 EnteredThisMatch 快照**之前**
-                    // 就带上亡者兵种，而不是等返回后再补 —— 补的话快照里永远没有亡者。
-                    ? bs2.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner),
-                                    n.IsExactCopy, n.AddDepartedTrait)
-                    : _world.SpawnCopy(refs[0], n.ToZone, scope.ResolvePlayer(n.ToOwner),
-                                       addDepartedTrait: n.AddDepartedTrait);
+
+                // "summon an exact copy of each" —— 必须遍历 refs 全部复制，
+                // 只取 refs[0] 会让「各自复制一份」变成「只复制第一个」。
+                int owner2 = scope.ResolvePlayer(n.ToOwner);
+                int times = Math.Max(1, _eval.EvalNum(n.Count, scope));
+                var made = new List<RuntimeEntity>();
+                foreach (var r in refs)
+                {
+                    for (int k = 0; k < times; k++)
+                    {
+                        var one = _world is Battle.BattleState bs2
+                            // 直接传 addDepartedTrait：让 SpawnCopy 在拍 EnteredThisMatch 快照**之前**
+                            // 就带上亡者兵种，而不是等返回后再补 —— 补的话快照里永远没有亡者。
+                            ? bs2.SpawnCopy(r, n.ToZone, owner2, n.IsExactCopy, n.AddDepartedTrait)
+                            : _world.SpawnCopy(r, n.ToZone, owner2,
+                                               addDepartedTrait: n.AddDepartedTrait);
+                        if (one != null) made.Add(one);
+                    }
+                }
+                e = made.Count > 0 ? made[0] : null;
+                foreach (var m in made) created.Add(m);
             }
             else if (n.SourceKind == CardSourceKind.CopyOfPrevious)
             {
@@ -910,9 +923,26 @@ public sealed partial class CardVm
                 //
                 // 必须把主人卡内嵌的 CrestDef 一并传下去：那才是带 Abilities 的定义。
                 // 只传名字的话，GainCrest 只能现造空壳，纹章于是「拿得到但没有能力」。
-                e = _world is Battle.BattleState bsc
-                    ? bsc.GainCrest(n.CardId, n.CardName, scope.ResolvePlayer(n.ToOwner), n.CrestDef)
-                    : null;
+                if (_world is Battle.BattleState bsc)
+                {
+                    // "Give yourself and your opponent Crest: Corruption"（10453310）
+                    // 解析出的 ToOwner 是 Any —— 必须给**双方各**发一次。
+                    // 早先只按 ResolvePlayer(Any) 发一次（落到自己），对手拿不到纹章。
+                    if (n.ToOwner == ZoneScope.Any)
+                    {
+                        for (int pid = 0; pid < 2; pid++)
+                        {
+                            var one = bsc.GainCrest(n.CardId, n.CardName, pid, n.CrestDef);
+                            if (one != null) created.Add(one);
+                        }
+                        e = created.Count > 0 ? created[^1] : null;
+                    }
+                    else
+                    {
+                        e = bsc.GainCrest(n.CardId, n.CardName, scope.ResolvePlayer(n.ToOwner), n.CrestDef);
+                    }
+                }
+                else e = null;
             }
             else
             {

@@ -290,6 +290,25 @@ public sealed class Tokenizer
                     }
                 }
 
+                // 英文数词当数字 token：
+                //   "at least two 1-base-cost allied cards"
+                // 不认的话 ParseNumExpr 读不到数量，整句退化成「1 张」。
+                // 只认 1..10，避免把卡名里的 one/two 误当数量
+                // （卡名走的是上面的 MatchLongestCardName，到不了这里）。
+                int wordNum = EnglishNumber(word);
+                if (wordNum > 0)
+                {
+                    tokens.Add(new Token
+                    {
+                        Kind = TokKind.Number,
+                        Text = word,
+                        Value = wordNum,
+                        Pos = i,
+                    });
+                    i = j;
+                    continue;
+                }
+
                 tokens.Add(new Token
                 {
                     Kind = Classify(word),
@@ -356,4 +375,20 @@ public sealed class Tokenizer
     }
 
     private static Token Eof() => new() { Kind = TokKind.Eof, Text = "", Pos = -1 };
+
+    /// <summary>英文数词 → 数值（1..10）；非数词返回 0。</summary>
+    private static int EnglishNumber(string w) => w.ToLowerInvariant() switch
+    {
+        "one" => 1,
+        "two" => 2,
+        "three" => 3,
+        "four" => 4,
+        "five" => 5,
+        "six" => 6,
+        "seven" => 7,
+        "eight" => 8,
+        "nine" => 9,
+        "ten" => 10,
+        _ => 0,
+    };
 }

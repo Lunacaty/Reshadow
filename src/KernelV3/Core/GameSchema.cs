@@ -111,6 +111,10 @@ public sealed class GameSchema
         // 「我方随从本回合攻击过几次」——`if allied followers didn't attack this turn` 的判据。
         // 用计数器而不是遍历战场：随从攻击后可能马上被消灭，遍历会漏掉。
         ("turn_ally_attacks", 0, 999),
+        // 「我方上回合是否有随从攻击过主战者」（《利牙》的替代条件）。
+        // 0/1 二值，回合开始时重置并把上一回合的值转存到 last 槽。
+        ("ally_attacked_leader_last_turn", 0, 1),
+        ("ally_attacked_leader_this_turn", 0, 1),
         // 协作（Rally）：本局对战中已进入过战场的己方随从总数。
         // 不含当前正在上场的这张（入场曲结算完才 +1），护符不算。
         ("rally", 0, 999),

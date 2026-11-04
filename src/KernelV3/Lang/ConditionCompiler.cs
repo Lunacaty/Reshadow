@@ -313,7 +313,17 @@ public static class ConditionCompiler
         if (c.MatchPhrase("an", "allied", "follower", "attacked", "a", "leader"))
         {
             c.AdvanceToClauseBoundary();
-            return new HasStateExpr { State = UnitState.AttackedLeaderLastTurn, Of = TargetSpec.Self };
+            // 这是「**我方上回合**有随从打过主战者」的玩家级历史记录，
+            // 不是「这张卡自身」的状态。
+            // 利牙是一张法术，法术永远不会被攻击，
+            // 用 HasStateExpr(Self) 让它恒为 false —— 后半句的 6 点伤害永远不生效。
+            // CombatResolver 在攻击主战者时会写 ctr:ally_attacked_leader_last_turn。
+            return new CompareExpr
+            {
+                Left = NumExpr.Ctr(lex.Counter("ally_attacked_leader_last_turn")),
+                Op = CompareOp.Ge,
+                Right = NumExpr.Const(1),
+            };
         }
 
         if (c.MatchPhrase("it's", "super", "-", "evolved")
@@ -531,7 +541,11 @@ public static class ConditionCompiler
             // 于是条件退化成「只要有随从」。
             var spec = new TargetSpec
             {
-                SourceKind = TargetSourceKind.Zone,
+                // SourceKind 必须跟着 tgt 走：
+                //   "If there's an allied Prim, Princess's Picnic on the field"
+                // TryParse 给出的是 CardId 来源，写死成 Zone 会让 CardId 与 CardName
+                // 在 VmEval / AstEnglishPrinter 里完全被忽略 —— 条件退化成「场上有任意随从」。
+                SourceKind = tgt?.SourceKind ?? TargetSourceKind.Zone,
                 Owner = own,
                 Zone = zone,
                 Mode = SelectMode.All,
@@ -828,8 +842,25 @@ public static class ConditionCompiler
         // "you selected a spell / an allied amulet"
         if (c.MatchPhrase("you", "selected"))
         {
+            // "If you selected an allied amulet"：解析出来的 tgt 曾经被整个丢掉，
+            // 于是条件退化成「只要选过任何东西就成立」—— 类型与归属全不校验。
+            // 这里把 tgt 的过滤条件挂到 $selected 槽位上。
+            if (c.MatchWord("one")) return new IsPreviousExpr { Slot = TargetSpec.SlotSelected };
+
             var tgt = new TargetParser(lex).TryParse(c);
-            return new IsPreviousExpr { Slot = TargetSpec.SlotSelected };
+            if (tgt == null) return new IsPreviousExpr { Slot = TargetSpec.SlotSelected };
+
+            return new ExistsExpr
+            {
+                Target = new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Slot,
+                    Slot = TargetSpec.SlotSelected,
+                    Where = tgt.Where,
+                },
+                Op = CompareOp.Ge,
+                Count = NumExpr.Const(1),
+            };
         }
 
         // "attacking a follower"

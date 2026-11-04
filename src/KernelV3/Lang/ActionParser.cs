@@ -1159,15 +1159,41 @@ public sealed class ActionParser
                     cur.TryMatch(TokKind.Comma);
                 }
 
-                // "Bane or Ward at random" —— or 后面的关键词作为第二个授予项
+                // "Bane or Ward at random" —— 是**随机二选一**，不是两个都给。
+                // 早先把 or 后面的关键词直接追加成第二个授予项，
+                // 于是随从同时拿到毁灭与守护，比卡面强了一倍。
                 if (cur.Current.IsWord("or"))
                 {
                     cur.Advance();
+                    bool isRandom = false;
                     var moreOr = TryParseSingleGrant(cur, targets);
-                    if (moreOr != null) { result.AddRange(moreOr); granted++; }
                     if (cur.Current.IsWord("at") && cur.Peek().IsWord("random"))
                     {
                         cur.Advance(); cur.Advance();
+                        isRandom = true;
+                    }
+
+                    if (moreOr != null && isRandom
+                        && result.Count > 0 && moreOr.Count > 0)
+                    {
+                        // 把「第一项」与「或后面这一项」包成随机分支。
+                        var firstGrant = result[^1];
+                        result.RemoveAt(result.Count - 1);
+                        result.Add(new BranchModeNode
+                        {
+                            Kind = ModeDispatchKind.Random,
+                            PickCount = NumExpr.Const(1),
+                            Options = new List<IReadOnlyList<EffectNode>>
+                            {
+                                new List<EffectNode> { firstGrant },
+                                moreOr,
+                            },
+                        });
+                    }
+                    else if (moreOr != null)
+                    {
+                        result.AddRange(moreOr);
+                        granted++;
                     }
                     break;
                 }
@@ -2062,6 +2088,18 @@ public sealed class ActionParser
 
     // ---------- 变形 ----------
 
+
+    /// <summary>把目标的区域换成另一个（用于「in your hand and deck」的双区展开）。</summary>
+    private static TargetSpec CloneInZone(TargetSpec t, ZoneRef zone) => new()
+    {
+        SourceKind = t.SourceKind, Owner = t.Owner, Zone = zone, Slot = t.Slot,
+        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+        Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
+        DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
+        Mode = t.Mode, Count = t.Count, History = t.History,
+        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
+    };
+
     private List<EffectNode> ParseTransform(TokenCursor cur)
     {
         cur.ExpectWord("transform");
@@ -2101,6 +2139,21 @@ public sealed class ActionParser
         // 分界之前是目标
         int splitAt = intoIdx >= 0 ? intoIdx : basedIdx;
         var targetToks = splitAt > 0 ? rest.Take(splitAt).ToList() : new List<Token>();
+        // "in your hand and deck" 的双区短语在 targetToks 里，
+        // 但下面用的是**新建的 TokenCursor**，_target.SawHandAndDeck 不会被置位。
+        // 直接在这里扫一遍 token 判定。
+        bool handAndDeck = false;
+        for (int k = 0; k + 2 < targetToks.Count; k++)
+        {
+            if (targetToks[k].IsWord("hand") && targetToks[k + 1].IsWord("and")
+                && k + 2 < targetToks.Count && targetToks[k + 2].IsWord("deck"))
+            { handAndDeck = true; break; }
+            if (targetToks[k].IsWord("hand") && targetToks[k + 1].Kind == TokKind.Comma
+                && k + 3 < targetToks.Count && targetToks[k + 2].IsWord("and")
+                && targetToks[k + 3].IsWord("deck"))
+            { handAndDeck = true; break; }
+        }
+
         var target = targetToks.Count > 0
             ? (_target.TryParse(new TokenCursor(targetToks)) ?? TargetSpec.Self)
             : TargetSpec.Self;
@@ -2132,14 +2185,40 @@ public sealed class ActionParser
         {
             int id = rc.Current.CardId;
             string nm = rc.Current.Text;
-            return new List<EffectNode> { new TransformNode { Target = target, IntoCardId = id, IntoCardName = nm } };
+            var r1 = new List<EffectNode>
+            {
+                new TransformNode { Target = target, IntoCardId = id, IntoCardName = nm },
+            };
+            // "in your hand and deck" —— TargetSpec 只能装一个 Zone，
+            // 这里按标志补发第二条（Deck），否则牌库里的同名卡一张都不会变。
+            if (handAndDeck)
+            {
+                r1.Add(new TransformNode
+                {
+                    Target = CloneInZone(target, ZoneRef.Deck),
+                    IntoCardId = id, IntoCardName = nm,
+                });
+            }
+            return r1;
         }
 
         // 否则是「复制某集合中的卡」
         var copySrc = _target.TryParse(rc);
         if (copySrc == null)
             throw LangException.At("transform into", "既不是卡名也不是可解析的目标集合", rc, rhs);
-        return new List<EffectNode> { new TransformNode { Target = target, CopySource = copySrc } };
+        var r2 = new List<EffectNode>
+        {
+            new TransformNode { Target = target, CopySource = copySrc },
+        };
+        if (handAndDeck)
+        {
+            r2.Add(new TransformNode
+            {
+                Target = CloneInZone(target, ZoneRef.Deck),
+                CopySource = copySrc,
+            });
+        }
+        return r2;
     }
 
     /// <summary>

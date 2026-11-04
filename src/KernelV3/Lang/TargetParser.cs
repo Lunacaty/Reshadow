@@ -74,10 +74,17 @@ public sealed class TargetParser
     {
         BoundSlots.Clear();
         _slotHistory.Clear();
+        SawHandAndDeck = false;
     }
 
     /// <summary>是否启用设计3 5.3 的代词强制校验。整卡为 true，单句语料为 false。</summary>
     public bool StrictPronounCheck { get; set; } = true;
+
+    /// <summary>
+    /// 最近一次 TryParse 是否遇到了「in your hand and deck」这种**双区域**短语。
+    /// TargetSpec 只能装一个 Zone，调用方（ParseTransform）据此补发第二条节点。
+    /// </summary>
+    public bool SawHandAndDeck { get; private set; } = false;
 
     /// <summary>
     /// 正在解析 "When/Whenever ..." 从句的**主语**本身。
@@ -172,6 +179,7 @@ public sealed class TargetParser
 
     public TargetSpec TryParse(TokenCursor cur)
     {
+        SawHandAndDeck = false;
         int start = cur.Position;
         var owner = ZoneScope.Self;
         bool ownerSet = false;
@@ -263,9 +271,31 @@ public sealed class TargetParser
         if (cur.MatchPhrase("your", "crest"))
         {
             cur.TryMatch(TokKind.Colon);
-            string cn = "";
-            if (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) { cn = cur.Current.Text; cur.Advance(); }
-            return new TargetSpec { Owner = ZoneScope.Self, Zone = ZoneRef.CrestArea, CardName = cn, Mode = SelectMode.All };
+            // 纹章名可能是一个词，也可能是多词（"Crest: Corruption" / "Crest: Kukishiro Mistbloom"）。
+            // 只取一个 token 会让后半截留在流里报错。
+            var nameParts = new List<string>();
+            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period
+                   && cur.Current.Kind != TokKind.Comma)
+            {
+                nameParts.Add(cur.Current.Text);
+                cur.Advance();
+            }
+            string cn = string.Join(" ", nameParts).Trim();
+            var spec = new TargetSpec
+            {
+                Owner = ZoneScope.Self, Zone = ZoneRef.CrestArea,
+                CardName = cn, Mode = SelectMode.All,
+            };
+            // 必须挂 Where 名称过滤：只写 CardName 字段不会参与
+            // "destroy your Crest: X" 的候选筛选，于是一张毁灭纹章的卡
+            // 把玩家身上**所有**纹章一起毁掉。
+            if (!string.IsNullOrEmpty(cn))
+                spec = spec.WithWhere(new HasCardNameExpr
+                {
+                    CardName = cn,
+                    Of = TargetSpec.Item,
+                });
+            return spec;
         }
 
         // ---- 0. 槽位代词 ----
@@ -894,7 +924,14 @@ public sealed class TargetParser
             zone = ZoneRef.Board;
         else if (cur.MatchPhrase("in", "your", "opponent's", "deck")) { zone = ZoneRef.Deck; owner = ZoneScope.Opponent; ownerSet = true; }
         else if (cur.MatchPhrase("in", "your", "opponent's", "hand")) { zone = ZoneRef.Hand; owner = ZoneScope.Opponent; ownerSet = true; }
-        else if (cur.MatchPhrase("in", "your", "hand", "and", "deck")) { zone = ZoneRef.Hand; }
+        else if (cur.MatchPhrase("in", "your", "hand", "and", "deck"))
+        {
+            // "Transform all copies of X in your hand and deck into ..."
+            // 双区域。TargetSpec 只能装一个 Zone，这里先记 Hand，
+            // 由 ParseTransform 读 sawHandAndDeck 再补发一条 Deck 的节点。
+            zone = ZoneRef.Hand;
+            SawHandAndDeck = true;
+        }
         else if (cur.MatchPhrase("in", "your", "deck")) { zone = ZoneRef.Deck; }
         else if (cur.MatchPhrase("in", "your", "hand")) { zone = ZoneRef.Hand; }
         else if (cur.MatchPhrase("in", "your", "cemetery")) { zone = ZoneRef.Cemetery; }
