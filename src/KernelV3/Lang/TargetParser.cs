@@ -87,6 +87,12 @@ public sealed class TargetParser
     public bool SawHandAndDeck { get; private set; } = false;
 
     /// <summary>
+    /// 最近一次 TryParse 是否遇到 "allied and enemy" 这种双阵营短语。
+    /// 命中时 ParseSelect 要展开成两次选择（先己方后敌方，累加到同一个槽位）。
+    /// </summary>
+    public bool SawAlliedAndEnemy { get; private set; } = false;
+
+    /// <summary>
     /// 正在解析 "When/Whenever ..." 从句的**主语**本身。
     ///
     /// 必须与「触发器从句下的效果体」区分开，否则两种 other 会被混为一谈：
@@ -179,6 +185,7 @@ public sealed class TargetParser
 
     public TargetSpec TryParse(TokenCursor cur)
     {
+        SawAlliedAndEnemy = false;
         SawHandAndDeck = false;
         int start = cur.Position;
         var owner = ZoneScope.Self;
@@ -624,7 +631,9 @@ public sealed class TargetParser
                 && cur.Peek(2).IsAnyWord("enemy", "enemies"))
             {
                 cur.Advance(); cur.Advance(); cur.Advance();
-                owner = ZoneScope.Any; ownerSet = true; matched = true; continue;
+                // 记下这是「双方各一个」的双目标短语，由 ParseSelect 展开成两次选择。
+                owner = ZoneScope.Self; ownerSet = true; SawAlliedAndEnemy = true;
+                matched = true; continue;
             }
             if (cur.Current.IsAnyWord("enemy"))
             {
@@ -805,7 +814,7 @@ public sealed class TargetParser
             && cur.Peek(2).IsAnyWord("enemy", "enemies"))
         {
             cur.Advance(); cur.Advance(); cur.Advance();
-            owner = ZoneScope.Any; ownerSet = true; matched = true;
+            owner = ZoneScope.Self; ownerSet = true; SawAlliedAndEnemy = true; matched = true;
         }
 
         // ---- 6c. 未知修饰词：已彻底删除 ----
@@ -895,17 +904,16 @@ public sealed class TargetParser
             }
             else if (cur.Current.IsAnyWord("it", "them"))
             {
-                // "all enemy copies of it from the field" -> 指向上一条动作的目标
+                // "Banish all enemy copies of it from the field"（10334110）：
+                // 要的是「场上与 $selected 同名的所有敌方卡」，不是那个已被放逐的实体本身。
+                // 直接返回 Slot 会把一个已离场的单实体当目标，什么都放逐不到。
                 cur.Advance();
                 cur.TryMatchAnyWord("from", "on");
                 cur.TryMatchAnyWord("the");
                 cur.TryMatchAnyWord("field");
-                return new TargetSpec
-                {
-                    SourceKind = TargetSourceKind.Slot,
-                    Slot = TargetSpec.SlotSelected,
-                    Mode = SelectMode.All,
-                };
+                var pron = ResolvePronounTarget();
+                wheres.Add(new HasCardNameExpr { Of = pron });
+                matched = true;
             }
             matched = true;
         }

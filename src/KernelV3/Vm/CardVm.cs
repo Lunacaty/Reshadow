@@ -469,8 +469,36 @@ public sealed partial class CardVm
                 .FirstOrDefault(e => e.EntityId == id);
             if (live != null) refs.Add(EntityRef.From(live));
         }
-        frame.Scope.BindRefs(Pending.Slot, refs);
-        frame.Scope.Chosen = refs.Count > 0 ? refs[0] : null;
+        // AppendToSlot 时累加而不是覆盖：
+        //   "Select an allied and enemy follower" 连选两次，第二次要把敌方
+        //   追加到第一次选中的己方后面，后续的 them 才能同时作用于两张。
+        var selectNode = frame.Ip < frame.Code.Count ? frame.Code[frame.Ip] as SelectTargetNode : null;
+        if (selectNode != null && selectNode.AppendToSlot)
+        {
+            var merged = frame.Scope.Read(Pending.Slot).ToList();
+            merged.AddRange(refs);
+            frame.Scope.BindRefs(Pending.Slot, merged);
+            frame.Scope.Chosen = merged.Count > 0 ? merged[0] : null;
+        }
+        else
+        {
+            frame.Scope.BindRefs(Pending.Slot, refs);
+            frame.Scope.Chosen = refs.Count > 0 ? refs[0] : null;
+        }
+
+        // 同步到源实体：跨时机的「同名副本」查询要靠它回指。
+        //   "Evolve: Select ... Super-Evolve: Banish all enemy copies of it"（10334110）
+        // 超进化是另一条能力，作用域里 $selected 已经空了。
+        if (frame.Scope.Source != null && Pending.Slot == TargetSpec.SlotSelected)
+        {
+            var srcRef = frame.Scope.Source.Value;
+            var carrier = _world.GetLive(srcRef.EntityId, srcRef.EntrySerial);
+            if (carrier != null)
+            {
+                carrier.LastSelectedRefs.Clear();
+                carrier.LastSelectedRefs.AddRange(frame.Scope.Read(Pending.Slot));
+            }
+        }
 
         // 记下「本条指令刚被选完」，重入时节点据此放行。
     // 不能只看槽位非空 —— 同一条能力里的下一条 Select 会误判成「已选过」。

@@ -250,7 +250,9 @@ public sealed partial class CardVm
             frame.ResolvedChoiceIp = -1;
             return false;
         }
-        frame.Scope.Clear(n.OutSlot);
+        // AppendToSlot 时不清空："Select an allied and enemy follower" 需要连选两次，
+        // 第二次必须累加到第一次的结果上，否则只剩最后一个目标。
+        if (!n.AppendToSlot) frame.Scope.Clear(n.OutSlot);
 
         var candidates = _eval.Resolve(n.Target, frame.Scope);
 
@@ -295,7 +297,13 @@ public sealed partial class CardVm
             });
         }
 
-        frame.Scope.Bind(n.OutSlot, candidates);
+        if (n.AppendToSlot)
+        {
+            var merged = frame.Scope.Read(n.OutSlot).ToList();
+            merged.AddRange(candidates.Select(EntityRef.From));
+            frame.Scope.BindRefs(n.OutSlot, merged);
+        }
+        else frame.Scope.Bind(n.OutSlot, candidates);
         return false;
     }
 

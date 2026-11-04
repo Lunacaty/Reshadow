@@ -448,7 +448,12 @@ public static class AstEnglishPrinter
             HasKeywordExpr hk => "has " + hk.Keyword.Name,
             HasTraitExpr ht => "has trait " + ht.Trait.Name,
             HasPackExpr hp => "in pack " + hp.PackId,
-            HasCardNameExpr hcn => "named "
+            // CardId 与 CardName 都为空时，Of 是「参照槽位」——
+            //   "Banish all enemy copies of it" 要印成 same name as $selected，
+            //   而不是空洞的 "named "。
+            HasCardNameExpr hcn => (hcn.CardId == 0 && string.IsNullOrEmpty(hcn.CardName) && hcn.Of != null)
+                ? "same name as " + PrintTarget(hcn.Of)
+                : "named "
                 + (string.IsNullOrEmpty(hcn.CardName) ? hcn.CardId.ToString() : hcn.CardName),
             HasClanExpr hc => hc.IsSelfClan
                 ? "has clan $self"

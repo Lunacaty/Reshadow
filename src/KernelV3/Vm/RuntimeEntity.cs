@@ -125,6 +125,16 @@ public sealed class RuntimeEntity
     /// </summary>
     public List<EntityRef> LastCreatedRefs { get; } = new();
 
+    /// <summary>
+    /// 本实体最近一次通过 Select 选中的实体引用。
+    ///
+    /// 供跨时机回指："Evolve: Select an enemy follower and banish it.
+    /// Super-Evolve: Banish all enemy copies of it from the field."（10334110）
+    /// 超级进化是另一条能力，$selected 在那个作用域里已经空了，
+    /// 只能回到**源实体**身上取它上一次选了什么。
+    /// </summary>
+    public List<EntityRef> LastSelectedRefs { get; } = new();
+
     public int EntityId { get; init; }
     public int EntrySerial { get; set; }
     public Ast.CardDef Def { get; set; }

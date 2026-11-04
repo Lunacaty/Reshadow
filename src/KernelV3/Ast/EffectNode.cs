@@ -29,6 +29,15 @@ public sealed class SelectTargetNode : EffectNode
 {
     public TargetSpec Target { get; init; }
     public string OutSlot { get; init; } = TargetSpec.SlotSelected;
+
+    /// <summary>
+    /// true = 把本次选中的目标**追加**到 OutSlot 已有的列表末尾，而不是清空覆盖。
+    ///
+    /// "Select an allied and enemy follower on the field and destroy them"（10151310）
+    /// 需要连选两次、最后一起处理 —— 第二次必须累加而不是覆盖，
+    /// 否则只会破坏最后一个目标。
+    /// </summary>
+    public bool AppendToSlot { get; init; }
 }
 
 // ---------- 2. 伤害 ----------

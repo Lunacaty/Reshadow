@@ -234,6 +234,19 @@ public sealed class VmEval
 
             case HasCardNameExpr hcn:
             {
+                // CardId == 0 且 CardName 为空时，Of 是「参照槽位」——
+                // 判断 $item 是否与那个槽位里的实体**同名**。
+                //   "Banish all enemy copies of it from the field"（10334110）
+                if (hcn.CardId == 0 && string.IsNullOrEmpty(hcn.CardName) && hcn.Of != null)
+                {
+                    var refTargets = ResolveRef(hcn.Of, scope);
+                    if (refTargets.Count == 0) return false;
+                    int wantId = RefDef(refTargets[0])?.CardId ?? (refTargets[0].Snapshot?.CardId ?? 0);
+                    if (wantId <= 0) return false;
+                    return ResolveRef(TargetSpec.Item, scope).Any(r =>
+                        (RefDef(r)?.CardId ?? (r.Snapshot?.CardId ?? 0)) == wantId);
+                }
+
                 var t = hcn.Of ?? TargetSpec.Item;
                 return ResolveRef(t, scope).Any(r =>
                 {
@@ -657,6 +670,19 @@ public sealed class VmEval
                     var carrier = _world.GetLive(srcRef.EntityId, srcRef.EntrySerial);
                     if (carrier != null && carrier.LastCreatedRefs.Count > 0)
                         pool.AddRange(carrier.LastCreatedRefs);
+                }
+
+                // $selected 跨能力域回退（与 $created 完全对称）：
+                //   "Evolve: Select an enemy follower and banish it."
+                //   "Super-Evolve: Banish all enemy copies of it from the field."（10334110）
+                // 超进化是另一条能力，作用域里的 $selected 是空的，
+                // 只能回到源实体身上取它上一次选了什么。
+                if (pool.Count == 0 && t.Slot == TargetSpec.SlotSelected && scope.Source != null)
+                {
+                    var srcSel = scope.Source.Value;
+                    var carrierSel = _world.GetLive(srcSel.EntityId, srcSel.EntrySerial);
+                    if (carrierSel != null && carrierSel.LastSelectedRefs.Count > 0)
+                        pool.AddRange(carrierSel.LastSelectedRefs);
                 }
                 // $self 未显式绑定时回退到 Source —— 引擎自动语义
                 if (pool.Count == 0 && t.Slot == TargetSpec.SlotSelf && scope.Source != null)

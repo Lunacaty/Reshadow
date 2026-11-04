@@ -2073,6 +2073,11 @@ public sealed class ActionParser
         if (target == null)
             throw new LangException("select 后面没有可识别的目标");
 
+        // "Select an allied and enemy follower" 需要**连选两次**。
+        // 第一次选己方，第二次选敌方，两次结果累加到同一个 $selected，
+        // 后续的 them 一次性作用于两张。
+        bool dualAlliedAndEnemy = _target.SawAlliedAndEnemy;
+
         // 立刻登记 $selected：本方法内部会继续解析 ", and <动词>" 链，
         // 那些后续动作的 it / them 必须能看见这次 Select。
         _target.MarkBound(TargetSpec.SlotSelected);
@@ -2081,6 +2086,25 @@ public sealed class ActionParser
         {
             new SelectTargetNode { Target = target, OutSlot = TargetSpec.SlotSelected },
         };
+
+        if (dualAlliedAndEnemy)
+        {
+            var enemyTarget = new TargetSpec
+            {
+                SourceKind = target.SourceKind,
+                Owner = ZoneScope.Opponent,
+                Zone = target.Zone,
+                Where = target.Where,
+                Mode = target.Mode,
+                Count = target.Count,
+            };
+            result.Add(new SelectTargetNode
+            {
+                Target = enemyTarget,
+                OutSlot = TargetSpec.SlotSelected,
+                AppendToSlot = true,
+            });
+        }
 
         // 后续 , / and <动词> 继续解析
         while (true)
@@ -3477,7 +3501,31 @@ public sealed class ActionParser
         {
             var target = _target.TryParse(cur)
      ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
-            return new List<EffectNode> { new RestoreLifeNode { Target = target, FullRestore = true, Amount = NumExpr.Const(0) } };
+            var fullNode = new RestoreLifeNode { Target = target, FullRestore = true, Amount = NumExpr.Const(0) };
+
+            // "fully restore the defense of this follower **and restore the same amount**
+            //  to your leader"（10342110）：
+            // 「同样的量」= 回满那一刻的已损失生命。
+            // 若让「回满自身」先执行，Life 立刻变成 MaxLife，差值算出来是 0，
+            // 主战者一点都回不上。必须先把差值那条排在前面。
+            int saveFull = cur.Position;
+            if (cur.TryMatchWord("and") && cur.MatchPhrase("restore", "the", "same", "amount"))
+            {
+                cur.TryMatchAnyWord("defense", "health");
+                cur.TryMatchAnyWord("to");
+                var secondTarget = NormalizeAllCount(
+                    _target.TryParse(cur) ?? OmittedTargetSpec(TargetSpec.SelfLeader));
+                var diffAmount = NumExpr.Sub(
+                    NumExpr.Prop(StatKey.MaxLife, target),
+                    NumExpr.Prop(StatKey.Life, target));
+                return new List<EffectNode>
+                {
+                    new RestoreLifeNode { Target = secondTarget, Amount = diffAmount, FullRestore = false },
+                    fullNode,
+                };
+            }
+            cur.Seek(saveFull);
+            return new List<EffectNode> { fullNode };
         }
         while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period) cur.Advance();
         return new List<EffectNode>();

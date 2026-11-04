@@ -275,6 +275,21 @@ public static class InsteadWeaver
         return false;
     }
 
+
+    /// <summary>布尔表达式里是否引用了某个槽位（用于判断替代分支要不要继承 Select）。</summary>
+    private static bool MentionsSlotInBool(BoolExpr e, string slot) => e switch
+    {
+        null => false,
+        IsPreviousExpr ip => ip.Slot == slot,
+        ExistsExpr ex => ex.Target != null
+                         && ex.Target.SourceKind == TargetSourceKind.Slot
+                         && ex.Target.Slot == slot,
+        AndExpr a => a.Items.Any(x => MentionsSlotInBool(x, slot)),
+        OrExpr o => o.Items.Any(x => MentionsSlotInBool(x, slot)),
+        NotExpr n => MentionsSlotInBool(n.Inner, slot),
+        _ => false,
+    };
+
     /// <summary>取出一个节点上所有可能的目标位。</summary>
     private static IEnumerable<TargetSpec> TargetSpecsOf(EffectNode n)
     {
@@ -512,7 +527,8 @@ public static class InsteadWeaver
         // 选不出来就整条卡住。
         if (elseBody.Count > 1 && elseBody[0] is SelectTargetNode
             && !thenBody.Any(n => n is SelectTargetNode)
-            && MentionsSlot(thenBody, TargetSpec.SlotSelected))
+            && (MentionsSlot(thenBody, TargetSpec.SlotSelected)
+                || MentionsSlotInBool(cond, TargetSpec.SlotSelected)))
         {
             prefixNodes.Add(elseBody[0]);
             elseBody = elseBody.Skip(1).ToList();
