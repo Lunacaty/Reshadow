@@ -1,0 +1,51 @@
+feat(157): 代词槽位根因 + 模式选项代价 + 复制分槽（154 清单主体）
+
+【一.1 DoBranch 的 mode_count 加了两次】
+  方法开头的 Choose 分支已把 bonus 并进 pick，default 分支又读一次，
+  杉那查的「可选模式 +1」实际变成 +2。已删重复读取，MinSelect/MaxSelect 直接用 pick。
+
+【一.2 ParseSpawnWithCreatedFocus 在 before==null 时预绑 $created】
+  宾语内部的 it 永远不可能指代还没被召唤出来的 $created。
+  改为 before==null 时把 DefaultPronounSlot 设成 $self，宾语解析完再推进到 $created。
+  实测：10333110 真理的团结者 -> spawn 2 exact copy of $self（原为 $created）。
+
+【二.1 ParseRemove 盲绑 $self（D/E 组 10 张）】
+  这行在解析 from 的宾语之前就把 MostRecentSlot 改写成本卡，
+  句子里所有 it/them 随即被改指本卡：
+    10474120 别西卜  select 2 enemy followers ... remove all abilities from them,
+                    and deal them 9 damage  ->  沉默并打了自己 9 点
+  已删除，实测 10474120 与 10433110 全部落 $selected。
+
+【二.3 B 组 an exact copy of each（10172320 / 10174130）】
+  词序先 each 再 of，导致 copy of each 里的 of 之后 each 留在流里，
+  被当成省略名词的量词兜底成 any:board All。改为先吃 each/of 再判 each。
+  DoSpawn 的 CopyOfTarget 补 perRef：源集合多张时每张各复制 1 份，
+  单张时按 Count 复制多份（否则选 2 张会得到 4 个复制体）。
+  实测：两张卡均变成 spawn 1 exact copy of $selected。
+
+【二.4 C 组 模式选项里的 Earth Rite (N)（4 张）】
+  选项级 ohb.Costs 只被转成条件守卫、代价本身被丢弃，选中后土之印一点不扣。
+  已在 Then 分支头部注入 ModifyCounter(earth_sigil / shadow, Add -N)，
+  只作用于该选项，不影响其它选项（不能挂整卡顶层 Costs）。
+  同时在 DoModifyCounter 里补 OnEarthRite 事件发射（与吟唱归零区分）。
+  实测：10031110 / 10132310 / 10732310 / 11031120 四个选项块都带扣减。
+
+【二.5 A 组 主语为 $self 时的代词槽位（10313110 / 90034120）】
+  SubjectFilter 一律被映射到 $trigger，但「进入战场时」这类触发没有事件主体，
+  $trigger 是空的。改为：主语是 $self 槽位时映射到 $self。
+  实测：10313110 -> spawn 1 exact copy of $self。
+
+【二.6 F 组 事件主语当作 $created（11064120）】
+  同上根因，实测已变成 spawn 1 exact copy of $trigger。
+
+【二.7 G 组 10564110 索菲娜】
+  EvolveNode 的 $selected 登记原先只认 Mode==All，Random(1) 的进化目标没人接。
+  去掉 Mode 限定；DoEvolve 对非槽位来源的目标补写 $selected。
+  实测：模式 2 -> evolve self:board Random(1) ... modifystats Add 1/1 to $selected。
+
+【二.8 G 组 90034120 式神·贵人】
+  "total base attack/defense of ... destroyed this turn" 的数据源与属性都错：
+  用了 self:board 的当前 Attack/Life。改为 BaseAttack/BaseLife + DestroyedThisTurn 历史池。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED / 12 门禁全绿

@@ -818,9 +818,34 @@ public sealed class EnglishCompiler
                 if (ohb.Costs.Count > 0 || (ohb.Condition != null && ohb.Condition is not ConstBoolExpr))
                 {
                     var optCond = AndCosts(ohb.Condition, ohb.Costs);
+
+                    // 消耗型代价必须在 Then 分支**真的扣掉**，不能只加条件守卫。
+                    //   2. Earth Rite (1) - Give this follower +2/+2 and Ward.
+                    // 早先只生成了 `if ctr:earth_sigil >= 1` 守卫，却把 ohb.Costs 整个丢弃 ——
+                    // 于是选了这个选项，土之印一点不扣。
+                    // 也不能挂到整卡顶层 Costs：那会让选项 1「获得土之印」也被扣。
+                    var thenNodes = new List<EffectNode>();
+                    foreach (var cs in ohb.Costs)
+                    {
+                        string? ctrName = cs.Kind switch
+                        {
+                            CostKind.DestroyAlly => "earth_sigil",
+                            CostKind.Necromance => "shadow",
+                            _ => null,
+                        };
+                        if (ctrName == null) continue;
+                        thenNodes.Add(new ModifyCounterNode
+                        {
+                            Counter = _lex.Counter(ctrName),
+                            Op = CounterOp.Add,
+                            Delta = NumExpr.Sub(NumExpr.Const(0), cs.Amount),
+                        });
+                    }
+                    thenNodes.AddRange(ob);
+
                     ob = new List<EffectNode>
                     {
-                        new ConditionalNode { Condition = optCond, Then = ob },
+                        new ConditionalNode { Condition = optCond, Then = thenNodes },
                     };
                 }
 
@@ -1006,8 +1031,15 @@ public sealed class EnglishCompiler
             // 就把代词默认槽切到 $opposing（"Follower Strike: ... destroy it"）。
             if (hb.SubjectFilter != null)
             {
-                _target.DefaultPronounSlot = TargetSpec.SlotTrigger;
-                _target.MarkBound(TargetSpec.SlotTrigger);
+                // 主语是 "this card / this follower"（$self）时，代词 it 应指向本卡，
+                // 不是 $trigger 槽位 —— 后者在「进入战场时」这类没有任何事件主体的
+                // 触发里是空的（10313110 / 90034120）。
+                string subjSlot = (hb.SubjectFilter.SourceKind == TargetSourceKind.Slot
+                                   && hb.SubjectFilter.Slot == TargetSpec.SlotSelf)
+                    ? TargetSpec.SlotSelf
+                    : TargetSpec.SlotTrigger;
+                _target.DefaultPronounSlot = subjSlot;
+                _target.MarkBound(subjSlot);
             }
             else if (hb.HasOpposingTarget || MentionsOpposingSlot(hb.Condition))
             {
@@ -2584,8 +2616,26 @@ public sealed class EnglishCompiler
             // 而 X 保留原文的 "attack/defense"。
             int ia = joined.LastIndexOf("attack", StringComparison.Ordinal);
             int idf = joined.LastIndexOf("defense", StringComparison.Ordinal);
-            var statKey = idf > ia ? StatKey.Life : StatKey.Attack;
+            // 原文写的是 "total **base** attack/defense"，取印刷值不是当前值。
+            var statKey = idf > ia ? StatKey.BaseLife : StatKey.BaseAttack;
             var filt = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Self);
+
+            // "... destroyed this turn" 的数据源是**历史池**，不是当前战场。
+            // 不认这一条的话，「本回合被破坏的式神之基础攻防合计」
+            // 会变成「现在场上的式神之当前攻防合计」（90034120）。
+            System.Func<TargetSpec, HistoryScope, TargetSpec> withHist = (t0, h) => new TargetSpec
+            {
+                SourceKind = t0.SourceKind, Owner = t0.Owner, Zone = t0.Zone, Slot = t0.Slot,
+                CardId = t0.CardId, CardName = t0.CardName, Where = t0.Where,
+                Sort = t0.Sort, SortDescending = t0.SortDescending, TopN = t0.TopN,
+                DistinctByName = t0.DistinctByName, DuplicatesOnly = t0.DuplicatesOnly,
+                Mode = t0.Mode, Count = t0.Count, History = h,
+                IncludeLeader = t0.IncludeLeader, OmittedFields = t0.OmittedFields,
+            };
+            if (joined.Contains("destroyed this turn"))
+                filt = withHist(filt, HistoryScope.DestroyedThisTurn);
+            else if (joined.Contains("destroyed this match"))
+                filt = withHist(filt, HistoryScope.DestroyedThisMatch);
             foreach (var tr in new[] { "Shikigami", "Artifact", "Golem", "Marine", "Puppetry", "Departed", "Officer", "Pixie", "Clue", "Loot" })
             {
                 if (!joined.Contains(tr.ToLowerInvariant())) continue;

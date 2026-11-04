@@ -383,7 +383,13 @@ public sealed partial class CardVm
             t.Life = Math.Min(t.MaxLife, t.Life + amt);
             _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnHealed, Subject = EntityRef.From(t), Amount = amt });
         }
-        // 不覆写 $selected（只有 SelectTargetNode / SpawnCardNode 可以写槽位）
+
+        // 非槽位来源的进化目标要把实际进化到的实体写进 $selected，
+        // 后续 "... and give it +1/+1" 才接得上（10564110 索菲娜）。
+        // 槽位来源的目标（"evolve them"）不写 —— 那是消费者，不是生产者。
+        if (n.Target != null && n.Target.SourceKind != TargetSourceKind.Slot && targets.Count > 0)
+            scope.Bind(TargetSpec.SlotSelected, targets);
+
         return false;
     }
 
@@ -625,6 +631,24 @@ public sealed partial class CardVm
             CounterName = n.Counter.Name,
             PlayerId = owner,
         });
+
+        // 土之秘术的「消耗土之印」是独立的规则事件，
+        // 与「吟唱归零」完全是两件事：
+        //   · 前者是玩家主动消耗，要触发 OnEarthRite；
+        //   · 后者是护符倒计时自然归零，触发 OnCountdownExpire。
+        // 不在这里发的话，「每当发动土之秘术时」这类能力永远不会响应。
+        if (n.Counter.Name == "earth_sigil" && delta < 0)
+        {
+            var srcLive = scope.Source.HasValue
+                ? _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial)
+                : null;
+            _world.EmitEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnEarthRite,
+                PlayerId = owner,
+                Subject = srcLive != null ? EntityRef.From(srcLive) : scope.Source,
+            });
+        }
         return false;
     }
 
@@ -919,10 +943,16 @@ public sealed partial class CardVm
                 // 只取 refs[0] 会让「各自复制一份」变成「只复制第一个」。
                 int owner2 = scope.ResolvePlayer(n.ToOwner);
                 int times = Math.Max(1, _eval.EvalNum(n.Count, scope));
+
+                // 源集合有多张卡时（"exact copy **of each**"，选择 N 张各复制 1 份），
+                // 每张只复制 1 份；源集合只有 1 张时（"summon 2 exact copies of this card"），
+                // 才按 Count 复制多份。
+                // 不做这个区分的话，选 2 张会变成 2×2=4 个复制体。
+                int perRef = refs.Count > 1 ? 1 : times;
                 var made = new List<RuntimeEntity>();
                 foreach (var r in refs)
                 {
-                    for (int k = 0; k < times; k++)
+                    for (int k = 0; k < perRef; k++)
                     {
                         var one = _world is Battle.BattleState bs2
                             // 直接传 addDepartedTrait：让 SpawnCopy 在拍 EnteredThisMatch 快照**之前**
@@ -1341,25 +1371,16 @@ public sealed partial class CardVm
                 //   「Select 2 Modes to activate」要求选满 2 个，
                 //   写死 1 会让默认策略只选 1 个，第 2 个模式永远不生效。
                 //
-                // 还要加上玩家身上的 mode_count 光环
-                //   （杉那查："Increase the number of Modes you can select by 1"）。
-                int bonus = 0;
-                try
-                {
-                    bonus = _world.ReadCounter(
-                        frame.Scope.ResolvePlayer(Core.ZoneScope.Self),
-                        Schema.Counter("mode_count"));
-                }
-                catch { bonus = 0; }
-                int actual = Math.Clamp(pick + Math.Max(0, bonus), 1, opts.Count);
-
+                // mode_count 光环已经在上面统一并进 pick 了（本方法开头的 Choose 分支），
+                // 这里**绝不能**再读一次 —— 重复累加会让杉那查的 +1 变成 +2。
+                // MinSelect 必须等于 MaxSelect：「Select 2 Modes」要求选满 2 个。
                 return Block(new PendingChoice
                 {
                     Player = frame.Scope.Owner,
                     Kind = ChoiceKind.SelectMode,
                     Candidates = Enumerable.Range(0, opts.Count).ToList(),
-                    MinSelect = actual,
-                    MaxSelect = actual,
+                    MinSelect = pick,
+                    MaxSelect = pick,
                     Slot = "$mode",
                     Prompt = "请选择模式",
                 });

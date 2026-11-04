@@ -155,8 +155,13 @@ public sealed class ActionParser
                         // 这里的目标是新解析出来的战场集合（SourceKind != Slot），
                         // 没有别的槽位能承载它，them 必须有个落脚点。
                         case EvolveNode evo when evo.Target != null
-                                                  && evo.Target.SourceKind != TargetSourceKind.Slot
-                                                  && evo.Target.Mode == SelectMode.All:
+                                                  && evo.Target.SourceKind != TargetSourceKind.Slot:
+                            // 非槽位来源的进化目标（战场集合 / Random(1)）都要登记 $selected：
+                            //   "Evolve all unevolved allied followers. Super-evolve them instead."
+                            //   "Evolve another random unevolved allied follower with Ward
+                            //    and give it +1/+1"（10564110）
+                            // 早先只认 Mode == All，Random(1) 的进化目标没人接，
+                            // 后半句的 it 落到了空槽位。
                             _target.MarkBound(TargetSpec.SlotSelected); break;
                         // 不能写 `ms.Target == TargetSpec.Self`：TargetSpec 是 class、
                         // 未重载 ==，而 TargetSpec.Self 是 `=> new()` 属性 ——
@@ -1454,32 +1459,21 @@ public sealed class ActionParser
     private List<EffectNode> ParseSpawnWithCreatedFocus(TokenCursor cur, ZoneRef toZone)
     {
         var before = _target.MostRecentSlot;
+        var savedDefault = _target.DefaultPronounSlot;
 
-        // 必须先探一眼宾语里有没有裸代词：
-        //   "summon 2 exact copies of **it**" —— 前面没有 Select 时，
-        //   代词解析在 ParseSpawnCore **内部**就会抛「缺少前序绑定」，
-        //   事后再补 $created 已经来不及（10333110 真理的团结者）。
-        // 而 "add a copy of it" 在有 $selected 焦点时，这个代词应当继续指 $selected，
-        // 所以只在**当前没有任何焦点**时才预绑 $created。
-        if (before == null)
-        {
-            int probe = cur.Position;
-            bool sawBarePronoun = false;
-            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
-            {
-                if (cur.Current.IsWord("and")) break;   // 尾随链不算宾语
-                if (cur.Current.IsAnyWord("it", "them")) { sawBarePronoun = true; break; }
-                cur.Advance();
-            }
-            cur.Seek(probe);
-            if (sawBarePronoun) _target.MarkBound(TargetSpec.SlotCreated);
-        }
+        // 宾语内部（and 之前）出现的 it，**永远不可能**指代还没被召唤出来的 $created ——
+        // 那个东西此刻根本不存在。
+        // 所以当没有任何前置焦点时，它一定指本卡 $self：
+        //   "If this card's cost isn't 3, summon 2 exact copies of it"（10333110）
+        // 早先在这里预绑 $created，会让这张卡依然错编成 copy of $created。
+        if (before == null && savedDefault == null)
+            _target.DefaultPronounSlot = TargetSpec.SlotSelf;
 
         var nodes = ParseSpawnCore(cur, toZone);
 
-        // 宾语没产生新焦点时补一个 $created，供后续 "and give it ..." 使用。
-        if (_target.MostRecentSlot == null || _target.MostRecentSlot == before)
-            _target.MarkBound(TargetSpec.SlotCreated);
+        _target.DefaultPronounSlot = savedDefault;
+        // 宾语解析完毕后，焦点才推进到 $created，供后续 "and give it ..." 使用。
+        _target.MarkBound(TargetSpec.SlotCreated);
         return nodes;
     }
 
@@ -1533,8 +1527,32 @@ public sealed class ActionParser
 
         if (isCopy)
         {
+            // 两种词序都要认：
+            //   "an exact copy **of each**"（10172320 / 10174130）
+            //   "**each** of them"
+            // 早先写死了先 each 再 of，于是 "copy of each" 里 of 之后的 each
+            // 留在流里，被当成「省略名词的量词」兜底成 any:board All（双方战场全体）。
             cur.TryMatchAnyWord("each");
             cur.TryMatchAnyWord("of");
+            bool isEachOfSelected = cur.TryMatchAnyWord("each");
+            if (isEachOfSelected)
+            {
+                cur.TryMatchAnyWord("of");
+                cur.TryMatchAnyWord("them");
+                var eachSrc = _target.ResolvePronounTarget();
+                var destEach = ConsumeDestination(cur);
+                nodes.Add(new SpawnCardNode
+                {
+                    SourceKind = CardSourceKind.CopyOfTarget,
+                    CopyFrom = eachSrc,
+                    ToZone = destEach ?? toZone,
+                    ToOwner = isEnemyCopy ? ZoneScope.Opponent : ZoneScope.Self,
+                    // Count 交给 DoSpawn 按源集合大小决定，这里沿用 altCount。
+                    Count = copyCount,
+                    IsExactCopy = isExact,
+                });
+                return nodes;
+            }
 
             // 「Add 3 copies instead.」/「Add 3 copies to your hand instead.」
             // 卡名承前省略，只写数量与 instead。
@@ -3113,11 +3131,15 @@ public sealed class ActionParser
     {
         cur.ExpectWord("remove");
 
-        // "Remove Ward from this follower. Give it Intimidate."
-        // 第二个句子的 it 指向被移除能力的那个目标。
-        // 本卡是最常见情形，先登记 $self；若目标是别的实体，
-        // 由后面的 TargetSpec 解析另行覆盖。
-        _target.MarkBound(TargetSpec.SlotSelf);
+        // ⚠ 绝不在这里盲绑 $self。
+        //
+        // 早先这行无条件把 MostRecentSlot 改写成本卡，于是在解析 from 后面的宾语之前，
+        // 句子里所有 it / them 就都被改指到本卡了：
+        //   "Summon X and remove Last Words from it"      → 移除了自己的谢幕曲
+        //   "Select 2 enemy followers, remove all abilities from them,
+        //    and deal them 9 damage"                      → 沉默并打了自己 9 点（别西卜）
+        // 若 from 后面真的是 this follower，外层 ParseSequence 会自然地登记 $self，
+        // 不需要在这里预判。
         if (cur.Current.IsAnyWord("all"))
         {
             cur.Advance();
