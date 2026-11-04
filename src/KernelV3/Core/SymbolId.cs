@@ -54,9 +54,26 @@ public readonly record struct SymbolId<T>(int Id, string Name)
     /// 一张卡身上的 trait 与条件里的 trait 会被判成两个不同的东西 ——
     /// 实测 `HasTraitExpr` 因此对明明带着 Loot 的卡恒判 false。
     /// </summary>
-    public bool Equals(SymbolId<T> other) => Id == other.Id;
+    /// <summary>
+    /// 相等性：**先比 Id，Id 不可靠时按 Name 兜底**。
+    ///
+    /// 只按 Id 会在两种情况下串槽：
+    ///   · 跨 GameSchema 实例 —— 各自独立分配序号，同一符号可能得到不同 Id；
+    ///   · FromName 构造出的符号 Id = -1，所有「按名字现造」的符号互相判等。
+    /// 结果就是写 faith 落到 countdown 槽位、信仰被当吟唱递减。
+    /// </summary>
+    public bool Equals(SymbolId<T> other)
+    {
+        if (Id >= 0 && other.Id >= 0 && Id == other.Id) return true;
+        if (!string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(other.Name))
+            return string.Equals(Name, other.Name, StringComparison.OrdinalIgnoreCase);
+        return Id == other.Id;
+    }
 
-    public override int GetHashCode() => Id;
+    public override int GetHashCode()
+        => !string.IsNullOrEmpty(Name)
+            ? StringComparer.OrdinalIgnoreCase.GetHashCode(Name)
+            : Id;
 
     /// <summary>空符号。任何使用空符号的 AST 节点在编译期就应被拒绝。</summary>
     public static SymbolId<T> Invalid => new(-1, "");

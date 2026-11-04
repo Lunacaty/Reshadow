@@ -38,7 +38,31 @@ public partial class BoardUnitWidget : Control
     public void BindDirector(BoardAnimDirector d) => _director = d;
 
 
-    public event Action<RuntimeEntity> OnClicked;
+    /// <summary>
+    /// 点击回调。返回 true 表示这次点击已被「选择目标（PendingChoice）」消费，
+    /// 调用方不得再启动拖拽攻击 —— 否则点选我方随从当效果目标时，
+    /// 随从会先被上浮成攻击姿态再落下，看起来像「向下瞬移」。
+    /// </summary>
+    public Func<RuntimeEntity, bool> OnClicked;
+
+    private bool _suppressDraw;
+
+    /// <summary>
+    /// 只隐藏绘制、仍占住容器格子。
+    ///
+    /// 绝不能用 <c>Visible = false</c>：Godot 的 HBoxContainer 一旦看到子节点不可见，
+    /// 会立刻把其余兄弟往中间挤压重排 —— 表现就是「一个随从攻击，其他随从瞬间位移」。
+    /// </summary>
+    public bool SuppressDraw
+    {
+        get => _suppressDraw;
+        set
+        {
+            if (_suppressDraw == value) return;
+            _suppressDraw = value;
+            QueueRedraw();
+        }
+    }
     public event Action<RuntimeEntity> OnRightClicked;
     public event Action<RuntimeEntity, Vector2> OnDragAttackStarted;
     public event Action<RuntimeEntity, Vector2> OnDragAttackMoved;
@@ -53,6 +77,25 @@ public partial class BoardUnitWidget : Control
     /// _isCandidate 是「可以被点的那些」。
     /// </summary>
     private bool _isCandidate;
+
+    private bool _isAttackLegal;
+    private bool _isAttackHovered;
+    private string _attackDenyReason;
+
+    /// <summary>
+    /// 拖拽攻击时的目标态。
+    /// 合法目标画绯红呼吸边框，鼠标悬停时叠锁定准星；
+    /// 非法敌人压暗，悬停时画红叉并给出原因。
+    /// </summary>
+    public void SetAttackTargetState(bool isLegal, bool isHovered, string denyReason = null)
+    {
+        if (_isAttackLegal == isLegal && _isAttackHovered == isHovered
+            && _attackDenyReason == denyReason) return;
+        _isAttackLegal = isLegal;
+        _isAttackHovered = isHovered;
+        _attackDenyReason = denyReason;
+        QueueRedraw();
+    }
 
     /// <summary>
     /// 压暗态：有挂起选择时，非候选棋子要淡出，
@@ -73,6 +116,7 @@ public partial class BoardUnitWidget : Control
     public void SetChoiceState(bool isCandidate, bool dimmed)
     {
         _isCandidate = isCandidate;
+        // 攻击瞄准态：合法目标亮绯红呼吸框，非法目标压暗并可带原因。
         _dimmed = dimmed;
         QueueRedraw();
     }
@@ -185,6 +229,10 @@ public partial class BoardUnitWidget : Control
             QueueRedraw();
         }
 
+        // 底部正中徽章有 2 个以上时要轮播，必须持续推进时间并重绘。
+        _badgeCycleTime += (float)delta;
+        if (CollectBottomCenterBadges().Count > 1) QueueRedraw();
+
         if (_triggerFlash <= 0f) return;
         _triggerFlash = Mathf.Max(0f, _triggerFlash - (float)delta * 1.6f);
         QueueRedraw();
@@ -192,6 +240,7 @@ public partial class BoardUnitWidget : Control
 
     public override void _Draw()
     {
+        if (_suppressDraw) return;
         if (Entity?.Def == null) return;
 
         // 处于 PrepareEnter 隐身预备态（已入场但入场动画还在排队）时
@@ -316,6 +365,40 @@ public partial class BoardUnitWidget : Control
             }
         }
 
+        // 攻击瞄准态：合法目标绯红呼吸框；悬停叠锁定准星。
+        if (_isAttackLegal)
+        {
+            float ap = 0.55f + 0.45f * Mathf.Sin(_pulseTime * 5f);
+            var crimson = new Color(0.98f, 0.30f, 0.35f, ap);
+            DrawRect(new Rect2(-5, -5, W + 10, H + 10), crimson, false, 3f);
+            if (_isAttackHovered)
+            {
+                var ctr = new Vector2(W * 0.5f, H * 0.5f);
+                DrawArc(ctr, 26f, 0, Mathf.Tau, 32, crimson, 2.5f);
+                DrawArc(ctr, 20f, 0, Mathf.Tau, 32, new Color(1f, 0.85f, 0.35f, ap), 1.5f);
+                DrawLine(ctr + new Vector2(-30, 0), ctr + new Vector2(-16, 0), crimson, 2f);
+                DrawLine(ctr + new Vector2(16, 0), ctr + new Vector2(30, 0), crimson, 2f);
+                DrawLine(ctr + new Vector2(0, -30), ctr + new Vector2(0, -16), crimson, 2f);
+                DrawLine(ctr + new Vector2(0, 16), ctr + new Vector2(0, 30), crimson, 2f);
+            }
+        }
+        else if (_isAttackHovered)
+        {
+            // 非法敌方目标：红叉 + 原因
+            var deny = new Color(0.92f, 0.25f, 0.25f, 0.95f);
+            DrawLine(new Vector2(-4, -4), new Vector2(W + 4, H + 4), deny, 3.5f);
+            DrawLine(new Vector2(W + 4, -4), new Vector2(-4, H + 4), deny, 3.5f);
+            if (!string.IsNullOrEmpty(_attackDenyReason))
+            {
+                var fs = ThemeDB.FallbackFont;
+                var sz = fs.GetStringSize(_attackDenyReason, HorizontalAlignment.Left, -1, 11);
+                var bp = new Vector2((W - sz.X) * 0.5f - 4f, -22f);
+                DrawRect(new Rect2(bp, new Vector2(sz.X + 8f, 18f)), new Color(0.10f, 0.02f, 0.02f, 0.92f));
+                DrawString(fs, bp + new Vector2(4f, 13f), _attackDenyReason,
+                           HorizontalAlignment.Left, -1, 11, new Color(1f, 0.75f, 0.75f));
+            }
+        }
+
         // 压暗态：非候选棋子淡出
         if (_dimmed)
             DrawRect(new Rect2(0, 0, W, H), new Color(0.02f, 0.03f, 0.06f, 0.62f));
@@ -380,37 +463,8 @@ public partial class BoardUnitWidget : Control
                 DrawTextureRect(ring, new Rect2(W * 0.5f - 66, H * 0.5f - 66, 132, 132), false);
         }
 
-        // 角落徽章：从小到大横排在左下角
-        int slot = 0;
-        void Badge(string key)
-        {
-            var tex = KeywordSvgAtlas.Get(key);
-            if (tex == null) return;
-            var pos = new Vector2(2 + slot * 22, H - 26);
-            DrawTextureRect(tex, new Rect2(pos, new Vector2(20, 20)), false);
-            slot++;
-        }
-
-        if (Has("bane")) Badge("badge_bane");
-        if (Has("drain")) Badge("badge_drain");
-        if (Has("free_evolve") || Has("free_super_evolve")) Badge("badge_free_evolve");
-
-        // 「1 回合可攻击 X 次」：徽章 + ×X 角标。次数在 KeywordValues 里，
-        // 只画徽章不写 X 的话，玩家看不出能打几次。
-        var mkKey = schema.Keyword("max_attacks_per_turn");
-        if (e.KeywordValues.TryGetValue(mkKey, out int maxAtk) && maxAtk > 1)
-        {
-            var mt = KeywordSvgAtlas.Get("badge_multi_attack");
-            if (mt != null)
-            {
-                var mp = new Vector2(2 + slot * 22, H - 26);
-                DrawTextureRect(mt, new Rect2(mp, new Vector2(20, 20)), false);
-                DrawString(ThemeDB.FallbackFont, mp + new Vector2(12, 16),
-                           "x" + maxAtk, HorizontalAlignment.Left, -1, 11,
-                           new Color(1f, 0.92f, 0.55f));
-                slot++;
-            }
-        }
+        // 关键词徽章（毁灭 / 虹吸 / 免进化点 / 多次攻击）已统一移到
+        // DrawAbilityBadge 的底部正中轮播里 —— 画在左下角会挡住攻击力数字。
 
         // 减伤 / 上限光环：生命值正上方一枚琥珀符文小盾
         var st = CurrentController?.State;
@@ -937,25 +991,90 @@ public partial class BoardUnitWidget : Control
                    HorizontalAlignment.Left, -1, 15, numCol);
     }
 
+    /// <summary>徽章轮换计时（秒）。</summary>
+    private float _badgeCycleTime;
+
     /// <summary>
-    /// 底部能力标记 —— 三态：红书页（谢幕曲）/ 绿旗（时机能力）/ 空（都没有）。
-    /// 空态**不画任何东西**。
+    /// 收集要画在**底部正中**的徽章。
+    ///
+    /// 关键词（毁灭 / 虹吸 / 免进化点 / 多次攻击）过去画在左下角，
+    /// 会挡住攻击力数字 —— 全部并到底部正中，与谢幕曲、时机能力一起轮播。
+    /// </summary>
+    private List<(string Kind, int Param)> CollectBottomCenterBadges()
+    {
+        var list = new List<(string Kind, int Param)>();
+        var e = Entity;
+        if (e == null || e.IsSilenced) return list;
+
+        if (_badge == UnitAbilityBadge.LastWords) list.Add(("last_words", 0));
+        else if (_badge == UnitAbilityBadge.Triggered) list.Add(("triggered", 0));
+
+        var schema = CurrentController?.Schema;
+        var st = CurrentController?.State;
+        if (schema == null) return list;
+
+        bool Has(string kw)
+        {
+            var key = schema.Keyword(kw);
+            return st != null ? st.HasEffectiveKeyword(e, key) : e.Keywords.Contains(key);
+        }
+
+        if (Has("bane")) list.Add(("badge_bane", 0));
+        if (Has("drain")) list.Add(("badge_drain", 0));
+        if (Has("free_evolve") || Has("free_super_evolve")) list.Add(("badge_free_evolve", 0));
+
+        var mkKey = schema.Keyword("max_attacks_per_turn");
+        if (e.KeywordValues.TryGetValue(mkKey, out int maxAtk) && maxAtk > 1)
+            list.Add(("badge_multi_attack", maxAtk));
+
+        return list;
+    }
+
+    /// <summary>
+    /// 底部正中徽章。
+    ///
+    /// 单个徽章常驻；多个徽章以 2 秒为周期轮换，交界处 0.22 秒淡入淡出。
     /// </summary>
     private void DrawAbilityBadge(Vector2 c, Font font)
     {
-        switch (_badge)
+        var badges = CollectBottomCenterBadges();
+        if (badges.Count == 0) return;
+
+        const float Period = 2.0f;
+        int idx = 0;
+        float alpha = 1f;
+
+        if (badges.Count > 1)
         {
-            case UnitAbilityBadge.LastWords: DrawRedPageIcon(c); break;
-            case UnitAbilityBadge.Triggered: DrawGreenFlagIcon(c); break;
-            default: break; // None：留空
+            float total = _badgeCycleTime;
+            idx = Mathf.PosMod(Mathf.FloorToInt(total / Period), badges.Count);
+            float phase = total - Mathf.Floor(total / Period) * Period;
+            if (phase < 0.22f) alpha = phase / 0.22f;
+            else if (phase > Period - 0.22f) alpha = (Period - phase) / 0.22f;
+            alpha = Mathf.Clamp(alpha, 0.15f, 1f);
+        }
+
+        var (kind, param) = badges[idx];
+        if (kind == "last_words") { DrawRedPageIcon(c, alpha); return; }
+        if (kind == "triggered") { DrawGreenFlagIcon(c, alpha); return; }
+
+        var tex = KeywordSvgAtlas.Get(kind);
+        if (tex == null) return;
+        DrawCircle(c, 10.5f, new Color(0.05f, 0.06f, 0.09f, 0.88f * alpha));
+        DrawTextureRect(tex, new Rect2(c - new Vector2(10, 10), new Vector2(20, 20)),
+                        false, new Color(1, 1, 1, alpha));
+        if (kind == "badge_multi_attack" && param > 1)
+        {
+            DrawString(font, c + new Vector2(8, 5), "x" + param,
+                       HorizontalAlignment.Left, -1, 10, new Color(1f, 0.92f, 0.55f, alpha));
         }
     }
 
     /// <summary>红色书页：一个上窄下宽的书页轮廓 + 两道书页纹。</summary>
-    private void DrawRedPageIcon(Vector2 c)
+    private void DrawRedPageIcon(Vector2 c, float alpha = 1f)
     {
         float w = 13f, h = 15f;
-        DrawCircle(c, 9.5f, new Color(0.05f, 0.06f, 0.09f, 0.85f));
+        DrawCircle(c, 9.5f, new Color(0.05f, 0.06f, 0.09f, 0.85f * alpha));
 
         Vector2[] page =
         {
@@ -964,26 +1083,26 @@ public partial class BoardUnitWidget : Control
             new(c.X + w * 0.42f, c.Y + h * 0.5f),
             new(c.X - w * 0.42f, c.Y + h * 0.5f),
         };
-        DrawColoredPolygon(page, new Color("DC2626"));
+        DrawColoredPolygon(page, new Color(0.86f, 0.15f, 0.15f, alpha));
         DrawPolyline(new[] { page[0], page[1], page[2], page[3], page[0] },
-                     new Color("FCA5A5"), 1.2f);
+                     new Color(0.99f, 0.65f, 0.65f, alpha), 1.2f);
 
         DrawLine(new Vector2(c.X - w * 0.25f, c.Y - h * 0.22f),
                  new Vector2(c.X + w * 0.25f, c.Y - h * 0.22f),
-                 new Color(1f, 0.85f, 0.85f, 0.75f), 1f);
+                 new Color(1f, 0.85f, 0.85f, 0.75f * alpha), 1f);
         DrawLine(new Vector2(c.X - w * 0.22f, c.Y + h * 0.05f),
                  new Vector2(c.X + w * 0.22f, c.Y + h * 0.05f),
-                 new Color(1f, 0.85f, 0.85f, 0.6f), 1f);
+                 new Color(1f, 0.85f, 0.85f, 0.6f * alpha), 1f);
     }
 
     /// <summary>绿色旗帜：旗杆 + 三角旗面。</summary>
-    private void DrawGreenFlagIcon(Vector2 c)
+    private void DrawGreenFlagIcon(Vector2 c, float alpha = 1f)
     {
-        DrawCircle(c, 9.5f, new Color(0.05f, 0.06f, 0.09f, 0.85f));
+        DrawCircle(c, 9.5f, new Color(0.05f, 0.06f, 0.09f, 0.85f * alpha));
 
         // 旗杆
         DrawLine(new Vector2(c.X - 4f, c.Y - 8f), new Vector2(c.X - 4f, c.Y + 8f),
-                 new Color("E2E8F0"), 1.6f);
+                 new Color(0.89f, 0.91f, 0.94f, alpha), 1.6f);
 
         Vector2[] flag =
         {
@@ -991,9 +1110,9 @@ public partial class BoardUnitWidget : Control
             new(c.X + 7f, c.Y - 4.5f),
             new(c.X - 4f, c.Y - 1f),
         };
-        DrawColoredPolygon(flag, new Color("22C55E"));
+        DrawColoredPolygon(flag, new Color(0.13f, 0.77f, 0.37f, alpha));
         DrawPolyline(new[] { flag[0], flag[1], flag[2], flag[0] },
-                     new Color("BBF7D0"), 1.1f);
+                     new Color(0.73f, 0.97f, 0.82f, alpha), 1.1f);
     }
 
     private void DrawCountdown(CardDef def, Font font)
@@ -1027,8 +1146,10 @@ public partial class BoardUnitWidget : Control
             {
                 if (mb.Pressed)
                 {
-                    OnClicked?.Invoke(Entity);
-                    if (_canAttack)
+                    // 先判断这次点击是否被「选择目标」消费。
+                    // 消费了就不能再进入拖拽攻击 —— 那是两件互斥的事。
+                    bool consumedByChoice = OnClicked?.Invoke(Entity) == true;
+                    if (!consumedByChoice && _canAttack)
                     {
                         _dragging = true;
                         OnDragAttackStarted?.Invoke(Entity, mb.GlobalPosition);

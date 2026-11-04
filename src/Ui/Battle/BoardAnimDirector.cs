@@ -47,6 +47,21 @@ public sealed class BoardAnimDirector
         public readonly List<Anim> Running = new();
     }
 
+    /// <summary>
+    /// 动画结束复位 Motion，但**保留 LayoutOffset**。
+    ///
+    /// LayoutOffset 是「被钉在旧槽位上的残余偏移」，由布局重排自行收敛。
+    /// 直接赋 UnitMotion.Idle 会把它清零，正在平滑过渡的随从就会瞬间跳到新位置 ——
+    /// 表现是「被攻击/被选中时先往下瞬移一下」。
+    /// </summary>
+    private static void ResetKeepLayout(Track t)
+    {
+        if (t == null) return;
+        var keep = t.Motion.LayoutOffset;
+        t.Motion = UnitMotion.Idle;
+        t.Motion.LayoutOffset = keep;
+    }
+
     private readonly Dictionary<long, Track> _tracks = new();
 
     private long _aimingEntity = -1;
@@ -75,7 +90,7 @@ public sealed class BoardAnimDirector
     {
         if (_aimingEntity >= 0 && _tracks.TryGetValue(_aimingEntity, out var t))
         {
-            if (t.Running.Count == 0) t.Motion = UnitMotion.Idle;
+            if (t.Running.Count == 0) ResetKeepLayout(t);
         }
         _aimingEntity = -1;
     }
@@ -226,7 +241,7 @@ public sealed class BoardAnimDirector
             float wave = Mathf.Sin(v * Mathf.Pi);
             t.Motion.Scale = 1f + peak * wave;
             t.Motion.Offset = new Vector2(0f, lift * wave);
-        }, () => { t.Motion = UnitMotion.Idle; }));
+        }, () => { ResetKeepLayout(t); }));
     }
 
     public void PlayEnter(long entityId, float height = 124f)
@@ -242,7 +257,7 @@ public sealed class BoardAnimDirector
             t.Motion.Scale = 1f;
         }, () =>
         {
-            if (_aimingEntity != entityId) t.Motion = UnitMotion.Idle;
+            if (_aimingEntity != entityId) ResetKeepLayout(t);
         }));
     }
 
@@ -259,7 +274,7 @@ public sealed class BoardAnimDirector
             t.Motion.Offset = new Vector2(0f, -v * 20f);
         }, () =>
         {
-            t.Motion = UnitMotion.Idle;
+            ResetKeepLayout(t);
             onDone?.Invoke();
         }));
     }
@@ -296,7 +311,7 @@ public sealed class BoardAnimDirector
                 t.Motion.FlipX = 0f;
                 t.Motion.Scale = 1f + 0.12f * Mathf.Sin(k * Mathf.Pi);
             }
-        }, () => { t.Motion = UnitMotion.Idle; }));
+        }, () => { ResetKeepLayout(t); }));
     }
 
     /// <summary>被超进化随从击杀：高速弹射砸向其所属主战者，撞击后碎裂。</summary>
@@ -313,7 +328,7 @@ public sealed class BoardAnimDirector
             t.Motion.Alpha = v < 0.85f ? 1f : Mathf.Clamp((1f - v) / 0.15f, 0f, 1f);
         }, () =>
         {
-            t.Motion = UnitMotion.Idle;
+            ResetKeepLayout(t);
             onDone?.Invoke();
         }));
     }
@@ -345,7 +360,7 @@ public sealed class BoardAnimDirector
         }, () =>
         {
             if (!hitFired) onHit?.Invoke();
-            t.Motion = UnitMotion.Idle;
+            ResetKeepLayout(t);
         }));
     }
 
@@ -359,7 +374,7 @@ public sealed class BoardAnimDirector
             t.Motion.Offset = new Vector2(Mathf.Sin(v * 48f) * amp, 0f);
         }, () =>
         {
-            if (_aimingEntity != entityId) t.Motion = UnitMotion.Idle;
+            if (_aimingEntity != entityId) ResetKeepLayout(t);
         }));
     }
 }

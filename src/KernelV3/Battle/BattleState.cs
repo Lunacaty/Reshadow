@@ -219,6 +219,10 @@ public sealed class BattleState : IVmWorld
                 if (fe == null) continue;
                 fe.IsFaith = true;
                 fe.FaithOwner = pid;
+                // 信仰是整局永驻面板资源，没有吟唱倒计时。
+                // MountInnateProperties 可能按 FaithDef 的 CostSpec 挂上 countdown，
+                // 那会让它在 StepCrestArea 里逐回合递减并最终消失。先剔掉。
+                fe.Counters.Remove(Schema.Counter("countdown"));
                 fe.Counters[faithKey] = 0;
             }
         }
@@ -1987,6 +1991,9 @@ public sealed class BattleState : IVmWorld
     public void ExpireCrest(RuntimeEntity e)
     {
         if (e == null || e.Zone != ZoneRef.CrestArea) return;
+
+        // 信仰绝不到期移除：它是整局永驻资源，即使值被消耗到 0 也要留在纹章区。
+        if (e.IsFaith || e.Def?.Kind == CardKind.Faith) return;
 
         // 到期 ≠ 被放逐。放进 Banished 会触发全场「每当有卡被放逐」
         // 并把 BanishedCount 永久抬高（76-c 1.2 的计数是可被卡面读取的事实）。

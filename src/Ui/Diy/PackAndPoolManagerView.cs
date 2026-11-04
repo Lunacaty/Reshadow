@@ -21,6 +21,7 @@ public partial class PackAndPoolManagerView : Control
 
     private GameSessionStore _store;
     private VBoxContainer _packList;
+    private string _selectedPackId;
     private VBoxContainer _cardList;
     private VBoxContainer _ruleList;
     private VBoxContainer _namedDeckList;
@@ -79,10 +80,40 @@ public partial class PackAndPoolManagerView : Control
         left.AddThemeConstantOverride("separation", 6);
         body.AddChild(left);
 
-        var packTitle = new Label { Text = "物理卡包" };
+        var packBar = new HBoxContainer();
+        packBar.AddThemeConstantOverride("separation", 6);
+        var packTitle = new Label { Text = "物理卡包", SizeFlagsHorizontal = SizeFlags.ExpandFill };
         packTitle.AddThemeFontSizeOverride("font_size", 14);
         packTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
-        left.AddChild(packTitle);
+        packBar.AddChild(packTitle);
+
+        var newPackBtn = new Button { Text = "➕ 新建", CustomMinimumSize = new Vector2(72, 26) };
+        SvWbTheme.StyleButton(newPackBtn, isPrimary: true, customAccent: SvWbTheme.AccentCyan);
+        newPackBtn.Pressed += () => OpenPackMetaDialog(null);
+        packBar.AddChild(newPackBtn);
+
+        var editPackBtn = new Button { Text = "✏ 修改", CustomMinimumSize = new Vector2(72, 26) };
+        SvWbTheme.StyleButton(editPackBtn);
+        editPackBtn.Pressed += () =>
+        {
+            if (string.IsNullOrEmpty(_selectedPackId)) { _header.Text = "请先选中一个卡包"; return; }
+            OpenPackMetaDialog(_selectedPackId);
+        };
+        packBar.AddChild(editPackBtn);
+
+        var delPackBtn = new Button { Text = "🗑 删除", CustomMinimumSize = new Vector2(72, 26) };
+        SvWbTheme.StyleButton(delPackBtn, customAccent: SvWbTheme.StatusDanger);
+        delPackBtn.Pressed += () =>
+        {
+            if (string.IsNullOrEmpty(_selectedPackId)) { _header.Text = "请先选中一个卡包"; return; }
+            _store.DeletePack(_selectedPackId, out string msg);
+            _header.Text = "卡包 / 卡池管理 —— " + msg;
+            _selectedPackId = null;
+            RefreshPacks();
+        };
+        packBar.AddChild(delPackBtn);
+
+        left.AddChild(packBar);
 
         var packScroll = new ScrollContainer { CustomMinimumSize = new Vector2(0, 110) };
         left.AddChild(packScroll);
@@ -153,10 +184,43 @@ public partial class PackAndPoolManagerView : Control
         // ── 具名牌组（归属卡池）───────────────────────────────────────
         // 130 号文档把 NamedDecks 从卡包迁到了卡池，卡池配置器必须能看到它，
         // 否则一个卡池声明了哪些「整副替换牌库」无从查起。
-        var ndTitle = new Label { Text = "具名牌组（本卡池）" };
+        var ndBar = new HBoxContainer();
+        ndBar.AddThemeConstantOverride("separation", 6);
+        var ndTitle = new Label { Text = "具名牌组（本卡池）", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         ndTitle.AddThemeFontSizeOverride("font_size", 13);
         ndTitle.AddThemeColorOverride("font_color", new Color("7DD3FC"));
-        right.AddChild(ndTitle);
+        ndBar.AddChild(ndTitle);
+
+        var addNdBtn = new Button { Text = "➕ 新增", CustomMinimumSize = new Vector2(76, 26) };
+        SvWbTheme.StyleButton(addNdBtn, isPrimary: true, customAccent: SvWbTheme.AccentCyan);
+        addNdBtn.AddThemeFontSizeOverride("font_size", 11);
+        addNdBtn.Pressed += () =>
+        {
+            if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var cfg0))
+            { _ruleStatus.Text = "请先选择一个卡池"; return; }
+
+            // NamedDecks 是 init-only：只能整表重建后写回，不能就地 Add。
+            var list0 = new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>(
+                cfg0.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>());
+            list0.Add(new ShadowverseFan.KernelV3.Packs.NamedDeckRawDef
+            {
+                DeckName = "New Deck",
+                DeckNameChs = "新牌组",
+                Entries = new List<ShadowverseFan.KernelV3.Packs.NamedDeckEntryRaw>(),
+            });
+            cfg0 = new ShadowverseFan.KernelV3.Packs.CardPoolConfig
+            {
+                PoolId = cfg0.PoolId, Name = cfg0.Name, Rules = cfg0.Rules,
+                EnabledPackIds = cfg0.EnabledPackIds, NamedDecks = list0,
+            };
+            _store.PoolConfigs[cfg0.PoolId] = cfg0;
+            _store.SavePoolConfigFull(cfg0.PoolId, cfg0.Name, cfg0.EnabledPackIds,
+                                      cfg0.Rules, cfg0.NamedDecks, out string msg);
+            _ruleStatus.Text = msg;
+            RefreshNamedDecks();
+        };
+        ndBar.AddChild(addNdBtn);
+        right.AddChild(ndBar);
 
         _namedDeckList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _namedDeckList.AddThemeConstantOverride("separation", 2);
@@ -187,15 +251,88 @@ public partial class PackAndPoolManagerView : Control
         {
             int total = 0;
             foreach (var e in nd.Entries ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckEntryRaw>()) total += e.Copies;
-            var row = new Label
+
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 6);
+
+            var lbl = new Label
             {
                 Text = "《" + (string.IsNullOrEmpty(nd.DeckNameChs) ? nd.DeckName : nd.DeckNameChs)
                        + "》 " + (nd.Entries?.Count ?? 0) + " 种 / " + total + " 张",
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
             };
-            row.AddThemeFontSizeOverride("font_size", 11);
+            lbl.AddThemeFontSizeOverride("font_size", 11);
+            row.AddChild(lbl);
+
+            var delBtn = new Button { Text = "🗑", CustomMinimumSize = new Vector2(32, 24) };
+            SvWbTheme.StyleButton(delBtn, customAccent: SvWbTheme.StatusDanger);
+            delBtn.AddThemeFontSizeOverride("font_size", 11);
+            var capturedNd = nd;
+            delBtn.Pressed += () =>
+            {
+                var rest = new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>();
+                foreach (var x in cfg.NamedDecks)
+                    if (!ReferenceEquals(x, capturedNd)) rest.Add(x);
+
+                _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds,
+                                          cfg.Rules, rest, out string msg);
+                _ruleStatus.Text = msg;
+                RefreshNamedDecks();
+            };
+            row.AddChild(delBtn);
+
             _namedDeckList.AddChild(row);
         }
+    }
+
+
+    /// <summary>新建 / 修改卡包元信息的弹窗。</summary>
+    private void OpenPackMetaDialog(string existingPackId)
+    {
+        var existing = existingPackId != null && _store.Catalog.Packs.TryGetValue(existingPackId, out var pk)
+            ? pk : null;
+
+        var dlg = new AcceptDialog
+        {
+            Title = existing == null ? "新建卡包" : "修改卡包信息",
+            Size = new Vector2I(460, 300),
+        };
+
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 8);
+        dlg.AddChild(box);
+
+        LineEdit Field(string label, string initial)
+        {
+            var row = new HBoxContainer();
+            var lb = new Label { Text = label, CustomMinimumSize = new Vector2(110, 0) };
+            lb.AddThemeFontSizeOverride("font_size", 12);
+            row.AddChild(lb);
+            var ed = new LineEdit { Text = initial ?? "", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            row.AddChild(ed);
+            box.AddChild(row);
+            return ed;
+        }
+
+        var idEdit = Field("卡包 ID", existing?.PackId);
+        if (existing != null) idEdit.Editable = false;   // ID 是目录名，改了等于换包
+        var nameEdit = Field("卡包名称", existing?.Name);
+        var authorEdit = Field("作者", existing?.Author);
+        var nativeEdit = Field("原生卡池 ID", existing?.NativePoolId ?? "standard");
+
+        dlg.Confirmed += () =>
+        {
+            bool ok = _store.CreateOrUpdatePack(
+                idEdit.Text?.Trim(), nameEdit.Text?.Trim(), authorEdit.Text?.Trim(),
+                nativeEdit.Text?.Trim(), out string msg);
+            _header.Text = "卡包 / 卡池管理 —— " + msg;
+            if (ok) { _selectedPackId = idEdit.Text?.Trim(); RefreshPacks(); }
+            dlg.QueueFree();
+        };
+        dlg.Canceled += () => dlg.QueueFree();
+        AddChild(dlg);
+        dlg.PopupCentered();
     }
 
     private void RefreshPacks()
@@ -212,7 +349,7 @@ public partial class PackAndPoolManagerView : Control
             };
             SvWbTheme.StyleButton(btn);
             string pid = kv.Key;
-            btn.Pressed += () => ShowPackCards(pid);
+            btn.Pressed += () => { _selectedPackId = pid; ShowPackCards(pid); };
             _packList.AddChild(btn);
         }
     }
@@ -253,6 +390,18 @@ public partial class PackAndPoolManagerView : Control
             costLbl.AddThemeFontSizeOverride("font_size", 11);
             costLbl.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
             row.AddChild(costLbl);
+
+            int capId = c.CardId;
+            var delBtn = new Button { Text = "🗑", CustomMinimumSize = new Vector2(32, 24) };
+            SvWbTheme.StyleButton(delBtn, customAccent: SvWbTheme.StatusDanger);
+            delBtn.AddThemeFontSizeOverride("font_size", 11);
+            delBtn.Pressed += () =>
+            {
+                _store.DeleteCardFromPack(packId, capId, out string msg);
+                _header.Text = "卡包 / 卡池管理 —— " + msg;
+                ShowPackCards(packId);
+            };
+            row.AddChild(delBtn);
 
             _cardList.AddChild(row);
         }

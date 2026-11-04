@@ -615,11 +615,11 @@ public partial class BattleScreenRoot : Control
                      : count * BoardUnitWidget.UnitW + (count - 1) * sep;
         float startX = arena.X - totalW * 0.5f;
 
-        float rowGap = 96f * sy;
         float halfUnit = BoardUnitWidget.UnitH * 0.5f;
+        // 与 LayoutBattlefield 共用常量，绝不再各写一个数字。
         float rowY = playerId == 1
-            ? arena.Y - rowGap - halfUnit
-            : arena.Y + rowGap - halfUnit;
+            ? arena.Y - FoeRowGap * sy - halfUnit
+            : arena.Y + AllyRowGap * sy - halfUnit;
 
         return new Vector2(startX + index * (BoardUnitWidget.UnitW + sep), rowY);
     }
@@ -694,14 +694,17 @@ public partial class BattleScreenRoot : Control
             }
             w.ApplyMotion(_anims.MotionOf(e.EntityId));
 
-            w.OnClicked += ent =>
+            w.OnClicked = ent =>
             {
+                // 本次点击被「选择目标」消费时必须返回 true：
+                // 告诉大家不要再启动拖拽攻击，否则选我方随从当目标会让它上浮成攻击姿态。
                 if (!_seq.Busy && _pending != null && IsInstanceValid(_pending)
                     && _pending.TryPickBoardOrHandEntity(ent.EntityId))
-                    return;
+                    return true;
 
                 _actionPanel.ShowForEntity(ent);
                 if (!IsInputBlocked && _ctrl.IsInFuseMode) _ctrl.ToggleFuseMaterial(ent);
+                return false;
             };
             w.OnRightClicked += ent => _actionPanel.ShowForEntity(ent);
 
@@ -715,12 +718,15 @@ public partial class BattleScreenRoot : Control
                 _field.AttackDragStart = _unitCenters.TryGetValue(ent.EntityId, out var c) ? c : pos;
                 _field.AttackDragCurrent = pos;
                 _field.QueueRedraw();
+                // 立刻把敌方所有合法目标点亮、非法目标标好原因。
+                RefreshAttackTargetStates(pos);
             };
             w.OnDragAttackMoved += (ent, pos) =>
             {
                 if (_attacker == null) return;
                 _field.AttackDragCurrent = pos;
                 _field.QueueRedraw();
+                RefreshAttackTargetStates(pos);
             };
             w.OnDragAttackReleased += (ent, pos) => ReleaseAttack(pos);
 
@@ -1235,10 +1241,13 @@ public partial class BattleScreenRoot : Control
 
         void SetStationaryVisible(bool vis)
         {
+            // 只隐藏绘制，绝不改 Visible：
+            // HBoxContainer 见到子节点不可见会立刻把其余兄弟挤压重排，
+            // 表现就是「一个随从攻击，其他随从瞬间位移」。
             foreach (var wd in BoardUnitsOf(_boardAlly).Concat(BoardUnitsOf(_boardFoe)))
-                if (wd.Entity != null && wd.Entity.EntityId == atkId) wd.Visible = vis;
+                if (wd.Entity != null && wd.Entity.EntityId == atkId) wd.SuppressDraw = !vis;
             if (_dyingProxies.TryGetValue(atkId, out var dp) && IsInstanceValid(dp))
-                dp.Visible = vis;
+                dp.SuppressDraw = !vis;
         }
 
         return new Anim(0.34f, Ease.Linear, v =>
@@ -1474,6 +1483,74 @@ public partial class BattleScreenRoot : Control
         f.Setup(amount, center, heal);
     }
 
+
+    /// <summary>
+    /// 拖拽攻击时刷新所有敌方单位的目标态。
+    ///
+    /// 合法目标亮绯红呼吸框；非法目标在鼠标悬停时画红叉并给出原因。
+    /// 原因来自 Combat.CanAttack 的具体拒绝理由，不是笼统的「不能攻击」。
+    /// </summary>
+    private void RefreshAttackTargetStates(Vector2 pointer)
+    {
+        if (_attacker == null || _ctrl == null) return;
+
+        HashSet<long> legal = null;
+        try { legal = _ctrl.LegalAttackTargets(_attacker); }
+        catch { }
+
+        // 判定鼠标当前压在哪个单位上
+        long hoveredId = -1;
+        foreach (var kv in _unitCenters)
+        {
+            var d = pointer.DistanceTo(kv.Value);
+            if (d < BoardUnitWidget.UnitW * 0.5f) { hoveredId = kv.Key; break; }
+        }
+
+        foreach (var wd in BoardUnitsOf(_boardFoe))
+        {
+            var e = wd.Entity;
+            if (e == null) continue;
+            bool isLegal = legal != null && legal.Contains(e.EntityId);
+            bool hover = e.EntityId == hoveredId;
+            string reason = null;
+            if (!isLegal && hover)
+            {
+                try
+                {
+                    _ctrl.Runner.Combat.CanAttack(_attacker, e, out string why);
+                    reason = why;
+                }
+                catch { reason = "不可攻击"; }
+            }
+            wd.SetAttackTargetState(isLegal, hover, reason);
+        }
+
+        // 敌方主战者
+        if (_foeLeader != null)
+        {
+            long lid = _ctrl.State?.Players[1].Leader?.EntityId ?? -1;
+            bool isLegal = legal != null && legal.Contains(lid);
+            bool hover = lid == hoveredId;
+            string reason = null;
+            if (!isLegal && hover)
+            {
+                try
+                {
+                    _ctrl.Runner.Combat.CanAttack(_attacker, _ctrl.State.Players[1].Leader, out string why);
+                    reason = why;
+                }
+                catch { reason = "不可攻击"; }
+            }
+            _foeLeader.SetAttackTargetState(isLegal, hover, reason);
+        }
+    }
+
+    /// <summary>拖拽结束时把所有单位的目标态清空。</summary>
+    private void ClearAttackTargetStates()
+    {
+        foreach (var wd in BoardUnitsOf(_boardFoe)) wd.SetAttackTargetState(false, false);
+        _foeLeader?.SetAttackTargetState(false, false);
+    }
     private void ReleaseAttack(Vector2 screenPos)
     {
         _field.IsDraggingAttack = false;
@@ -2003,6 +2080,13 @@ public partial class BattleScreenRoot : Control
 
     private const float DesignW = 1280f;
     private const float DesignH = 720f;
+
+    // 战场两排随从相对竞技场中心的垂直间距。
+    // ComputeSlotTopLeft（算「槽位左上角」用于位移补算）与 LayoutBattlefield
+    // （真正摆放 HBoxContainer）必须共用同一组常量 ——
+    // 早先一个写 96f、一个写 64f，导致攻击/破坏时视觉替身瞬间下跳 32 像素。
+    private const float FoeRowGap = 104f;
+    private const float AllyRowGap = 64f;
     private const float HandTrayBottomGap = 8f;
     private const float RightColumnRightMargin = 245f;
 
@@ -2076,8 +2160,8 @@ public partial class BattleScreenRoot : Control
         // 720p 下原先是 ±96，我方底边落在 510，而出牌线在 500 ——
         // 随从压进了拖牌时的提示区域，蓝框一亮就盖住半张卡。
         // 现在把我方那排上收，底边与判定线保持 24px 间隔。
-        float foeGap = 104f * sy;
-        float allyGap = 64f * sy;
+        float foeGap = FoeRowGap * sy;
+        float allyGap = AllyRowGap * sy;
 
         if (_boardFoe != null)
         {

@@ -21,6 +21,15 @@ public partial class CardGalleryView : Control
 
     private GameSessionStore _store;
     private GridContainer _grid;
+
+    // 分页：千卡一次性实例化会卡死 UI。每页只造 15 张（5 列 × 3 行）。
+    private const int PageSize = 15;
+    private int _currentPage;
+    private int _totalPages = 1;
+    private Label _pageLabel;
+    private Button _prevPageBtn;
+    private Button _nextPageBtn;
+    private int _lastFilteredCount;
     private ScrollContainer _gridScroll;
     private VBoxContainer _detail;
     private LineEdit _search;
@@ -69,14 +78,44 @@ public partial class CardGalleryView : Control
         split.AddThemeConstantOverride("separation", 12);
         AddChild(split);
 
+        // 左半屏：网格 + 底部分页栏
+        var gridCol = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };
+        gridCol.AddThemeConstantOverride("separation", 6);
+        split.AddChild(gridCol);
+
         _gridScroll = new ScrollContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };
         SvWbTheme.StyleScroll(_gridScroll);
-        split.AddChild(_gridScroll);
+        gridCol.AddChild(_gridScroll);
 
         _grid = new GridContainer { Columns = 5 };
         _grid.AddThemeConstantOverride("h_separation", 8);
         _grid.AddThemeConstantOverride("v_separation", 8);
         _gridScroll.AddChild(_grid);
+
+        // 分页栏：千卡图鉴只实例化当前页，翻页不重建整表。
+        var pageBar = new HBoxContainer { CustomMinimumSize = new Vector2(0, 34) };
+        pageBar.AddThemeConstantOverride("separation", 8);
+        _prevPageBtn = new Button { Text = "◀ 上一页", CustomMinimumSize = new Vector2(96, 30) };
+        SvWbTheme.StyleButton(_prevPageBtn);
+        _prevPageBtn.Pressed += () => { if (_currentPage > 0) { _currentPage--; RefreshGrid(); } };
+        pageBar.AddChild(_prevPageBtn);
+
+        _pageLabel = new Label
+        {
+            Text = "第 1 / 1 页",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _pageLabel.AddThemeFontSizeOverride("font_size", 12);
+        pageBar.AddChild(_pageLabel);
+
+        _nextPageBtn = new Button { Text = "下一页 ▶", CustomMinimumSize = new Vector2(96, 30) };
+        SvWbTheme.StyleButton(_nextPageBtn);
+        _nextPageBtn.Pressed += () => { if (_currentPage < _totalPages - 1) { _currentPage++; RefreshGrid(); } };
+        pageBar.AddChild(_nextPageBtn);
+
+        gridCol.AddChild(pageBar);
 
         _detail = new VBoxContainer { CustomMinimumSize = new Vector2(360, 0) };
         _detail.AddThemeConstantOverride("separation", 6);
@@ -208,7 +247,17 @@ public partial class CardGalleryView : Control
                 || (c.NameChs ?? "").Contains(q)
                 || _store.CardPrinter.PrintCard(c).Contains(q));
 
-        var cards = query.OrderBy(c => c.CardId).ToList();
+        var all = query.OrderBy(c => c.CardId).ToList();
+        _lastFilteredCount = all.Count;
+
+        _totalPages = Math.Max(1, (all.Count + PageSize - 1) / PageSize);
+        _currentPage = Math.Clamp(_currentPage, 0, _totalPages - 1);
+        var cards = all.Skip(_currentPage * PageSize).Take(PageSize).ToList();
+
+        if (_pageLabel != null)
+            _pageLabel.Text = $"第 {_currentPage + 1} / {_totalPages} 页　（共 {all.Count} 张）";
+        if (_prevPageBtn != null) _prevPageBtn.Disabled = _currentPage <= 0;
+        if (_nextPageBtn != null) _nextPageBtn.Disabled = _currentPage >= _totalPages - 1;
 
         foreach (var def in cards)
         {

@@ -24,6 +24,24 @@ public partial class LeaderMedallionWidget : Control
     private int _playerId;
 
     private bool _isCandidate;
+
+    private bool _isAttackLegal;
+    private bool _isAttackHovered;
+    private string _attackDenyReason;
+
+    /// <summary>
+    /// 拖拽攻击时的目标态。主战者与随从走同一套反馈：
+    /// 合法亮绯红呼吸框，非法悬停画红叉并给出原因（例如「敌方有守护随从」）。
+    /// </summary>
+    public void SetAttackTargetState(bool isLegal, bool isHovered, string denyReason = null)
+    {
+        if (_isAttackLegal == isLegal && _isAttackHovered == isHovered
+            && _attackDenyReason == denyReason) return;
+        _isAttackLegal = isLegal;
+        _isAttackHovered = isHovered;
+        _attackDenyReason = denyReason;
+        QueueRedraw();
+    }
     private bool _dimmed;
     private float _pulseTime;
 

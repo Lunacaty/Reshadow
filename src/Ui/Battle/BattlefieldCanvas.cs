@@ -253,26 +253,36 @@ public partial class BattlefieldCanvas : Control
 
             // 右下角数值角标：吟唱倒计时或信仰值
             int badgeVal = 0;
+            bool isFaith = ent.IsFaith
+                           || ent.Def?.Kind == ShadowverseFan.KernelV3.Ast.CardKind.Faith;
+            bool showBadge = false;
             try
             {
-                var cdKey = Controller.Schema.Counter("countdown");
-                if (ent.Counters != null
-                    && ent.Counters.TryGetValue(cdKey, out int cdv) && cdv > 0)
-                    badgeVal = cdv;
+                if (isFaith)
+                {
+                    // 信仰是整局永驻资源：值为 0 也必须常驻显示角标，
+                    // 否则玩家会以为信仰图标丢了。
+                    var faKey = Controller.Schema.Counter("faith");
+                    if (ent.Counters != null) ent.Counters.TryGetValue(faKey, out badgeVal);
+                    showBadge = true;
+                }
                 else
                 {
-                    var faKey = Controller.Schema.Counter("faith");
+                    var cdKey = Controller.Schema.Counter("countdown");
                     if (ent.Counters != null
-                        && ent.Counters.TryGetValue(faKey, out int fav) && fav > 0)
-                        badgeVal = fav;
+                        && ent.Counters.TryGetValue(cdKey, out int cdv) && cdv > 0)
+                    {
+                        badgeVal = cdv;
+                        showBadge = true;
+                    }
                 }
             }
             catch { }
 
-            if (badgeVal > 0)
+            if (showBadge)
             {
                 Vector2 bc = new(c.X + 14f, c.Y + 14f);
-                DrawCircle(bc, 9f, new Color("B45309"));
+                DrawCircle(bc, 9f, isFaith ? new Color("6D28D9") : new Color("B45309"));
                 DrawArc(bc, 9f, 0, Mathf.Tau, 18, new Color("FDE047"), 1.2f);
                 string bs = badgeVal.ToString();
                 Vector2 bsz = font.GetStringSize(bs, HorizontalAlignment.Left, -1, 11);

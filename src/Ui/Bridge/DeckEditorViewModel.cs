@@ -26,7 +26,11 @@ public sealed class DeckEditorViewModel
     public EffectiveDeckProfile CurrentProfile { get; private set; }
 
     // ---- 筛选状态 ----
-    public string ActiveClanFilter { get; set; } = "SELF";
+    /// <summary>
+    /// 职业筛选。默认 <c>SELF_NEUTRAL</c> —— 构筑时 95% 的时间只在
+    /// 「本职业 + 中立」里找卡，默认给全部职业只会让人反复切页签。
+    /// </summary>
+    public string ActiveClanFilter { get; set; } = "SELF_NEUTRAL";
     public int? ActiveCostFilter { get; set; }
     public CardKind? ActiveKindFilter { get; set; }
     public bool OnlyDeckModCards { get; set; }
@@ -160,7 +164,17 @@ public sealed class DeckEditorViewModel
     {
         IEnumerable<CardDef> query = CurrentPool.EnumerateCollectibleCards();
 
-        if (ActiveClanFilter == "SELF")
+        if (ActiveClanFilter == "SELF_NEUTRAL")
+        {
+            // 本职业 + 中立 + 构筑卡解锁的合法副职业
+            var allowed = CurrentProfile?.AllowedClans;
+            query = query.Where(c =>
+                !c.Clan.IsValid
+                || string.Equals(c.Clan.Name, "Neutral", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Clan.Name, WorkingDeck.LeaderClan, StringComparison.OrdinalIgnoreCase)
+                || (allowed != null && allowed.Contains(c.Clan.Name)));
+        }
+        else if (ActiveClanFilter == "SELF")
             query = query.Where(c => string.Equals(c.Clan.Name, WorkingDeck.LeaderClan,
                                                    StringComparison.OrdinalIgnoreCase));
         else if (ActiveClanFilter != "ALL")

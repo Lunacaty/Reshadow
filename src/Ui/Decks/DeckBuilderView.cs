@@ -31,6 +31,14 @@ public partial class DeckBuilderView : Control
     private CostCurveWidget _curve;
     private GridContainer _cardGrid;
 
+    // 分页：一次只造当页的卡，避免上千张卡实例化卡死 UI。
+    private const int PageSize = 16;   // 4 列 × 4 行
+    private int _currentPage;
+    private int _totalPages = 1;
+    private Label _pageLabel;
+    private Button _prevPageBtn;
+    private Button _nextPageBtn;
+
     /// <summary>左侧卡池网格的控件缓存（按卡号）。只在筛选条件变化时重建。</summary>
     private readonly Dictionary<int, CardVisualWidget> _gridWidgets = new();
     private VBoxContainer _deckList;
@@ -180,6 +188,7 @@ public partial class DeckBuilderView : Control
         filterRow.AddThemeConstantOverride("separation", 6);
         pane.AddChild(filterRow);
 
+        AddClanTab(filterRow, "本职业+中立", "SELF_NEUTRAL");
         AddClanTab(filterRow, "本职业", "SELF");
         AddClanTab(filterRow, "中立", "Neutral");
         AddClanTab(filterRow, "全部", "ALL");
@@ -211,6 +220,7 @@ public partial class DeckBuilderView : Control
                 case 4: _vm.ActiveKindFilter = null; _vm.OnlyDeckModCards = true; break;
                 default: _vm.ActiveKindFilter = null; _vm.OnlyDeckModCards = false; break;
             }
+            _currentPage = 0;
             RefreshCardGrid();
         };
         filterRow.AddChild(kindOpt);
@@ -220,6 +230,7 @@ public partial class DeckBuilderView : Control
             PlaceholderText = "搜索卡名 / 兵种 / 效果文本",
             CustomMinimumSize = new Vector2(240, 32),
         };
+        _currentPage = 0;
         search.TextChanged += t => { _vm.SearchQuery = t; RefreshCardGrid(); };
         filterRow.AddChild(search);
 
@@ -230,6 +241,7 @@ public partial class DeckBuilderView : Control
 
         var allBtn = new Button { Text = "全部" };
         SvWbTheme.StyleButton(allBtn);
+        _currentPage = 0;
         allBtn.Pressed += () => { _vm.ActiveCostFilter = null; RefreshCardGrid(); };
         costRow.AddChild(allBtn);
 
@@ -245,15 +257,40 @@ public partial class DeckBuilderView : Control
             b.Pressed += () =>
             {
                 _vm.ActiveCostFilter = _vm.ActiveCostFilter == cost ? (int?)null : cost;
+                _currentPage = 0;
                 RefreshCardGrid();
             };
             costRow.AddChild(b);
         }
 
-        // 卡牌网格
+        // 卡牌网格 + 底部分页栏
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         pane.AddChild(scroll);
         SvWbTheme.StyleScroll(scroll);
+
+        var pageBar = new HBoxContainer { CustomMinimumSize = new Vector2(0, 32) };
+        pageBar.AddThemeConstantOverride("separation", 6);
+        _prevPageBtn = new Button { Text = "◀ 上一页", CustomMinimumSize = new Vector2(88, 28) };
+        SvWbTheme.StyleButton(_prevPageBtn);
+        _prevPageBtn.Pressed += () => { if (_currentPage > 0) { _currentPage--; RefreshCardGrid(); } };
+        pageBar.AddChild(_prevPageBtn);
+
+        _pageLabel = new Label
+        {
+            Text = "第 1 / 1 页",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _pageLabel.AddThemeFontSizeOverride("font_size", 11);
+        pageBar.AddChild(_pageLabel);
+
+        _nextPageBtn = new Button { Text = "下一页 ▶", CustomMinimumSize = new Vector2(88, 28) };
+        SvWbTheme.StyleButton(_nextPageBtn);
+        _nextPageBtn.Pressed += () => { if (_currentPage < _totalPages - 1) { _currentPage++; RefreshCardGrid(); } };
+        pageBar.AddChild(_nextPageBtn);
+
+        pane.AddChild(pageBar);
 
         _cardGrid = new GridContainer { Columns = 4 };
         // 列数跟随可用宽度：标准窗口 4 列，宽屏自动扩到 5~6 列。
@@ -276,6 +313,7 @@ public partial class DeckBuilderView : Control
     {
         var b = new Button { Text = caption };
         SvWbTheme.StyleButton(b);
+        _currentPage = 0;
         b.Pressed += () => { _vm.ActiveClanFilter = filter; RefreshCardGrid(); };
         row.AddChild(b);
     }
@@ -331,6 +369,7 @@ public partial class DeckBuilderView : Control
         // 投入 / 移除一张卡不该重建整个卡池网格 ——
         // 那是上百个 CardVisualWidget 的销毁重建，连续点选时非常卡。
         // 只有第一次（缓存为空）才真建，其余走原位更新。
+        _currentPage = 0;
         if (_gridWidgets.Count == 0) RefreshCardGrid();
         else UpdateCardGridInPlace();
         RefreshDeckList();
@@ -372,6 +411,7 @@ public partial class DeckBuilderView : Control
             string c = clan;
             var b = new Button { Text = "★ 副职业: " + SvWbTheme.ClanDisplayZh(clan) };
             SvWbTheme.StyleButton(b, customAccent: SvWbTheme.AccentPurple);
+            _currentPage = 0;
             b.Pressed += () => { _vm.ActiveClanFilter = c; RefreshCardGrid(); };
             _extraClanTabs.AddChild(b);
         }
@@ -432,7 +472,17 @@ public partial class DeckBuilderView : Control
         var allowed = _vm.CurrentProfile.AllowedClans;
         bool cross = _vm.CurrentProfile.AllowCrossCraft;
 
-        foreach (var def in _vm.GetFilteredPoolCards())
+        var all = _vm.GetFilteredPoolCards();
+        _totalPages = Math.Max(1, (all.Count + PageSize - 1) / PageSize);
+        _currentPage = Math.Clamp(_currentPage, 0, _totalPages - 1);
+        var page = all.Skip(_currentPage * PageSize).Take(PageSize).ToList();
+
+        if (_pageLabel != null)
+            _pageLabel.Text = $"第 {_currentPage + 1} / {_totalPages} 页　（共 {all.Count} 张）";
+        if (_prevPageBtn != null) _prevPageBtn.Disabled = _currentPage <= 0;
+        if (_nextPageBtn != null) _nextPageBtn.Disabled = _currentPage >= _totalPages - 1;
+
+        foreach (var def in page)
         {
             var w = new CardVisualWidget();
             bool locked = !cross && def.Clan.IsValid && !allowed.Contains(def.Clan.Name);

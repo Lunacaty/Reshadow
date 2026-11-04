@@ -150,6 +150,10 @@ public sealed class TurnRunner
         var cdKey = _schema.Counter("countdown");
         foreach (var e in _state.Players[playerId].CrestArea.ToList())
         {
+            // 铁律：信仰（Faith）是整局永驻资源，没有吟唱倒计时，
+            // 不随回合递减，也绝不到期消失 —— 哪怕信仰值被消耗回 0 也要留在纹章区。
+            if (e == null || e.IsFaith || e.Def?.Kind == Ast.CardKind.Faith) continue;
+
             if (!e.Counters.TryGetValue(cdKey, out int cd) || cd <= 0) continue;
             if (!ownTurn) continue;          // 吟唱只在持有者回合推进
             cd--;

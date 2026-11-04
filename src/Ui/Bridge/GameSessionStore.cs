@@ -646,4 +646,128 @@ public sealed class GameSessionStore
         }
         return sb.ToString();
     }
+
+    // ================================================================ 卡包 / 卡池 CRUD
+
+    /// <summary>新建空白卡包，或更新已有卡包的元信息（保留其卡牌与符号表）。</summary>
+    public bool CreateOrUpdatePack(string packId, string name, string author, string nativePoolId,
+                                   out string message)
+    {
+        message = "";
+        if (string.IsNullOrWhiteSpace(packId)) { message = "卡包 ID 不能为空"; return false; }
+        packId = packId.Trim();
+        Initialize();
+
+        var packDir = Path.Combine(DataRoot, "packs", packId);
+        Directory.CreateDirectory(packDir);
+        Directory.CreateDirectory(Path.Combine(packDir, "cards"));
+        var packFile = Path.Combine(packDir, "pack.json");
+
+        CardPackDef existing = File.Exists(packFile) ? CardPackLoader.LoadFromFile(packFile) : null;
+        var pack = new CardPackDef
+        {
+            PackId = packId,
+            Name = string.IsNullOrWhiteSpace(name) ? packId : name.Trim(),
+            Author = author?.Trim() ?? "",
+            Version = existing?.Version ?? "1.0.0",
+            NativePoolId = string.IsNullOrWhiteSpace(nativePoolId) ? "standard" : nativePoolId.Trim(),
+            Dependencies = existing?.Dependencies ?? new(),
+            Traits = existing?.Traits ?? new(),
+            Clans = existing?.Clans ?? new(),
+            Keywords = existing?.Keywords ?? new(),
+            Counters = existing?.Counters ?? new(),
+            StackableAmulets = existing?.StackableAmulets ?? new(),
+            NamedDecks = existing?.NamedDecks ?? new(),
+            Cards = existing?.Cards ?? new(),
+        };
+
+        File.WriteAllText(packFile, SerializePacket(pack), new UTF8Encoding(false));
+        ReloadCatalogAndPools();
+        message = existing == null ? $"已新建空白卡包 [{packId}]" : $"已更新卡包 [{packId}] 信息";
+        return true;
+    }
+
+    /// <summary>删除整个卡包。官方核心包不可删，并会从所有卡池的启用列表里摘掉。</summary>
+    public bool DeletePack(string packId, out string message)
+    {
+        message = "";
+        if (string.IsNullOrWhiteSpace(packId)) { message = "未选择卡包"; return false; }
+        if (string.Equals(packId, "core-wb", StringComparison.OrdinalIgnoreCase))
+        { message = "官方核心卡包 [core-wb] 不可删除"; return false; }
+
+        var packDir = Path.Combine(DataRoot, "packs", packId);
+        if (Directory.Exists(packDir)) Directory.Delete(packDir, recursive: true);
+
+        // 同步从所有卡池的启用列表移除，否则卡池会因「引用了不存在的包」而建不起来。
+        foreach (var kv in PoolConfigs.ToList())
+        {
+            if (kv.Value.EnabledPackIds.RemoveAll(x => string.Equals(x, packId, StringComparison.OrdinalIgnoreCase)) > 0)
+                SavePoolRules(kv.Key, kv.Value.Rules, out _);
+        }
+
+        ReloadCatalogAndPools();
+        message = $"已删除卡包 [{packId}]";
+        return true;
+    }
+
+    /// <summary>从指定卡包里删掉一张卡。</summary>
+    public bool DeleteCardFromPack(string packId, int cardId, out string message)
+    {
+        message = "";
+        var packFile = Path.Combine(DataRoot, "packs", packId ?? "", "pack.json");
+        if (!File.Exists(packFile)) { message = "找不到卡包文件"; return false; }
+
+        var pack = CardPackLoader.LoadFromFile(packFile);
+        int removed = pack.Cards.RemoveAll(c => c.CardId == cardId);
+        if (removed == 0) { message = $"卡包 [{packId}] 中未找到卡号 {cardId}"; return false; }
+
+        File.WriteAllText(packFile, SerializePacket(pack), new UTF8Encoding(false));
+        ReloadCatalogAndPools();
+        message = $"已从 [{packId}] 删除卡牌 {cardId}";
+        return true;
+    }
+
+    /// <summary>整体保存一个卡池（名称 / 启用卡包 / 规则 / 具名牌组）。</summary>
+    public bool SavePoolConfigFull(
+        string poolId, string poolName, List<string> enabledPacks,
+        MatchRules rules, List<NamedDeckRawDef> namedDecks, out string message)
+    {
+        message = "";
+        if (string.IsNullOrWhiteSpace(poolId)) { message = "卡池 ID 不能为空"; return false; }
+        poolId = poolId.Trim();
+        Initialize();
+
+        var updated = new CardPoolConfig
+        {
+            PoolId = poolId,
+            Name = string.IsNullOrWhiteSpace(poolName) ? poolId : poolName.Trim(),
+            EnabledPackIds = enabledPacks ?? new List<string> { "core-wb" },
+            Rules = rules ?? MatchRules.CreateStandard(),
+            NamedDecks = namedDecks ?? new List<NamedDeckRawDef>(),
+        };
+        PoolConfigs[poolId] = updated;
+        return SavePoolRules(poolId, updated.Rules, out message);
+    }
+
+    /// <summary>删除一个卡池。标准卡池不可删。</summary>
+    public bool DeletePool(string poolId, out string message)
+    {
+        message = "";
+        if (string.Equals(poolId, "standard", StringComparison.OrdinalIgnoreCase))
+        { message = "标准卡池 [standard] 不可删除"; return false; }
+
+        if (PoolFilePaths.TryGetValue(poolId, out var path) && File.Exists(path))
+            File.Delete(path);
+        else
+        {
+            var fallback = Path.Combine(DataRoot, "pools", poolId + ".pool.json");
+            if (File.Exists(fallback)) File.Delete(fallback);
+        }
+
+        PoolConfigs.Remove(poolId);
+        PoolFilePaths.Remove(poolId);
+        ReloadCatalogAndPools();
+        message = $"已删除卡池 [{poolId}]";
+        return true;
+    }
 }
