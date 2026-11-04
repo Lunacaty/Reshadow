@@ -134,6 +134,28 @@ public sealed class TargetSpec
     public bool IsOmitted => OmittedFields != TargetField.None;
 
     /// <summary>我方主战者。</summary>
+    /// <summary>
+    /// 归一化成「集合谓词过滤器」。
+    ///
+    /// 冠词 a/an/other 会让 TargetParser 设成 Choose(1)（弹窗手选一个），
+    /// 但在「事件主语」与「数量统计」这两个上下文里，名词短语代表的是
+    /// 「满足条件的整个集合」：
+    ///   Whenever an enemy follower enters the field  -> 主语过滤器
+    ///   X is the number of other allied followers     -> 计数
+    /// 不归一化的话，前者永远匹配不到、后者恒为 1。
+    /// </summary>
+    public TargetSpec AsPoolFilter() => Mode == Core.SelectMode.All && Count == null ? this : new()
+    {
+        SourceKind = SourceKind, Owner = Owner, Zone = Zone, Slot = Slot,
+        CardId = CardId, CardName = CardName, Sort = Sort,
+        SortDescending = SortDescending, DistinctByName = DistinctByName, DuplicatesOnly = DuplicatesOnly,
+        TopN = TopN, History = History,
+        Mode = Core.SelectMode.All, Count = null,
+        IncludeLeader = IncludeLeader,
+        OmittedFields = OmittedFields,
+        Where = Where,
+    };
+
     public TargetSpec WithWhere(BoolExpr extra) => new()
     {
         // 每个字段都必须显式拷贝：漏一个，经过一次条件追加之后该字段就静默消失。

@@ -613,7 +613,11 @@ public sealed class PrefixParser
         // 形态 C：通用主语 + 事件谓语
         var subject = _target.TryParse(cur);
         if (subject == null) { cur.Seek(save); return false; }
-        b.SubjectFilter = subject;
+
+        // 事件主语是「集合谓词」，不是「让玩家弹窗选一个」。
+        // TargetParser 见到 "an enemy follower" 会设 Choose(1)，
+        // 那样 SubjectMatches 永远只可能匹配到被手选的那一个，事件实质失效。
+        b.SubjectFilter = subject.AsPoolFilter();
 
         var ev = MatchEventPredicate(cur, b);
         if (ev == null) { cur.Seek(save); return false; }

@@ -142,7 +142,17 @@ public sealed class ActionParser
                         // 写死 $self 会让后者的 it 指回本卡。
                         case EvolveNode evo when IsSelfTarget(evo.Target):
                             _target.MarkBound(TargetSpec.SlotSelf); break;
-                        case EvolveNode:
+                        // 群体进化的目标是「一整个集合」，代词 them 指向它。
+                        //
+                        //   "Evolve all unevolved allied followers. Super-evolve them instead."
+                        // 这里没有 Select，若不登记，them 会因为「无前序绑定」直接报错。
+                        //
+                        // 但**只在目标确实是集合时登记**：
+                        //   "Summon 2 X, evolve them, and give them Barrier"
+                        // 该句的 them 指的是 $created，若这里抢占 $selected，
+                        // 后半句的 Barrier 就落空了。判据是 Mode == All。
+                        case EvolveNode evo when evo.Target != null
+                                                  && evo.Target.Mode == SelectMode.All:
                             _target.MarkBound(TargetSpec.SlotSelected); break;
                         // 不能写 `ms.Target == TargetSpec.Self`：TargetSpec 是 class、
                         // 未重载 ==，而 TargetSpec.Self 是 `=> new()` 属性 ——
@@ -687,7 +697,7 @@ public sealed class ActionParser
             target = NormalizeAllCount(_target.TryParse(cur)
                 ?? OmittedTargetSpec(TargetSpec.InZone(ZoneRef.Board, ZoneScope.Opponent)));
         }
-        // "... and 2 damage to your leader" —— 第二段伤害
+        // "... and 2 damage to your leader" —— 第二段**独立数值**的伤害
         while (cur.Current.IsWord("and") && cur.Peek(1).Kind == TokKind.Number && cur.Peek(2).IsWord("damage"))
         {
             cur.Advance();
@@ -695,6 +705,32 @@ public sealed class ActionParser
             cur.TryMatchAnyWord("to");
             var t2 = NormalizeAllCount(_target.TryParse(cur) ?? OmittedTargetSpec(TargetSpec.OpponentLeader));
             extraDmg.Add(new DealDamageNode { Target = t2, Amount = NumExpr.Const(amt2), IsAbility = true });
+        }
+
+        // "... and the enemy leader" / "and both leaders" —— 第二段**同数值**的并列目标。
+        //
+        // 必须在这里展开成独立节点，不能交给 TargetParser 吞进同一个 TargetSpec：
+        //   "Deal 2 damage to 2 random enemy followers and the enemy leader"
+        // 若压成一个 opponent:board +leader Random(2)，主战者会在 Where 的
+        // is Follower 过滤里被筛掉（或挤占随机随从的名额），
+        // 实测变成「打 2 个随从，主战者一点没掉」。
+        while (cur.Current.IsWord("and"))
+        {
+            int saveAnd = cur.Position;
+            cur.Advance();
+            cur.TryMatchAnyWord("to");
+
+            var extra = _target.TryParse(cur);
+            // 只接受「主战者」类并列目标：随从类并列由上面的数值分支与
+            // ParseAndAllTargets 覆盖，这里再多吞会破坏其它句式。
+            if (extra == null || extra.Zone != ZoneRef.Leader) { cur.Seek(saveAnd); break; }
+
+            extraDmg.Add(new DealDamageNode
+            {
+                Target = NormalizeAllCount(extra),
+                Amount = amount,
+                IsAbility = true,
+            });
         }
 
         var dmgNodes = new List<EffectNode>
@@ -754,6 +790,17 @@ public sealed class ActionParser
     {
         cur.ExpectWord("draw");
 
+        // "Draw all copies of X" 才是一次抽光同名卡。
+        // 必须在这里显式记住「原文写了 all」：TargetParser 在量词已被吃掉时
+        // 会留下 Mode 的默认值 All，若下游拿它当「原文写了 all」来判，
+        // 所有定向检索（Draw a Swordcraft follower 之类）都会退化成抽空牌库。
+        bool isExplicitAll = cur.TryMatchWord("all");
+        if (isExplicitAll)
+        {
+            cur.TryMatchAnyWord("copies", "copy");
+            cur.TryMatchWord("of");
+        }
+
         // "Draw a card" / "Draw an amulet" 里的冠词不是目标。
         // 之前直接 ParseNumExpr → TryMatchAnyWord("card") 失败，
         // 于是 "a card" 被 TargetParser 当成目标，
@@ -809,11 +856,11 @@ public sealed class ActionParser
                 CardId = filter.CardId,
                 CardName = filter.CardName,
                 Where = filter.Where,
-                // "all copies" 保留 All；其余无明确模式时按随机检索。
-                // Count 是不可空 NumExpr：写 null 会让抽牌数量整条丢失，
-                // 应始终传入 n，由 Mode 决定它的语义（All 时 n 被忽略）。
-                Mode = filter.Mode == SelectMode.All ? SelectMode.All : SelectMode.Random,
-                Count = n,
+                // 只有原文显式写了 all 才用 All；其余定向检索一律 Random(n)。
+                // 判据必须是 isExplicitAll，不能是 filter.Mode ——
+                // 量词已被本方法吃掉，filter.Mode 拿到的只是默认值 All。
+                Mode = isExplicitAll ? SelectMode.All : SelectMode.Random,
+                Count = isExplicitAll ? null : n,
                 DistinctByName = filter.DistinctByName,
                 Sort = filter.Sort,
                 SortDescending = filter.SortDescending,
@@ -1915,7 +1962,25 @@ public sealed class ActionParser
         cur.Advance();
         var target = _target.TryParse(cur)
             ?? throw LangException.At("evolve", "缺少目标", cur, cur.All);
-        return new List<EffectNode> { new EvolveNode { Target = target, IsSuperEvolve = super } };
+        var nodes = new List<EffectNode> { new EvolveNode { Target = target, IsSuperEvolve = super } };
+
+        // "Evolve it and this follower" / "Evolve this and another follower"
+        // 并列目标必须各自生成一个 EvolveNode。
+        // 早先只取第一个目标，第二个目标被静默丢弃 —— 卡面写了两个，实际只有一个进化。
+        while (cur.Current.IsWord("and"))
+        {
+            int save = cur.Position;
+            cur.Advance();
+            // 句末 / 授予动词开头都不属于并列目标：
+            //   "and give it ..." / "and deal ..." 交给主循环处理。
+            if (cur.IsAtEnd || cur.Current.Kind == TokKind.Period || IsGrantStart(cur))
+            { cur.Seek(save); break; }
+            var next = _target.TryParse(cur);
+            if (next == null) { cur.Seek(save); break; }
+            nodes.Add(new EvolveNode { Target = next, IsSuperEvolve = super });
+        }
+
+        return nodes;
     }
 
     // ---------- 选择 ----------

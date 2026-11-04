@@ -2372,7 +2372,10 @@ public sealed class EnglishCompiler
             }
             c.Seek(saved);
             var tgt = _target.TryParse(c);
-            if (tgt != null) return NumExpr.CountOf(tgt);
+            // 必须归一成集合过滤器：TargetParser 见到冠词 a/an/other 会设成
+            // Choose(1)，那是「弹窗手选一个」的语义，用来计数会恒等于 1。
+            //   "X is the number of other allied followers" -> 整个集合的大小
+            if (tgt != null) return NumExpr.CountOf(tgt.AsPoolFilter());
             // 还是不行就把剩余词当资源名（如 "cards in your hand"）
             c.Seek(saved);
             c.AdvanceToClauseBoundary();

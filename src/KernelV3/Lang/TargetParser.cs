@@ -44,11 +44,37 @@ public sealed class TargetParser
     /// </summary>
     public HashSet<string> BoundSlots { get; } = new HashSet<string>();
 
+    /// <summary>
+    /// 槽位绑定顺序。末尾 = 最近一次绑定。
+    ///
+    /// 代词必须遵循「最近焦点原则」：
+    ///   "Select an enemy follower and give it Ward. Evolve this follower and give it Storm"
+    /// 前半句的 it 指敌方随从，后半句的 it 指本卡 —— 只有顺序能区分。
+    /// 早先 BoundSlots 是无序 HashSet，ResolvePronounTarget 又按
+    /// $selected -> $created -> $self 的死顺序返回，导致
+    /// 《亚修雷&莉缇雅》把 Storm 给了敌方随从。
+    /// </summary>
+    private readonly List<string> _slotHistory = new();
+
+    /// <summary>最近一次绑定的槽位（无边时返回 null）。</summary>
+    public string MostRecentSlot => _slotHistory.Count > 0 ? _slotHistory[^1] : null;
+
     /// <summary>当前句是否已出现 Select / Summon / Add / 触发器等可绑定的前序动作。</summary>
-    public void MarkBound(string slot) { if (!string.IsNullOrEmpty(slot)) BoundSlots.Add(slot); }
+    public void MarkBound(string slot)
+    {
+        if (string.IsNullOrEmpty(slot)) return;
+        BoundSlots.Add(slot);
+        // 移到末尾：同一槽位被重新绑定也算「最近焦点」。
+        _slotHistory.Remove(slot);
+        _slotHistory.Add(slot);
+    }
 
     /// <summary>本句开始时清空登记。</summary>
-    public void ResetSlots() => BoundSlots.Clear();
+    public void ResetSlots()
+    {
+        BoundSlots.Clear();
+        _slotHistory.Clear();
+    }
 
     /// <summary>是否启用设计3 5.3 的代词强制校验。整卡为 true，单句语料为 false。</summary>
     public bool StrictPronounCheck { get; set; } = true;
@@ -113,16 +139,12 @@ public sealed class TargetParser
     {
         string pronSlot;
 
-        if (BoundSlots.Contains(TargetSpec.SlotSelected))
-            pronSlot = TargetSpec.SlotSelected;
-        else if (BoundSlots.Contains(TargetSpec.SlotCreated))
-            pronSlot = TargetSpec.SlotCreated;
-        else if (BoundSlots.Contains(TargetSpec.SlotCounter))
-            pronSlot = TargetSpec.SlotCounter;
-        else if (BoundSlots.Contains(TargetSpec.SlotSelf))
-            pronSlot = TargetSpec.SlotSelf;
-        else if (BoundSlots.Contains(TargetSpec.SlotOpposing))
-            pronSlot = TargetSpec.SlotOpposing;
+        // 最近焦点优先：谁最后被绑定，it/them 就指谁。
+        // 不能用固定的 $selected -> $created -> $self 顺序 ——
+        // "Evolve this follower and give it Storm" 里 it 必须指本卡，
+        // 而死顺序会让它指向前半句选中的敌方随从。
+        if (MostRecentSlot != null)
+            pronSlot = MostRecentSlot;
         else if (DefaultPronounSlot != null)
             pronSlot = DefaultPronounSlot;
         else if (StrictPronounCheck)
@@ -939,11 +961,10 @@ public sealed class TargetParser
             {
                 slot = TargetSpec.SlotCreated; matched = true; continue;
             }
-            // "and the enemy leader"
-            if (cur.MatchPhrase("and", "the", "enemy", "leader") || cur.MatchPhrase("and", "an", "enemy", "leader"))
-            {
-                includeLeader = true; matched = true; continue;
-            }
+            // ⚠ 这里**不再**私吞 "and the enemy leader"。
+            // 把它并进同一个 TargetSpec 会让主战者在 Where 的 is Follower
+            // 过滤里被筛掉，或挤占随机随从的名额。
+            // 并列主战者伤害统一由 ActionParser.ParseDeal 展开成独立节点。
 
             // 历史池限定语（"... entered the field this match" / "... destroyed this match"）。
             // 关系代词 that 必须先吃掉：它在后置循环的停用词表里，
@@ -1007,12 +1028,9 @@ public sealed class TargetParser
                 history = Core.HistoryScope.DestroyedThisTurn; matched = true; continue;
             }
 
-            // "and both leaders"
-            if (cur.MatchPhrase("and", "both", "leaders") || cur.MatchPhrase("both", "leaders"))
-            {
-                includeLeader = true; owner = ZoneScope.Any; ownerSet = true;
-                matched = true; continue;
-            }
+            // ⚠ 同上："and both leaders" 不再并入随从目标，
+            // 否则原本的 Owner = Opponent 会被强行改成 Any，
+            // 「all enemy followers and both leaders」连己方主战者也打了。
             // "with Fuse"（先判断再消耗，避免 MatchWord 抢先吞掉 with）
             // "with Fuse" 是「这张卡带有 Fuse 能力」，不是「命中上一个融合材料」。
             // 之前借用 IsPreviousExpr，打印出来是 where is selected，
@@ -1216,6 +1234,16 @@ public sealed class TargetParser
             _ => BoolExpr.And(wheres.ToArray()),
         };
 
+        // 战场与主战者是**公共博弈区**：卡面没写 allied 也没写 enemy 时
+        // （"all followers" / "a follower on the field" / "6 other random followers"）
+        // 默认归属是双方。手牌 / 牌库 / 墓地 / 纹章区是私有区，未指明才是己方。
+        var resolvedZone = history == Core.HistoryScope.None ? zone
+                         : history == Core.HistoryScope.EnteredThisMatch ? ZoneRef.Board
+                         : ZoneRef.Cemetery;
+        var defaultOwner = (resolvedZone == ZoneRef.Board || resolvedZone == ZoneRef.Leader)
+            ? ZoneScope.Any
+            : ZoneScope.Self;
+
         return new TargetSpec
         {
             // 历史池是**决定性**的：既然说的是「本局/本回合被破坏过的」，
@@ -1228,10 +1256,8 @@ public sealed class TargetParser
                        : cardId > 0 ? TargetSourceKind.CardId
                        : TargetSourceKind.Zone,
             Slot = slot ?? "",
-            Owner = ownerSet ? owner : ZoneScope.Self,
-            Zone = history == Core.HistoryScope.None ? zone
-                 : history == Core.HistoryScope.EnteredThisMatch ? ZoneRef.Board
-                 : ZoneRef.Cemetery,
+            Owner = ownerSet ? owner : defaultOwner,
+            Zone = resolvedZone,
             CardId = cardId,
             CardName = cardName,
             Where = where,
