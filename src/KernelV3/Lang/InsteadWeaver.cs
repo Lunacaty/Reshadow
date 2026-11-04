@@ -60,33 +60,72 @@ public static class InsteadWeaver
     /// 透镜覆写：把前一句的“卡身信息”补到替代句上。
     /// 只补替代句自己没写的部分，不覆盖它已有的值。
     /// </summary>
+    private static T FindFirst<T>(IReadOnlyList<EffectNode> nodes) where T : EffectNode
+    {
+        if (nodes == null) return null;
+        foreach (var n in nodes)
+        {
+            if (n is T hit) return hit;
+            if (n is ConditionalNode c)
+            {
+                var inThen = FindFirst<T>(c.Then);
+                if (inThen != null) return inThen;
+                var inElse = FindFirst<T>(c.Else);
+                if (inElse != null) return inElse;
+            }
+        }
+        return null;
+    }
+
     private static List<EffectNode> ApplyLens(
         IReadOnlyList<EffectNode> prevBody, List<EffectNode> thenBody)
     {
         if (prevBody == null || prevBody.Count == 0 || thenBody == null) return thenBody;
 
-        // 从前一句里找“可被继承”的动作（召唤 / 加手牌 / 伤害 / 回复）
-        var prevSpawn = prevBody.OfType<SpawnCardNode>().FirstOrDefault();
-        var prevMove = prevBody.OfType<MoveZoneNode>().FirstOrDefault();
-        var prevDmg = prevBody.OfType<DealDamageNode>().FirstOrDefault();
-        var prevRestore = prevBody.OfType<RestoreLifeNode>().FirstOrDefault();
+        // 特判「Select N instead」：
+        //   Evolve: Select an enemy follower and deal it 5 damage.
+        //   Super-Evolve: Select 2 instead.
+        // 替换的只是 SelectTargetNode 的选取数量，它的筛选条件与
+        // 跟在 Select 之后对 $selected 执行的动作序列都必须完整继承。
+        if (thenBody.Count == 1 && thenBody[0] is SelectTargetNode sel
+            && prevBody[0] is SelectTargetNode prevSel && prevSel.Target != null)
+        {
+            var pt = prevSel.Target;
+            var mergedTarget = new TargetSpec
+            {
+                SourceKind = pt.SourceKind, Owner = pt.Owner, Zone = pt.Zone, Slot = pt.Slot,
+                CardId = pt.CardId, CardName = pt.CardName, Where = pt.Where,
+                Sort = pt.Sort, SortDescending = pt.SortDescending, TopN = pt.TopN,
+                DistinctByName = pt.DistinctByName, DuplicatesOnly = pt.DuplicatesOnly,
+                Mode = Core.SelectMode.Choose,
+                Count = sel.Target?.Count ?? pt.Count,
+                History = pt.History, IncludeLeader = pt.IncludeLeader,
+            };
+            var full = new List<EffectNode>
+            {
+                new SelectTargetNode { Target = mergedTarget, OutSlot = prevSel.OutSlot }
+            };
+            full.AddRange(prevBody.Skip(1));
+            return full;
+        }
 
-        // 进化透镜：'Super-evolve them instead' 必须继承前一句的群体目标。
-        //
-        //   "Fanfare: Skybound Art - Evolve all unevolved allied followers on the field."
-        //   "Super Skybound Art - Super-evolve them instead."
-        //
-        // 没有这一支，替代句的 EvolveNode.Target 是空的（them 解析不出群体），
-        // 超奥义分支就变成「只超进化本卡」。
-        var prevEvolve = prevBody.OfType<EvolveNode>().FirstOrDefault();
+        // 递归查找前句中的基准节点：
+        // 前句可能把动作包在 ConditionalNode 里（如 10863210 同窗好友的
+        // 「draw a card and, if evolved, restore 1」），只看顶层会找不到。
+        var prevSpawn = FindFirst<SpawnCardNode>(prevBody);
+        var prevMove = FindFirst<MoveZoneNode>(prevBody);
+        var prevDmg = FindFirst<DealDamageNode>(prevBody);
+        var prevRestore = FindFirst<RestoreLifeNode>(prevBody);
+        var prevEvolve = FindFirst<EvolveNode>(prevBody);
+        var prevStats = FindFirst<ModifyStatsNode>(prevBody);
+        var prevKw = FindFirst<ModifyKeywordNode>(prevBody);
+        var prevLoop = FindFirst<LoopNode>(prevBody);
 
         var result = new List<EffectNode>();
         foreach (var n in thenBody)
         {
             switch (n)
             {
-                // 替代句的召唤通常读不出卡名（写成 CopyOfPrevious），
-                // 这里直接用前一句的卡身信息覆写，只保留替代句自己的数量与区域。
                 case SpawnCardNode sp when (string.IsNullOrEmpty(sp.CardName) && sp.CardId == 0
                                             || sp.SourceKind == CardSourceKind.CopyOfPrevious)
                                           && prevSpawn != null
@@ -99,13 +138,51 @@ public static class InsteadWeaver
                         CopyFrom = prevSpawn.CopyFrom,
                         ToOwner = sp.ToOwner,
                         ToZone = sp.ToZone,
-                        Count = sp.Count,          // 数量用替代句的
+                        Count = sp.Count,
                         OutSlot = sp.OutSlot,
+                    });
+                    // 替代句只写「Add 2 copies instead」时，继承前句跟在 Spawn 后面
+                    // 修饰 $created 的动作（and give it Rush）。
+                    if (thenBody.Count == 1)
+                    {
+                        foreach (var tail in prevBody.SkipWhile(x => !ReferenceEquals(x, prevSpawn)).Skip(1))
+                            result.Add(tail);
+                    }
+                    break;
+
+                // 「Do it 3 times instead」：继承前一句 LoopNode 的循环体。
+                case LoopNode lp when (lp.Body == null || lp.Body.Count == 0) && prevLoop != null:
+                    result.Add(new LoopNode
+                    {
+                        Kind = lp.Kind,
+                        Count = lp.Count ?? prevLoop.Count,
+                        Collection = lp.Collection ?? prevLoop.Collection,
+                        Until = lp.Until ?? prevLoop.Until,
+                        Body = prevLoop.Body,
+                        MaxIterations = lp.MaxIterations,
+                        If = lp.If,
                     });
                     break;
 
-                // 替代句的 EvolveNode 若目标为空 / 省略 / 仍是槽位引用，
-                // 就用前一句的目标（通常是 Select all ... 得出的 $selected）。
+                // 「give +3/+3 instead」：继承前一句 ModifyStatsNode 的目标。
+                case ModifyStatsNode ms when prevStats != null:
+                    result.Add(new ModifyStatsNode
+                    {
+                        Target = InheritTarget(ms.Target, prevStats.Target),
+                        Op = ms.Op, Attack = ms.Attack, Life = ms.Life,
+                        Duration = ms.Duration, If = ms.If,
+                    });
+                    break;
+
+                case ModifyKeywordNode mk when prevKw != null:
+                    result.Add(new ModifyKeywordNode
+                    {
+                        Target = InheritTarget(mk.Target, prevKw.Target),
+                        Op = mk.Op, Keyword = mk.Keyword, Value = mk.Value,
+                        Duration = mk.Duration, If = mk.If,
+                    });
+                    break;
+
                 case EvolveNode ev when prevEvolve != null
                     && (ev.Target == null
                         || (ev.Target.SourceKind == TargetSourceKind.Slot
@@ -132,12 +209,6 @@ public static class InsteadWeaver
                 case DealDamageNode d when prevDmg != null:
                     result.Add(new DealDamageNode
                     {
-                        // 透镜只补替代句自己没写的字段，逐字段判断。
-                        // "Fanfare: Deal 2 damage to an enemy follower. If you're in Overflow,
-                        //  deal 4 damage to all enemy followers instead."
-                        // 替代句显式写了 all enemy followers —— Mode / Count / Where 都必须
-                        // 保留它自己的值；只有 "deal 4 damage" 这种压根没写目标、
-                        // 由 ParseDeal 兜底的 TargetSpec 才整段继承前句。
                         Target = InheritTarget(d.Target, prevDmg.Target),
                         Amount = d.Amount,
                         IsAbility = d.IsAbility,
@@ -161,14 +232,8 @@ public static class InsteadWeaver
         }
 
         // 前一句里「修饰替代句产出物」的节点必须一并继承。
-        //
         //   "Add a Steelclad Knight to your hand and give it Rush."
         //   "Rally (10) - Add 2 copies instead."
-        //
-        // 替代句只写了数量，`and give it Rush` 挂在前一句、作用在 $created 上。
-        // 替代句把召唤动作整体换掉了，但「给召出来的东西某某」这条修饰仍然有效。
-        // 早先只处理 thenBody 里出现的节点，这类「只修饰、不产出」的节点直接丢失，
-        // 结果「加 2 张并给突进」变成「加 2 张，没有突进」。
         if (prevSpawn != null && result.OfType<SpawnCardNode>().Any())
         {
             bool thenHasCreated = result.Any(IsCreatedModifier);
@@ -403,6 +468,13 @@ public static class InsteadWeaver
         {
             prefixNodes.Add(elseBody[0]);
             elseBody = elseBody.Skip(1).ToList();
+        }
+        // 前句形如「[抽牌, ConditionalNode(若进化则回 1 血)]」时（10863210 同窗好友），
+        // 替代句替换的是末尾那个条件分支，前面的抽牌属于两档都要执行的公共前置。
+        else if (elseBody.Count > 1 && elseBody[^1] is ConditionalNode)
+        {
+            for (int k = 0; k < elseBody.Count - 1; k++) prefixNodes.Add(elseBody[k]);
+            elseBody = new List<EffectNode> { elseBody[^1] };
         }
 
         // 合并后的 CostSpec 必须保留 Enhance 档位：

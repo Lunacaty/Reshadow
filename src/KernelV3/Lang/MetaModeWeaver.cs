@@ -46,82 +46,48 @@ public static class MetaModeWeaver
     {
         if (abilities == null || abilities.Count == 0) return abilities;
 
-        var result = new List<AbilityDef>();
-        // 外层按 abilities 原序走一遍；result 里的 null 只是「还没走到这一格」的占位，
-        // 最终返回前统一压缩掉。
-        foreach (var cur in abilities)
+        // 用「工作副本 + consumed 集合」而不是「边遍历边补 null」：
+        // 早先实现在往后找到模式块时，用 null 占位把 result 补齐到 idx，
+        // 紧接着又判 `if (prev == null) continue;` —— 自己刚塞的 null 把自己挡回去，
+        // 元模式永远合不上（10912310 / 10771310 / 10823310 / 10962310 / 10413310 全部如此）。
+        var working = new List<AbilityDef>(abilities);
+        var consumed = new HashSet<int>();
+
+        for (int i = 0; i < working.Count; i++)
         {
-            if (!IsMetaMode(cur))
-            {
-                result.Add(cur);
-                continue;
-            }
+            if (consumed.Contains(i)) continue;
+            var cur = working[i];
+            if (cur == null || !IsMetaMode(cur)) continue;
 
-            // 往前找最近一个带 BranchModeNode 的能力
+            // 先往前找最近的分支块
             int idx = -1;
-            for (int i = result.Count - 1; i >= 0; i--)
+            for (int k = i - 1; k >= 0; k--)
             {
-                if (result[i]?.Body != null && result[i].Body.Any(n => n is BranchModeNode))
-                {
-                    idx = i;
-                    break;
-                }
+                if (consumed.Contains(k)) continue;
+                if (working[k]?.Body != null && working[k].Body.Any(n => n is BranchModeNode))
+                { idx = k; break; }
             }
 
-            // 往前找不到时，必须往后找。
-            // 卡面可以写成：
+            // 往前找不到就往后找：
             //   "Select a Mode to activate. If ..., activate all of them instead. 1. ... 2. ..."
-            // 这里 instead 句出现在选项 1./2. 之**前**，若只往前找，
-            // 永远找不到那个還没被落盘的模式块。
+            // instead 句在选项之**前**，此时模式块还没落盘。
             if (idx < 0)
             {
-                for (int i = result.Count; i < abilities.Count; i++)
+                for (int k = i + 1; k < working.Count; k++)
                 {
-                    var a2 = abilities[i];
-                    if (a2?.Body != null && a2.Body.Any(n => n is BranchModeNode)) { idx = i; break; }
-                }
-                if (idx >= 0)
-                {
-                    // 后面的模式块还没循环到：必须先用占位把 result 补齐到 idx，
-                    // 再按下面的通常路径改写。
-                    //
-                    // 这里**只能补 null 占位**，不能补能力本体：外层 foreach 之后
-                    // 还会从 abilities 里把同一条能力再走一遍，补了就落盘两次。
-                    // 实测 Slice of Domesticity 因此编出 abil=4 / BranchMode=2 / Invoke=2
-                    // （应为 1/1/1），效果直接翻倍。
-                    while (result.Count <= idx) result.Add(null);
+                    if (consumed.Contains(k)) continue;
+                    if (working[k]?.Body != null && working[k].Body.Any(n => n is BranchModeNode))
+                    { idx = k; break; }
                 }
             }
+            if (idx < 0) continue;
 
-            if (idx < 0)
-            {
-                // 找不到可改写的模式块：保留原动作，不让效果凭空消失
-                result.Add(cur);
-                continue;
-            }
-
-            var prev = result[idx];
-
-            // result[idx] 可能是上面第 85 行补的 null 占位：
-            // 「activate all of them instead」出现在 1./2. 选项**之前**时，
-            // 会先补 null 占位撑着，等后面那轮循环再来填。
-            // 这里若不判空就会直接 NullReferenceException ——
-            // 官方卡 《Verdant Ring Kindred》(10912310) 正是这个形态。
-            if (prev == null)
-            {
-                result.Add(cur);
-                continue;
-            }
-
+            var prev = working[idx];
             var cond = BuildMetaCondition(cur, lex);
-            if (cond == null)
-            {
-                result.Add(cur);
-                continue;
-            }
+            if (cond == null) continue;
 
             var widened = new List<EffectNode>();
-            foreach (var node in prev.Body ?? new List<EffectNode>())
+            foreach (var node in prev.Body ?? Array.Empty<EffectNode>())
             {
                 if (node is BranchModeNode bm)
                 {
@@ -135,19 +101,14 @@ public static class MetaModeWeaver
                         If = bm.If,
                     });
                 }
-                else
-                {
-                    widened.Add(node);
-                }
+                else widened.Add(node);
             }
 
-            // 元模式句自己的代价（Enhance (8)）必须保留在合并后的能力上，
-            // 否则代价数值整条蒸发，卡面「支付 8 PP」的语义丢失。
             var mergedCosts = (prev.Costs ?? Array.Empty<CostSpec>())
-                .Concat(cur.Costs ?? Array.Empty<CostSpec>())
+                .Concat((cur.Costs ?? Array.Empty<CostSpec>()).Where(c => c.Kind == CostKind.UsePp))
                 .ToList();
 
-            result[idx] = new AbilityDef
+            working[idx] = new AbilityDef
             {
                 Trigger = prev.Trigger,
                 Costs = mergedCosts,
@@ -162,22 +123,23 @@ public static class MetaModeWeaver
                     },
                 },
             };
+            consumed.Add(i);
         }
 
-        // 压缩掉「还没走到」的 null 占位。
-        result.RemoveAll(a => a == null);
+        var result = new List<AbilityDef>();
+        for (int i = 0; i < working.Count; i++)
+            if (!consumed.Contains(i) && working[i] != null) result.Add(working[i]);
         return result;
     }
 
-    /// <summary>
-    /// 元模式句自身的成立条件：
-    ///   Enhance (3)      → 有 Enhance 代价，运行期按 PP 判定，这里用代价项的条件化形式
-    ///   Combo (3)        → Combo &gt;= 3
-    ///   Super-Evolve:    → 已超进化
-    /// 找不到可判定的条件时不缝合，留给下游按普通动作处理。
-    /// </summary>
     private static BoolExpr BuildMetaCondition(AbilityDef cur, Lexicon lex)
     {
+        // CompileSegment 已经把句首 If / 「Super Skybound Art」等条件折进了 cur.Condition。
+        // 优先用它 —— 只从 Costs 构造的话，这几类条件全部算不出来，
+        // 元模式要么不合并，要么合成了却无条件全开。
+        if (cur.Condition != null && !(cur.Condition is ConstBoolExpr cb0 && cb0.Value))
+            return cur.Condition;
+
         BoolExpr acc = null;
 
         foreach (var c in cur.Costs ?? Array.Empty<CostSpec>())

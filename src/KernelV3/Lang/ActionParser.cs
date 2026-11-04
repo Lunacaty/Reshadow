@@ -990,8 +990,11 @@ public sealed class ActionParser
             var first = _target.TryParse(cur);
             if (first == null && IsGrantStart(cur))
             {
-                // "give +3/+3 instead" —— 省略目标时默认本卡
-                first = TargetSpec.Self;
+                // "give +3/+3 instead" —— 省略目标。
+                // 必须打 Omitted 标记：否则它和「显式写了 $self」无法区分，
+                // InsteadWeaver.ApplyLens 的 InheritTarget 只对 IsOmitted 的字段做继承，
+                // 结果是爆能分支把 +3/+3 给了本卡而不是前一句选中的那个随从。
+                first = OmittedTargetSpec(TargetSpec.Self);
             }
             if (first == null && cur.Current.IsAnyWord("the", "an") && cur.Peek().IsAnyWord("enemy"))
             {

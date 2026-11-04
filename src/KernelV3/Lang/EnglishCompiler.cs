@@ -1290,9 +1290,15 @@ public sealed class EnglishCompiler
                 && (hb.Condition == null || hb.Condition is ConstBoolExpr)
                 && body.All(IsAuraGrant);
 
+            // 无显式事件头的替代后续句（"At the end of your turn, restore 2."
+            // 之后紧跟 "If super-evolved, restore 4 instead"）必须沿用前一句的 Trigger。
+            // 否则它被默认赋成 OnPlay，InsteadWeaver.FindPartner 拿 OnPlay 去配 TurnEnd
+            // 必然配不上 —— 既不合成 if/else，也不会继承 self:leader 这类目标。
             var mainTrig = selfOnlyRestriction
                 ? new TriggerSpec { Event = CoreEvent.PassiveAura }
-                : hb.BuildTrigger();
+                : (!hb.EventExplicit && hasInsteadWord && currentAbility?.Trigger != null)
+                    ? currentAbility.Trigger
+                    : hb.BuildTrigger();
             var built = new AbilityDef
             {
                 Trigger = mainTrig,
