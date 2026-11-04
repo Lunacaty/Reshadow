@@ -23,6 +23,15 @@ namespace ShadowverseFan.KernelV3.Lang;
 
 public static class ConditionCompiler
 {
+    /// <summary>
+    /// 变量解析钩子：由 EnglishCompiler 在编译每张卡时设置。
+    ///
+    /// "If X is at least 2" 里的 X 是卡面登记者编译出的**表达式**
+    /// （count(...) / 两个 count 的差 …）。没有这个钩子时只能退回
+    /// 读一个从不被写入的计数器 X，条件恒假（10844110）。
+    /// </summary>
+    public static Func<string, NumExpr> VariableResolver { get; set; }
+
     public static BoolExpr Build(IReadOnlyList<Token> toks, Lexicon lex)
     {
         if (toks == null || toks.Count == 0) return BoolExpr.True;
@@ -239,6 +248,13 @@ public static class ConditionCompiler
             var word = c.Current.Text.ToLowerInvariant();
             c.Advance();
             c.AdvanceToClauseBoundary();
+            // "if this follower is unevolved" —— 取反条件，必须在这里拦下。
+            // 让它落进下面的 switch 会得到 UnitState.None → return BoolExpr.True，
+            // 条件变成恒真，EnglishCompiler 的 prevHasExtraCond 也随之失效，
+            // 「未进化时」的守卫整段消失（10524110 / 10544110）。
+            if (word == "unevolved")
+                return BoolExpr.Not(new HasStateExpr { State = UnitState.Evolved, Of = TargetSpec.Self });
+
             var st = word switch
             {
                 "evolved" => isSuper ? UnitState.SuperEvolved : UnitState.Evolved,
@@ -328,17 +344,21 @@ public static class ConditionCompiler
 
         if (c.MatchPhrase("it's", "super", "-", "evolved")
             || c.MatchPhrase("it", "is", "super", "-", "evolved"))
-            return new HasStateExpr { State = UnitState.SuperEvolved, Of = TargetSpec.Trigger };
+            return new HasStateExpr { State = UnitState.SuperEvolved, Of = TargetSpec.Self };
         if (c.MatchPhrase("it's", "evolved") || c.MatchPhrase("it", "is", "evolved"))
-            return new HasStateExpr { State = UnitState.Evolved, Of = TargetSpec.Trigger };
+            return new HasStateExpr { State = UnitState.Evolved, Of = TargetSpec.Self };
 
         if (c.MatchPhrase("x", "is", "at", "least"))
+        {
+            // 优先用卡面登记的表达式；拿不到才退回读计数器。
+            var xExpr = VariableResolver?.Invoke("X");
             return new CompareExpr
             {
-                Left = NumExpr.Var(lex.Counter("X")),
+                Left = xExpr ?? NumExpr.Var(lex.Counter("X")),
                 Op = CompareOp.Ge,
                 Right = NumExpr.Const(ReadNumber(c)),
             };
+        }
 
         if (c.Current.IsWord("this") && c.Peek().IsWord("card's")
             && c.Peek(2).IsWord("cost") && c.Peek(3).IsWord("is")

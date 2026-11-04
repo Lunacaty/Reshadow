@@ -142,16 +142,20 @@ public sealed class ActionParser
                         // 写死 $self 会让后者的 it 指回本卡。
                         case EvolveNode evo when IsSelfTarget(evo.Target):
                             _target.MarkBound(TargetSpec.SlotSelf); break;
-                        // 群体进化的目标是「一整个集合」，代词 them 指向它。
+                        // ⚠ 绝不能在 EvolveNode 上登记 $selected。
                         //
+                        // "evolve them" 解析出的 TargetSpec 恰好是
+                        // `{ SourceKind = Slot, Slot = "$created", Mode = All }`，
+                        // 用 Mode 当判据会把它误判成「群体目标」，把 $created 换成 $selected。
+                        // 而 DoEvolve 运行期从不写 $selected，
+                        // 后半句的 `give them Barrier` 于是落到空槽位（11021310）。
+                        //
+                        // 唯一需要登记的是**非槽位来源的群体目标**：
                         //   "Evolve all unevolved allied followers. Super-evolve them instead."
-                        // 这里没有 Select，若不登记，them 会因为「无前序绑定」直接报错。
-                        //
-                        // 但**只在目标确实是集合时登记**：
-                        //   "Summon 2 X, evolve them, and give them Barrier"
-                        // 该句的 them 指的是 $created，若这里抢占 $selected，
-                        // 后半句的 Barrier 就落空了。判据是 Mode == All。
+                        // 这里的目标是新解析出来的战场集合（SourceKind != Slot），
+                        // 没有别的槽位能承载它，them 必须有个落脚点。
                         case EvolveNode evo when evo.Target != null
+                                                  && evo.Target.SourceKind != TargetSourceKind.Slot
                                                   && evo.Target.Mode == SelectMode.All:
                             _target.MarkBound(TargetSpec.SlotSelected); break;
                         // 不能写 `ms.Target == TargetSpec.Self`：TargetSpec 是 class、
@@ -1936,7 +1940,13 @@ public sealed class ActionParser
         {
             var vn = cur.Current.Text.ToUpperInvariant();
             cur.Advance();
-            leadCount = NumExpr.Ctr(_lex.Counter(vn));
+            // 必须走 VariableResolver：
+            //   "Destroy X random enemy followers. X is the number of ..."
+            // 的 X 是 EnglishCompiler 登记的表达式（count / 差值）。
+            // 直接 Ctr(X) 会读一个从不被写入的计数器，运行期恒为 0 → 一个都破坏不了。
+            leadCount = VariableResolver != null
+                ? VariableResolver(vn)
+                : NumExpr.Ctr(_lex.Counter(vn));
         }
         else if (cur.Current.Kind == TokKind.Number)
         {

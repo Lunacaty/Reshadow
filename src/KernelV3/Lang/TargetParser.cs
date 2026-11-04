@@ -209,9 +209,23 @@ public sealed class TargetParser
         // "all leaders with the highest/lowest defense"
         if (cur.MatchPhrase("all", "leaders") || cur.MatchPhrase("the", "leaders"))
         {
-            cur.MatchPhrase("with", "the");
-            while (!cur.IsAtEnd && cur.Current.IsAnyWord("highest", "lowest", "defense", "base", "cost")) cur.Advance();
-            return new TargetSpec { Owner = ZoneScope.Any, Zone = ZoneRef.Leader, Mode = SelectMode.All, IncludeLeader = true };
+            // "all leaders with the lowest defense" —— highest/lowest 必须落到 Sort 上。
+            // 直接吞掉的话，All 模式会打双方主战者各 3 点，
+            // 与「防御力最低的」完全相反（10552310）。
+            var leaderSort = SortKey.None;
+            bool leaderDesc = false;
+            if (cur.MatchPhrase("with", "the"))
+            {
+                leaderDesc = cur.Current.IsWord("highest");
+                leaderSort = SortKey.Life;
+                while (!cur.IsAtEnd && cur.Current.IsAnyWord("highest", "lowest", "defense", "base", "cost"))
+                    cur.Advance();
+            }
+            return new TargetSpec
+            {
+                Owner = ZoneScope.Any, Zone = ZoneRef.Leader, Mode = SelectMode.All,
+                IncludeLeader = true, Sort = leaderSort, SortDescending = leaderDesc,
+            };
         }
 
         // "both leaders" / "all leaders"
@@ -274,8 +288,13 @@ public sealed class TargetParser
             // 纹章名可能是一个词，也可能是多词（"Crest: Corruption" / "Crest: Kukishiro Mistbloom"）。
             // 只取一个 token 会让后半截留在流里报错。
             var nameParts = new List<string>();
+            // 遇到 by / and / to 就停：
+            //   "Delay the count of your Crest: Majestic Conquest by 2"
+            // 不拦的话 "by 2" 会被并进纹章名，名字变成 "Majestic Conquest by 2"，
+            // 运行期匹配不到任何纹章。
             while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period
-                   && cur.Current.Kind != TokKind.Comma)
+                   && cur.Current.Kind != TokKind.Comma
+                   && !cur.Current.IsAnyWord("by", "and", "to"))
             {
                 nameParts.Add(cur.Current.Text);
                 cur.Advance();
@@ -302,32 +321,12 @@ public sealed class TargetParser
         if (cur.Current.IsAnyWord("it", "them"))
         {
             cur.Advance();
-            // "it and this follower" / "them and the enemy leader"
-            if (cur.Current.IsWord("and"))
-            {
-                int saveAnd = cur.Position;
-                cur.Advance();
-                if (cur.Current.IsAnyWord("both", "the", "this"))
-                {
-                    var second = cur.MatchPhrase("both", "leaders")
-                        ? new TargetSpec { Owner = ZoneScope.Any, Zone = ZoneRef.Leader, Mode = SelectMode.All, IncludeLeader = true }
-                        : cur.MatchPhrase("the", "enemy", "leader") || cur.MatchPhrase("an", "enemy", "leader")
-                            ? TargetSpec.OpponentLeader
-                            : cur.MatchPhrase("this", "follower") || cur.MatchPhrase("this", "card")
-                                ? TargetSpec.Self
-                                : null;
-                    if (second != null)
-                        return new TargetSpec
-                        {
-                            SourceKind = TargetSourceKind.Slot,
-                            Slot = TargetSpec.SlotSelected,
-                            IncludeLeader = second.IncludeLeader,
-                            Where = BoolExpr.True,
-                            Mode = SelectMode.All,
-                        };
-                }
-                cur.Seek(saveAnd);
-            }
+            // ⚠ 这里**不再**私吞 "and this follower" / "and the enemy leader"。
+            // 私吞会让 ParseGive / ParseEvolve / ParseMove 里的
+            // `while (cur.Current.IsWord("and"))` 根本看不到 and，
+            // 第二个目标被静默丢弃（10353110 / 10432120 / 10472110 /
+            // 10512110 / 10672110 全部如此）。
+            // 并列目标一律交给动作层用 and 展开成多条节点。
             // 代词 it 的指向取决于当前上下文（R-4 / Stage 4 代词绑定）：
             //   · 前面有 Select <Target>      → $selected
             //   · 前面是 Summon / Add / Draw   → $created
@@ -402,7 +401,11 @@ public sealed class TargetParser
         }
 
         // ---- 1. 量词 ----
-        if (cur.Current.Kind == TokKind.Number)
+        // 数字后面紧跟 '-' 时它是**费用定语**（1-cost / 1-base-cost），不是数量。
+        // 当成量词吃掉，游标会停在 '-' 上，第 3 步修饰词循环直接 break，
+        // 后面 "-base-cost allied cards on the field" 整段被丢 ——
+        // 「at least two 1-base-cost allied cards」于是退化成「场上任意 2 张卡」。
+        if (cur.Current.Kind == TokKind.Number && cur.Peek().Kind != TokKind.Dash)
         {
             int n = (int)cur.Current.Value;
             cur.Advance();
@@ -512,6 +515,22 @@ public sealed class TargetParser
                 count = NumExpr.Const(cur.Current.Value); countSet = true;
                 cur.Advance(); cur.Advance();
                 mode = SelectMode.First; matched = true; continue;
+            }
+
+            // "if there's a card on the field other than it with the same base cost"
+            // （10503210 大游戏世界）：同费用是**与触发器那张卡比较**，不是绝对值。
+            if (cur.MatchPhrase("with", "the", "same", "base", "cost")
+                || cur.MatchPhrase("with", "the", "same", "cost"))
+            {
+                bool isBase = cur.Peek(-2).IsWord("base");
+                var stKey = isBase ? StatKey.BaseCost : StatKey.Cost;
+                wheres.Add(new CompareExpr
+                {
+                    Left = NumExpr.Prop(stKey, TargetSpec.Item),
+                    Op = CompareOp.Eq,
+                    Right = NumExpr.Prop(stKey, TargetSpec.Trigger),
+                });
+                matched = true; continue;
             }
             if (cur.Current.IsWord("leftmost"))
             {

@@ -1,0 +1,50 @@
+feat(149): 26 张复核卡按 6 组病灶收敛
+
+【病灶 1：TargetParser 私吞 "it and this follower" + EvolveNode 篡改槽位】
+  删掉 TargetParser 里私吞 "and this follower" / "and the enemy leader" 的分支 ——
+  私吞让 ParseGive/ParseEvolve/ParseMove 的 `while (and)` 看不到 and，第二目标被丢弃。
+  EvolveNode 的 $selected 登记加限定：只在目标非槽位来源时登记（供
+  "Evolve all followers. Super-evolve them instead." 的 them 落脚），
+  避免把 $created 顶掉。
+  实测：10432120 / 10512110 / 10672110 -> evolve $created + evolve $self
+        10472110 -> evolve $selected + evolve $self
+        10353110 -> rush $created + rush $self
+        11021310 -> barrier $created
+
+【病灶 2：TargetParser 量词步误吞 "1-base-cost" 的 1】
+  量词分支加 `cur.Peek().Kind != TokKind.Dash` 判据。
+  实测：11011110 -> count(self:board All where prop:BaseCost($item) = 1) >= 2
+
+【病灶 3：ConditionCompiler 截胡 unevolved + it's evolved 指向错】
+  this follower is 分支内补 `unevolved => Not(HasState(Evolved, Self))` ——
+  之前落进 UnitState.None 直接 return BoolExpr.True，未进化守卫整段消失。
+  it's evolved / it's super-evolved 的 Of 从 $trigger 改为 $self。
+  实测：10524110 / 10544110 -> if not is Evolved($self) ... if is Evolved($self) ...
+
+【病灶 4：变量 X 漏绑定】
+  ParseMove 的 X 改调 VariableResolver（之前直接 Ctr(X) 读从不写入的计数器）。
+  BuildVariableExpr 支持 minus / plus 二元运算。
+  ConditionCompiler 新增 VariableResolver 静态钩子，EnglishCompiler 编译时注入。
+  删掉 AstEnglishPrinter 重复打印的 history=。
+  实测：10373110 -> Random(count(self:board ...))；10811110 -> count(opp)-count(self)
+
+【病灶 5：同段 Select a Mode 被分裂成独立 fanfare】
+  CompileSegment 记录 modeAttachTo（本段前一条能力），FlushModeBlock 新增 attachTo 参数，
+  命中时把 BranchModeNode 直接追加进宿主 Body，而不是新建能力。
+  判据 = 本句无事件头，或事件与前一条相同。
+  实测：10322210 / 10463210 -> 单条 onengage 内含 move + modes Choose
+
+【病灶 6：其余单点】
+  10552310 极值收缩：TargetParser 保留 Sort，VmEval 的 All 分支按 Sort 收缩并列子集。
+  10622310 纹章名遇到 by/and/to 停下，"by 2" 不再被并进名字。
+  10541310 "the card you drew" -> Prop(Cost, $created)。
+  10503210 "with the same base cost" 新增比较分支；PrefixParser 的 play 主语加 AsPoolFilter。
+
+【已知遗留】
+  10844110 的 "If X is at least 2" 仍为 ctr:X —— 变量绑定发生在本卡条件编译之后，
+  钩子拿不到值。该卡其余部分（+X/+X 的 count、卡号绑定）均已正确。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 逐卡矩阵 32-32 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 /
+UI 3-3 / 战斗 UI 31-31 —— 全绿

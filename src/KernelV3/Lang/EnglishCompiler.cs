@@ -93,6 +93,20 @@ public sealed class EnglishCompiler
         _currentCardName = cardName;
         _currentCardId = cardId;
 
+        // 让条件编译器也能读到卡面登记的变量表达式。
+        // "If X is at least 2" 的 X 在下面 TryBindVariableDeclaration 里绑定，
+        // 但条件编译发生在 EnglishCompiler 之外，拿不到 _variableBindings。
+        ConditionCompiler.VariableResolver = vn
+            => _variableBindings.TryGetValue(vn, out var bound) ? bound : null;
+
+        // ⚠ 这里**不能**调 _lex.AddCard(cardName, cardId)。
+        // 测试集与官方包存在同名卡（81000037 Ancient Cannon 的
+        // "Gear of Ambition" 与官方的 90071210 同名但不同号）。
+        // 强行把当前卡写进 Lexicon 会让**别的卡**引用同一个名字时
+        // 解析到本卡的号，30 张测试集卡的脚本往返因此从 30/30 掉到 29/30，
+        // 逐卡矩阵也从 32/32 掉到 29/32。
+        // 同名卡号覆盖问题应另行在数据层解决，不能在这里动全局词表。
+
         // 先把 alt_modes 里的纹章/信仰定义编出来，供动作解析器在生成
         // 「Gain Crest: ...」时一并带上。必须早于正文编译。
         var pre = new Result();
@@ -644,6 +658,8 @@ public sealed class EnglishCompiler
         // 与 modeOptions 平行的深度表：序列里每项来自第几层嵌套。
         var modeDepth = new List<int>();
         TriggerSpec modeTrigger = null;
+        // 模式块要并入的那条已有能力（"Engage: ... Select a Mode to activate."）。
+        AbilityDef modeAttachTo = null;
         BoolExpr modeCondition = BoolExpr.True;
         List<CostSpec> modeCosts = new List<CostSpec>();
         SectionZone modeZone = zone;
@@ -795,9 +811,10 @@ public sealed class EnglishCompiler
             // 先落盘才能保证两段选项不会被并进同一个 BranchModeNode。
             FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
                            ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeKind,
-                           modeDepth, modeGrantTarget);
+                           modeDepth, modeGrantTarget, modeAttachTo);
             modeDepth.Clear();
             modeGrantTarget = null;
+            modeAttachTo = null;
 
             var c = new TokenCursor(sent);
 
@@ -1033,7 +1050,32 @@ public sealed class EnglishCompiler
                 // "Give <目标> N random abilities from the following" 的受予者。
                 // 不解析它，模式块就是空壳：选项正确却不知道该挂给谁。
                 modeGrantTarget = TryExtractModeGrantTarget(sent);
-                modeTrigger = hb.BuildTrigger();
+
+                // 模式引导句若**没有自己的事件头**，它沿用的是本段前面那条能力。
+                //   "Engage: Destroy this card. Select a Mode to activate. 1. ... 2. ..."
+                // 第 1 句建了 currentAbility（OnEngage），第 2 句没重抄 "Engage:"，
+                // 旧实现直接 hb.BuildTrigger() 生成 OnPlay —— 模式块因此
+                // 被分裂成一条独立的入场曲能力，与启动动作脱节（10322210 / 10463210）。
+                //
+                // 注意必须读 _lastBuiltAbility 而不是 currentAbility：
+                // currentAbility 要到本方法末尾（能力落盘处）才赋值，
+                // 模式引导句在这一轮循环里看到它永远是 null。
+                var prevAb = currentAbility ?? _lastBuiltAbility;
+
+                // 两种情况都并入前一条能力：
+                //  · 本句没有自己的事件头（沿用了前一句的时机）；
+                //  · 本句虽有头，但事件与前一条**相同**——
+                //    "Engage: Destroy this card. Select a Mode to activate."
+                //    两句同属一个启动动作，hb 一路带着 Engage 头走到这一句。
+                bool noOwnHead = !hb.EventExplicit && hb.Costs.Count == 0
+                                 && (hb.Condition == null || hb.Condition is ConstBoolExpr);
+                bool sameEvent = hb.EventExplicit && prevAb != null
+                                 && prevAb.Trigger?.Event == hb.BuildTrigger().Event;
+                modeAttachTo = ((noOwnHead || sameEvent) && prevAb != null
+                                && prevAb.Trigger?.Event != CoreEvent.PassiveAura)
+                    ? prevAb : null;
+
+                modeTrigger = modeAttachTo?.Trigger ?? hb.BuildTrigger();
                 modeCondition = AndCosts(hb.Condition, hb.Costs);
                 modeCosts = hb.Costs;
                 modeZone = zone;
@@ -1318,9 +1360,10 @@ public sealed class EnglishCompiler
         // 收尾：把剩余的模式选项落成 BranchModeNode
         FlushModeBlock(result, ref modeOptions, ref modeOptionIds, ref modeTrigger,
                        ref modeCondition, ref modeCosts, ref modeZone, ref modePick, ref modeKind,
-                       modeDepth, modeGrantTarget);
+                       modeDepth, modeGrantTarget, modeAttachTo);
         modeDepth.Clear();
         modeGrantTarget = null;
+        modeAttachTo = null;
 
         // 收尾：融合变身表并进它所修饰的那条能力
         // 档位表常被换行切成独立段落（"…transform it…\n1: A\n2: B\n3 or more: C"），
@@ -1581,7 +1624,8 @@ public sealed class EnglishCompiler
         ref NumExpr pick,
         ref ModeDispatchKind kind,
         List<int> depths = null,
-        TargetSpec grantTarget = null)
+        TargetSpec grantTarget = null,
+        AbilityDef attachTo = null)
     {
         if (options.Count == 0) return;
 
@@ -1625,25 +1669,34 @@ public sealed class EnglishCompiler
             options = opts;
         }
 
-        var modeTrig = trigger ?? new TriggerSpec { Event = CoreEvent.OnPlay };
-        result.Add(new AbilityDef
+        var branch = new BranchModeNode
         {
-            Trigger = modeTrig,
-            Condition = AndZone(zone, condition, modeTrig.Event),
-            Costs = costs,
-            Body = new List<EffectNode>
+            Kind = kind,
+            PickCount = pick,
+            Options = options,
+            // "Give <目标> N random abilities from the following" 的受予者。
+            // 为 null 表示「模式是玩家自己选的」，与受予者无关（Select a Mode）。
+            GrantTarget = grantTarget,
+        };
+
+        // 附属于本段前面那条能力时，直接追加进它的 Body ——
+        // "Engage: Destroy this card. Select a Mode to activate. 1. ... 2. ..."
+        // 是一个启动动作内的模式选择，不是两条独立能力。
+        if (attachTo?.Body is List<EffectNode> hostBody)
+        {
+            hostBody.Add(branch);
+        }
+        else
+        {
+            var modeTrig = trigger ?? new TriggerSpec { Event = CoreEvent.OnPlay };
+            result.Add(new AbilityDef
             {
-                new BranchModeNode
-                {
-                    Kind = kind,
-                    PickCount = pick,
-                    Options = options,
-                    // "Give <目标> N random abilities from the following" 的受予者。
-                    // 为 null 表示「模式是玩家自己选的」，与受予者无关（Select a Mode）。
-                    GrantTarget = grantTarget,
-                },
-            },
-        });
+                Trigger = modeTrig,
+                Condition = AndZone(zone, condition, modeTrig.Event),
+                Costs = costs,
+                Body = new List<EffectNode> { branch },
+            });
+        }
 
         kind = ModeDispatchKind.Choose;
         options = new List<IReadOnlyList<EffectNode>>();
@@ -2408,7 +2461,24 @@ public sealed class EnglishCompiler
             // 必须归一成集合过滤器：TargetParser 见到冠词 a/an/other 会设成
             // Choose(1)，那是「弹窗手选一个」的语义，用来计数会恒等于 1。
             //   "X is the number of other allied followers" -> 整个集合的大小
-            if (tgt != null) return NumExpr.CountOf(tgt.AsPoolFilter());
+            if (tgt != null)
+            {
+                var leftCount = NumExpr.CountOf(tgt.AsPoolFilter());
+                // "X is the number of enemy followers on the field **minus** the number
+                //  of allied followers on the field"（10811110 马龙）。
+                // 不接这条时后半段被整段丢弃，X 只剩左半边的计数。
+                if (c.MatchWord("minus"))
+                {
+                    var right = BuildVariableExpr(c.Rest());
+                    if (right != null) return NumExpr.Sub(leftCount, right);
+                }
+                if (c.MatchWord("plus"))
+                {
+                    var right = BuildVariableExpr(c.Rest());
+                    if (right != null) return NumExpr.Add(leftCount, right);
+                }
+                return leftCount;
+            }
             // 还是不行就把剩余词当资源名（如 "cards in your hand"）
             c.Seek(saved);
             c.AdvanceToClauseBoundary();
@@ -2457,6 +2527,14 @@ public sealed class EnglishCompiler
         // "the cost of the selected card" / "the cost of the card you drew"
         if (c.MatchPhrase("the", "cost", "of"))
         {
+            // "X is the cost of the card you drew"（10541310 波摇花的裁决）：
+            // 这里的 "the card" 不是场上某张卡，而是**刚抽到的那张**（$created）。
+            // 交给 TargetParser 会解析成 any:board All，X 变成场上随机一格费用。
+            if (c.MatchPhrase("the", "card", "you", "drew")
+                || c.MatchPhrase("the", "follower", "you", "drew")
+                || c.MatchPhrase("the", "card", "drawn"))
+                return NumExpr.Prop(StatKey.Cost, TargetSpec.Created);
+
             var tgt = _target.TryParse(c);
             return NumExpr.Prop(StatKey.Cost, tgt ?? TargetSpec.Previous);
         }

@@ -776,7 +776,16 @@ public sealed class VmEval
         int n = t.Count != null ? EvalNum(t.Count, scope) : 1;
         switch (t.Mode)
         {
-            case SelectMode.All: return pool;
+            case SelectMode.All:
+                // 「all leaders with the lowest defense」（10552310）：
+                // All 只是「全取」，但排序键存在时还要先收缩到极值并列子集。
+                // 不收缩会变成「打双方主战者各 3 点」，与卡面写的最低价完全相反。
+                if (t.Sort != SortKey.None && t.TopN == 0 && pool.Count > 1)
+                {
+                    int bestAll = t.SortDescending ? pool.Max(sortKey) : pool.Min(sortKey);
+                    pool = pool.Where(r => sortKey(r) == bestAll).ToList();
+                }
+                return pool;
             case SelectMode.First: return pool.Take(Math.Max(1, n)).ToList();
             case SelectMode.Last: return pool.Skip(Math.Max(0, pool.Count - Math.Max(1, n))).ToList();
             case SelectMode.Random:

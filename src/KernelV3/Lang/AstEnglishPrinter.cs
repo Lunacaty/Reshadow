@@ -330,7 +330,9 @@ public static class AstEnglishPrinter
                           + "#" + t.CardId
                           + "@" + t.Owner.ToString().ToLowerInvariant()
                           + ":" + t.Zone.ToString().ToLowerInvariant());
-                if (t.History != Core.HistoryScope.None) sb.Append(" history=" + t.History);
+                // history 由下面的统一出口打印一次即可。
+                // 这里再打一次会变成 "history=EnteredThisMatch history=EnteredThisMatch"，
+                // 审计时看不出是不是重复限定。
                 break;
             default:
                 sb.Append(t.Owner.ToString().ToLowerInvariant() + ":" + t.Zone.ToString().ToLowerInvariant());

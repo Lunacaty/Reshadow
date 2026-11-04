@@ -550,7 +550,7 @@ public sealed class PrefixParser
                 b.EventExplicit = true;
                 b.SubjectFilter = _target.TryParse(cur);
             }
-            else if (cur.MatchWord("play")) { b.Event = CoreEvent.OnPlay; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
+            else if (cur.MatchWord("play")) { b.Event = CoreEvent.OnPlay; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur)?.AsPoolFilter(); }
             else if (cur.MatchWord("discard")) { b.Event = CoreEvent.OnDiscard; b.EventExplicit = true; b.SubjectFilter = _target.TryParse(cur); }
             else if (cur.MatchPhrase("fuse", "to", "this", "card"))
             {
