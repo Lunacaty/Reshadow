@@ -785,6 +785,23 @@ public sealed partial class CardVm
             _world.WriteCounter(scope.ResolvePlayer(ZoneScope.Self), retKey, moved.Count);
         }
 
+        // 「X is the number of ... destroyed/banished/discarded **by this ability**」
+        // 这类变量读的是**本次动作实际移动的张数**，不是全局累计。
+        // 三个计数器分开写：一张卡可能既放逐又丢弃，共用一个槽会互相覆盖。
+        {
+            int pid = scope.ResolvePlayer(ZoneScope.Self);
+            var byAbility = Schema.Counter("last_moved_count");
+            _world.WriteCounter(pid, byAbility, moved.Count);
+
+            if (n.ToZone == ZoneRef.Cemetery && n.IsDestroy)
+                _world.WriteCounter(pid, Schema.Counter("cards_destroyed_by_ability"), moved.Count);
+            else if (n.ToZone == ZoneRef.Cemetery && n.Target?.Zone == ZoneRef.Hand)
+                // 「Discard all Clue amulets」：从手牌进墓地且不是 destroy，就是丢弃。
+                _world.WriteCounter(pid, Schema.Counter("cards_discarded_by_ability"), moved.Count);
+            if (n.ToZone == ZoneRef.Banished)
+                _world.WriteCounter(pid, Schema.Counter("cards_banished_by_ability"), moved.Count);
+        }
+
         // $created 只应记录「进入场上/手牌」的新对象。
         // 送去墓地或放逐时若也写入，后续的 "it" 会指向一具尸体，
         // 导致 "destroy it, then banish it" 里第二句指向错误。

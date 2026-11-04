@@ -2293,6 +2293,35 @@ public sealed class EnglishCompiler
         // "the number of <TargetNP>"
         if (c.MatchPhrase("the", "number", "of"))
         {
+            // "X is the number of amulets destroyed by this ability"（白骨圣堂之主）
+            // "X is the number of cards you banished"（破灭屠戮者）
+            // "X is the number of cards you discarded"（莱特欧芙）
+            //
+            // 全部读 **本次动作** 实际移动的张数，由 DoMoveZone 写入。
+            // 不接这几条的话，X 会退回默认的「我方场上不同名卡数」，伤害完全错。
+            {
+                int ap = c.Position;
+                bool sawThisAbility = false, sawBanish = false, sawDiscard = false, sawDestroy = false;
+                while (!c.IsAtEnd)
+                {
+                    if (c.Current.Kind == TokKind.Period) break;
+                    if (c.Current.IsAnyWord("banished", "banish")) sawBanish = true;
+                    if (c.Current.IsAnyWord("discarded", "discard")) sawDiscard = true;
+                    if (c.Current.IsAnyWord("destroyed", "destroy")) sawDestroy = true;
+                    if (c.Current.IsAnyWord("this")) sawThisAbility = true;
+                    c.Advance();
+                }
+                if (sawBanish || sawDiscard || (sawDestroy && sawThisAbility))
+                {
+                    c.AdvanceToClauseBoundary();
+                    string key = sawBanish ? "cards_banished_by_ability"
+                               : sawDiscard ? "cards_discarded_by_ability"
+                               : "cards_destroyed_by_ability";
+                    return NumExpr.Ctr(_lex.Counter(key));
+                }
+                c.Seek(ap);
+            }
+
             // "X is the number of differently named cards Fused to this card"
             //   → 实体级 fuse_kinds（不同名材料的种类数）
             // "X is the number of cards Fused to this card"
