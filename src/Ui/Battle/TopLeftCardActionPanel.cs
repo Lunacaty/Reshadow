@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Godot;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Core;
@@ -169,7 +170,29 @@ public partial class TopLeftCardActionPanel : Control
         string stat = def.Kind == CardKind.Follower
             ? $"费用 {entity.Cost}  |  ⚔ {entity.Attack}  |  【盾】{entity.Life}/{entity.MaxLife}"
             : $"费用 {entity.Cost}  |  {def.Kind}";
-        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}】 {stat}";
+
+        // 兵种显示**运行时实体**的完整列表，不是卡面印刷的那一个。
+        // 被亡者召还的随从同时拥有原兵种与「亡者」，只看 def.Traits 会完全漏掉。
+        string traitPart = "";
+        try
+        {
+            var list0 = (entity.Traits != null && entity.Traits.Count > 0
+                            ? entity.Traits.AsEnumerable()
+                            : (def.Traits ?? Array.Empty<SymbolId<TraitTag>>()).AsEnumerable())
+                        .ToList();
+            if (list0.Count > 0)
+            {
+                var names = list0.Select(t =>
+                {
+                    try { return _ctrl.Store.CardPrinter.TraitZh(t.Name) ?? t.Name; }
+                    catch { return t.Name; }
+                });
+                traitPart = "  |  " + string.Join("·", names);
+            }
+        }
+        catch { }
+
+        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}】 {stat}{traitPart}";
 
         _effectRich.Text = SvWbTheme.FormatRichCardText(_ctrl.Store.CardPrinter.PrintCard(def));
 

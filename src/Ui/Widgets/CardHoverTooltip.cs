@@ -73,7 +73,27 @@ public partial class CardHoverTooltip : PanelContainer
         string statPart = def.Kind == CardKind.Follower
             ? $"费用 {def.BaseCost}  |  ⚔ 攻击 {def.BaseAttack}  |  🛡 生命 {def.BaseLife}"
             : $"费用 {def.BaseCost}  |  {(def.Kind == CardKind.Spell ? "法术" : "护符")}";
-        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}】 {statPart}";
+        // 兵种：卡面印刷的全部兵种（多兵种的随从如「士兵·亡者」必须都列出来）。
+        string traitPart = "";
+        try
+        {
+            var traits = def.Traits;
+            if (traits != null && traits.Count > 0)
+            {
+                var names = new System.Collections.Generic.List<string>();
+                foreach (var t in traits)
+                {
+                    string zh;
+                    try { zh = printer?.TraitZh(t.Name) ?? t.Name; }
+                    catch { zh = t.Name; }
+                    if (!string.IsNullOrEmpty(zh)) names.Add(zh);
+                }
+                if (names.Count > 0) traitPart = "  |  " + string.Join("·", names);
+            }
+        }
+        catch { }
+
+        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}】 {statPart}{traitPart}";
 
         _bodyRich.Text = SvWbTheme.FormatRichCardText(printer.PrintCard(def));
         Visible = true;

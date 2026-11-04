@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Godot;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Lang;
@@ -111,6 +112,17 @@ public partial class CardVisualWidget : Control
     /// 手牌展开/收起时若每帧 QueueFree + new，0.15 秒内会造出上百个控件；
     /// 手牌区的控件数量本来就跟手牌数一致，换绑即可。
     /// </summary>
+    /// <summary>卡面文本打印器（留存用于兵种等中文映射）。</summary>
+    private ChineseCardPrinter _cardPrinter;
+
+    /// <summary>把一个兵种英文名转成卡面显示用的中文名。</summary>
+    private string TraitDisplayName(string en)
+    {
+        if (string.IsNullOrEmpty(en)) return "";
+        try { return _cardPrinter?.TraitZh(en) ?? en; }
+        catch { return en; }
+    }
+
     public void Rebind(CardDef def, ShadowverseFan.KernelV3.Vm.RuntimeEntity rt, ChineseCardPrinter printer)
     {
         if (def == null) return;
@@ -122,7 +134,8 @@ public partial class CardVisualWidget : Control
         CardDef def, ChineseCardPrinter printer,
         int inDeckCount = 0, int maxCopyLimit = 3, bool showCopyPips = true)
     {
-        Card = def ?? throw new ArgumentNullException(nameof(def));
+        Card = def;
+        _cardPrinter = printer ?? throw new ArgumentNullException(nameof(def));
         _inDeckCount = inDeckCount;
         _maxCopyLimit = Math.Max(1, maxCopyLimit);
         _showCopyPips = showCopyPips;
@@ -464,7 +477,9 @@ public partial class CardVisualWidget : Control
 
             if (Card.Traits != null && Card.Traits.Count > 0)
             {
-                string trName = Card.Traits[0].Name;
+                // 必须显示**全部**兵种：被亡者召还的随从同时拥有原兵种与「亡者」，
+                // 只取 [0] 会让玩家完全看不到「亡者」这个兵种。
+                string trName = string.Join("·", Card.Traits.Select(t => TraitDisplayName(t.Name)));
                 string badgeText = $"— {SvWbTheme.ClanDisplayZh(Card.Clan.IsValid ? Card.Clan.Name : null)} · {trName} —";
                 int fs = 11;
                 float tw = font.GetStringSize(badgeText, HorizontalAlignment.Left, -1, fs).X;
