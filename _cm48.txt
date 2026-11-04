@@ -1,0 +1,24 @@
+fix(151-复查): 删掉 TargetParser 前置循环里的 same-base-cost 残留
+
+151 号第二节要求把 "with the same [base] cost" 从**前置修饰词循环**
+移到**后置定语循环**（英文原文里它出现在 "a card on the field other than it" 之后）。
+
+上一轮的删除脚本匹配的是一个带尾随空行的版本，实际文件里没有那个空行，
+于是删除静默失败 —— 两处分支同时存在。
+虽然后置循环先命中、功能表现正确，但前置那份是死代码，
+且一旦后置循环因为别的修饰词提前 break，前置那份会被误命中。
+
+本轮已删除前置残留（现仅后置循环 1 处）。
+
+逐段复核 151 号其余条目：
+  二.2 other than it -> NotSameEntityExpr + SlotExcludeTriggerOrSelf   ✅
+  二.2b NotSameEntityExpr 打印区分 $trigger / $opposing              ✅
+  二.3 PrefixParser play 主语归属归一成 Self                          ✅
+  三.1 CompileCore 重绑 ConditionCompiler.VariableResolver            ✅
+  三.1 全卡级变量声明预扫描                                           ✅
+  三.2 ConditionCompiler 的 X is at least 接入 VariableResolver       ✅
+  四  InsteadWeaver 多节点公共前置外提                                ✅
+  五  #4/#5 文档定性为正确，未改动                                    ✅
+
+实测：10503210 / 10844110 / 10521110 三张 AST 仍全部正确，CF=0
+ALL ENGINE CHECKS PASSED / 全部 12 个门禁全绿

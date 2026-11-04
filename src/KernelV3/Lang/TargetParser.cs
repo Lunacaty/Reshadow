@@ -524,21 +524,6 @@ public sealed class TargetParser
                 mode = SelectMode.First; matched = true; continue;
             }
 
-            // "if there's a card on the field other than it with the same base cost"
-            // （10503210 大游戏世界）：同费用是**与触发器那张卡比较**，不是绝对值。
-            if (cur.MatchPhrase("with", "the", "same", "base", "cost")
-                || cur.MatchPhrase("with", "the", "same", "cost"))
-            {
-                bool isBase = cur.Peek(-2).IsWord("base");
-                var stKey = isBase ? StatKey.BaseCost : StatKey.Cost;
-                wheres.Add(new CompareExpr
-                {
-                    Left = NumExpr.Prop(stKey, TargetSpec.Item),
-                    Op = CompareOp.Eq,
-                    Right = NumExpr.Prop(stKey, TargetSpec.Trigger),
-                });
-                matched = true; continue;
-            }
             if (cur.Current.IsWord("leftmost"))
             {
                 cur.Advance(); mode = SelectMode.First;
