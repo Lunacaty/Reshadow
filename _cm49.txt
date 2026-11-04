@@ -1,0 +1,35 @@
+feat(153): 模式选取计数 + 召唤焦点绑定时机
+
+【文档一：at least 短语匹配】
+  ConditionCompiler 的 `TryMatchAnyWord("at", "least")` 是「任一」语义，
+  会把单独的 at 当成命中并把 least 留在流里。改为优先 MatchPhrase 完整短语。
+
+【问题 1-A：PreChoiceInspector 漏加 mode_count 光环】
+  从手牌出牌时 MatchRunner.PlayCard 先跑 PreChoiceInspector 让玩家预选模式，
+  但它只读卡面原本的 PickCount，忘了加上玩家身上的 mode_count（杉那查纹章给的 +1）。
+  结果预选弹窗 MaxSelect 仍是 1，获得增益后玩家根本没法选第 2 个模式。
+  已补：actualPick = clamp(pick + max(0, bonus), 1, n)。
+
+【问题 1-B：DoBranch 与 PreChoiceInspector 把 MinSelect 写死 1】
+  「Select 2 Modes to activate」要求选满 2 个，
+  写死 1 会让默认策略 FirstLegalChoicePolicy 永远只选 1 个，第 2 个模式不生效。
+  两处均改为 MinSelect = MaxSelect = actualPick，DoBranch 同步补 mode_count 加成。
+
+【问题 2：ParseSummon / ParseAdd 在解析宾语之前提前绑 $created】
+  `_target.MarkBound(SlotCreated)` 写在 ExpectWord 之后、ParseSpawnCore 之前，
+  把 MostRecentSlot 从 $selected 改写成 $created，
+  于是 "Select ... destroy it, and add a copy of it" 的 it 指到空槽位（杉那查）。
+  改为统一走 ParseSpawnWithCreatedFocus：
+  · 宾语前探测是否含裸代词且当前无焦点 —— 有则预绑 $created
+    （"summon 2 exact copies of it" 这类纯召唤句必须这样，否则内部代词解析就抛错）；
+  · 宾语解析完后，若焦点未变化则补绑 $created，供后续 "and give it" 使用。
+  另在 ParseSpawnCore 两处尾随 and 链之前补 MarkBound($created)（文档第二节要求）。
+
+实测：
+  10354110 杉那查  spawn 1 copy of $selected to Hand（原为 $created）
+  10333110 真理的团结者  spawn 2 exact copy of $created to Board
+  CF=0
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 逐卡矩阵 32-32 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 /
+UI 3-3 / 战斗 UI 31-31 —— 全绿

@@ -190,8 +190,20 @@ public static class PreChoiceInspector
                         try { pick = new VmEval(state).EvalNum(bm.PickCount, ScopeOf(card)); }
                         catch { pick = 1; }
                     }
-                    return NewPrompt(card, ChoiceKind.SelectMode, cands, 1,
-                                     Math.Min(Math.Max(1, pick), n), "$mode", "选择模式");
+
+                    // 加上「Increase the number of Modes you can select by 1」的玩家光环值。
+                    // 漏了它，获得该增益后预选弹窗的 MaxSelect 仍是 1，
+                    // 玩家在界面上根本没法选第 2 个模式。
+                    int bonus = 0;
+                    try { bonus = state.ReadCounter(card.PlayerId, state.Schema.Counter("mode_count")); }
+                    catch { bonus = 0; }
+                    int actualPick = Math.Clamp(pick + Math.Max(0, bonus), 1, n);
+
+                    // MinSelect 必须等于 MaxSelect：
+                    // 要求选 N 个模式时，玩家必须选满 N 个（除非总选项数不足），
+                    // 写死 1 会让默认策略只选 1 个。
+                    return NewPrompt(card, ChoiceKind.SelectMode, cands, actualPick,
+                                     actualPick, "$mode", "选择模式");
                 }
 
                 default:

@@ -1428,16 +1428,59 @@ public sealed class ActionParser
 
     private List<EffectNode> ParseSummon(TokenCursor cur)
     {
-        _target.MarkBound(TargetSpec.SlotCreated);
         cur.ExpectWord("summon");
-        return ParseSpawnCore(cur, ZoneRef.Board);
+        return ParseSpawnWithCreatedFocus(cur, ZoneRef.Board);
     }
 
     private List<EffectNode> ParseAdd(TokenCursor cur)
     {
-        _target.MarkBound(TargetSpec.SlotCreated);
         cur.ExpectWord("add");
-        return ParseSpawnCore(cur, ZoneRef.Hand);
+        return ParseSpawnWithCreatedFocus(cur, ZoneRef.Hand);
+    }
+
+    /// <summary>
+    /// 召唤 / 加入手牌的统一入口，处理「$created 焦点的绑定时机」。
+    ///
+    /// 两个方向的用例必须同时成立：
+    ///   "Select an enemy follower, destroy it, and add a copy of it"
+    ///       → 宾语里的 it 必须指向前一句选中的 $selected；
+    ///         提前绑 $created 会把焦点改掉，it 指到空槽位（杉那查）。
+    ///   "summon 2 exact copies of it"（纯召唤句，前面没有 Select）
+    ///       → 宾语里的 it 需要**当时就有** $created 焦点，否则代词解析直接报错。
+    ///
+    /// 判据：进宾语前先记下当前焦点。若宾语解析期间没有产生新的绑定，
+    /// 就说明这句是「纯召唤」，补一个 $created；否则保持宾语自己定下的焦点。
+    /// </summary>
+    private List<EffectNode> ParseSpawnWithCreatedFocus(TokenCursor cur, ZoneRef toZone)
+    {
+        var before = _target.MostRecentSlot;
+
+        // 必须先探一眼宾语里有没有裸代词：
+        //   "summon 2 exact copies of **it**" —— 前面没有 Select 时，
+        //   代词解析在 ParseSpawnCore **内部**就会抛「缺少前序绑定」，
+        //   事后再补 $created 已经来不及（10333110 真理的团结者）。
+        // 而 "add a copy of it" 在有 $selected 焦点时，这个代词应当继续指 $selected，
+        // 所以只在**当前没有任何焦点**时才预绑 $created。
+        if (before == null)
+        {
+            int probe = cur.Position;
+            bool sawBarePronoun = false;
+            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period)
+            {
+                if (cur.Current.IsWord("and")) break;   // 尾随链不算宾语
+                if (cur.Current.IsAnyWord("it", "them")) { sawBarePronoun = true; break; }
+                cur.Advance();
+            }
+            cur.Seek(probe);
+            if (sawBarePronoun) _target.MarkBound(TargetSpec.SlotCreated);
+        }
+
+        var nodes = ParseSpawnCore(cur, toZone);
+
+        // 宾语没产生新焦点时补一个 $created，供后续 "and give it ..." 使用。
+        if (_target.MostRecentSlot == null || _target.MostRecentSlot == before)
+            _target.MarkBound(TargetSpec.SlotCreated);
+        return nodes;
     }
 
     private List<EffectNode> ParseSpawnCore(TokenCursor cur, ZoneRef toZone)
@@ -1678,7 +1721,9 @@ public sealed class ActionParser
                     });
             }
 
-            // 接续 "and give it ..." / "and evolve it ..."
+            // 接续 "and give it ..." / "and evolve it ..." 之前必须先绑定 $created：
+            // 这些后续动作里的 it 指向刚召唤出来的那个，不是上一条 Select 的目标。
+            _target.MarkBound(TargetSpec.SlotCreated);
             while (cur.Current.IsWord("and"))
             {
                 int sv = cur.Position;
@@ -1781,6 +1826,7 @@ public sealed class ActionParser
                     ToOwner = ZoneScope.Self,
                     Count = NumExpr.Const(1),
                 });
+                _target.MarkBound(TargetSpec.SlotCreated);
                 while (cur.Current.IsWord("and"))
                 {
                     int sv2 = cur.Position;

@@ -1334,17 +1334,36 @@ public sealed partial class CardVm
             }
 
             default:
-                // Choose：挂起等玩家
+            {
+                // Choose：挂起等玩家。
+                //
+                // MinSelect 必须等于 MaxSelect：
+                //   「Select 2 Modes to activate」要求选满 2 个，
+                //   写死 1 会让默认策略只选 1 个，第 2 个模式永远不生效。
+                //
+                // 还要加上玩家身上的 mode_count 光环
+                //   （杉那查："Increase the number of Modes you can select by 1"）。
+                int bonus = 0;
+                try
+                {
+                    bonus = _world.ReadCounter(
+                        frame.Scope.ResolvePlayer(Core.ZoneScope.Self),
+                        Schema.Counter("mode_count"));
+                }
+                catch { bonus = 0; }
+                int actual = Math.Clamp(pick + Math.Max(0, bonus), 1, opts.Count);
+
                 return Block(new PendingChoice
                 {
                     Player = frame.Scope.Owner,
                     Kind = ChoiceKind.SelectMode,
                     Candidates = Enumerable.Range(0, opts.Count).ToList(),
-                    MinSelect = 1,
-                    MaxSelect = pick,
+                    MinSelect = actual,
+                    MaxSelect = actual,
                     Slot = "$mode",
                     Prompt = "请选择模式",
                 });
+            }
         }
     }
 

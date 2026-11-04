@@ -196,7 +196,9 @@ public static class ConditionCompiler
             c.Advance();
             if (c.MatchWord("is") || c.MatchWord("are"))
             {
-                c.TryMatchAnyWord("at", "least");
+                // TryMatchAnyWord 是「任一」语义，会把单独的 at 当成命中并把 least 留在流里。
+                // 只认完整短语。
+                if (!c.MatchPhrase("at", "least")) c.TryMatchAnyWord("at", "least");
                 if (c.Current.Kind == TokKind.Number)
                 {
                     int v = c.Current.Value;
