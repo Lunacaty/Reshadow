@@ -725,19 +725,18 @@ public sealed class TurnRunner
                 var cands = LegalTargetsOf(spec0, card, scope);
                 if (cands.Count <= 0) return false;
 
-                // 把本次的候选写进作用域，供后面的 Select 引用：
+                // 把本次的选择结果推进作用域，供后面的 Select 引用：
                 //   "选择 1 个敌方随从，再选择另 1 个不同于第 1 个所选随从的敌方随从"
                 // 敌方只有 1 个随从时，第 2 个 Select 带着 other than $choose1，
                 // 候选池应当为空，法术因此不可打出。
                 // 每次都新建空 scope 会让 $choose1 永远是空的，
                 // 那个唯一随从会被误判成「第 2 个目标也能选中」。
+                //
+                // 只 bind 一次：BindSelection 每调一次都会 ++SelectSequence，
+                // 连调两次会把编号推到 2，$choose1 与 $choose2 双双错位。
+                // 真实打出时玩家只选 1 个，这里取第一个候选作为代表。
                 scope.BindSelection(Ast.TargetSpec.SlotSelected,
-                                    cands.Select(Vm.EntityRef.From), append: false);
-                // 真实打出时玩家只会选其中 1 个，这里按「选第一个」推进，
-                // 让后续 Select 的排除条件有具体对象可比。
-                if (cands.Count > 0)
-                    scope.BindSelection(Ast.TargetSpec.SlotSelected,
-                                        new[] { Vm.EntityRef.From(cands[0]) }, append: false);
+                                    new[] { Vm.EntityRef.From(cands[0]) }, append: false);
             }
             return true;
         }

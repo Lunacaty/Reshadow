@@ -39,6 +39,9 @@ public sealed class ActionParser
     /// </summary>
     private NumExpr _lastSelectCount;
 
+    /// <summary>每张卡编译开始时清掉上一条 Select 的数量，防跨卡泄漏。</summary>
+    public void ResetSelectCount() => _lastSelectCount = null;
+
     /// <summary>调试开关：打印 ParseGive 的每一步。</summary>
 
     /// <summary>

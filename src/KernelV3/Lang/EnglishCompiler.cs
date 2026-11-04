@@ -183,6 +183,10 @@ public sealed class EnglishCompiler
         // 主卡随后的 "If X is at least 2" 于是拿不到 X，退化成 ctr:X（10844110）。
         ConditionCompiler.VariableResolver = ResolveVariable;
 
+        // 「an exact copy of each」要按所选张数复制，靠 _lastSelectCount 记录。
+        // 必须逐卡清空，否则上一张卡的 Select 数量会泄漏给下一张。
+        _actions.ResetSelectCount();
+
         var plain = Preprocess(text);
         var mergedSegs = MergeOptionSegments(SplitSegments(plain)).ToList();
 
@@ -2706,6 +2710,15 @@ public sealed class EnglishCompiler
             // "... destroyed this turn" 的数据源是**历史池**，不是当前战场。
             // 不认这一条的话，「本回合被破坏的式神之基础攻防合计」
             // 会变成「现在场上的式神之当前攻防合计」（90034120）。
+            System.Func<TargetSpec, ZoneRef, TargetSpec> withZone = (t0, z) => new TargetSpec
+            {
+                SourceKind = t0.SourceKind, Owner = t0.Owner, Zone = z, Slot = t0.Slot,
+                CardId = t0.CardId, CardName = t0.CardName, Where = t0.Where,
+                Sort = t0.Sort, SortDescending = t0.SortDescending, TopN = t0.TopN,
+                DistinctByName = t0.DistinctByName, DuplicatesOnly = t0.DuplicatesOnly,
+                Mode = t0.Mode, Count = t0.Count, History = t0.History,
+                IncludeLeader = t0.IncludeLeader, OmittedFields = t0.OmittedFields,
+            };
             System.Func<TargetSpec, HistoryScope, TargetSpec> withHist = (t0, h) => new TargetSpec
             {
                 SourceKind = t0.SourceKind, Owner = t0.Owner, Zone = t0.Zone, Slot = t0.Slot,
@@ -2719,10 +2732,20 @@ public sealed class EnglishCompiler
                 filt = withHist(filt, HistoryScope.DestroyedThisTurn);
             else if (joined.Contains("destroyed this match"))
                 filt = withHist(filt, HistoryScope.DestroyedThisMatch);
-            // 兵种过滤只在 TargetParser 没解析出目标池时才手工补，
-            // 否则会和它已解析出的 HasTraitExpr 叠成「Shikigami and Shikigami」。
+            // 以下两处手工补正**只在 TargetParser 没解析出目标池时**才做，
+            // 否则会和它已解析出的结果叠成「Shikigami and Shikigami」或重复 zone。
             if (ofParsed == false)
             {
+                // 「... destroyed this turn」统计的是**已离场**的卡，区必须是墓地。
+                // 只把 History 改成 DestroyedThisTurn 而 zone 仍是 Board，
+                // 在引用池里筛不到任何东西（已破坏的实体 Zone 早就是 Cemetery）。
+                if (joined.Contains("destroyed")) filt = withZone(filt, ZoneRef.Cemetery);
+
+                // "... Shikigami followers" 里的 followers 是名词，不是可选过滤 ——
+                // 不补 is Follower 会把同兵种的非随从（护符/法术）也算进合计。
+                if (joined.Contains("follower"))
+                    filt = filt.WithWhere(new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item });
+
                 foreach (var tr in new[] { "Shikigami", "Artifact", "Golem", "Marine", "Puppetry", "Departed", "Officer", "Pixie", "Clue", "Loot" })
                 {
                     if (!joined.Contains(tr.ToLowerInvariant())) continue;
