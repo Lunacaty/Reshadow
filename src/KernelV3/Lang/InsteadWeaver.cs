@@ -159,7 +159,45 @@ public static class InsteadWeaver
                     break;
             }
         }
+
+        // 前一句里「修饰替代句产出物」的节点必须一并继承。
+        //
+        //   "Add a Steelclad Knight to your hand and give it Rush."
+        //   "Rally (10) - Add 2 copies instead."
+        //
+        // 替代句只写了数量，`and give it Rush` 挂在前一句、作用在 $created 上。
+        // 替代句把召唤动作整体换掉了，但「给召出来的东西某某」这条修饰仍然有效。
+        // 早先只处理 thenBody 里出现的节点，这类「只修饰、不产出」的节点直接丢失，
+        // 结果「加 2 张并给突进」变成「加 2 张，没有突进」。
+        if (prevSpawn != null && result.OfType<SpawnCardNode>().Any())
+        {
+            bool thenHasCreated = result.Any(IsCreatedModifier);
+            if (!thenHasCreated)
+            {
+                foreach (var n in prevBody)
+                {
+                    if (n is SpawnCardNode) continue;
+                    if (!IsCreatedModifier(n)) continue;
+                    result.Add(n);
+                }
+            }
+        }
+
         return result;
+    }
+
+    /// <summary>该节点是否在修饰「刚刚产出的那个东西」（$created / $self 槽位）。</summary>
+    private static bool IsCreatedModifier(EffectNode n)
+    {
+        TargetSpec t = n switch
+        {
+            ModifyKeywordNode mk => mk.Target,
+            ModifyStatsNode ms => ms.Target,
+            ModifyCostNode mc => mc.Target,
+            _ => null,
+        };
+        if (t == null || t.SourceKind != TargetSourceKind.Slot) return false;
+        return t.Slot == TargetSpec.SlotCreated || t.Slot == TargetSpec.SlotTrigger;
     }
 
     /// <summary>

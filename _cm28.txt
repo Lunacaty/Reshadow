@@ -1,0 +1,25 @@
+fix(136): InsteadWeaver.ApplyLens 继承修饰 $created 的节点
+
+用户指出「无音的包围」替代分支丢了突进：
+  原文: Add a Steelclad Knight to your hand and give it Rush.
+        Rally (10) - Add 2 copies instead.
+  错误: 爆能分支 spawn 2 Steelclad Knight，没有 Grant rush
+  正确: 加 2 张**并仍然给突进**
+
+根因：ApplyLens 只遍历 thenBody 里已经出现的节点做字段透镜，
+对「只修饰、不产出」的节点（and give it Rush 挂在 $created 上）视而不见。
+替代句把召唤动作整体换掉了，但那句修饰仍然有效 —— 它修饰的是替代句产出的东西。
+
+修复：thenBody 处理完后，若前一句有 SpawnCardNode 且本句不含 $created 修饰，
+把 prevBody 里所有修饰 $created / $trigger 的节点一并追加。
+判据用新增的 IsCreatedModifier（ModifyKeyword / ModifyStats / ModifyCost 三种）。
+
+实测：
+  无音的包围  if match_play >= 10 then spawn 2 + Grant rush
+              else spawn 1 + Grant rush          ← 两个分支都有突进
+  心醉研究者  if pp>=8 then 3 个 + Ward / else 2 个  ← 正确，基础句本无 Ward
+  荣耀的丽金花、天剑深渊、真王之刃、惨烈的剑王不受影响
+
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 逐卡矩阵 32-32 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 /
+UI 3-3 / 战斗 UI 31-31 —— 全绿
