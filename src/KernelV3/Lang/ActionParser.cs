@@ -32,6 +32,13 @@ public sealed class ActionParser
     /// </summary>
     public Func<IReadOnlyList<Token>, NumExpr> StatExprResolver { get; set; }
 
+    /// <summary>
+    /// 最近一次 Select 解析出的数量表达式。
+    /// "an exact copy of each" 要按**所选张数**复制（10172320 选 2 张 / 10174130 选 3 张），
+    /// 沿用 copyCount 会让它恒为 1。
+    /// </summary>
+    private NumExpr _lastSelectCount;
+
     /// <summary>调试开关：打印 ParseGive 的每一步。</summary>
 
     /// <summary>
@@ -1576,8 +1583,9 @@ public sealed class ActionParser
                     CopyFrom = eachSrc,
                     ToZone = destEach ?? toZone,
                     ToOwner = isEnemyCopy ? ZoneScope.Opponent : ZoneScope.Self,
-                    // Count 交给 DoSpawn 按源集合大小决定，这里沿用 altCount。
-                    Count = copyCount,
+                    // 按所选张数复制：10172320 选 2 张 → 2 个复制体，10174130 选 3 张 → 3 个。
+                    // 沿用 copyCount 会恒为 1，选多少都只复制 1 个。
+                    Count = _lastSelectCount ?? copyCount,
                     IsExactCopy = isExact,
                 });
                 return nodes;
@@ -2170,6 +2178,9 @@ public sealed class ActionParser
         // 第一次选己方，第二次选敌方，两次结果累加到同一个 $selected，
         // 后续的 them 一次性作用于两张。
         bool dualAlliedAndEnemy = _target.SawAlliedAndEnemy;
+
+        // 记录下来，供随后的 "an exact copy of each" 取数量。
+        _lastSelectCount = target.Count;
 
         // 立刻登记 $selected：本方法内部会继续解析 ", and <动词>" 链，
         // 那些后续动作的 it / them 必须能看见这次 Select。

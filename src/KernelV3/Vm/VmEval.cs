@@ -78,14 +78,19 @@ public sealed class VmEval
             case NumOp.Sum:
             {
                 var t = e.Of ?? TargetSpec.Self;
-                var pool = Resolve(t, scope);
+                // 必须走 ResolveRef（= 引用池），不能用 Resolve（= 活体池）。
+                //
+                // Resolve 只返回当前在场的活体（GetLive），而
+                // "... destroyed this turn" 这类历史快照里的实体早已离场，
+                // GetLive 一律返回 null —— 求和恒为 0（90034120 式神·贵人）。
+                var pool = ResolveRef(t, scope);
 
                 // "the sum of the 3 highest base costs"：先按 Sort 排好，再取前 TopN 项。
-                // Resolve 已经应用过 Sort / SortDescending，这里只需要截断。
+                // ResolveRef 已经应用过 Sort / SortDescending，这里只需要截断。
                 if (t.TopN > 0 && pool.Count > t.TopN)
                     pool = pool.Take(t.TopN).ToList();
 
-                return pool.Sum(x => ReadStat(x, e.Stat));
+                return pool.Sum(r => RefStat(r, e.Stat));
             }
 
             case NumOp.Arith:

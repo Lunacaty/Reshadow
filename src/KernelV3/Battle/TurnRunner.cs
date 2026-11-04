@@ -722,7 +722,22 @@ public sealed class TurnRunner
                 if (spec0.SourceKind == Ast.TargetSourceKind.Slot) continue;
 
                 sawChoose = true;
-                if (CountLegalTargets(spec0, card) <= 0) return false;
+                var cands = LegalTargetsOf(spec0, card, scope);
+                if (cands.Count <= 0) return false;
+
+                // 把本次的候选写进作用域，供后面的 Select 引用：
+                //   "选择 1 个敌方随从，再选择另 1 个不同于第 1 个所选随从的敌方随从"
+                // 敌方只有 1 个随从时，第 2 个 Select 带着 other than $choose1，
+                // 候选池应当为空，法术因此不可打出。
+                // 每次都新建空 scope 会让 $choose1 永远是空的，
+                // 那个唯一随从会被误判成「第 2 个目标也能选中」。
+                scope.BindSelection(Ast.TargetSpec.SlotSelected,
+                                    cands.Select(Vm.EntityRef.From), append: false);
+                // 真实打出时玩家只会选其中 1 个，这里按「选第一个」推进，
+                // 让后续 Select 的排除条件有具体对象可比。
+                if (cands.Count > 0)
+                    scope.BindSelection(Ast.TargetSpec.SlotSelected,
+                                        new[] { Vm.EntityRef.From(cands[0]) }, append: false);
             }
             return true;
         }
@@ -763,9 +778,19 @@ public sealed class TurnRunner
     };
 
     private int CountLegalTargets(Ast.TargetSpec spec, RuntimeEntity source)
+        => LegalTargetsOf(spec, source, null).Count;
+
+    /// <summary>
+    /// 该目标声明的**全部**合法候选实体。
+    ///
+    /// 与 CountLegalTargets 的区别是多带一个可累加的作用域：
+    /// HasLegalTargetForSpell 要在检查过程中把前一次 Select 的结果写进 $chooseK，
+    /// 好让「other than $choose1」这类排除条件有对象可比。
+    /// </summary>
+    private List<RuntimeEntity> LegalTargetsOf(Ast.TargetSpec spec, RuntimeEntity source, Vm.VmScope outer)
     {
         int playerId = source?.PlayerId ?? _state.ActivePlayer;
-        if (spec == null || spec.Mode != SelectMode.Choose) return 1;
+        if (spec == null || spec.Mode != SelectMode.Choose) return new List<RuntimeEntity>();
         int owner = spec.Owner switch
         {
             ZoneScope.Self => playerId,
@@ -780,7 +805,9 @@ public sealed class TurnRunner
         // Source 必须绑定：像「Select another card in your hand and discard it」
         // 这类带 other-than-itself 的目标，靠 Source 才能排除法术卡自身；
         // 不绑的话，手里只剩这一张法术也会被判成「有合法目标」。
-        var sc = new Vm.VmScope
+        // 有外层作用域就沿用它，把此前 Select 已经写入的 $selected / $chooseK 带过来；
+        // 没有才新建。这样多目标法术的第 2 个 Select 才能看见第 1 个选了什么。
+        var sc = outer ?? new Vm.VmScope
         {
             Owner = spec.Owner,
             Controller = playerId,
@@ -805,7 +832,7 @@ public sealed class TurnRunner
             return !_state.HasEffectiveKeyword(e, ambush)
                 && !_state.HasEffectiveKeyword(e, aura);
         }).ToList();
-        return pool.Count;
+        return pool;
     }
 
     /// <summary>该卡声明了哪些 Enhance (N) 档位。</summary>

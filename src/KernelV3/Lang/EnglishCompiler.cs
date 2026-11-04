@@ -802,6 +802,16 @@ public sealed class EnglishCompiler
             // 4 句的 "1. 2. 3. 4." 会被拆成 8 个选项，编号形同虚设。
             if (sentOptions[si] >= 0)
             {
+                // 每个编号选项是**互斥分支**，切入新选项号时必须重置槽位历史，
+                // 否则选项 1 里的 "Evolve this follower"（绑了 $self）
+                // 或 "Select ..."（绑了 $selected）会泄漏到选项 2，
+                // 让选项 2 的 it 指到选项 1 的目标。
+                {
+                    int newKey = sentDepth[si] * 100 + sentOptions[si];
+                    bool isNewOption = modeOptions.Count == 0 || modeOptionIds[^1] != newKey;
+                    if (isNewOption && modeAttachTo == null) _target.ResetSlots();
+                }
+
                 var oc = new TokenCursor(sent);
 
                 // ★ 选项内部同样要先剥前缀。
@@ -2672,7 +2682,26 @@ public sealed class EnglishCompiler
             int idf = joined.LastIndexOf("defense", StringComparison.Ordinal);
             // 原文写的是 "total **base** attack/defense"，取印刷值不是当前值。
             var statKey = idf > ia ? StatKey.BaseLife : StatKey.BaseAttack;
-            var filt = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Self);
+
+            // 目标池优先交给 TargetParser 从 "of" 之后的那一段解析出来：
+            //   "... of allied Shikigami followers destroyed this turn"
+            // 它自带 zone=cemetery / history=DestroyedThisTurn / is Follower，
+            // 比在这里手工拼 TargetSpec 可靠得多。
+            TargetSpec filt = null;
+            bool ofParsed = false;
+            {
+                int ofIdx = -1;
+                for (int k = 0; k < rest.Count; k++)
+                    if (rest[k].IsWord("of")) { ofIdx = k; break; }
+                if (ofIdx >= 0 && ofIdx + 1 < rest.Count)
+                {
+                    var subCur = new TokenCursor(rest.Skip(ofIdx + 1).ToList());
+                    try { filt = _target.TryParse(subCur)?.AsPoolFilter(); }
+                    catch { filt = null; }
+                    ofParsed = filt != null;
+                }
+            }
+            if (filt == null) filt = TargetSpec.InZone(ZoneRef.Board, ZoneScope.Self);
 
             // "... destroyed this turn" 的数据源是**历史池**，不是当前战场。
             // 不认这一条的话，「本回合被破坏的式神之基础攻防合计」
@@ -2690,11 +2719,16 @@ public sealed class EnglishCompiler
                 filt = withHist(filt, HistoryScope.DestroyedThisTurn);
             else if (joined.Contains("destroyed this match"))
                 filt = withHist(filt, HistoryScope.DestroyedThisMatch);
-            foreach (var tr in new[] { "Shikigami", "Artifact", "Golem", "Marine", "Puppetry", "Departed", "Officer", "Pixie", "Clue", "Loot" })
+            // 兵种过滤只在 TargetParser 没解析出目标池时才手工补，
+            // 否则会和它已解析出的 HasTraitExpr 叠成「Shikigami and Shikigami」。
+            if (ofParsed == false)
             {
-                if (!joined.Contains(tr.ToLowerInvariant())) continue;
-                filt = filt.WithWhere(new HasTraitExpr { Trait = _lex.Trait(tr), Of = TargetSpec.Item });
-                break;
+                foreach (var tr in new[] { "Shikigami", "Artifact", "Golem", "Marine", "Puppetry", "Departed", "Officer", "Pixie", "Clue", "Loot" })
+                {
+                    if (!joined.Contains(tr.ToLowerInvariant())) continue;
+                    filt = filt.WithWhere(new HasTraitExpr { Trait = _lex.Trait(tr), Of = TargetSpec.Item });
+                    break;
+                }
             }
             return NumExpr.SumOf(filt, statKey);
         }

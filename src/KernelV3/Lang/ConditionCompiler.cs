@@ -642,17 +642,10 @@ public static class ConditionCompiler
 
         if (c.MatchPhrase("you", "have"))
         {
-            // "you have a Clue amulet in your hand"
-            if (c.MatchPhrase("a", "clue", "amulet"))
-            {
-                c.MatchPhrase("in", "your", "hand");
-                return new CompareExpr
-                {
-                    Left = NumExpr.Ctr(lex.Counter("clues")),
-                    Op = CompareOp.Ge,
-                    Right = NumExpr.Const(1),
-                };
-            }
+            // 不能把 "a Clue amulet in your hand" 硬编码成 ctr:clues ——
+            // clues 是**战场上可堆叠 Clue 护符的层数**，不是手牌里有没有线索卡。
+            // 删掉这个特判后，句子会自然落到下面的 TargetParser，
+            // 解析成 count(self:hand All where (has trait Clue and is Amulet)) >= 1。
             bool atLeast = c.MatchPhrase("at", "least");
             int n = ReadNumber(c);
 
@@ -713,7 +706,10 @@ public static class ConditionCompiler
             {
                 return new CompareExpr
                 {
-                    Left = NumExpr.CountOf(tgt),
+                    // AsPoolFilter() 把 Choose(1) 之类收敛成 All：
+                    // 「你手里有一张 Clue 护符」是对**整个手牌区**做存在性计数，
+                    // 不是让玩家从手牌里挑 1 张。
+                    Left = NumExpr.CountOf(tgt.AsPoolFilter()),
                     Op = cmpOp,
                     Right = NumExpr.Const(n > 0 ? n : 1),
                 };

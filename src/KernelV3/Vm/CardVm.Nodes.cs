@@ -379,12 +379,6 @@ public sealed partial class CardVm
             _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnHealed, Subject = EntityRef.From(t), Amount = amt });
         }
 
-        // 非槽位来源的进化目标要把实际进化到的实体写进 $selected，
-        // 后续 "... and give it +1/+1" 才接得上（10564110 索菲娜）。
-        // 槽位来源的目标（"evolve them"）不写 —— 那是消费者，不是生产者。
-        if (n.Target != null && n.Target.SourceKind != TargetSourceKind.Slot && targets.Count > 0)
-            scope.Bind(TargetSpec.SlotSelected, targets);
-
         return false;
     }
 
@@ -958,8 +952,15 @@ public sealed partial class CardVm
                         if (one != null) made.Add(one);
                     }
                 }
-                e = made.Count > 0 ? made[0] : null;
+                // 内层的 perRef 已经把「该复制几份」全部处理完了，
+                // 外层这个 for (i < count) 必须立刻跳出：
+                //   10333110 "summon 2 exact copies of $self"（count=2, refs.Count=1）
+                //   若继续跑外层，就是 2 次 × 2 份 = 4 个复制体。
+                // 同时必须直接 break —— 不能再落到底部的 created.Add(e)，
+                // 否则 made[0] 会被加第 2 次（B 组 10172320 会给第 1 个复制体贴两遍谢幕曲）。
                 foreach (var m in made) created.Add(m);
+                e = null;
+                break;
             }
             else if (n.SourceKind == CardSourceKind.CopyOfPrevious)
             {
@@ -1135,7 +1136,16 @@ public sealed partial class CardVm
             if (n.IsSuperEvolve)
                 _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnSuperEvolve, Subject = EntityRef.From(t), IsManualEvolve = false });
         }
-        // 不覆写 $selected（只有 SelectTargetNode / SpawnCardNode 可以写槽位）
+
+        // 非槽位来源的进化目标要把实际进化到的实体写进 $selected，
+        // 后续 "... and give it +1/+1" 才接得上（10564110 索菲娜）。
+        // 槽位来源的目标（"evolve them"）不写 —— 那是消费者，不是生产者。
+        //
+        // 这段曾误粘在 DoRestore 末尾：那会把 $selected 覆写成主战者，
+        // 让「先选敌方随从 → 回血 → 对它造成伤害」反手打自己脸上。
+        if (n.Target != null && n.Target.SourceKind != TargetSourceKind.Slot && targets.Count > 0)
+            scope.Bind(TargetSpec.SlotSelected, targets);
+
         return false;
     }
 

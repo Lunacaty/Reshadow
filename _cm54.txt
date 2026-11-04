@@ -1,0 +1,49 @@
+fix(158): 5 处粘贴错位 / 漏改 / 循环缺陷
+
+【1. 严重粘贴错位】DoRestore 里的 $selected 绑定移回 DoEvolve
+  上一轮把「非槽位来源的进化目标写进 $selected」误粘到了 DoRestore 末尾，
+  而真正的 DoEvolve 末尾还留着「不覆写 $selected」。后果：
+    · 10564110 索菲娜模式 2 进化完随从后 $selected 是空的，+1/+1 加不上去；
+    · 任何「选敌方随从 → 回血 → 对它造成伤害」的卡，
+      DoRestore 会把 $selected 覆写成主战者，反手打自己脸上。
+  已从 DoRestore 剪切、粘到 DoEvolve 的 return false 之前。
+
+【2. 漏改】ConditionCompiler 的 Clue 硬编码
+  删掉 `if (c.MatchPhrase("a", "clue", "amulet")) → ctr:clues` 特判。
+  clues 是战场上可堆叠 Clue 护符的层数，不是手牌里有没有线索卡。
+  删掉后自然落到 TargetParser，解析成正确的
+    count(self:hand All where (has trait Clue and is Amulet)) >= 1。
+  同时把 CountOf(tgt) 改成 CountOf(tgt.AsPoolFilter())：
+  存在性计数要收敛成 All，不能让玩家从手牌里挑 1 张。
+  实测 11042310 / 11043110 两张全部转为手牌区计数。
+
+【3. 漏改 + 过滤不全】90034120 式神·贵人
+  · VmEval 的 NumOp.Sum 原先调 Resolve（活体池），
+    而 DestroyedThisTurn 历史快照里的实体早已离场，GetLive 一律返回 null，求和恒为 0。
+    改为 ResolveRef + RefStat。
+  · EnglishCompiler 的 total+base 分支：改为先从 "of" 之后那段交给 TargetParser 解析目标池，
+    它自带 cemetery / DestroyedThisTurn / is Follower；
+    只有解析失败时才回退到手工拼 TargetSpec（并补兵种过滤，避免与 TargetParser 叠加成重复 trait）。
+  实测 AST：
+    sum:BaseAttack(self:cemetery history=DestroyedThisTurn All where (has trait Shikigami and is Follower))
+
+【4. 双重循环 + 重复入表】DoSpawn 的 CopyOfTarget
+  内层 perRef 已经把所有复制份数生成完毕，外层 for (i < count) 必须立刻 break；
+  否则 10333110（count=2, refs=1）会 2×2 = 4 个复制体。
+  同时 e = null 阻止底部 created.Add(e) 把 made[0] 再加一次。
+  另补 _lastSelectCount：
+    "an exact copy of each" 要按所选张数复制（10172320 选 2 / 10174130 选 3），
+    沿用 copyCount 会恒为 1。
+  实测召唤数量：10122120=3 / 10123140=4 / 10101310=5，全部正确。
+
+【5. 两处细节加固】
+  · 模式选项焦点隔离：切入新选项号且不是模式挂载目标时，ResetSlots()，
+    避免选项 1 的 $self / $selected 泄漏到选项 2。
+  · HasLegalTargetForSpell 的多目标预检：
+    把 CountLegalTargets 抽成 LegalTargetsOf(spec, source, outer)，
+    允许传入可累加的作用域，并逐次把候选写进 $selected / $chooseK。
+    否则「选 1 个敌方随从，再选另 1 个 other than $choose1」在敌方只有 1 个随从时，
+    第 2 个 Select 看不到 $choose1，会误判那唯一随从也能选中。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED / 12 门禁全绿
