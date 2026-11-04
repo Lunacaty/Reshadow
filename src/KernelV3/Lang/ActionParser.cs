@@ -682,7 +682,12 @@ public sealed class ActionParser
         }
         else
         {
-            amount = ParseNumExpr(cur);
+            // "Deal damage to 3 random enemy followers instead" —— 省略了数值。
+            // 不能当成 1 点：替代句要继承前一句的伤害量，
+            // 这里返回 -1 哨兵，由 InsteadWeaver.ApplyLens 识别后换成 prevDmg.Amount。
+            amount = cur.Current.IsAnyWord("damage", "damage,")
+                ? NumExpr.Const(-1)
+                : ParseNumExpr(cur);
             cur.TryMatchAnyWord("damage", "damage,");
             if (cur.Current.IsAnyWord("split"))
             {
@@ -733,6 +738,9 @@ public sealed class ActionParser
             });
         }
 
+        // -1 哨兵表示「原文省略了数值」，留给 InsteadWeaver.ApplyLens 换成前一句的量。
+        // 这里**不能**就地改成 1：这一步在编织之前跑，改了哨兵就没收件人了。
+        // 未走替代路径的残留在 DoDealDamage 里按 0 兜底（最后一道防线）。
         var dmgNodes = new List<EffectNode>
         {
             new DealDamageNode { Target = target, Amount = amount, IsAbility = true, IsSplit = splitFlag },

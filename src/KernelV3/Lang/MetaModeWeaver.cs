@@ -93,8 +93,12 @@ public static class MetaModeWeaver
                 {
                     widened.Add(new BranchModeNode
                     {
-                        Kind = bm.Kind,
-                        // 「all of them」= 选项数全取，运行时按 opts.Count 钳制
+                        // 「activate all of them instead」在规则上是**依次执行全部**，
+                        // 不是「从 3 个里选 3 个」—— 后者运行期 DoBranch 依然会挂起弹窗，
+                        // 逼玩家手点 3 次，而卡面根本没有选择步骤。
+                        // 对照《76-规则圣经》6.2.7：这里必须是 Sequence。
+                        Kind = ModeDispatchKind.Sequence,
+                        // 选项数全取，运行时按 opts.Count 钳制
                         PickCount = NumExpr.Const(Math.Max(bm.Options.Count, 1)),
                         Options = bm.Options,
                         GrantTarget = bm.GrantTarget,

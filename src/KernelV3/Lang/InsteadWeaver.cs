@@ -210,9 +210,14 @@ public static class InsteadWeaver
                     result.Add(new DealDamageNode
                     {
                         Target = InheritTarget(d.Target, prevDmg.Target),
-                        Amount = d.Amount,
+                        // 「Deal damage to 3 random enemy followers instead」漏写数值时，
+                        // 必须继承前一句的伤害量。ParseDeal 在省略数值时返回哨兵 -1。
+                        Amount = (d.Amount == null
+                                  || (d.Amount.Op == NumOp.Const && d.Amount.Value < 0))
+                                 ? prevDmg.Amount : d.Amount,
                         IsAbility = d.IsAbility,
-                        IsSplit = d.IsSplit,
+                        // split 是「分配伤害」属性，替代句通常不重写，要跟着前句继承。
+                        IsSplit = d.IsSplit || prevDmg.IsSplit,
                     });
                     break;
 
@@ -249,6 +254,43 @@ public static class InsteadWeaver
         }
 
         return result;
+    }
+
+
+    /// <summary>节点列表里是否引用了某个槽位（用于判断替代句要不要继承 Select）。</summary>
+    private static bool MentionsSlot(IReadOnlyList<EffectNode> nodes, string slot)
+    {
+        if (nodes == null) return false;
+        foreach (var n in nodes)
+        {
+            foreach (var t in TargetSpecsOf(n))
+            {
+                if (t == null || t.SourceKind != TargetSourceKind.Slot) continue;
+                if (t.Slot == slot) return true;
+            }
+            if (n is ConditionalNode c
+                && (MentionsSlot(c.Then, slot) || MentionsSlot(c.Else, slot))) return true;
+            if (n is LoopNode lp && MentionsSlot(lp.Body, slot)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>取出一个节点上所有可能的目标位。</summary>
+    private static IEnumerable<TargetSpec> TargetSpecsOf(EffectNode n)
+    {
+        switch (n)
+        {
+            case DealDamageNode d: yield return d.Target; break;
+            case RestoreLifeNode r: yield return r.Target; break;
+            case ModifyStatsNode ms: yield return ms.Target; break;
+            case ModifyKeywordNode mk: yield return mk.Target; break;
+            case ModifyCostNode mc: yield return mc.Target; break;
+            case MoveZoneNode mv: yield return mv.Target; break;
+            case EvolveNode ev: yield return ev.Target; break;
+            case SelectTargetNode st: yield return st.Target; break;
+            case SpawnCardNode sp: yield return null; break;
+            default: yield break;
+        }
     }
 
     /// <summary>该节点是否在修饰「刚刚产出的那个东西」（$created / $self 槽位）。</summary>
@@ -463,8 +505,14 @@ public static class InsteadWeaver
         // 目标退化成了对手全场。把它提到分支外作为公共前置。
         var prefixNodes = new List<EffectNode>();
         IReadOnlyList<EffectNode> elseBody = prev.Body ?? Array.Empty<EffectNode>();
+        //
+        // 但**只有替代句真的用到了 $selected** 才提。
+        // 木锤矮人的连击(3)替代是 `deal 4 damage to opponent:board All`（全场 AOE），
+        // 根本不需要选目标；无条件提取会导致敌方空场时还要先弹一个选目标框，
+        // 选不出来就整条卡住。
         if (elseBody.Count > 1 && elseBody[0] is SelectTargetNode
-            && !thenBody.Any(n => n is SelectTargetNode))
+            && !thenBody.Any(n => n is SelectTargetNode)
+            && MentionsSlot(thenBody, TargetSpec.SlotSelected))
         {
             prefixNodes.Add(elseBody[0]);
             elseBody = elseBody.Skip(1).ToList();

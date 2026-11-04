@@ -309,6 +309,11 @@ public sealed partial class CardVm
         if (targets.Count == 0) return false;
         int total = _eval.EvalNum(n.Amount, scope);
 
+        // -1 是编译期的「原文省略了数值」哨兵（"Deal damage to X instead"）。
+        // 正常情况下 InsteadWeaver.ApplyLens 已经把它换成前一句的伤害量；
+        // 走到这里说明该语句没走替代路径，按 0 处理 —— 绝不能真的造成负伤害（回血）。
+        if (total < 0) total = 0;
+
         if (n.IsSplit && targets.Count > 0)
         {
             // 分伤按进场顺序依次分配 min(剩余伤害, 目标当前生命)，直到伤害分完
