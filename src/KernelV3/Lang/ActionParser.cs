@@ -552,13 +552,21 @@ public sealed class ActionParser
                 NumExpr kwVal = null;
                 // 「Can't attack leaders」只禁主战者，随从照打；
                 // 「Can't attack followers or leaders」或裸「Can't attack」才是全面禁止。
-                // 之前一律并成 cannot_attack，带前者字样的随从连随从都打不了。
-                if (j.Contains("attack leaders") && !j.Contains("attack followers"))
-                    kw = "cannot_attack_leaders";
-                else if (j.Contains("attack followers") && !j.Contains("attack leaders"))
-                    kw = "cannot_attack_followers";
-                else if (j.Contains("attack followers") || j.Contains("attack leaders"))
+                //
+                // 判据必须按**词**而不是按连续子串：
+                //   "Can't attack followers or leaders" 里没有 "attack leaders" 这个连续串
+                //   （中间隔了 "followers or"），旧实现于是命中 cannot_attack_followers，
+                //   变成「只禁随从、可以打脸」—— 与卡面完全相反。
+                bool mentionsFollowers = j.Contains("attack followers")
+                                         || (j.Contains("attack") && j.Contains("followers"));
+                bool mentionsLeaders = j.Contains("attack leaders")
+                                       || (j.Contains("attack") && j.Contains("leaders"));
+                if (mentionsFollowers && mentionsLeaders)
                     kw = "cannot_attack";
+                else if (mentionsLeaders)
+                    kw = "cannot_attack_leaders";
+                else if (mentionsFollowers)
+                    kw = "cannot_attack_followers";
                 else if (j.Contains("be destroyed"))
                     kw = "cannot_destroy";
                 // "Can't be played"是「这张卡不能从手牌打出」，与「不能攻击」完全不同。
@@ -1405,6 +1413,8 @@ public sealed class ActionParser
         NumExpr copyCount = NumExpr.Const(1);
         bool isCopy = false;
         bool isExact = false;
+        // "Summon 2 enemy copies of X" 的 enemy 修饰复制体的归属方。
+        bool isEnemyCopy = false;
 
         if (cur.MatchPhrase("an", "exact", "copy") || cur.MatchPhrase("an", "exact", "copies"))
         {
@@ -1426,10 +1436,14 @@ public sealed class ActionParser
             int probe = cur.Position;
             copyCount = NumExpr.Const(cur.Current.Value);
             cur.Advance();
-            cur.TryMatchAnyWord("enemy");
+            // "Summon 2 enemy copies of Knight"（10224120 尤里乌斯）：
+            // enemy 修饰的是**复制体落在谁的场上**，必须接住。
+            // 旧实现把它当空气跳过，后面写死 ToOwner = Self，
+            // 复制体全跑到自己场上。
+            isEnemyCopy = cur.TryMatchAnyWord("enemy");
             if (cur.MatchWord("copy") || cur.MatchWord("copies"))
                 isCopy = true;
-            else { cur.Seek(probe); }
+            else { cur.Seek(probe); isEnemyCopy = false; }
         }
 
         if (isCopy)
@@ -1514,7 +1528,7 @@ public sealed class ActionParser
                     CardId = ct.CardId,
                     CardName = ct.Text,
                     ToZone = dest1 ?? toZone,
-                    ToOwner = ZoneScope.Self,
+                    ToOwner = isEnemyCopy ? ZoneScope.Opponent : ZoneScope.Self,
                     Count = copyCount,
                     // 卡名来源没有「当前状态」可继承（那张卡不一定在场上），
                     // 但标志仍要如实落下：让 "exact" 在 AST 里继续可见，
@@ -1531,7 +1545,7 @@ public sealed class ActionParser
                 SourceKind = CardSourceKind.CopyOfTarget,
                 CopyFrom = copySrc,
                 ToZone = dest2 ?? toZone,
-                ToOwner = ZoneScope.Self,
+                ToOwner = isEnemyCopy ? ZoneScope.Opponent : ZoneScope.Self,
                 Count = copyCount,
                 // 只有「an exact copy」继承源目标的当前状态；
                 // 少了这个词就是「把那张卡再印一份」，取白板。
@@ -3392,9 +3406,16 @@ public sealed class ActionParser
     {
         cur.MatchPhrase("it", "costs");
         var val = ParseNumExpr(cur);
+        // "It costs 0 until the end of the turn" —— 时限不能丢：
+        // 丢了就变成永久改费，一张变身卡能把自己的费用永久钉死在 0。
+        var dur = ConsumeDuration(cur);
         return new List<EffectNode>
         {
-            new ModifyCostNode { Target = TargetSpec.Created, Op = CostModOp.Set, Value = val },
+            new ModifyCostNode
+            {
+                Target = TargetSpec.Created, Op = CostModOp.Set, Value = val,
+                Duration = dur,
+            },
         };
     }
 

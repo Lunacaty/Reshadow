@@ -1071,9 +1071,15 @@ public sealed class TargetParser
                 int fn = cur.Current.Value; cur.Advance();
                 var fstat = cur.Current.Text.ToLowerInvariant().StartsWith("attack") ? StatKey.Attack : StatKey.Life;
                 cur.Advance();
-                cur.TryMatchAnyWord("or");
-                var fop = cur.Current.IsAnyWord("less") ? CompareOp.Le : CompareOp.Ge;
-                cur.Advance();
+                // "with 1 defense"（没有 or less/more）是**精确等值**，
+                // 不是 Life >= 1。旧实现无条件 Ge，且推进游标时把句末的词也吃掉了，
+                // 「with 1 defense.」被读成「生命 >= 1」（等于不过滤）。
+                var fop = CompareOp.Eq;
+                if (cur.TryMatchWord("or"))
+                {
+                    fop = cur.Current.IsAnyWord("less", "fewer") ? CompareOp.Le : CompareOp.Ge;
+                    cur.Advance();
+                }
                 wheres.Add(new CompareExpr
                 {
                     Left = NumExpr.Prop(fstat, TargetSpec.Item),

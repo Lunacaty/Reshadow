@@ -1,0 +1,35 @@
+feat(145 Step4): 条件/关键词/扫描单点修复
+
+【第七节 1：Can't attack followers or leaders 误编成 cannot_attack_followers】
+  旧判据按**连续子串**："Can't attack followers or leaders" 里没有
+  "attack leaders"（中间隔了 "followers or"），于是命中 cannot_attack_followers，
+  变成「只禁随从、可以打脸」—— 与卡面完全相反。
+  改为按词判 mentionsFollowers / mentionsLeaders，两者都出现就是 cannot_attack。
+  实测：10442310 至爱狂轰 -> cannot_attack。
+
+【第七节 2：Summon 2 enemy copies 丢失敌方归属】
+  ParseSpawnCore 的 `cur.TryMatchAnyWord("enemy")` 没接返回值，
+  后面写死 ToOwner = ZoneScope.Self，复制体全跑到自己场上。
+  新增 isEnemyCopy 标志并应用到两处复制节点（卡名来源 / CopyOfTarget）。
+
+【第六节 2：with N defense 被编成 Life >= N】
+  旧实现无条件 `TryMatchAnyWord("or")` + `Ge`，且推进游标时把句末词吃掉。
+  "with 1 defense." 于是变成「生命 >= 1」（等于不过滤）。
+  改为默认 CompareOp.Eq，只有真的写了 or less/more 才用 Le/Ge。
+  实测：10622120 猫人水手 -> prop:Life($item) = 1。
+
+【第七节速查表：Banish all duplicates 属性不可见】
+  AstEnglishPrinter.PrintTarget 补 `if (t.DuplicatesOnly) sb.Append(" duplicates")`。
+  实测：10303210 试炼的石板 -> move self:deck duplicates All。
+
+【第七节速查表：It costs 0 until the end of the turn 缺时限】
+  ParseItCosts 没调 ConsumeDuration，时限被丢，改费永久生效。
+  已补，并把 Duration 传给 ModifyCostNode。
+  实测：10334120 莱奥 -> modifycost Set 0 to $created dur=ThisTurn。
+
+【第六节 1：this follower is unevolved】已在前序轮次修复（第 422 行），本轮核对确认。
+
+CompileFailures=0
+ALL ENGINE CHECKS PASSED / VM 50-50 / 文档验收 102-102 / Combat 16-16 /
+效用 12-12 / 逐卡矩阵 32-32 / 完整对局 7-7 / DIY 8-8 / 卡池 22-22 /
+UI 3-3 / 战斗 UI 31-31 —— 全绿

@@ -340,6 +340,9 @@ public static class AstEnglishPrinter
         if (t.History != HistoryScope.None) sb.Append(" history=" + t.History);
         if (t.IncludeLeader) sb.Append(" +leader");
         if (t.DistinctByName) sb.Append(" distinct");
+        // "Banish all duplicates"：只处理重复份。不打印的话这个属性在 AST 里完全不可见，
+        // 排查「为什么只放逐了一张」时没有任何线索。
+        if (t.DuplicatesOnly) sb.Append(" duplicates");
         if (t.Sort != SortKey.None) sb.Append(" sort=" + t.Sort + (t.SortDescending ? "-desc" : ""));
         if (t.TopN > 0) sb.Append(" topN=" + t.TopN);
 
