@@ -987,6 +987,10 @@ public sealed class ChineseCardPrinter
                 case TargetSpec.SlotOpposing: return "交战的敌方随从";
                 case TargetSpec.SlotItem: return "该卡牌";
                 case TargetSpec.SlotCounter: return "该计数器";
+                // 序数槽位："the second selected follower" -> "第2个所选目标"。
+                // 不认它会落到 default，把「第 2 个」渲染成「该目标」，与第 1 个完全同形。
+                case var s when TargetSpec.TryParseChooseSlotIndex(s, out int ci):
+                    return "第" + ci + "个所选目标";
                 default: return "该目标";
             }
         }

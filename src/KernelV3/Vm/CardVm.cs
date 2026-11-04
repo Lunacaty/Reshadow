@@ -489,6 +489,13 @@ public sealed partial class CardVm
             {
                 carrier.LastSelectedRefs.Clear();
                 carrier.LastSelectedRefs.AddRange(frame.Scope.Read(Pending.Slot));
+                // 序数槽位同样要跨时机存活：
+                //   "Evolve: Select ... Super-Evolve: deal damage equal to
+                //    the attack of the second selected follower"
+                // 超进化是另一条能力，作用域里 $chooseK 已经空了。
+                carrier.LastChooseRefs.Clear();
+                for (int k = 1; k <= frame.Scope.SelectSequence; k++)
+                    carrier.LastChooseRefs.Add(frame.Scope.Read(TargetSpec.SlotChoose(k)).ToList());
             }
         }
 

@@ -268,7 +268,15 @@ public static class PreChoiceInspector
             }
             if (live != null) list.Add(EntityRef.From(live));
         }
-        if (list.Count > 0) scope.BindRefs(slot ?? TargetSpec.SlotSelected, list);
+        if (list.Count > 0)
+        {
+            // 预选阶段同样要写序数槽位：
+            //   后续动作引用 "the second selected follower" 时，
+            //   预选阶段就必须已经知道它是第几次选择，
+            //   否则预选与实跑会算出不同的目标集合。
+            // BindSelection 内部同时维护 $selected（追加语义由 append 决定）。
+            scope.BindSelection(slot ?? TargetSpec.SlotSelected, list, append: false);
+        }
     }
 
     private static VmScope ScopeOf(RuntimeEntity card) => new()

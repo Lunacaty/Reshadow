@@ -209,7 +209,7 @@ public sealed class TargetParser
             if (cur.MatchWord("the")) preOrd = ParseOrdinalWord(cur);
             if (preOrd > 0 && cur.MatchWord("selected"))
             {
-                cur.TryMatchAnyWord("follower", "card", "amulet", "target");
+                cur.TryMatchAnyWord("follower", "followers", "card", "cards", "amulet", "amulets", "target", "targets");
                 return new TargetSpec
                 {
                     SourceKind = TargetSourceKind.Slot,
@@ -1145,7 +1145,7 @@ public sealed class TargetParser
                     ord = ParseOrdinalWord(cur);
                     if (ord > 0 && cur.MatchWord("selected"))
                     {
-                        cur.TryMatchAnyWord("follower", "card", "amulet", "target");
+                        cur.TryMatchAnyWord("follower", "followers", "card", "cards", "amulet", "amulets", "target", "targets");
                         slot = TargetSpec.SlotChoose(ord);
                         matched = true;
                         continue;
@@ -1182,7 +1182,7 @@ public sealed class TargetParser
                     int ord2 = ParseOrdinalWord(cur);
                     if (ord2 > 0 && cur.MatchWord("selected"))
                     {
-                        cur.TryMatchAnyWord("follower", "card", "amulet", "target");
+                        cur.TryMatchAnyWord("follower", "followers", "card", "cards", "amulet", "amulets", "target", "targets");
                         wheres.Add(new NotSameEntityExpr
                         {
                             ExcludeSlot = TargetSpec.SlotChoose(ord2),
@@ -1480,8 +1480,15 @@ public sealed class TargetParser
             "ninth" or "9th" => 9,
             _ => 0,
         };
-        if (n > 0) cur.Advance();
-        return n;
+        if (n > 0) { cur.Advance(); return n; }
+        // 分词把 "2nd" 拆成 Number(2) + Word("nd") 时也要认。
+        if (cur.Current.Kind == TokKind.Number && cur.Peek().IsAnyWord("st", "nd", "rd", "th"))
+        {
+            n = cur.Current.Value;
+            cur.Advance(); cur.Advance();
+            return n;
+        }
+        return 0;
     }
 
 }

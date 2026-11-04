@@ -155,6 +155,10 @@ public sealed class VmScope
             // 关键：子帧共享同一个队列引用，而不是复制一份。
             PreCommittedChoices = PreCommittedChoices,
             SourceAbility = SourceAbility,
+            // 序数槽位编号必须跟着子帧走：
+            //   loop / 分支里的 Select 若把计数归零，第二次迭代会重新写 $choose1，
+            //   把上一轮选中的目标覆盖掉。
+            SelectSequence = SelectSequence,
         };
         foreach (var kv in Registers) s.Registers[kv.Key] = new List<EntityRef>(kv.Value);
         return s;

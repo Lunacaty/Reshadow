@@ -1,0 +1,44 @@
+fix(157 §3 复查): 补上 6 处遗漏的 $choose 联动
+
+逐段核对 157 号第三节文档后，发现上一轮实现对下面 6 条要求有遗漏：
+
+1. **VmScope.Derive 未拷贝 SelectSequence**
+   文档在代码块末尾专门用注释强调这一条。
+   不拷贝的话，loop / 分支里的 Select 会把计数归零，
+   第二次迭代重新写 $choose1，把上一轮选中的目标覆盖掉。
+
+2. **PreChoiceInspector 完全没分槽**
+   文档要求「无论在 PreChoiceInspector.Walk 预选阶段，还是 DoSelect / SubmitChoice 阶段」
+   都要写 $chooseK。预选与实跑必须算出同一套目标集合，否则两边不一致。
+   改为统一走 BindSelection。
+
+3. **ParseSelect 不认 then**
+   文档写的是 IsAnyWord("and", "then")，实现只认 and。
+   "Select an enemy follower, then select another follower ..." 会断在 then。
+
+4. **TargetParser 不认复数**
+   文档的 TryMatchAnyWord 列表含 followers / cards / amulets / targets，实现只有单数。
+   三处全部补齐。
+
+5. **ParseOrdinalWord 不认 Number(N)+后缀**
+   文档要求支持分词成 Number(2) + Word("nd") 的情形，实现只认合并的 "2nd"。
+
+6. **ChineseCardPrinter 不认 $chooseK**
+   文档要求印成「第 N 个所选目标」。
+   不认会落到 default 分支成「该目标」，与第 1 个完全同形。
+
+另外补了文档 §3(5)(6) 之外但属于同一特性的两处：
+  · RuntimeEntity.LastChooseRefs + CardVm.SubmitChoice 同步 + VmEval 回退 ——
+    $chooseK 的跨能力域持久化（与 $selected 的 LastSelectedRefs 完全对称），
+    否则「进化选 2 个，超进化引用第 2 个」会拿到空池。
+  · DIY 端 select $choose2 = target(...) 本来就支持（$ 开头即视为槽位），往返无损。
+
+实测：
+  对第1个所选目标造成等同于第2个所选攻击力的伤害
+    -> deal prop:Attack($choose2) damage to $choose1
+    -> 中文：对第1个所选目标造成攻击力点伤害。
+  Select A, then select another follower other than the first selected follower
+    -> ... where (... other than $choose1)
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED / 12 门禁全绿

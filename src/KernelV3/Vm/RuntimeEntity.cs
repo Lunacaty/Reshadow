@@ -135,6 +135,12 @@ public sealed class RuntimeEntity
     /// </summary>
     public List<EntityRef> LastSelectedRefs { get; } = new();
 
+    /// <summary>
+    /// 跨时机的序数选择记录：LastChooseRefs[k-1] 就是 $chooseK 的内容。
+    /// 与 LastSelectedRefs 同源，供超进化 / 谢幕曲这类另起能力的作用域回指。
+    /// </summary>
+    public List<List<EntityRef>> LastChooseRefs { get; } = new();
+
     public int EntityId { get; init; }
     public int EntrySerial { get; set; }
     public Ast.CardDef Def { get; set; }

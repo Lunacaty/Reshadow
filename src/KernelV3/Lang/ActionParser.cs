@@ -2207,7 +2207,10 @@ public sealed class ActionParser
         // 后者用于「选择 1 个敌方随从和 1 个我方随从」这类多目标独立交互。
         while (true)
         {
-            if (cur.Current.Kind == TokKind.Comma || cur.Current.IsAnyWord("and")) cur.Advance();
+            // 连选连接词："," / "and" / "then" 三种都认。
+            //   "Select an enemy follower, then select another follower ..."
+            if (cur.Current.Kind == TokKind.Comma || cur.Current.IsAnyWord("and", "then"))
+                cur.Advance();
             else break;
             if (cur.IsAtEnd || cur.Current.Kind == TokKind.Period) break;
 

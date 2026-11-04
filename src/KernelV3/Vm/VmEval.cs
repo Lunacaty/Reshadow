@@ -684,6 +684,15 @@ public sealed class VmEval
                     if (carrierSel != null && carrierSel.LastSelectedRefs.Count > 0)
                         pool.AddRange(carrierSel.LastSelectedRefs);
                 }
+                // $chooseK 的跨能力域回退，与 $selected 完全对称。
+                if (pool.Count == 0 && scope.Source != null
+                    && TargetSpec.TryParseChooseSlotIndex(t.Slot, out int chIdx))
+                {
+                    var srcCh = scope.Source.Value;
+                    var carrierCh = _world.GetLive(srcCh.EntityId, srcCh.EntrySerial);
+                    if (carrierCh != null && chIdx >= 1 && chIdx <= carrierCh.LastChooseRefs.Count)
+                        pool.AddRange(carrierCh.LastChooseRefs[chIdx - 1]);
+                }
                 // $self 未显式绑定时回退到 Source —— 引擎自动语义
                 if (pool.Count == 0 && t.Slot == TargetSpec.SlotSelf && scope.Source != null)
                     pool.Add(scope.Source.Value);
