@@ -2288,9 +2288,9 @@ public sealed class BattleState : IVmWorld
         e.AttacksThisTurn = 0;
         e.EngagedThisTurn = false;
 
-        // 亡者召还：贴上「亡者」兵种。
-        // ⚠ 必须在 CreateEntity 之后的**最末尾**做，但快照已经拍过了 ——
-        // 所以还要回头修正 EnteredThisMatch 里的那份快照（见下方 SyncEnteredSnapshot）。
+        // 亡者召还：贴上「亡者」兵种，保留原兵种，构成多兵种。
+        // PlaceInZone 在 CreateEntity 内部就拍了 EnteredThisMatch 快照，
+        // 那时还没有亡者，由 TagDeparted 内部回头补正那一份。
         if (addDepartedTrait) TagDeparted(e);
 
         // 复制 / 亡者召还上场的随从同样是「进入战场」，

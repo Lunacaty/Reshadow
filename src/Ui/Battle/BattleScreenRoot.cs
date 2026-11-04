@@ -1511,13 +1511,17 @@ public partial class BattleScreenRoot : Control
         try { legal = _ctrl.LegalAttackTargets(_attacker); }
         catch { }
 
-        // 判定鼠标当前压在哪个单位上
-        long hoveredId = -1;
-        foreach (var kv in _unitCenters)
+        // 命中判定用控件真实矩形，不用 _unitCenters 的距离：
+        // _unitCenters 是上一帧的缓存，已阵亡随从的残留坐标会让判定飘到空地。
+        BoardUnitWidget hoveredW = null;
+        foreach (var wd in BoardUnitsOf(_boardFoe))
         {
-            var d = pointer.DistanceTo(kv.Value);
-            if (d < BoardUnitWidget.UnitW * 0.5f) { hoveredId = kv.Key; break; }
+            if (wd.Entity == null || !IsInstanceValid(wd)) continue;
+            if (wd.GetGlobalRect().HasPoint(pointer)) { hoveredW = wd; break; }
         }
+        long hoveredId = hoveredW?.Entity?.EntityId ?? -1;
+        bool hoverLeader = _foeLeader != null && IsInstanceValid(_foeLeader)
+                           && _foeLeader.GetGlobalRect().HasPoint(pointer);
 
         foreach (var wd in BoardUnitsOf(_boardFoe))
         {
@@ -1541,9 +1545,9 @@ public partial class BattleScreenRoot : Control
         // 敌方主战者
         if (_foeLeader != null)
         {
-            long lid = _ctrl.State?.Players[1].Leader?.EntityId ?? -1;
+            int lid = _ctrl.State?.Players[1].Leader?.EntityId ?? -1;
             bool isLegal = legal != null && legal.Contains(lid);
-            bool hover = lid == hoveredId;
+            bool hover = hoverLeader;
             string reason = null;
             if (!isLegal && hover)
             {
@@ -1566,6 +1570,10 @@ public partial class BattleScreenRoot : Control
     }
     private void ReleaseAttack(Vector2 screenPos)
     {
+        // 必须在最前面清态：玩家拖起来又松手取消时，敌方身上的红框/准星
+        // 没有这一句就永远留在屏幕上。
+        ClearAttackTargetStates();
+
         _field.IsDraggingAttack = false;
         _field.QueueRedraw();
         _anims.ClearAiming();

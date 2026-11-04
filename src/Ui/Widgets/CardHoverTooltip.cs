@@ -83,17 +83,19 @@ public partial class CardHoverTooltip : PanelContainer
                 var names = new System.Collections.Generic.List<string>();
                 foreach (var t in traits)
                 {
+                    if (!t.IsValid || string.IsNullOrWhiteSpace(t.Name)) continue;
                     string zh;
                     try { zh = printer?.TraitZh(t.Name) ?? t.Name; }
                     catch { zh = t.Name; }
-                    if (!string.IsNullOrEmpty(zh)) names.Add(zh);
+                    if (string.IsNullOrEmpty(zh)) continue;
+                    if (!names.Contains(zh)) names.Add(zh);   // 去重：同一兵种只列一次
                 }
-                if (names.Count > 0) traitPart = "  |  " + string.Join("·", names);
+                if (names.Count > 0) traitPart = "·" + string.Join("·", names);
             }
         }
         catch { }
 
-        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}】 {statPart}{traitPart}";
+        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}{traitPart}】 {statPart}";
 
         _bodyRich.Text = SvWbTheme.FormatRichCardText(printer.PrintCard(def));
         Visible = true;

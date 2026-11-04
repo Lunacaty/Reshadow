@@ -479,7 +479,10 @@ public partial class CardVisualWidget : Control
             {
                 // 必须显示**全部**兵种：被亡者召还的随从同时拥有原兵种与「亡者」，
                 // 只取 [0] 会让玩家完全看不到「亡者」这个兵种。
-                string trName = string.Join("·", Card.Traits.Select(t => TraitDisplayName(t.Name)));
+                string trName = string.Join("·",
+                    Card.Traits.Select(t => TraitDisplayName(t.Name))
+                              .Where(x => !string.IsNullOrEmpty(x))
+                              .Distinct());
                 string badgeText = $"— {SvWbTheme.ClanDisplayZh(Card.Clan.IsValid ? Card.Clan.Name : null)} · {trName} —";
                 int fs = 11;
                 float tw = font.GetStringSize(badgeText, HorizontalAlignment.Left, -1, fs).X;

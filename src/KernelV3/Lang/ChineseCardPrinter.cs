@@ -791,8 +791,13 @@ public sealed class ChineseCardPrinter
                     }
                     break;
                 case HasTraitExpr ht:
-                    trait = TraitZh(ht.Trait.Name) ?? "";
+                {
+                    // 多兵种：卡面可能同时要求两个兵种，累加而非覆盖。
+                    var tz = TraitZh(ht.Trait.Name) ?? "";
+                    if (!string.IsNullOrEmpty(tz) && !trait.Contains(tz))
+                        trait = string.IsNullOrEmpty(trait) ? tz : trait + "·" + tz;
                     break;
+                }
                 // 卡包与职业筛选也必须渲染出来：
                 // 少了它们，卡面会印成「发现1张随从」，
                 // 玩家完全看不出它限定在某个卡包或某个职业里。

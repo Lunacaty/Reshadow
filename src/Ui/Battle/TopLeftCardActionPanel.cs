@@ -176,23 +176,22 @@ public partial class TopLeftCardActionPanel : Control
         string traitPart = "";
         try
         {
-            var list0 = (entity.Traits != null && entity.Traits.Count > 0
-                            ? entity.Traits.AsEnumerable()
-                            : (def.Traits ?? Array.Empty<SymbolId<TraitTag>>()).AsEnumerable())
-                        .ToList();
-            if (list0.Count > 0)
-            {
-                var names = list0.Select(t =>
-                {
-                    try { return _ctrl.Store.CardPrinter.TraitZh(t.Name) ?? t.Name; }
-                    catch { return t.Name; }
-                });
-                traitPart = "  |  " + string.Join("·", names);
-            }
+            var traitList = (entity.Traits != null && entity.Traits.Count > 0
+                                ? entity.Traits.AsEnumerable()
+                                : (def.Traits ?? Array.Empty<SymbolId<TraitTag>>()).AsEnumerable())
+                            .Where(t => t.IsValid && !string.IsNullOrWhiteSpace(t.Name))
+                            .Select(t =>
+                            {
+                                try { return _ctrl.Store.CardPrinter.TraitZh(t.Name) ?? t.Name; }
+                                catch { return t.Name; }
+                            })
+                            .Distinct()
+                            .ToList();
+            if (traitList.Count > 0) traitPart = "·" + string.Join("·", traitList);
         }
         catch { }
 
-        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}】 {stat}{traitPart}";
+        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}{traitPart}】 {stat}";
 
         _effectRich.Text = SvWbTheme.FormatRichCardText(_ctrl.Store.CardPrinter.PrintCard(def));
 
