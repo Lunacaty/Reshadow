@@ -433,6 +433,15 @@ public static class AstEnglishPrinter
         _ => "=",
     };
 
+
+    /// <summary>归属方的人读写法（供条件表达式打印用）。</summary>
+    private static string OwnerWord(Core.ZoneScope o) => o switch
+    {
+        Core.ZoneScope.Self => "your",
+        Core.ZoneScope.Opponent => "enemy",
+        _ => "either",
+    };
+
     public static string PrintBool(BoolExpr e)
     {
         if (e == null) return "null";
@@ -469,6 +478,16 @@ public static class AstEnglishPrinter
                     ? "other than $opposing"
                     : "other than itself",
             IsPreviousExpr ip => "is selected",
+            // 牌库规则条件。缺这条会落进默认分支，打印成裸的 "deckruleexpr" ——
+            // Rule 与 Owner 两个字段全部丢失，审计时只能靠反射挖对象值才能判断
+            // 它查的到底是「无重复」「全偶数费」还是「全奇数费」。
+            DeckRuleExpr dr => dr.Rule switch
+            {
+                DeckRule.NoDuplicates => "no duplicates in " + OwnerWord(dr.Owner) + " deck",
+                DeckRule.EvenCostOnly => "only even-cost cards in " + OwnerWord(dr.Owner) + " deck",
+                DeckRule.OddCostOnly => "only odd-cost cards in " + OwnerWord(dr.Owner) + " deck",
+                _ => "deck rule " + dr.Rule,
+            },
             // "If you selected an allied amulet" —— 对 $selected 槽位做存在性检验。
             // 缺这条会落进默认分支，打印成裸的 "existsexpr"，
             // AST 上完全看不出它在校验什么。
