@@ -713,8 +713,12 @@ public sealed class PrefixParser
         if (cur.MatchWord("evolves")) return CoreEvent.OnEvolve;
         if (cur.MatchPhrase("is", "given"))
         {
+            // "whenever a follower is given +attack or defense" —— 这是身材被修改的事件。
+            // 之前返回 PassiveAura：光环只在静态常驻时每帧求值一次，
+            // 「每当…被增益」这种**一次性触发**的语义完全丢失。
+            // CoreEvent.OnStatsModified 就是为此存在（Amount=攻击变化，SecondaryAmount=生命变化）。
             while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Comma) cur.Advance();
-            return CoreEvent.PassiveAura;
+            return CoreEvent.OnStatsModified;
         }
         if (cur.MatchPhrase("is", "discarded")) return CoreEvent.OnDiscard;
         if (cur.MatchPhrase("is", "invoked"))   return CoreEvent.OnEnterField;

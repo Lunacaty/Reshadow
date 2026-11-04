@@ -360,6 +360,10 @@ public sealed class ActionParser
                     {
                         new ModifyCounterNode
                         {
+                            // "...gauges of all cards in your hand by 1" ——
+                            // Target 不能漏：漏了就是「给自己加 1 点奥义值」，
+                            // 而卡面说的是给手牌里每一张卡各加 1。
+                            Target = tgt,
                             Counter = _lex.Counter("skybound_gauge"),
                             Op = CounterOp.Add,
                             Delta = amt,
@@ -919,7 +923,15 @@ public sealed class ActionParser
             amount = NumExpr.Const(0);
         }
         else if (cur.MatchPhrase("the", "same", "amount"))
-            amount = NumExpr.Prop(StatKey.Life, TargetSpec.Self);
+        {
+            // "fully restore this follower and restore the same amount to your leader"
+            // 的「同样的量」指的是**刚刚实际回复的量**（= 已损失生命），
+            // 不是当前生命。拿 Prop(Life) 会让满血随从的「回复同量」变成 0，
+            // 残血随从则溢出成超过上限的数值。
+            amount = NumExpr.Sub(
+                NumExpr.Prop(StatKey.MaxLife, TargetSpec.Self),
+                NumExpr.Prop(StatKey.Life, TargetSpec.Self));
+        }
         else amount = ParseNumExpr(cur);
         cur.TryMatchAnyWord("defense", "defense,", "health");
         cur.TryMatchAnyWord("to");

@@ -1281,7 +1281,11 @@ public sealed class EnglishCompiler
 
                 string kw = mk0.Keyword.Name ?? "";
                 return kw.Equals("suppress_fanfare", StringComparison.OrdinalIgnoreCase)
-                       || kw.Equals("suppress_enhance", StringComparison.OrdinalIgnoreCase);
+                       || kw.Equals("suppress_enhance", StringComparison.OrdinalIgnoreCase)
+                       // "Your opponent can't select anything other than this card
+                       //  for abilities" —— 这是常驻的限制光环，不是入场曲。
+                       // 编成 OnPlay 的话只有从手牌打出才生效，被召唤/复活进场时形同虚设。
+                       || kw.Equals("targeting_restriction", StringComparison.OrdinalIgnoreCase);
             }
 
             bool selfOnlyRestriction =
