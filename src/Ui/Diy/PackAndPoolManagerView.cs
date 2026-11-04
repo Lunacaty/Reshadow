@@ -19,6 +19,9 @@ public partial class PackAndPoolManagerView : Control
 {
     public event Action OnBackToDecks;
 
+    /// <summary>请求在 DIY 工坊里编辑这张卡（形如「在本包中造新卡 / 编辑已有卡」）。</summary>
+    public event Action<ShadowverseFan.KernelV3.Ast.CardDef, string> OnEditCardInWorkshop;
+
     private GameSessionStore _store;
     private VBoxContainer _packList;
     private string _selectedPackId;
@@ -287,6 +290,13 @@ public partial class PackAndPoolManagerView : Control
             lbl.AddThemeFontSizeOverride("font_size", 11);
             row.AddChild(lbl);
 
+            var editNdBtn = new Button { Text = "✏ 编辑成员", CustomMinimumSize = new Vector2(88, 24) };
+            SvWbTheme.StyleButton(editNdBtn);
+            editNdBtn.AddThemeFontSizeOverride("font_size", 11);
+            var capturedForEdit = nd;
+            editNdBtn.Pressed += () => OpenNamedDeckEditor(cfg, capturedForEdit);
+            row.AddChild(editNdBtn);
+
             var delBtn = new Button { Text = "🗑", CustomMinimumSize = new Vector2(32, 24) };
             SvWbTheme.StyleButton(delBtn, customAccent: SvWbTheme.StatusDanger);
             delBtn.AddThemeFontSizeOverride("font_size", 11);
@@ -326,6 +336,158 @@ public partial class PackAndPoolManagerView : Control
         else if (keys.Count > 0 && _selectedPoolId == null) _selectedPoolId = keys[0];
     }
 
+
+
+    /// <summary>具名牌组编辑弹窗：改名字 + 增删成员 + 调张数。</summary>
+    private void OpenNamedDeckEditor(ShadowverseFan.KernelV3.Packs.CardPoolConfig cfg,
+                                     ShadowverseFan.KernelV3.Packs.NamedDeckRawDef target)
+    {
+        if (cfg == null || target == null) return;
+
+        // 工作副本：所有改动先落在这里，点保存才写回。
+        var working = new List<ShadowverseFan.KernelV3.Packs.NamedDeckEntryRaw>();
+        foreach (var e in target.Entries ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckEntryRaw>())
+            working.Add(new ShadowverseFan.KernelV3.Packs.NamedDeckEntryRaw
+                        { CardId = e.CardId, CardName = e.CardName, Copies = e.Copies });
+
+        var dlg = new AcceptDialog { Title = "编辑具名牌组", Size = new Vector2I(620, 520) };
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 6);
+        dlg.AddChild(box);
+
+        var nameRow = new HBoxContainer();
+        var nameLb = new Label { Text = "牌组名", CustomMinimumSize = new Vector2(70, 0) };
+        nameLb.AddThemeFontSizeOverride("font_size", 12);
+        nameRow.AddChild(nameLb);
+        var nameEdit = new LineEdit
+        {
+            Text = target.DeckName ?? "",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            TooltipText = "英文标识名，供 replace_deck 引用（如 Apocalypse Deck）",
+        };
+        nameRow.AddChild(nameEdit);
+        box.AddChild(nameRow);
+
+        var chsRow = new HBoxContainer();
+        var chsLb = new Label { Text = "中文显示名", CustomMinimumSize = new Vector2(70, 0) };
+        chsLb.AddThemeFontSizeOverride("font_size", 12);
+        chsRow.AddChild(chsLb);
+        var chsEdit = new LineEdit
+        {
+            Text = target.DeckNameChs ?? "",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            TooltipText = "卡面上显示的名字（如 启示录牌组）",
+        };
+        chsRow.AddChild(chsEdit);
+        box.AddChild(chsRow);
+
+        var listScroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        SvWbTheme.StyleScroll(listScroll);
+        var listCol = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        listCol.AddThemeConstantOverride("separation", 3);
+        listScroll.AddChild(listCol);
+        box.AddChild(listScroll);
+
+        void RebuildList()
+        {
+            foreach (var c in listCol.GetChildren()) { listCol.RemoveChild(c); c.QueueFree(); }
+            for (int i = 0; i < working.Count; i++)
+            {
+                var e = working[i];
+                var row = new HBoxContainer();
+                row.AddThemeConstantOverride("separation", 6);
+
+                var nm = _store.Catalog.AllCards.Values.FirstOrDefault(x => x.CardId == e.CardId);
+                var lb = new Label
+                {
+                    Text = $"{(nm == null ? e.CardName : nm.NameChs)}（{e.CardId}）",
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                    ClipText = true,
+                };
+                lb.AddThemeFontSizeOverride("font_size", 11);
+                row.AddChild(lb);
+
+                var spin = new SpinBox { MinValue = 1, MaxValue = 40, Value = e.Copies,
+                                         CustomMinimumSize = new Vector2(72, 0) };
+                var captured = e;
+                spin.ValueChanged += v =>
+                {
+                    // NamedDeckEntryRaw.Copies 是 init-only：重建整条替换。
+                    int idx = working.IndexOf(captured);
+                    if (idx < 0) return;
+                    working[idx] = new ShadowverseFan.KernelV3.Packs.NamedDeckEntryRaw
+                    { CardId = captured.CardId, CardName = captured.CardName, Copies = (int)v };
+                };
+                row.AddChild(spin);
+
+                var rm = new Button { Text = "✕", CustomMinimumSize = new Vector2(28, 24) };
+                SvWbTheme.StyleButton(rm, customAccent: SvWbTheme.StatusDanger);
+                rm.AddThemeFontSizeOverride("font_size", 11);
+                rm.Pressed += () => { working.Remove(captured); RebuildList(); };
+                row.AddChild(rm);
+
+                listCol.AddChild(row);
+            }
+            if (working.Count == 0)
+            {
+                var empty = new Label { Text = "（暂无成员，从下方添加）" };
+                empty.AddThemeFontSizeOverride("font_size", 11);
+                empty.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+                listCol.AddChild(empty);
+            }
+        }
+        RebuildList();
+
+        // 添加栏：卡池全卡下拉（含衍生 Token —— 启示录牌组装的就是 Token）。
+        var addRow = new HBoxContainer();
+        addRow.AddThemeConstantOverride("separation", 6);
+        var picker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        SvWbTheme.StyleOptionPopup(picker);
+        var poolCards = _store.Catalog.AllCards.Values.OrderBy(x => x.CardId).ToList();
+        for (int i = 0; i < poolCards.Count; i++)
+            picker.AddItem($"{poolCards[i].NameChs}（{poolCards[i].CardId}）" + (poolCards[i].IsToken ? " [Token]" : ""), i);
+        addRow.AddChild(picker);
+
+        var addSpin = new SpinBox { MinValue = 1, MaxValue = 40, Value = 1, CustomMinimumSize = new Vector2(72, 0) };
+        addRow.AddChild(addSpin);
+
+        var addBtn = new Button { Text = "➕ 加入", CustomMinimumSize = new Vector2(80, 28) };
+        SvWbTheme.StyleButton(addBtn, isPrimary: true, customAccent: SvWbTheme.AccentCyan);
+        addBtn.Pressed += () =>
+        {
+            int idx = (int)picker.Selected;
+            if (idx < 0 || idx >= poolCards.Count) return;
+            var cd = poolCards[idx];
+            working.Add(new ShadowverseFan.KernelV3.Packs.NamedDeckEntryRaw
+            { CardId = cd.CardId, CardName = cd.Name ?? "", Copies = (int)addSpin.Value });
+            RebuildList();
+        };
+        addRow.AddChild(addBtn);
+        box.AddChild(addRow);
+
+        dlg.Confirmed += () =>
+        {
+            var newNd = new ShadowverseFan.KernelV3.Packs.NamedDeckRawDef
+            {
+                DeckName = nameEdit.Text?.Trim() ?? target.DeckName,
+                DeckNameChs = chsEdit.Text?.Trim() ?? target.DeckNameChs,
+                Entries = working,
+            };
+
+            var list = new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>();
+            foreach (var x in cfg.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>())
+                list.Add(ReferenceEquals(x, target) ? newNd : x);
+
+            _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds,
+                                      cfg.Rules, list, out string msg);
+            _ruleStatus.Text = msg;
+            RefreshNamedDecks();
+            dlg.QueueFree();
+        };
+        dlg.Canceled += () => dlg.QueueFree();
+        AddChild(dlg);
+        dlg.PopupCentered();
+    }
 
     /// <summary>「本卡池启用的物理卡包」勾选区。原生包锁死勾选。</summary>
     private void BuildEnabledPacksSection()
@@ -541,6 +703,24 @@ public partial class PackAndPoolManagerView : Control
             row.AddChild(costLbl);
 
             int capId = c.CardId;
+            var editBtn = new Button { Text = "✏", CustomMinimumSize = new Vector2(32, 24) };
+            SvWbTheme.StyleButton(editBtn);
+            editBtn.AddThemeFontSizeOverride("font_size", 11);
+            editBtn.TooltipText = "在 DIY 工坊中编辑这张卡";
+            var capRaw = c;
+            editBtn.Pressed += () =>
+            {
+                // 转成运行时 CardDef 再交给工坊：Raw 条目里没有编译好的 Abilities。
+                var def = _store.Catalog.AllCards.Values.FirstOrDefault(x => x.CardId == capId);
+                if (def == null)
+                {
+                    _header.Text = "卡包 / 卡池管理 —— 该卡尚未成功编译，无法编辑";
+                    return;
+                }
+                OnEditCardInWorkshop?.Invoke(def, packId);
+            };
+            row.AddChild(editBtn);
+
             var delBtn = new Button { Text = "🗑", CustomMinimumSize = new Vector2(32, 24) };
             SvWbTheme.StyleButton(delBtn, customAccent: SvWbTheme.StatusDanger);
             delBtn.AddThemeFontSizeOverride("font_size", 11);

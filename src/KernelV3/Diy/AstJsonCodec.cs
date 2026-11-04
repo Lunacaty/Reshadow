@@ -309,6 +309,12 @@ public static class AstJsonCodec
 private static object EncodeNum(NumExpr e)
     {
         if (e == null) return null;
+
+        // 语法糖折叠：常量直接输出 JSON 整数，不再写 {"$num":"Const","v":3}。
+        // DecodeNum 早已支持 `if (o is long l) return NumExpr.Const((int)l);`，
+        // 这一处折叠能省掉绝大多数数值的大括号层级。
+        if (e.Op == NumOp.Const) return e.Value;
+
         var d = new Dictionary<string, object> { ["$num"] = e.Op.ToString() };
         switch (e.Op)
         {

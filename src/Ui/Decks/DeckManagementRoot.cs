@@ -258,6 +258,13 @@ public partial class DeckManagementRoot : Control
         if (_store == null) return;
         var view = new ShadowverseFan.Ui.Diy.PackAndPoolManagerView();
         view.OnBackToDecks += ShowDeckList;
+        // 「编辑此卡」直接跳进 DIY 工坊并装载该卡。
+        view.OnEditCardInWorkshop += (def, packId) =>
+        {
+            var ws = new ShadowverseFan.Ui.Diy.DiyWorkshopView();
+            Swap(ws);
+            ws.BootForCard(_store, def);
+        };
         Swap(view);
         view.Boot(_store);
     }

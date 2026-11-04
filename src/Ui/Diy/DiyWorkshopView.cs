@@ -61,6 +61,18 @@ public partial class DiyWorkshopView : Control
         RefreshAll();
     }
 
+    /// <summary>
+    /// 直接打开某张卡进行编辑（供「卡包 / 卡池管理」跳转过来）。
+    /// 先正常 Boot 建好界面，再把这张卡装进控制器。
+    /// </summary>
+    public void BootForCard(GameSessionStore store, ShadowverseFan.KernelV3.Ast.CardDef card)
+    {
+        Boot(store);
+        if (card == null) return;
+        _ctrl.LoadExistingCard(card);
+        RefreshAll();
+    }
+
     private void BuildUi()
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
