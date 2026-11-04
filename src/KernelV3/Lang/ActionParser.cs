@@ -25,6 +25,13 @@ public sealed class ActionParser
     /// <summary>变量解析委托（由 EnglishCompiler 注入，处理 X/Y/Z 绑定）。</summary>
     public Func<string, NumExpr> VariableResolver { get; set; }
 
+    /// <summary>
+    /// 行内属性表达式解析委托（由 EnglishCompiler 注入）。
+    /// 处理 "the second selected follower's attack" 这类序数属性读取，
+    /// 与 X/Y/Z 变量解析是两条不同的路径。
+    /// </summary>
+    public Func<IReadOnlyList<Token>, NumExpr> StatExprResolver { get; set; }
+
     /// <summary>调试开关：打印 ParseGive 的每一步。</summary>
 
     /// <summary>
@@ -757,6 +764,28 @@ public sealed class ActionParser
                 Amount = amount,
                 IsAbility = true,
             });
+        }
+
+        // "Deal damage to <目标> **equal to** <另一个所选随从的属性>"
+        // 多目标独立交互卡的行内属性伤害句式（157 号第三节 6）。
+        // 前面的 ParseNumExpr 读不到数字，只会返回 -1 哨兵，正好用它做判据。
+        // 判据不能只看 -1 哨兵：原文 "Deal damage to ..." 里 ParseNumExpr 遇到 the
+        // 会直接兜底成 Const(1)，哨兵根本不会出现。
+        // 真正的判据是：数值位置压根没写数字（or 写了但后面紧跟 equal to）。
+        if (cur.MatchPhrase("equal", "to"))
+        {
+            var restToks = new List<Token>();
+            while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Period
+                   && cur.Current.Kind != TokKind.Comma && !cur.Current.IsWord("and"))
+            {
+                restToks.Add(cur.Current);
+                cur.Advance();
+            }
+            if (restToks.Count > 0)
+            {
+                var inline = StatExprResolver?.Invoke(restToks);
+                if (inline != null) amount = inline;
+            }
         }
 
         // -1 哨兵表示「原文省略了数值」，留给 InsteadWeaver.ApplyLens 换成前一句的量。
@@ -2170,12 +2199,40 @@ public sealed class ActionParser
             });
         }
 
-        // 后续 , / and <动词> 继续解析
+        // 后续 , / and 继续解析。
+        // 两种形态：
+        //   "Select X and <动词>"            -> and 后面是动作，正常接
+        //   "Select X and [select] Y"       -> and 后面是**另一个目标短语**，
+        //                                      要拆成第二条 SelectTargetNode
+        // 后者用于「选择 1 个敌方随从和 1 个我方随从」这类多目标独立交互。
         while (true)
         {
             if (cur.Current.Kind == TokKind.Comma || cur.Current.IsAnyWord("and")) cur.Advance();
             else break;
             if (cur.IsAtEnd || cur.Current.Kind == TokKind.Period) break;
+
+            int saveSel = cur.Position;
+            // 先试「另一个目标短语」：and 后面紧跟冠词/归属词且不是动作动词
+            if (!dualAlliedAndEnemy
+                && (cur.Current.IsAnyWord("an", "a", "the", "another", "all", "each")
+                    || cur.Current.IsAnyWord("allied", "enemy", "your", "this")))
+            {
+                cur.TryMatchAnyWord("select");
+                var next = _target.TryParse(cur);
+                if (next != null && next.Mode == SelectMode.Choose)
+                {
+                    _target.MarkBound(TargetSpec.SlotSelected);
+                    result.Add(new SelectTargetNode
+                    {
+                        Target = next,
+                        OutSlot = TargetSpec.SlotSelected,
+                        AppendToSlot = true,
+                    });
+                    continue;
+                }
+                cur.Seek(saveSel);
+            }
+
             var save = cur.Position;
             var more = ParseOne(cur);
             if (more == null) { cur.Seek(save); break; }

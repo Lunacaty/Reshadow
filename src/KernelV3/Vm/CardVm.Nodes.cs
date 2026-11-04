@@ -297,13 +297,8 @@ public sealed partial class CardVm
             });
         }
 
-        if (n.AppendToSlot)
-        {
-            var merged = frame.Scope.Read(n.OutSlot).ToList();
-            merged.AddRange(candidates.Select(EntityRef.From));
-            frame.Scope.BindRefs(n.OutSlot, merged);
-        }
-        else frame.Scope.Bind(n.OutSlot, candidates);
+        // 双写：$choose{K} 单独记本次，$selected 按 AppendToSlot 决定覆盖还是追加。
+        frame.Scope.BindSelection(n.OutSlot, candidates.Select(EntityRef.From), n.AppendToSlot);
         return false;
     }
 

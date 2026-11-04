@@ -473,18 +473,10 @@ public sealed partial class CardVm
         //   "Select an allied and enemy follower" 连选两次，第二次要把敌方
         //   追加到第一次选中的己方后面，后续的 them 才能同时作用于两张。
         var selectNode = frame.Ip < frame.Code.Count ? frame.Code[frame.Ip] as SelectTargetNode : null;
-        if (selectNode != null && selectNode.AppendToSlot)
-        {
-            var merged = frame.Scope.Read(Pending.Slot).ToList();
-            merged.AddRange(refs);
-            frame.Scope.BindRefs(Pending.Slot, merged);
-            frame.Scope.Chosen = merged.Count > 0 ? merged[0] : null;
-        }
-        else
-        {
-            frame.Scope.BindRefs(Pending.Slot, refs);
-            frame.Scope.Chosen = refs.Count > 0 ? refs[0] : null;
-        }
+
+        // 双写：$choose{K} 单独记本次结果，$selected 按 AppendToSlot 决定覆盖或追加。
+        frame.Scope.BindSelection(Pending.Slot, refs, selectNode != null && selectNode.AppendToSlot);
+        frame.Scope.Chosen = frame.Scope.Read(Pending.Slot).FirstOrDefault();
 
         // 同步到源实体：跨时机的「同名副本」查询要靠它回指。
         //   "Evolve: Select ... Super-Evolve: Banish all enemy copies of it"（10334110）

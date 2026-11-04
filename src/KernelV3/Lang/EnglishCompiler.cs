@@ -31,6 +31,9 @@ public sealed class EnglishCompiler
         _actions = new ActionParser(lex, CompileQuotedAbility, _target);
         _actions.VariableResolver = ResolveVariable;
         _target.VariableResolver = ResolveVariable;
+        // 行内属性读取复用 BuildVariableExpr：它已支持
+        // "the first/second/Nth selected follower's attack/defense/cost"。
+        _actions.StatExprResolver = toks => BuildVariableExpr(toks);
         // 引号内的变量声明也要真正登记（Shakdoh 的 Draw X）。
         _actions.VariableBinder = TryBindVariableDeclaration;
         _prefixes = new PrefixParser(lex, _target);
@@ -2403,11 +2406,62 @@ public sealed class EnglishCompiler
         return string.IsNullOrEmpty(name) ? "unnamed" : name;
     }
 
+    /// <summary>在 BuildVariableExpr 的游标上解析序数词（first/1st/…）。</summary>
+    private static int ParseOrdinalWordInExpr(TokenCursor c)
+    {
+        if (c.IsAtEnd) return 0;
+        string t = (c.Current.Text ?? "").ToLowerInvariant();
+        int n = t switch
+        {
+            "first" or "1st" => 1, "second" or "2nd" => 2, "third" or "3rd" => 3,
+            "fourth" or "4th" => 4, "fifth" or "5th" => 5, "sixth" or "6th" => 6,
+            "seventh" or "7th" => 7, "eighth" or "8th" => 8, "ninth" or "9th" => 9,
+            _ => 0,
+        };
+        if (n > 0) c.Advance();
+        return n;
+    }
+
     private NumExpr BuildVariableExpr(IReadOnlyList<Token> rest)
     {
         if (rest.Count == 0) return NumExpr.Const(0);
         var c = new TokenCursor(rest);
         var joined = string.Join(" ", rest.Select(t => t.Text.ToLowerInvariant()));
+
+        // "the first/second/Nth selected follower's attack/defense/cost"
+        // 多目标独立交互卡要按序数取属性（$choose1 / $choose2 …）。
+        // 注意分词："follower's" 是一个整体 token，不能按 follower + 's 两段匹配。
+        {
+            int ordSave = c.Position;
+            if (c.MatchWord("the"))
+            {
+                int ord = ParseOrdinalWordInExpr(c);
+                if (ord > 0 && c.MatchWord("selected"))
+                {
+                    if (!c.IsAtEnd && c.Current.Kind == TokKind.Word)
+                    {
+                        var w0 = c.Current.Text.ToLowerInvariant();
+                        var bare = w0.EndsWith("'s") ? w0.Substring(0, w0.Length - 2) : w0;
+                        if (bare is "follower" or "card" or "amulet" or "target") c.Advance();
+                    }
+                    c.TryMatchAnyWord("s");
+                    if (!c.IsAtEnd)
+                    {
+                        var w1 = c.Current.Text.ToLowerInvariant();
+                        var statKey = w1.StartsWith("attack") ? StatKey.Attack
+                            : (w1.StartsWith("defense") || w1.StartsWith("life")) ? StatKey.Life
+                            : w1.StartsWith("cost") ? StatKey.Cost
+                            : (StatKey?)null;
+                        if (statKey.HasValue)
+                        {
+                            c.AdvanceToClauseBoundary();
+                            return NumExpr.Prop(statKey.Value, TargetSpec.ChooseSlot(ord));
+                        }
+                    }
+                }
+            }
+            c.Seek(ordSave);
+        }
 
         // "the number of <TargetNP>"
         if (c.MatchPhrase("the", "number", "of"))

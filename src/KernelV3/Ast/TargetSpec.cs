@@ -196,6 +196,36 @@ public sealed class TargetSpec
     public const string SlotSelected = "$selected";
     public const string SlotCreated = "$created";
 
+    /// <summary>
+    /// 多目标序数槽位的前缀：$choose1, $choose2, … $chooseN。
+    ///
+    /// 每执行一条 SelectTargetNode 就按次序写一份，供
+    /// 「对第 1 个所选随从造成等同于第 2 个所选随从攻击力的伤害」这类卡面引用。
+    /// $selected 仍然保留全部所选（"them" 用它），两者并存互不覆盖。
+    /// </summary>
+    public const string SlotChoosePrefix = "$choose";
+
+    /// <summary>构造第 index 个序数槽位名（1 起）。</summary>
+    public static string SlotChoose(int index) => SlotChoosePrefix + index;
+
+    /// <summary>第 index 个所选目标的 TargetSpec。</summary>
+    public static TargetSpec ChooseSlot(int index) => new()
+    {
+        SourceKind = TargetSourceKind.Slot,
+        Slot = SlotChoose(index),
+        Mode = Core.SelectMode.All,
+    };
+
+    /// <summary>把 "$choose3" / "choose3" 解析成序号 3；不是这个形态返回 false。</summary>
+    public static bool TryParseChooseSlotIndex(string text, out int index)
+    {
+        index = 0;
+        if (string.IsNullOrEmpty(text)) return false;
+        var s = text.StartsWith("$", StringComparison.Ordinal) ? text.Substring(1) : text;
+        if (!s.StartsWith("choose", StringComparison.OrdinalIgnoreCase)) return false;
+        return int.TryParse(s.Substring(6), out index) && index >= 1;
+    }
+
     /// <summary>\u88AB\u64cd\u4F5C\u7684\u8D44\u6E90\u8BA1\u6570\u5668\uFF08\u5982\u300CReduce your faith's value ... to give it\u300D\u91CC\u7684 it\uFF09\u3002</summary>
     public const string SlotCounter = "$counter";
     public const string SlotItem = "$item";

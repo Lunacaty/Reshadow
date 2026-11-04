@@ -198,6 +198,37 @@ public sealed class TargetParser
         string cardName = "";
         SortKey sort = SortKey.None;
         bool desc = false;
+
+        // "the first/second/Nth selected follower" 出现在**宾语首位**时，
+        // 后置定语循环根本没机会看到它（那个循环在名词之后才跑）。
+        // 必须在入口处先认一次。
+        // 同时支持直接写 $choose2 / choose2 的形态。
+        {
+            int preSave = cur.Position;
+            int preOrd = 0;
+            if (cur.MatchWord("the")) preOrd = ParseOrdinalWord(cur);
+            if (preOrd > 0 && cur.MatchWord("selected"))
+            {
+                cur.TryMatchAnyWord("follower", "card", "amulet", "target");
+                return new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Slot,
+                    Slot = TargetSpec.SlotChoose(preOrd),
+                    Mode = SelectMode.All,
+                };
+            }
+            cur.Seek(preSave);
+            if (TargetSpec.TryParseChooseSlotIndex(cur.Current.Text, out int preIdx))
+            {
+                cur.Advance();
+                return new TargetSpec
+                {
+                    SourceKind = TargetSourceKind.Slot,
+                    Slot = TargetSpec.SlotChoose(preIdx),
+                    Mode = SelectMode.All,
+                };
+            }
+        }
         bool distinct = false;
         NumExpr count = NumExpr.Const(1);
         bool countSet = false;
@@ -1103,6 +1134,67 @@ public sealed class TargetParser
             // 不是「某槽位非空」。
             // IsPreviousExpr 在 VmEval 里只检查槽位是否非空，
             // 拿它当「不是同一张卡」用会让每个候选都通过（10503210 大游戏世界）。
+            // "the first/1st/second/2nd/... selected follower" → $choose{K}
+            //   "Deal damage to the first selected follower equal to
+            //    the second selected follower's attack"
+            {
+                int ordSave = cur.Position;
+                int ord = 0;
+                if (cur.MatchWord("the"))
+                {
+                    ord = ParseOrdinalWord(cur);
+                    if (ord > 0 && cur.MatchWord("selected"))
+                    {
+                        cur.TryMatchAnyWord("follower", "card", "amulet", "target");
+                        slot = TargetSpec.SlotChoose(ord);
+                        matched = true;
+                        continue;
+                    }
+                }
+                else if (TargetSpec.TryParseChooseSlotIndex(cur.Current.Text, out int ci))
+                {
+                    cur.Advance();
+                    slot = TargetSpec.SlotChoose(ci);
+                    matched = true;
+                    continue;
+                }
+                cur.Seek(ordSave);
+            }
+
+            // "other than the first selected follower" / "other than $choose1"
+            if (cur.Current.IsWord("other") && cur.Peek().IsWord("than"))
+            {
+                int otSave = cur.Position;
+                cur.Advance(); cur.Advance();
+                if (TargetSpec.TryParseChooseSlotIndex(cur.Current.Text, out int cIdx))
+                {
+                    cur.Advance();
+                    wheres.Add(new NotSameEntityExpr
+                    {
+                        ExcludeSlot = TargetSpec.SlotChoose(cIdx),
+                        Of = TargetSpec.Item,
+                    });
+                    matched = true;
+                    continue;
+                }
+                if (cur.MatchWord("the"))
+                {
+                    int ord2 = ParseOrdinalWord(cur);
+                    if (ord2 > 0 && cur.MatchWord("selected"))
+                    {
+                        cur.TryMatchAnyWord("follower", "card", "amulet", "target");
+                        wheres.Add(new NotSameEntityExpr
+                        {
+                            ExcludeSlot = TargetSpec.SlotChoose(ord2),
+                            Of = TargetSpec.Item,
+                        });
+                        matched = true;
+                        continue;
+                    }
+                }
+                cur.Seek(otSave);
+            }
+
             if (cur.MatchPhrase("other", "than", "it"))
             {
                 // 排除哪一格由执行上下文决定，编译期不能定死：
@@ -1369,4 +1461,27 @@ public sealed class TargetParser
             History = history,
         };
     }
+
+    /// <summary>解析序数词：first/1st/second/2nd/…/ninth/9th；认不出返回 0。</summary>
+    private static int ParseOrdinalWord(TokenCursor cur)
+    {
+        if (cur.IsAtEnd) return 0;
+        string t = (cur.Current.Text ?? "").ToLowerInvariant();
+        int n = t switch
+        {
+            "first" or "1st" => 1,
+            "second" or "2nd" => 2,
+            "third" or "3rd" => 3,
+            "fourth" or "4th" => 4,
+            "fifth" or "5th" => 5,
+            "sixth" or "6th" => 6,
+            "seventh" or "7th" => 7,
+            "eighth" or "8th" => 8,
+            "ninth" or "9th" => 9,
+            _ => 0,
+        };
+        if (n > 0) cur.Advance();
+        return n;
+    }
+
 }

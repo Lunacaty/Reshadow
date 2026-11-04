@@ -85,6 +85,38 @@ public sealed class VmScope
         Registers[slot] = refs?.ToList() ?? new List<EntityRef>();
     }
 
+    /// <summary>本能力域内已执行过多少次 Select（供 $choose1..$chooseN 分槽）。</summary>
+    public int SelectSequence { get; set; }
+
+    /// <summary>
+    /// 登记一次 Select 的结果：
+    ///   · 写入序数槽位 $choose{K}（K = 本次是第几次 Select）
+    ///   · 同时照常写入/追加 outSlot（通常是 $selected）
+    ///
+    /// 双写是刻意的：
+    ///   "Select an allied and enemy follower and destroy them" 的 them 需要
+    ///   $selected 里同时有两个；而 "the second selected follower's attack"
+    ///   需要 $choose2 单独指第二张。
+    /// </summary>
+    public void BindSelection(string outSlot, IEnumerable<EntityRef> refs, bool append)
+    {
+        var list = refs?.ToList() ?? new List<EntityRef>();
+        int idx = ++SelectSequence;
+        Registers[Ast.TargetSpec.SlotChoose(idx)] = list;
+
+        string slot = string.IsNullOrEmpty(outSlot) ? Ast.TargetSpec.SlotSelected : outSlot;
+        if (append)
+        {
+            var merged = Read(slot).ToList();
+            merged.AddRange(list);
+            Registers[slot] = merged;
+        }
+        else
+        {
+            Registers[slot] = list;
+        }
+    }
+
     public IReadOnlyList<EntityRef> Read(string slot)
         => slot != null && Registers.TryGetValue(slot, out var list)
            ? list

@@ -476,7 +476,9 @@ public static class AstEnglishPrinter
                 ? "other than $trigger"
                 : nse.ExcludeSlot == TargetSpec.SlotOpposing
                     ? "other than $opposing"
-                    : "other than itself",
+                    : TargetSpec.TryParseChooseSlotIndex(nse.ExcludeSlot, out _)
+                        ? "other than " + nse.ExcludeSlot
+                        : "other than itself",
             IsPreviousExpr ip => "is selected",
             // 牌库规则条件。缺这条会落进默认分支，打印成裸的 "deckruleexpr" ——
             // Rule 与 Owner 两个字段全部丢失，审计时只能靠反射挖对象值才能判断

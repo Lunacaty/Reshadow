@@ -1,0 +1,46 @@
+feat(157 §3): 多目标序数槽位 $choose1..$chooseN
+
+支持影之诗 1 代与 DIY 的多目标独立交互：
+  选择 1 个敌方随从和 1 个我方随从，
+  对第 1 个所选随从造成等同于第 2 个所选随从攻击力的伤害。
+
+【TargetSpec】
+  SlotChoosePrefix / SlotChoose(i) / ChooseSlot(i) / TryParseChooseSlotIndex(text)。
+
+【VmScope】
+  SelectSequence 自增序号 + BindSelection(outSlot, refs, append)：
+  每执行一条 Select 就写 $choose{K}，同时照常写/追加 $selected。
+  双写是刻意的 —— them 需要 $selected 合集，序数指代需要 $chooseK 单独一张。
+  向下兼容：现有 982 张卡只读 $selected，行为完全不变。
+
+【CardVm】
+  DoSelect 与 SubmitChoice 全部改走 BindSelection（原先两处各写一遍覆盖/追加逻辑）。
+
+【TargetParser】
+  · 入口处识别 "the first/second/Nth selected follower" 与裸 $choose2 ——
+    宾语首位出现时必须前置识别，后置定语循环看不到它。
+  · 后置循环里补 "other than the Nth selected ..." → NotSameEntityExpr(ExcludeSlot=$chooseK)。
+  · 新增 ParseOrdinalWord（first..ninth / 1st..9th）。
+
+【ActionParser】
+  · ParseSelect 的尾随 and 分支：and 后面是另一个目标短语时拆成第二条 Select
+    （AppendToSlot=true），不再是动作动词。
+  · ParseDeal 支持 "Deal damage to <A> equal to <B 的属性>" 行内句式。
+  · 新增 StatExprResolver 委托，由 EnglishCompiler 注入 BuildVariableExpr。
+
+【EnglishCompiler】
+  BuildVariableExpr 开头识别 "the Nth selected follower's attack/defense/cost"。
+  注意分词："follower's" 是一个整体 token，不能按 follower + 's 两段匹配。
+
+【AstEnglishPrinter】
+  NotSameEntityExpr 对 $chooseK 印出原槽位名，不再一律印 other than itself。
+
+实测：
+  Select an enemy follower and an allied follower.
+  Deal damage to the first selected follower equal to the second selected follower's attack.
+    -> select opponent:board Choose(1) where is Follower
+       select self:board Choose(1) where is Follower
+       deal prop:Attack($choose2) damage to $choose1
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED / 12 门禁全绿（零回归）
