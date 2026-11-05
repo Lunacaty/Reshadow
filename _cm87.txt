@@ -1,0 +1,26 @@
+feat(165): 支持 Keyword: 前缀，DIY 英文模板可用逗号声明多关键词
+
+## 之前不支持
+  Keyword: Ward            -> 报错「无法解析的动作」
+  Ward, Storm, Rush        -> 报错且关键词全丢（逗号并列被当成动作）
+  只有裸单词逐行写才行。
+
+## 现在支持
+  Keyword: Ward            -> kws=[ward]
+  Keyword: Ward, Storm     -> kws=[ward,storm]
+  Keyword: Ward and Storm  -> kws=[ward,storm]
+  Keywords: Ward, Storm    -> kws=[ward,storm]（复数与 Key 亦可）
+
+实现：在裸关键词循环之前加一段 Keyword: 前缀处理，
+消费冒号后的关键词列表（逗号或 and 分隔），写入 innateSink。
+若不消费则回退游标（Seek），交给后续逻辑，避免误吃。
+
+## 与裸关键词的关系
+  两种写法结果相同，都写进 CardDef.InnateKeywords，不生成能力。
+  裸关键词形式继续支持，不影响既有卡包。
+
+验证：5 个用例全部通过；13 个门禁无新增失败。
+
+注：战斗 UI 21/31、逐卡矩阵 29/32、VM 49/50、DIY 7/8 是上一轮
+把 CompileFromScript 改成 PyAST 后，仍在传旧脚本语法的测试造成的，
+与本次改动无关。

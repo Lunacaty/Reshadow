@@ -964,6 +964,47 @@ public sealed class EnglishCompiler
                 break;
             }
 
+
+            // "Keyword: Ward, Storm, Rush" —— DIY 模板专用的关键词声明行。
+            //
+            // 与裸关键词的区别：这里带显式前缀与逗号分隔，一个段里可以声明多个。
+            // 裸关键词形式（Ward 单独一行）继续走下面的循环；两者结果相同，
+            // 都写进 innateSink（CardDef.InnateKeywords），不生成能力。
+            if (c.Current.IsAnyWord("keyword", "keywords", "key"))
+            {
+                int saveKw = c.Position;
+                c.Advance();
+                if (c.TryMatch(TokKind.Colon))
+                {
+                    bool consumedAny = false;
+                    while (!c.IsAtEnd)
+                    {
+                        if (c.Current.Kind == TokKind.Keyword)
+                        {
+                            var kwSym2 = _lex.Keyword(c.Current.Text);
+                            if (kwSym2.IsValid && innateSink != null && !innateSink.Contains(kwSym2))
+                                innateSink.Add(kwSym2);
+                            c.Advance();
+                            consumedAny = true;
+                        }
+                        else
+                        {
+                            string raw = c.Current.Text;
+                            var kwSym3 = _lex.Keyword(raw);
+                            if (kwSym3.IsValid && innateSink != null && !innateSink.Contains(kwSym3))
+                                innateSink.Add(kwSym3);
+                            c.Advance();
+                            consumedAny = true;
+                        }
+                        if (c.TryMatch(TokKind.Comma)) continue;
+                        if (c.MatchWord("and")) continue;
+                        break;
+                    }
+                    if (consumedAny) continue;
+                }
+                c.Seek(saveKw);
+            }
+
             // 句首裸关键词（Ward / Rush / Storm …）：每个词生成一个独立常驻能力
             while (c.Current.Kind == TokKind.Keyword)
             {
