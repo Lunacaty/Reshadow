@@ -185,6 +185,74 @@ public static partial class Regress
             Check("pyast-3 DIY CompileFromCanonicalAst ↔ ExportCanonicalAst 往返", diyOk, diyDetail);
         }
 
+
+        // ---- 4. 手写 DSL 的 6 类高危分支（206 号验收报告）----
+        // 这些分支官方卡池走不到，只有人类手写 PyAST 才会踩。
+        // 每条都曾经会静默退化（代价变 UsePp / 随机生成变发现 / 条件消失），
+        // 而卡面文字完全看不出，所以必须逐个断言。
+        {
+            var caseParser = new AstCanonicalParser(schema, lex);
+
+            bool CostKindOf(string dsl, out CostKind k)
+            {
+                caseParser.Errors.Clear();
+                var abs = caseParser.ParseAbilities(dsl);
+                k = CostKind.None;
+                var c0 = abs?.SelectMany(a => a.Costs ?? Array.Empty<CostSpec>()).FirstOrDefault();
+                if (c0 != null) k = c0.Kind;
+                return caseParser.Errors.Count == 0 && c0 != null;
+            }
+
+            bool necroOk = CostKindOf("fanfare [necromancy(6)]:\n    draw 1", out var k1) && k1 == CostKind.Necromance;
+            bool comboOk = CostKindOf("fanfare [combo(3)]:\n    draw 1", out var k2) && k2 == CostKind.TurnPlayCount;
+            bool rallyOk = CostKindOf("fanfare [rally(10)]:\n    draw 1", out var k3) && k3 == CostKind.MatchPlayCount;
+            Check("pyast-4 代价枚举：necromancy / combo / rally 不退化成 UsePp",
+                  necroOk && comboOk && rallyOk,
+                  "necro=" + k1 + " combo=" + k2 + " rally=" + k3);
+
+            // counter ... on <target> 后跟 = / fill
+            caseParser.Errors.Clear();
+            var setAbs = caseParser.ParseAbilities("counter countdown on $self = 4");
+            var setNode = setAbs?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                .OfType<ModifyCounterNode>().FirstOrDefault();
+            bool setOk = caseParser.Errors.Count == 0 && setNode != null && setNode.Op == CounterOp.Set;
+
+            // pool_spawn 必须是 Random，discover 必须是 Choose
+            caseParser.Errors.Clear();
+            var poolAbs = caseParser.ParseAbilities("pool_spawn 1 from self:cardpool");
+            var poolNode = poolAbs?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                .OfType<SpawnCardNode>().FirstOrDefault();
+            bool poolOk = poolNode?.CopyFrom != null && poolNode.CopyFrom.Mode == SelectMode.Random;
+
+            caseParser.Errors.Clear();
+            var discAbs = caseParser.ParseAbilities("discover 1 from self:cardpool");
+            var discNode = discAbs?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                .OfType<SpawnCardNode>().FirstOrDefault();
+            bool discOk = discNode?.CopyFrom != null && discNode.CopyFrom.Mode == SelectMode.Choose;
+
+            // spawn_copy 的 owner / +departed
+            caseParser.Errors.Clear();
+            var copyAbs = caseParser.ParseAbilities("spawn_copy 2 of $self to Board [owner=Opponent] +departed");
+            var copyNode = copyAbs?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                .OfType<SpawnCardNode>().FirstOrDefault();
+            bool copyOk = caseParser.Errors.Count == 0 && copyNode != null
+                          && copyNode.ToOwner == ZoneScope.Opponent && copyNode.AddDepartedTrait;
+
+            Check("pyast-5 counter= / pool_spawn / discover / spawn_copy 后缀",
+                  setOk && poolOk && discOk && copyOk,
+                  "set=" + setOk + " poolRandom=" + poolOk + " discChoose=" + discOk + " copyOwner=" + copyOk);
+
+            // @if 套在任意节点上（旧实现只覆盖 2 种）
+            caseParser.Errors.Clear();
+            var ifAbs = caseParser.ParseAbilities("@if is Follower:\n    buff $self +1/+1");
+            var cond = ifAbs?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                .OfType<ConditionalNode>().FirstOrDefault();
+            bool ifOk = caseParser.Errors.Count == 0 && cond != null
+                        && cond.Then != null && cond.Then.Count == 1;
+            Check("pyast-6 @if 可套在任意节点上（WithIf 统一包 ConditionalNode）", ifOk,
+                  ifOk ? "ok" : "未生成 ConditionalNode");
+        }
+
         log.AppendLine();
         log.AppendLine("=== PyAST 门禁 " + pass + "/" + total + " ===");
         return log.ToString();

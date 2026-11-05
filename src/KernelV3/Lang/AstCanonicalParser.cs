@@ -50,7 +50,11 @@ public sealed class AstCanonicalParser
             // 效果块允许只写动作、不写触发头（DIY 编辑器的 ③ 端就是这种形态）。
             // 判据：当前标识符不是触发头 —— 那就把后续语句整包成一条
             // PassiveAura 能力，而不是报「未知的触发头」。
-            if (Current.Kind == PyTokKind.Ident && !IsTriggerHeaderWord(Current.Text))
+            // @if 开头的行同样是「裸动作」形态（节点级前置条件），
+            // 只判 Ident 会让它以 @ 掉进 ParseAbility，报「未知的触发头」。
+            bool isBareAction = Current.Kind == PyTokKind.At
+                             || (Current.Kind == PyTokKind.Ident && !IsTriggerHeaderWord(Current.Text));
+            if (isBareAction)
             {
                 var body = new List<EffectNode>();
                 while (!IsAtEnd && Current.Kind != PyTokKind.Dedent && Current.Kind != PyTokKind.Eof)

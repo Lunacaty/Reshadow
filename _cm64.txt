@@ -1,0 +1,35 @@
+fix(206 验收复查): 6 项全部确认 + 修掉 @if 漏判 + 固化为门禁
+
+【本轮复查方式】
+  不只读代码，而是做了**反向验证**：临时把 necromancy 映射还原成旧版，
+  跑测试确认 5 张唤灵卡全部退化成 UsePp（Necromance -> UsePp），
+  再恢复修复确认全部回到 Necromance。这证明测试能真正抓到该缺陷，
+  而不是「改了代码 + 测试恰好通过」。
+
+【6 项复查结论】
+  1. BuildCost necromancy/combo/rally  ✅ 已修，反向验证有效
+  2. CardPool py_ast 分支            ✅ 已修（GlobalCatalog:244 / CardPool:527）
+  3. ParseRawCounter =/fill          ✅ 已修（opE 三态）
+  4. pool_spawn vs discover          ✅ 已修（isChoose 参数）
+  5. spawn_copy [owner]/+departed    ✅ 已修
+  6. WithIf 全节点                   ✅ 已修（统一包 ConditionalNode）
+
+【复查中新发现的第 7 个问题】
+  @if 开头的效果块根本走不到 ParseStatement ——
+  ParseAbilities 的「裸动作」判据只看了 PyTokKind.Ident，
+  而 @ 是 PyTokKind.At，于是整行掉进 ParseAbility，报「未知的触发头」。
+  WithIf 虽然改对了，但根本没人调用它。
+  已修：isBareAction 同时认 At 与「非触发头的 Ident」。
+
+【固化进永久门禁】
+  Regress.PyAst 从 3 条断言扩到 6 条，新增：
+    pyast-4  代价枚举：necromancy / combo / rally 不退化成 UsePp
+    pyast-5  counter= / pool_spawn / discover / spawn_copy 后缀
+    pyast-6  @if 可套在任意节点上
+  这三类是「官方卡池走不到、人类手写才会踩」的分支，
+  一旦以后被改坏，门禁会立刻报警。
+
+验证：PyAST 门禁 6/6，13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED
