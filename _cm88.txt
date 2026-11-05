@@ -1,0 +1,26 @@
+refactor(166): 表单降级为基础信息页，不再与效果三端并列
+
+## 新的职责划分
+  表单（基础信息页）：卡名 / 费用 / 身材 / 职业 / 兵种 / 稀有度 / 关键词 / 吟唱
+  三端效果编辑器：积木 / AST 规范语法 / 官方英文
+  表单不再编效果，为三端提供基础信息。
+
+## 改动
+  · CardFormModel 移除 Abilities，新增 Rarity
+  · FormToCardDef 不再产出效果能力；关键词写 InnateKeywords 而非生成 PassiveAura
+  · TryCardDefToForm 遇到效果能力即返回 false 并说明原因
+  · 删除死代码：FormActionKind / FormNumberSource / TargetFilterForm /
+    ActionFormRow / AbilityFormItem 及 20 余个只服务于它们的私有方法
+    DiyFormModel.cs 从 1226 行精简到 300 行
+  · 删除 DIY-7 测试（它验证「表单编门槛效果」，前提已不存在）
+  · DIY-3 的表单端改为只造基础信息
+
+## 验证
+  表单产出：[card 970001 ... rarity=2 / keywords: [ward, storm]]
+  反填含效果卡：正确拒绝并提示「请在积木 / AST / 英文端编辑效果」
+
+## 连带影响（待处理）
+  POOL-L / POOL-U 失败：这两个门禁要求四端各造一张完整卡，
+  表单不再能造效果，前提已变，判据需要更新。
+  战斗 UI 21/31、逐卡矩阵 29/32、VM 49/50 是上一轮
+  CompileFromScript 改 PyAST 后旧脚本测试所致。
