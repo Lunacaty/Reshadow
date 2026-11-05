@@ -299,6 +299,41 @@ public static class AstCanonicalPrinter
     /// 多档爆能一叠就是往右缩进的「箭头型反模式」。
     /// 这里把它压平成同级的 elif，解析端再折回嵌套结构。
     /// </summary>
+
+    /// <summary>
+    /// 把「检查资源足够 + 立即扣除」的两行样板识别成 pay 块：
+    ///
+    ///   if ctr:faith >= 5:          pay faith(5):
+    ///       counter faith by -5         discover 1<Amulet> ...
+    ///       <后续动作>
+    ///
+    /// 判据严格：无 else、条件是 ctr:X >= N、Then[0] 恰好是 counter X by -N。
+    /// 任何一条不满足就原样打印 —— 美化不能改变语义。
+    /// </summary>
+    private static bool TryPrintPayBlock(ConditionalNode cn, StringBuilder sb, int indent)
+    {
+        if (cn.Else != null && cn.Else.Count > 0) return false;
+        if (cn.Then == null || cn.Then.Count < 2) return false;
+        if (cn.Condition is not CompareExpr cmp || cmp.Op != CompareOp.Ge) return false;
+        if (cmp.Left is not NumExpr { Op: NumOp.Counter } l) return false;
+        if (cmp.Right is not NumExpr { Op: NumOp.Const } n) return false;
+        if (cn.Then[0] is not ModifyCounterNode ctr) return false;
+        if (ctr.Op != CounterOp.Add || ctr.Target != null) return false;
+        if (ctr.Delta is not NumExpr { Op: NumOp.Const } d) return false;
+        if (d.Value != -n.Value) return false;
+        if ((ctr.Counter.Name ?? "") != (l.Counter.Name ?? "")) return false;
+
+        // 已有资源动词的计数器（faith / pp / shadow ...）由 FormatModifyCounter
+        // 单独美化，这里不再包一层，否则会打出 pay faith(5): spend_faith 5 的双重糖。
+        string nm0 = l.Counter.Name ?? "";
+        if (nm0 is "pp" or "max_pp" or "ep" or "sep" or "earth_sigil"
+            or "clues" or "shadow" or "faith") return false;
+
+        sb.Append(Pad(indent)).Append("pay ").Append(l.Counter.Name)
+          .Append('(').Append(n.Value).Append("):");
+        PrintBlockBody(cn.Then.Skip(1).ToList(), sb, indent + 1);
+        return true;
+    }
     private static void PrintIfChain(ConditionalNode cn, StringBuilder sb, int indent, bool isElif)
     {
         string p = Pad(indent);
@@ -430,6 +465,9 @@ public static class AstCanonicalPrinter
                 break;
 
             case ConditionalNode cn:
+                // 「检查足够并消耗」的样板：if ctr:X >= N: counter X by -N ...
+                // 人类漏写那个 if 就会 0 资源白嫖，所以提炼成 pay X(N): 块。
+                if (TryPrintPayBlock(cn, sb, indent)) break;
                 PrintIfChain(cn, sb, indent, isElif: false);
                 break;
 
@@ -602,6 +640,28 @@ public static class AstCanonicalPrinter
             string verb = choose ? (chaos ? "chaos_discover" : "discover") : "pool_spawn";
             string offer = choose && sp.OfferCount != 3 ? " offer=" + sp.OfferCount : "";
             string toZone = sp.ToZone != ZoneRef.Hand ? " to=" + sp.ToZone : "";
+
+            // 动词已经决定了卡池（discover=当前卡池 / chaos_discover=全宇宙），
+            // 数量也已经写在动词后面，再让人类重复写 from self:cardpool Choose(1) 纯属噪音。
+            // 只在「不是默认形态」时才补 from 子句。
+            var f = sp.CopyFrom;
+            bool defaultPool =
+                f.SourceKind == TargetSourceKind.Zone
+                && f.Zone == (chaos ? ZoneRef.GlobalPool : ZoneRef.CardPool)
+                && f.Mode == SelectMode.Choose
+                && f.Owner == ZoneScope.Self
+                && f.Sort == SortKey.None && f.TopN == 0
+                && !f.DistinctByName && !f.DuplicatesOnly && !f.IncludeLeader;
+            if (choose && defaultPool)
+            {
+                // 卡种与过滤条件用泛型标签内联：discover 1<Amulet> where ...
+                // 卡种提到尖括号里，其余过滤条件留在 where。
+                var remW = ExtractInlineTargetModifiers(f.Where, true, out var nKind, out _);
+                string kindTag = nKind.HasValue ? "<" + nKind.Value + ">" : "";
+                string tail = (remW != null && remW is not ConstBoolExpr) ? " where " + PrintB(remW) : "";
+                return verb + " " + PrintN(sp.Count) + kindTag + offer + toZone + ownerSuffix + slotSuffix + tail;
+            }
+
             return verb + " " + PrintN(sp.Count) + " from "
                  + PrintT(sp.CopyFrom) + offer + toZone + ownerSuffix + slotSuffix;
         }
@@ -665,6 +725,30 @@ public static class AstCanonicalPrinter
         string owner = ctr.Owner != ZoneScope.Self ? " [owner=" + ctr.Owner + "]" : "";
         if (name == "spellboost" && ctr.Op == CounterOp.Add)
             return "spellboost self by " + delta + owner;
+
+        // 内置资源给一等公民动词，省掉千篇一律的 counter xxx by N。
+        // 只在 Add 且增量为纯常量时启用；动态表达式与 Set/Fill 仍走 counter。
+        if (ctr.Op == CounterOp.Add && ctr.Owner == ZoneScope.Self && delta != null)
+        {
+            bool neg = delta.StartsWith("-");
+            string mag = neg ? delta.Substring(1) : delta;
+            bool isConst = mag.Length > 0 && mag.All(char.IsDigit);
+            if (isConst)
+            {
+                switch (name)
+                {
+                    case "pp": return neg ? "spend_pp " + mag : "recover_pp " + mag;
+                    case "max_pp": return "gain_max_pp " + mag;
+                    case "ep": return "recover_ep " + mag;
+                    case "sep": return "recover_sep " + mag;
+                    case "earth_sigil": return "gain_earth_sigil " + mag;
+                    case "clues": return "gain_clues " + mag;
+                    case "shadow": return "gain_shadows " + mag;
+                    case "faith": return neg ? "spend_faith " + mag : "gain_faith " + mag;
+                }
+            }
+        }
+
         return "counter " + name + opWord + delta + owner;
     }
 

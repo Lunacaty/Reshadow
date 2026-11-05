@@ -693,6 +693,16 @@ public sealed class AstCanonicalParser
             case "grant_keyword": return ParseGrantKeyword();
             case "remove_keyword": return ParseRemoveKeyword();
             case "silence": return new ModifyKeywordNode { Target = ParseTarget(), Op = KeywordOp.SilenceAll };
+            case "recover_pp": return MakeCounter("pp", 1);
+            case "spend_pp": return MakeCounter("pp", -1);
+            case "gain_max_pp": return MakeCounter("max_pp", 1);
+            case "recover_ep": return MakeCounter("ep", 1);
+            case "recover_sep": return MakeCounter("sep", 1);
+            case "gain_earth_sigil": return MakeCounter("earth_sigil", 1);
+            case "gain_clues": return MakeCounter("clues", 1);
+            case "gain_shadows": return MakeCounter("shadow", 1);
+            case "gain_faith": return MakeCounter("faith", 1);
+            case "spend_faith": return MakeCounter("faith", -1);
             case "modify_cost": return ParseModifyCost(CostModOp.Add);
             // reduce_cost / increase_cost：人类不必再记「减费要写负号」。
             case "reduce_cost": return ParseDirectionalCost(-1);
@@ -701,6 +711,7 @@ public sealed class AstCanonicalParser
             case "halve_cost": return ParseModifyCost(CostModOp.Halve);
             case "grant_ability": return ParseGrantAbility();
             case "grant_counter_ability": return ParseGrantCounterAbility();
+            case "pay": return ParsePayBlock();
             case "if": return ParseIfBlock();
             case "repeat": case "for_each": case "repeat_until": return ParseLoop(verb);
             case "modes": return ParseModes();
@@ -889,17 +900,37 @@ public sealed class AstCanonicalParser
     private SpawnCardNode ParseDiscover(bool chaos, bool isChoose = true)
     {
         var count = ParseNumExpr();
-        EatIdent("from");
-        var from = ParseTarget();
+
+        // 新语法：discover 1<Amulet> where ...（省略固定的 from self:cardpool）
+        // 旧语法：discover 1 from self:cardpool Choose(1) where ...
+        var from = TargetSpec.InZone(chaos ? ZoneRef.GlobalPool : ZoneRef.CardPool, ZoneScope.Self);
+        CardKind? inlineKind = null;
+        if (Match(PyTokKind.Lt))
+        {
+            string kStr = TakeIdent().ToLowerInvariant();
+            inlineKind = kStr == "spell" ? CardKind.Spell : kStr == "amulet" ? CardKind.Amulet : CardKind.Follower;
+            Match(PyTokKind.Gt);
+        }
+
+        if (Current.Kind == PyTokKind.Ident && Current.Text == "from")
+        {
+            Advance();
+            var parsed = ParseTarget();
+            if (parsed != null) from = parsed;
+        }
+
         int offer = 3;
         if (Current.Kind == PyTokKind.Ident && Current.Text == "offer") { Advance(); Match(PyTokKind.Assign); offer = TakeNumber(); }
         var toZone = ZoneRef.Hand;
         if (Current.Kind == PyTokKind.Ident && Current.Text == "to") { Advance(); Match(PyTokKind.Assign); toZone = ZoneRefOf(TakeIdent()); }
-        if (from == null) from = TargetSpec.InZone(ZoneRef.CardPool, ZoneScope.Self);
+
         from = WithZone(from, chaos ? ZoneRef.GlobalPool : ZoneRef.CardPool);
-        // pool_spawn 是「卡池随机生成」，不是「弹窗三选一」——
-        // 一律写 Choose 会把随机生成变成发现。
         from = WithMode(from, isChoose ? SelectMode.Choose : SelectMode.Random);
+
+        if (inlineKind.HasValue)
+            from = from.WithWhere(new HasKindExpr { Kind = inlineKind.Value, Of = TargetSpec.Item });
+        if (MatchIdent("where")) from = from.WithWhere(ParseBoolExpr());
+
         return new SpawnCardNode
         {
             SourceKind = CardSourceKind.PoolQuery, CopyFrom = from, OfferCount = offer,
@@ -921,6 +952,19 @@ public sealed class AstCanonicalParser
         return new SpawnCardNode
         {
             SourceKind = CardSourceKind.CardId, CardId = id, CardName = name, ToOwner = spawnOwner,
+            ToZone = toZone, Count = count, OutSlot = TryOutSlot(TargetSpec.SlotCreated),
+        };
+    }
+
+    private SpawnCardNode ParseRawSpawn()
+    {
+        var count = ParseNumExpr();
+        var id = ParseCardRef(out var name);
+        var toZone = ZoneRef.Board;
+        if (Current.Kind == PyTokKind.Ident && Current.Text == "to") { Advance(); toZone = ZoneRefOf(TakeIdent()); }
+        return new SpawnCardNode
+        {
+            SourceKind = CardSourceKind.CardId, CardId = id, CardName = name,
             ToZone = toZone, Count = count, OutSlot = TryOutSlot(TargetSpec.SlotCreated),
         };
     }
@@ -964,15 +1008,6 @@ public sealed class AstCanonicalParser
         var toZone = ZoneRefOf(TakeIdent());
         return new SpawnCardNode { SourceKind = CardSourceKind.CopyOfPrevious, Count = count, ToZone = toZone, OutSlot = TryOutSlot(TargetSpec.SlotCreated) };
     }
-
-    private SpawnCardNode ParseRawSpawn()
-    {
-        var count = ParseNumExpr();
-        var id = ParseCardRef(out var name);
-        var toZone = ZoneRef.Board;
-        if (Current.Kind == PyTokKind.Ident && Current.Text == "to") { Advance(); toZone = ZoneRefOf(TakeIdent()); }
-        return new SpawnCardNode { SourceKind = CardSourceKind.CardId, CardId = id, CardName = name, ToZone = toZone, Count = count, OutSlot = TryOutSlot(TargetSpec.SlotCreated) };
-    }
     private ModifyCounterNode ParseCounterSugar(string name)
     {
         // ParseTarget 会贪婪收集到行尾，把 "by 2" 一起吞掉。
@@ -994,6 +1029,24 @@ public sealed class AstCanonicalParser
         var amount = ParseNumExpr();
         var delta = sign < 0 ? (NumExpr)NumExpr.Sub(NumExpr.Const(0), amount) : amount;
         return new ModifyCounterNode { Counter = _schema.Counter("countdown"), Op = CounterOp.Add, Delta = delta, Target = target };
+    }
+
+
+    /// <summary>资源动词：gain_faith 1 / spend_pp 2 -> ModifyCounterNode(name, sign*N)。</summary>
+    private ModifyCounterNode MakeCounter(string counterName, int sign)
+    {
+        var mag = ParseNumExpr();
+        NumExpr val = sign < 0
+            ? (mag != null && mag.Op == NumOp.Const ? NumExpr.Const(-mag.Value) : NumExpr.Sub(NumExpr.Const(0), mag))
+            : mag;
+        var owner = ZoneScope.Self;
+        if (Current.Kind == PyTokKind.LBracket)
+        {
+            Advance();
+            if (MatchIdent("owner")) { Match(PyTokKind.Assign); owner = OwnerOf(TakeIdent()); }
+            Expect(PyTokKind.RBracket, "counter 属性缺少右方括号");
+        }
+        return new ModifyCounterNode { Counter = _schema.Counter(counterName), Op = CounterOp.Add, Delta = val, Owner = owner };
     }
 
     private ModifyCounterNode ParseRawCounter()
@@ -1175,6 +1228,45 @@ public sealed class AstCanonicalParser
         SkipNewlines();
         var granted = ParseGrantedAbility();
         return new GrantCounterAbilityNode { Counter = _schema.Counter(counter), Owner = owner, Granted = granted };
+    }
+
+
+    /// <summary>
+    /// 解析 pay X(N): 块 —— 「检查足够并消耗」的糖。
+    ///
+    /// 还原成的结构必须与打印端 TryPrintPayBlock 的判据完全一致：
+    ///   ConditionalNode { Condition = ctr:X >= N, Then = [counter X by -N, ...] }
+    /// 否则往返不守恒。
+    /// </summary>
+    private ConditionalNode ParsePayBlock()
+    {
+        Expect(PyTokKind.LParen, "pay 后缺少左括号");
+        string counterName = TakeIdent();
+        Expect(PyTokKind.RParen, "pay 计数器后缺少右括号");
+        int amount = TakeNumber();
+        Expect(PyTokKind.Colon, "pay 后缺少冒号");
+        SkipNewlines();
+
+        var body = ParseIndentedBlock();
+
+        var cond = new CompareExpr
+        {
+            Left = NumExpr.Ctr(_schema.Counter(counterName)),
+            Op = CompareOp.Ge,
+            Right = NumExpr.Const(amount),
+        };
+        var then = new List<EffectNode>
+        {
+            new ModifyCounterNode
+            {
+                Counter = _schema.Counter(counterName),
+                Op = CounterOp.Add,
+                Delta = NumExpr.Const(-amount),
+                Owner = ZoneScope.Self,
+            },
+        };
+        then.AddRange(body);
+        return new ConditionalNode { Condition = cond, Then = then, Else = Array.Empty<EffectNode>() };
     }
 
     private ConditionalNode ParseIfBlock()
