@@ -847,14 +847,14 @@ public sealed class ChineseCardPrinter
             // 范围三态：显式卡包 > 全卡包 > 当前卡池。
             // 有 HasPackExpr 时不再重复印「从当前卡池中」——那会自相矛盾。
             string packId = FindPackFilter(sp.CopyFrom?.Where);
-            bool chaos = sp.CopyFrom != null && sp.CopyFrom.Zone == ZoneRef.GlobalPool;
             bool choose = sp.CopyFrom != null && sp.CopyFrom.Mode == SelectMode.Choose;
 
             string from = !string.IsNullOrEmpty(packId)
                 ? "从【" + packId.Replace("|", "、") + "】卡包中"
-                : (chaos ? "从全部卡包中" : "从当前卡池中");
+                : "从当前卡池中";
 
-            string verb = choose ? (chaos ? "【混沌发现】" : "【发现】") : "随机选择";
+            // 混沌发现已废弃（运行时统一只查当前卡池），一律写作【发现】。
+            string verb = choose ? "【发现】" : "随机选择";
             string what = PrintPoolFilter(sp.CopyFrom);
 
             // X 选 Y：默认三选一时不啰嗦，自定义时才写出来。

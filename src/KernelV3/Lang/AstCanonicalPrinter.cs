@@ -656,9 +656,9 @@ public static class AstCanonicalPrinter
         // 3. 发现 / 混沌发现 / 池随机生成
         if (sp.SourceKind == CardSourceKind.PoolQuery && sp.CopyFrom != null)
         {
-            bool chaos = sp.CopyFrom.Zone == ZoneRef.GlobalPool;
             bool choose = sp.CopyFrom.Mode == SelectMode.Choose;
-            string verb = choose ? (chaos ? "chaos_discover" : "discover") : "pool_spawn";
+            // chaos 只影响 target 里记的 Zone，不影响动词 —— 运行时两者行为相同。
+            string verb = choose ? "discover" : "pool_spawn";
             string offer = choose && sp.OfferCount != 3 ? " offer=" + sp.OfferCount : "";
             string toZone = sp.ToZone != ZoneRef.Hand ? " to=" + sp.ToZone : "";
 
@@ -668,7 +668,8 @@ public static class AstCanonicalPrinter
             var f = sp.CopyFrom;
             bool defaultPool =
                 f.SourceKind == TargetSourceKind.Zone
-                && f.Zone == (chaos ? ZoneRef.GlobalPool : ZoneRef.CardPool)
+                // 混沌发现已废弃，卡池固定为当前卡池。
+                && f.Zone == ZoneRef.CardPool
                 && f.Mode == SelectMode.Choose
                 && f.Owner == ZoneScope.Self
                 && f.Sort == SortKey.None && f.TopN == 0

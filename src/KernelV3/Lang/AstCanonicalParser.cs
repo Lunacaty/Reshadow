@@ -706,7 +706,12 @@ public sealed class AstCanonicalParser
             case "reanimate": return ParseReanimate();
             case "gain_crest": return ParseGainCrest();
             case "discover": return ParseDiscover(false);
-            case "chaos_discover": return ParseDiscover(true);
+            // chaos_discover 已废弃：运行时从 126 轮起就放弃跨卡池发现，
+            // 无论 chaos 参数为何都只查当前卡池。留着这个动词会让玩家以为
+            // 「从全宇宙找卡」，实际行为与 discover 完全相同 —— 静默误导。
+            case "chaos_discover":
+                Error("chaos_discover 已废弃，请用 discover");
+                return ParseDiscover(false);
             case "pool_spawn": return ParseDiscover(false, isChoose: false);
             case "summon": return ParseNamedSpawn(ZoneRef.Board);
             case "add_to_hand": return ParseNamedSpawn(ZoneRef.Hand);
