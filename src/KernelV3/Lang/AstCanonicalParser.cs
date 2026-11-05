@@ -34,6 +34,17 @@ public sealed class AstCanonicalParser
     // ---------------------------------------------------------------- 入口
 
     /// <summary>解析一段能力块。</summary>
+    /// <summary>当前是否在 where 子句内部（决定省略括号时的默认主语）。</summary>
+    private int _whereDepth;
+
+    /// <summary>
+    /// 省略括号时的默认主语：where 内 -> $item（被筛的那张），where 外 -> $self（本卡）。
+    /// 打印器 OfSuffix 按同一规则隐藏括号，两边必须一致 —— 否则顶层
+    /// if is Evolved 读回来会从 $self 变成 $item，运行时恒为 false。
+    /// </summary>
+    private TargetSpec DefaultSubject => _whereDepth > 0 ? TargetSpec.Item : TargetSpec.Self;
+
+
     public List<AbilityDef> ParseAbilities(string dslText)
     {
         _tokens = PyAstLexer.Tokenize(dslText);
@@ -104,6 +115,27 @@ public sealed class AstCanonicalParser
     }
 
     /// <summary>该词是不是触发头（用于区分「能力」与「裸动作效果块」）。</summary>
+
+    /// <summary>把子卡段（crest 等）的定义回填到主卡里的 SpawnCardNode。</summary>
+    private static void BindSubDefToSpawns(IEnumerable<AbilityDef> abilities, Ast.CardDef subDef, bool isCrest)
+    {
+        if (abilities == null || subDef == null) return;
+        void Walk(IEnumerable<EffectNode> nodes)
+        {
+            if (nodes == null) return;
+            foreach (var n in nodes)
+            {
+                if (n == null) continue;
+                if (n is SpawnCardNode sp && sp.IsCrest == isCrest && sp.CrestDef == null)
+                    sp.CrestDef = subDef;
+                else if (n is ConditionalNode c) { Walk(c.Then); Walk(c.Else); }
+                else if (n is LoopNode l) Walk(l.Body);
+                else if (n is BranchModeNode b && b.Options != null)
+                    foreach (var o in b.Options) Walk(o);
+            }
+        }
+        foreach (var a in abilities) Walk(a?.Body);
+    }
     private static bool IsTriggerHeaderWord(string w) => w is
         "fanfare" or "on_play" or "last_words" or "on_destroy" or "evolve" or "on_evolve"
         or "super_evolve" or "on_super_evolve" or "strike" or "clash" or "engage" or "aura"
@@ -305,6 +337,8 @@ public sealed class AstCanonicalParser
             }
         }
 
+        // 子卡段解析完成后回填到主卡的 gain_crest 节点。
+        BindSubDefToSpawns(abilities, crestDef, true);
         return new Ast.CardDef
         {
             CardId = cardId,
@@ -319,6 +353,9 @@ public sealed class AstCanonicalParser
             Abilities = abilities,
             HasFuse = fuseSet, FuseMaterialFilter = fuseFilter, DeckModifiers = deckMods,
             InnateCounters = innateCounters,
+            // 子卡段（crest / faith / accel / cryst）解析出来后，
+            // 必须回填到主卡里对应的 gain_crest 节点 —— 否则读回来 CrestDef 是 null，
+            // 运行期只能按名字造空壳纹章（拿得到但没有能力）。
             CrestDef = crestDef, FaithDef = faithDef,
             AccelerateDef = accelDef, CrystallizeDef = crystDef,
             IsToken = attrs.ContainsKey("token"), Rarity = rarity,
@@ -777,10 +814,18 @@ public sealed class AstCanonicalParser
     ///   2. 补齐 22 种节点的 if 分支是重复劳动，漏一种就静默失效；
     ///   3. 已经有 If 的节点再包一层也不会出错。
     /// </summary>
+    /// <summary>
+    /// 给节点挂 @if 条件。直接写 n.If 而不是包一层 ConditionalNode ——
+    /// 后者会把节点类型从「带条件的动作」变成「条件块」，往返回来打印成
+    /// if 而非 @if，AST 结构不同构。已有条件时用 And 合并。
+    /// </summary>
     private static EffectNode WithIf(EffectNode n, BoolExpr cond)
     {
         if (n == null) return null;
-        return new ConditionalNode { Condition = cond, Then = new[] { n } };
+        n.If = n.If == null || n.If is ConstBoolExpr { Value: true }
+            ? cond
+            : BoolExpr.And(n.If, cond);
+        return n;
     }
     // ---------------------------------------------------------------- 具体语句
 
@@ -857,7 +902,9 @@ public sealed class AstCanonicalParser
             name = TakeString();
             if (Current.Kind == PyTokKind.Ident && Current.Text == "id")
             { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
-            if (id <= 0 && _lex != null) _lex.TryGetCardId(name, out id);
+            // 不按卡名反查 Id：打印端在 CardId==0 时才打引号卡名，
+            // 这里若把名字查成 Id，重打印就变成 #123，两边不对称、往返不守恒。
+            // 运行期按名查找由 CardVm 自己处理。
         }
         else if (Current.Kind == PyTokKind.Ident && Current.Text == "id")
         { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
@@ -928,8 +975,8 @@ public sealed class AstCanonicalParser
         from = WithMode(from, isChoose ? SelectMode.Choose : SelectMode.Random);
 
         if (inlineKind.HasValue)
-            from = from.WithWhere(new HasKindExpr { Kind = inlineKind.Value, Of = TargetSpec.Item });
-        if (MatchIdent("where")) from = from.WithWhere(ParseBoolExpr());
+            from = from.WithWhere(new HasKindExpr { Kind = inlineKind.Value, Of = DefaultSubject });
+        if (MatchIdent("where")) { _whereDepth++; try { from = from.WithWhere(ParseBoolExpr()); } finally { _whereDepth--; } }
 
         return new SpawnCardNode
         {
@@ -943,16 +990,25 @@ public sealed class AstCanonicalParser
         var count = ParseNumExpr();
         var id = ParseCardRef(out var name);
         var spawnOwner = ZoneScope.Self;
-        if (Current.Kind == PyTokKind.LBracket)
+        bool dep = false;
+        // [owner=...] 与 +departed 都可能出现，顺序不定 —— 循环消费到没有为止。
+        while (!IsAtEnd)
         {
-            Advance();
-            if (MatchIdent("owner")) { Match(PyTokKind.Assign); spawnOwner = OwnerOf(TakeIdent()); }
-            Expect(PyTokKind.RBracket, "spawn 属性缺少右方括号");
+            if (Current.Kind == PyTokKind.LBracket)
+            {
+                Advance();
+                if (MatchIdent("owner")) { Match(PyTokKind.Assign); spawnOwner = OwnerOf(TakeIdent()); }
+                Expect(PyTokKind.RBracket, "spawn 属性缺少右方括号");
+                continue;
+            }
+            if (Current.Kind == PyTokKind.Plus && PeekText(1) == "departed") { Advance(); Advance(); dep = true; continue; }
+            break;
         }
         return new SpawnCardNode
         {
             SourceKind = CardSourceKind.CardId, CardId = id, CardName = name, ToOwner = spawnOwner,
-            ToZone = toZone, Count = count, OutSlot = TryOutSlot(TargetSpec.SlotCreated),
+            ToZone = toZone, Count = count, AddDepartedTrait = dep,
+            OutSlot = TryOutSlot(TargetSpec.SlotCreated),
         };
     }
 
@@ -962,10 +1018,25 @@ public sealed class AstCanonicalParser
         var id = ParseCardRef(out var name);
         var toZone = ZoneRef.Board;
         if (Current.Kind == PyTokKind.Ident && Current.Text == "to") { Advance(); toZone = ZoneRefOf(TakeIdent()); }
+        var rawOwner = ZoneScope.Self;
+        bool rawDep = false;
+        while (!IsAtEnd)
+        {
+            if (Current.Kind == PyTokKind.LBracket)
+            {
+                Advance();
+                if (MatchIdent("owner")) { Match(PyTokKind.Assign); rawOwner = OwnerOf(TakeIdent()); }
+                Expect(PyTokKind.RBracket, "spawn 属性缺少右方括号");
+                continue;
+            }
+            if (Current.Kind == PyTokKind.Plus && PeekText(1) == "departed") { Advance(); Advance(); rawDep = true; continue; }
+            break;
+        }
         return new SpawnCardNode
         {
-            SourceKind = CardSourceKind.CardId, CardId = id, CardName = name,
-            ToZone = toZone, Count = count, OutSlot = TryOutSlot(TargetSpec.SlotCreated),
+            SourceKind = CardSourceKind.CardId, CardId = id, CardName = name, ToOwner = rawOwner,
+            ToZone = toZone, Count = count, AddDepartedTrait = rawDep,
+            OutSlot = TryOutSlot(TargetSpec.SlotCreated),
         };
     }
 
@@ -1240,10 +1311,11 @@ public sealed class AstCanonicalParser
     /// </summary>
     private ConditionalNode ParsePayBlock()
     {
-        Expect(PyTokKind.LParen, "pay 后缺少左括号");
+        // 语法是 pay faith(5): —— 计数器名在前，数字在括号里。
         string counterName = TakeIdent();
-        Expect(PyTokKind.RParen, "pay 计数器后缺少右括号");
-        int amount = TakeNumber();
+        Expect(PyTokKind.LParen, "pay 计数器后缺少左括号");
+        var amountExpr = ParseNumExpr();
+        Expect(PyTokKind.RParen, "pay 参数后缺少右括号");
         Expect(PyTokKind.Colon, "pay 后缺少冒号");
         SkipNewlines();
 
@@ -1253,7 +1325,7 @@ public sealed class AstCanonicalParser
         {
             Left = NumExpr.Ctr(_schema.Counter(counterName)),
             Op = CompareOp.Ge,
-            Right = NumExpr.Const(amount),
+            Right = amountExpr,
         };
         var then = new List<EffectNode>
         {
@@ -1261,7 +1333,7 @@ public sealed class AstCanonicalParser
             {
                 Counter = _schema.Counter(counterName),
                 Op = CounterOp.Add,
-                Delta = NumExpr.Const(-amount),
+                Delta = amountExpr is NumExpr { Op: NumOp.Const } ac ? NumExpr.Const(-ac.Value) : NumExpr.Sub(NumExpr.Const(0), amountExpr),
                 Owner = ZoneScope.Self,
             },
         };
@@ -1417,7 +1489,12 @@ public sealed class AstCanonicalParser
         if (Current.Kind == PyTokKind.Slot)
         {
             spec = new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = TakeSlot(), Mode = SelectMode.All };
-            if (MatchIdent("where")) spec = spec.WithWhere(ParseBoolExpr());
+            if (MatchIdent("where"))
+            {
+                // where 内的默认主语是 $item —— 与打印器 _inWherePrint 对称。
+                _whereDepth++;
+                try { spec = spec.WithWhere(ParseBoolExpr()); } finally { _whereDepth--; }
+            }
             return spec;
         }
 
@@ -1475,7 +1552,7 @@ public sealed class AstCanonicalParser
                 string kStr = TakeIdent().ToLowerInvariant();
                 var k = kStr == "spell" ? CardKind.Spell : kStr == "amulet" ? CardKind.Amulet : CardKind.Follower;
                 if (Match(PyTokKind.Gt)) { }
-                spec = spec.WithWhere(new HasKindExpr { Kind = k, Of = TargetSpec.Item });
+                spec = spec.WithWhere(new HasKindExpr { Kind = k, Of = DefaultSubject });
             }
         }
         else return defaultZone.HasValue ? TargetSpec.InZone(defaultZone.Value, ZoneScope.Self) : null;
@@ -1503,7 +1580,7 @@ public sealed class AstCanonicalParser
                 spec = spec.WithWhere(new NotSameEntityExpr
                 {
                     ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf,
-                    Of = TargetSpec.Item,
+                    Of = DefaultSubject,
                 });
                 continue;
             }
@@ -1548,7 +1625,11 @@ public sealed class AstCanonicalParser
         }
 
         // F. where <BoolExpr>
-        if (MatchIdent("where")) spec = spec.WithWhere(ParseBoolExpr());
+        if (MatchIdent("where"))
+        {
+            _whereDepth++;
+            try { spec = spec.WithWhere(ParseBoolExpr()); } finally { _whereDepth--; }
+        }
 
         return spec;
     }
@@ -1752,7 +1833,9 @@ public sealed class AstCanonicalParser
         if (head == "prop" && Match(PyTokKind.Colon))
         {
             string st = TakeIdent();
-            TargetSpec of = null;
+            // 不能是 null：null 会让 VmEval 默认读 $self，
+            // 于是 where prop:Cost <= 3 读的是本卡费用而非候选卡费用。
+            TargetSpec of = DefaultSubject;
             if (Match(PyTokKind.LParen)) { of = ParseTarget(); Expect(PyTokKind.RParen, "prop 缺少右括号"); }
             return new NumExpr { Op = NumOp.Property, Stat = StatOf(st), Of = of };
         }
@@ -1900,7 +1983,7 @@ public sealed class AstCanonicalParser
         {
             if (MatchIdent("selected")) return new IsPreviousExpr { Slot = TargetSpec.SlotSelected };
             string what = TakeIdent();
-            TargetSpec of = TargetSpec.Item;
+            TargetSpec of = DefaultSubject;
             if (Match(PyTokKind.LParen)) { of = ParseTarget(); Expect(PyTokKind.RParen, "is(...) 缺少右括号"); }
             if (Enum.TryParse<CardKind>(what, true, out var ck))
                 return new HasKindExpr { Kind = ck, Of = of };
@@ -1913,25 +1996,25 @@ public sealed class AstCanonicalParser
         if (MatchIdent("has"))
         {
             if (MatchIdent("trait"))
-                return new HasTraitExpr { Trait = _schema.Trait(ReadMultiWordUntilBoundary()), Of = TargetSpec.Item };
+                return new HasTraitExpr { Trait = _schema.Trait(ReadMultiWordUntilBoundary()), Of = DefaultSubject };
             if (MatchIdent("clan"))
             {
                 if (Current.Kind == PyTokKind.Slot && Current.Text == TargetSpec.SlotSelf)
                 {
                     Advance();
-                    return new HasClanExpr { IsSelfClan = true, Of = TargetSpec.Item };
+                    return new HasClanExpr { IsSelfClan = true, Of = DefaultSubject };
                 }
                 var clans = new List<SymbolId<ClanTag>> { _schema.Clan(TakeIdent()) };
                 while (Match(PyTokKind.Pipe)) clans.Add(_schema.Clan(TakeIdent()));
-                if (clans.Count == 1) return new HasClanExpr { Clan = clans[0], Of = TargetSpec.Item };
-                return new HasClanExpr { Clans = clans, Of = TargetSpec.Item };
+                if (clans.Count == 1) return new HasClanExpr { Clan = clans[0], Of = DefaultSubject };
+                return new HasClanExpr { Clans = clans, Of = DefaultSubject };
             }
-            return new HasKeywordExpr { Keyword = _schema.Keyword(ReadMultiWordUntilBoundary()), Of = TargetSpec.Item };
+            return new HasKeywordExpr { Keyword = _schema.Keyword(ReadMultiWordUntilBoundary()), Of = DefaultSubject };
         }
 
         // in pack <id>
         if (MatchIdent("in") && MatchIdent("pack"))
-            return new HasPackExpr { PackId = ReadMultiWordUntilBoundary(), Of = TargetSpec.Item };
+            return new HasPackExpr { PackId = ReadMultiWordUntilBoundary(), Of = DefaultSubject };
 
         // same name as <Target> | named <Name>
         if (MatchIdent("same") && MatchIdent("name") && MatchIdent("as"))
@@ -1964,16 +2047,16 @@ public sealed class AstCanonicalParser
             string cname = string.Join(" ", nameParts2);
             int cid = 0;
             if (_lex != null) _lex.TryGetCardId(cname, out cid);
-            return new HasCardNameExpr { CardId = cid, CardName = cname, Of = TargetSpec.Item };
+            return new HasCardNameExpr { CardId = cid, CardName = cname, Of = DefaultSubject };
         }
 
         // other than ($trigger | $opposing | $chooseN | itself)
         if (MatchIdent("other") && MatchIdent("than"))
         {
             if (MatchIdent("itself"))
-                return new NotSameEntityExpr { ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf, Of = TargetSpec.Item };
+                return new NotSameEntityExpr { ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf, Of = DefaultSubject };
             string slot = Current.Kind == PyTokKind.Slot ? TakeSlot() : TakeIdent();
-            return new NotSameEntityExpr { ExcludeSlot = slot, Of = TargetSpec.Item };
+            return new NotSameEntityExpr { ExcludeSlot = slot, Of = DefaultSubject };
         }
 
         // exists(<Target>)

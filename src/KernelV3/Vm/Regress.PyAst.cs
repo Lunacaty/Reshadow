@@ -242,14 +242,15 @@ public static partial class Regress
                   setOk && poolOk && discOk && copyOk,
                   "set=" + setOk + " poolRandom=" + poolOk + " discChoose=" + discOk + " copyOwner=" + copyOk);
 
-            // @if 套在任意节点上（旧实现只覆盖 2 种）
+            // @if 套在任意节点上。判据是节点自身的 If（不是包一层 ConditionalNode）——
+            // 后者会把节点类型从「带条件的动作」变成「条件块」，重打印变成 if 而非 @if。
             caseParser.Errors.Clear();
             var ifAbs = caseParser.ParseAbilities("@if is Follower:\n    buff $self +1/+1");
-            var cond = ifAbs?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
-                .OfType<ConditionalNode>().FirstOrDefault();
-            bool ifOk = caseParser.Errors.Count == 0 && cond != null
-                        && cond.Then != null && cond.Then.Count == 1;
-            Check("pyast-6 @if 可套在任意节点上（WithIf 统一包 ConditionalNode）", ifOk,
+            var buffed = ifAbs?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                .OfType<ModifyStatsNode>().FirstOrDefault();
+            bool ifOk = caseParser.Errors.Count == 0 && buffed != null
+                        && buffed.If != null && buffed.If is not ConstBoolExpr;
+            Check("pyast-6 @if 挂到节点自身的 If 上（不改变节点类型）", ifOk,
                   ifOk ? "ok" : "未生成 ConditionalNode");
         }
 

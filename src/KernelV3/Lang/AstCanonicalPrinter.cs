@@ -319,15 +319,18 @@ public static class AstCanonicalPrinter
         if (cmp.Right is not NumExpr { Op: NumOp.Const } n) return false;
         if (cn.Then[0] is not ModifyCounterNode ctr) return false;
         if (ctr.Op != CounterOp.Add || ctr.Target != null) return false;
-        if (ctr.Delta is not NumExpr { Op: NumOp.Const } d) return false;
-        if (d.Value != -n.Value) return false;
+        // Delta 有两种合法表示：Const(-N) 与 Arith(0 - N)。
+        // 编译器产的是后者，解析端补的是前者 —— 只认一种会让 pay 在第一遍打不出来。
+        int negMag;
+        if (ctr.Delta is NumExpr { Op: NumOp.Const } d0) negMag = -d0.Value;
+        else if (ctr.Delta is { Op: NumOp.Arith, Arith: ArithOp.Sub } ds
+                 && ds.Args.Count == 2
+                 && ds.Args[0] is NumExpr { Op: NumOp.Const } z && z.Value == 0
+                 && ds.Args[1] is NumExpr { Op: NumOp.Const } m0) negMag = m0.Value;
+        else return false;
+        if (negMag != n.Value) return false;
         if ((ctr.Counter.Name ?? "") != (l.Counter.Name ?? "")) return false;
 
-        // 已有资源动词的计数器（faith / pp / shadow ...）由 FormatModifyCounter
-        // 单独美化，这里不再包一层，否则会打出 pay faith(5): spend_faith 5 的双重糖。
-        string nm0 = l.Counter.Name ?? "";
-        if (nm0 is "pp" or "max_pp" or "ep" or "sep" or "earth_sigil"
-            or "clues" or "shadow" or "faith") return false;
 
         sb.Append(Pad(indent)).Append("pay ").Append(l.Counter.Name)
           .Append('(').Append(n.Value).Append("):");
@@ -514,7 +517,7 @@ public static class AstCanonicalPrinter
                 if (tr.CopySource != null)
                     sb.Append("copy of ").Append(PrintT(tr.CopySource));
                 else
-                    sb.Append("id=").Append(tr.IntoCardId);
+                    sb.Append(FormatCardRef(tr.IntoCardId, tr.IntoCardName));
                 break;
 
             case InvokeAbilityNode ia:
@@ -614,6 +617,16 @@ public static class AstCanonicalPrinter
     }
 
     /// <summary>SpawnCard 语义升级：reanimate / gain_crest / discover / chaos_discover / summon / add_to_hand / spawn_copy。</summary>
+
+    /// <summary>
+    /// 卡引用统一打印：有卡号写 #id，没有卡号就退回引号卡名。
+    ///
+    /// 绝不打 #0 —— 纹章的 CardId 在编译期恒为 0（只填了 CardName 与 CrestDef），
+    /// 打成 #0 会让读回来的卡号 0、卡名为空、CrestDef 丢失，全游戏的纹章变空壳。
+    /// </summary>
+    private static string FormatCardRef(int cardId, string cardName)
+        => cardId > 0 ? "#" + cardId : "\"" + (cardName ?? "") + "\"";
+
     private static string FormatSpawnCard(SpawnCardNode sp)
     {
         string slotSuffix = !string.IsNullOrEmpty(sp.OutSlot) && sp.OutSlot != TargetSpec.SlotCreated
@@ -630,7 +643,13 @@ public static class AstCanonicalPrinter
 
         // 2. 获得纹章
         if (sp.IsCrest)
-            return "gain_crest #" + sp.CardId + ownerSuffix + slotSuffix;
+        {
+            // 纹章优先用 CardDef 上的美术卡号，其次退回引号卡名 —— 绝不打出 #0。
+            string crestRef = sp.CardId > 0 ? "#" + sp.CardId
+                : (sp.CrestDef != null && sp.CrestDef.ArtCardId > 0 ? "#" + sp.CrestDef.ArtCardId
+                   : "\"" + (sp.CardName ?? sp.CrestDef?.Name ?? "") + "\"");
+            return "gain_crest " + crestRef + ownerSuffix + slotSuffix;
+        }
 
         // 3. 发现 / 混沌发现 / 池随机生成
         if (sp.SourceKind == CardSourceKind.PoolQuery && sp.CopyFrom != null)
@@ -682,7 +701,7 @@ public static class AstCanonicalPrinter
                  + ownerSuffix + slotSuffix;
 
         // 6. 常规具名召唤 / 加手牌
-        string idTag = sp.CardId > 0 ? " id=" + sp.CardId : "";
+        string idTag = " " + FormatCardRef(sp.CardId, sp.CardName);
         string depTag = sp.AddDepartedTrait ? " +departed" : "";
         if (sp.ToZone == ZoneRef.Board)
             return "summon " + PrintN(sp.Count) + idTag + ownerSuffix + depTag + slotSuffix;

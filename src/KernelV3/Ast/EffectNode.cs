@@ -18,8 +18,14 @@ namespace ShadowverseFan.KernelV3.Ast;
 
 public abstract class EffectNode
 {
-    /// <summary>本节点可选的前置条件（满足才执行）。</summary>
-    public BoolExpr If { get; init; }
+    /// <summary>
+    /// 本节点可选的前置条件（满足才执行）。
+    ///
+    /// 必须是 set 而不是 init：PyAST 的 @if 装饰器要在构造之后把条件挂到
+    /// 已有节点上。改成包一层 ConditionalNode 会让 AST 节点类型变化，
+    /// 往返回来就从 @if 变成了 if，结构不同构。
+    /// </summary>
+    public BoolExpr If { get; set; }
 }
 
 // ---------- 1. 选择目标 ----------
@@ -186,7 +192,11 @@ public sealed class SpawnCardNode : EffectNode
     /// 纹章/信仰的**效果定义**，由主人卡编译期内嵌（见 CardDef.CrestDef）。
     /// 运行时 GainCrest 直接用它成立实体，不再按卡名现造空壳。
     /// </summary>
-    public CardDef CrestDef { get; init; }
+    /// <remarks>
+    /// 必须是 set：解析端在子卡段（crest "..."）解析完之后才能把定义回填回来，
+    /// 那时节点早已构造完成。
+    /// </remarks>
+    public CardDef CrestDef { get; set; }
 
     /// <summary>
     /// 是否是「exact copy」（完整复制）。

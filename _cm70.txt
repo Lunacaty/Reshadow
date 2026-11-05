@@ -1,0 +1,49 @@
+fix(160): 逐条核实并修复 6 处漏做与错做
+
+160 号文档指出的 6 项，逐条核对源码后确认全部属实，已修。
+
+【1. 只写 ID 的 3 处断链（严重）】
+  · gain_crest 打成 #0：纹章的 SpawnCardNode.CardId 恒为 0（编译器只填
+    CardName 与 CrestDef），直接打 #0 会让纹章读回来是空壳。
+    新增 FormatCardRef：有卡号写 #id，没有就退回引号卡名，绝不打 #0；
+    纹章优先用 CrestDef.ArtCardId。
+  · HasCardNameExpr 误判成 same name as $item：删掉 IsNullOrEmpty(CardName)
+    导致 CardId==0 且 Of!=null 的正常命名条件被错判。已恢复该判据。
+  · summon / add_to_hand / spawn / transform 的 id=NNN 统一改为 #NNN。
+
+【2. 上下文默认主语只改了一半（严重回归）】
+  打印器 OfSuffix 已按 _inWherePrint 隐藏括号，但解析器根本没加 _whereDepth，
+  仍写死 TargetSpec.Item。后果：顶层 if is Evolved 读回来变成 $item，
+  运行期找不到 $item，所有进化后条件恒为 false。
+  已补 _whereDepth 与 DefaultSubject，3 处 where 包裹、prop:/is/has/named
+  全部改用 DefaultSubject。
+
+【3. ParsePayBlock 括号位置写反】
+  打印端是 pay faith(5):，解析端却期望 pay (faith) 5:。
+  已改为 TakeIdent -> LParen -> ParseNumExpr -> RParen。
+  同时删掉 TryPrintPayBlock 里对 pp/faith/clues/shadow 的屏蔽 ——
+  那是我上一轮误判会双重糖而加的，其实 Skip(1) 早就跳过了扣除节点。
+  另外放宽 Delta 判据：Const(-N) 与 Arith(0-N) 两种表示都要认，
+  只认一种会让 pay 在第一遍打不出来。
+
+【4. WithIf 破坏结构同构】
+  包一层 ConditionalNode 会让「带条件的动作」变成「条件块」，重打印变成 if 而非 @if。
+  已把 EffectNode.If 从 init 改为 set，WithIf 直接写 n.If（已有条件时用 And 合并）。
+  同时更新 pyast-6 断言：判据从「生成了 ConditionalNode」改为「节点自身的 If 被设置」。
+
+【5. StatOf 漏 countdown】
+  护符 if prop:Countdown >= 2 会读到 StatKey.None（恒 0）。已补 countdown/chantcount。
+
+【6. ParseNamedSpawn / ParseRawSpawn 漏消费后缀】
+  +departed 与 [owner=...] 会留在行尾报错。已改为循环消费，顺序无关。
+
+【顺带】
+  · SpawnCardNode.CrestDef 从 init 改为 set，解析端在子卡段解析完后才能回填；
+    新增 BindSubDefToSpawns 把 crest 段挂回主卡的 gain_crest 节点。
+  · ParseCardRef 不再按卡名反查 Id —— 打印端只在 CardId==0 时打引号卡名，
+    反查会让重打印变成 #123，两边不对称。
+
+验证：PyAST 门禁 6/6（含 1021/1021 全量往返），13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED
