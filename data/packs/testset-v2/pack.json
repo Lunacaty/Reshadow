@@ -80,7 +80,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000001 \"侦探的放大镜\" (Amulet, clan=Havencraft, cost=2):\n    countdown(2)\n    engage [engage(0)]:\n        destroy $self\n        select self:board<Follower> Choose(1)\n        grant_keyword rush to $selected",
+      "text": "card 81000001 \"侦探的放大镜\" (Amulet, clan=Havencraft, cost=2):\n    fanfare:\n        add_to_hand 1 #90011110\n    countdown(2)\n    engage [engage(0)]:\n        destroy $self\n        select self:board<Follower> Choose(1)\n        grant_keyword rush to $selected",
       "name": "侦探的放大镜"
     },
     {
@@ -128,7 +128,7 @@
           "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Testset Prostrating Coward</color></i></b>."
         }
       ],
-      "text": "card 81000004 \"匍匐的懦夫\" (Follower, clan=Abysscraft, cost=5, atk=4, life=5):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"匍匐的懦夫\" (cost=2):\n        countdown(3)",
+      "text": "card 81000004 \"匍匐的懦夫\" (Follower, clan=Abysscraft, cost=5, atk=4, life=5):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"匍匐的懦夫\" (cost=2):\n        countdown(3)\n        last_words:\n            summon 1 #10661110",
       "name": "匍匐的懦夫"
     },
     {
@@ -148,7 +148,7 @@
           "text_eng": "Summon a <b><i><color=Keyword>Testset Shoddy Plaything</color></i></b>."
         }
       ],
-      "text": "card 81000005 \"粗劣的玩物\" (Follower, clan=Abysscraft, cost=6, atk=1, life=3):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"粗劣的玩物\" (cost=2):\n        pass",
+      "text": "card 81000005 \"粗劣的玩物\" (Follower, clan=Abysscraft, cost=6, atk=1, life=3):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"粗劣的玩物\" (cost=2):\n        on_play:\n            summon 1 #10671110",
       "name": "粗劣的玩物"
     },
     {
@@ -170,7 +170,7 @@
           "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>."
         }
       ],
-      "text": "card 81000006 \"森林淑女·艾莉雅\" (Follower, clan=Forestcraft, cost=6, atk=4, life=4):\n    traits: [Pixie]\n\n    crest \"森林淑女·艾莉雅\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait Pixie):\n            grant_keyword storm to $trigger",
+      "text": "card 81000006 \"森林淑女·艾莉雅\" (Follower, clan=Forestcraft, cost=6, atk=4, life=4):\n    traits: [Pixie]\n    fanfare:\n        gain_crest #81000006\n    evolve:\n        summon 3 #90011110\n\n    crest \"森林淑女·艾莉雅\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait Pixie):\n            grant_keyword storm to $trigger",
       "name": "森林淑女·艾莉雅"
     },
     {
@@ -313,7 +313,7 @@
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 81000022 \"突击神器\" (Follower, clan=Portalcraft, cost=3, atk=2, life=2):\n    traits: [Artifact]\n    keywords: [rush]\n    fuse: any:board All where has trait Artifact\n    on_fuse zone=Hand on($self):\n        if (ctr:fuse_cost >= 1 and ctr:fuse_cost <= 1):\n            transform $self into \"Ominous Artifact α\"\n        elif (ctr:fuse_cost >= 2 and ctr:fuse_cost <= 2):\n            transform $self into \"Ominous Artifact β\"\n        elif ctr:fuse_cost >= 3:\n            transform $self into \"Ominous Artifact γ\"",
+      "text": "card 81000022 \"突击神器\" (Follower, clan=Portalcraft, cost=3, atk=2, life=2):\n    traits: [Artifact]\n    keywords: [rush]\n    fuse: any:board All where has trait Artifact\n    on_fuse zone=Hand on($self):\n        if (ctr:fuse_cost >= 1 and ctr:fuse_cost <= 1):\n            transform $self into #90073110\n        elif (ctr:fuse_cost >= 2 and ctr:fuse_cost <= 2):\n            transform $self into #90073120\n        elif ctr:fuse_cost >= 3:\n            transform $self into #90073130",
       "name": "突击神器"
     },
     {
@@ -326,7 +326,7 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 81000023 \"旋转的命运之轮·斯劳斯\" (Follower, clan=Portalcraft, cost=5, atk=3, life=3):\n    keywords: [ambush]\n    turn_end turn=Self if is Evolved:\n        gain_crest \"Testset Slaus , Revolving Wheel of Fortune\" [owner=Opponent]",
+      "text": "card 81000023 \"旋转的命运之轮·斯劳斯\" (Follower, clan=Portalcraft, cost=5, atk=3, life=3):\n    keywords: [ambush]\n    turn_end turn=Self if is Evolved:\n        gain_crest \"Testset Slaus, Revolving Wheel of Fortune\" [owner=Opponent]",
       "name": "旋转的命运之轮·斯劳斯"
     },
     {
@@ -391,7 +391,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000032 \"虚无显现·奥克翠丝\" (Amulet, clan=Swordcraft, cost=4):\n    countdown(8)\n    on_play or=OnFuse on(any:board Choose(1) where has trait Loot):\n        advance_countdown $self by 1",
+      "text": "card 81000032 \"虚无显现·奥克翠丝\" (Amulet, clan=Swordcraft, cost=4):\n    countdown(8)\n    on_play or=OnFuse on(any:board Choose(1) where has trait Loot):\n        advance_countdown $self by 1\n    last_words:\n        add_to_hand 1 #90024310",
       "name": "虚无显现·奥克翠丝"
     },
     {
@@ -456,7 +456,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000037 \"远古加农炮\" (Amulet, clan=Portalcraft, cost=3):\n    on_fuse:\n        deal 2 damage to opponent:board<Follower> Random(1)",
+      "text": "card 81000037 \"远古加农炮\" (Amulet, clan=Portalcraft, cost=3):\n    fanfare:\n        add_to_hand 1 #90071210\n    on_fuse:\n        deal 2 damage to opponent:board<Follower> Random(1)",
       "name": "远古加农炮"
     },
     {
@@ -484,7 +484,7 @@
       "attack": 3,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 81000039 \"秘术猎人·尤娜\" (Follower, clan=Abysscraft, cost=4, atk=3, life=5):\n    keywords: [ward]",
+      "text": "card 81000039 \"秘术猎人·尤娜\" (Follower, clan=Abysscraft, cost=4, atk=3, life=5):\n    keywords: [ward]\n    last_words:\n        add_to_hand 1 #90051130",
       "name": "秘术猎人·尤娜"
     }
   ]

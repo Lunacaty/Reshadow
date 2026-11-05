@@ -1,0 +1,29 @@
+fix(164): 卡包产物化后英文名不能丢 —— 从权威表按卡号补进词法表
+
+## 根因
+  卡包改成单 name 字段（本地化名）后，加载器把它读进了 NameEng：
+    c.NameEng = "侦探的放大镜"
+  于是「NameEng 非空就不补」的判断失效，词法表里登记的是中文名。
+  英文原文里的 "Add a Fairy to your hand" 认不出 Fairy，
+  整条效果被判定「无法解析宾语」而静默消失 —— 不报错，卡面也不显示。
+
+## 影响面
+  official-sv 里凡按卡名引用的句子全部失效，例如：
+    Add a Fairy to your hand.
+    Summon a Majestic Megalorca.
+  （产物化后卡面看起来正常，只是这些效果没了）
+
+## 修法
+  新增 AuthoritativeNames：assets/cards_svwbmeta.json 的英文名/简中名，按卡号索引。
+  GlobalCatalog / CardPool 注册卡时**两个来源都登记**：
+    · 权威表英文名 -> 英文编译器认卡名用
+    · 卡包里的名字 -> 具名牌组按名引用、DIY 按名查询用
+
+## 验证
+  Fairy? True id=90011110
+  Compile("Fanfare: Add a Fairy to your hand.") -> abil=1 errs=0
+    fanfare: add_to_hand 1 #90011110
+  产物里该效果完整保留。
+
+  VM 50/50、文档验收 102/102、Combat 16/16、效用 12/12、
+  完整对局 7/7、PyAST 12/12、UI 3/3。

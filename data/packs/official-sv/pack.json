@@ -2,7 +2,7 @@
   "pack_id": "official-sv",
   "name": "官方卡池",
   "author": "official",
-  "version": "1.0.0+pyast",
+  "version": "1.0.0",
   "native_pool_id": "official",
   "dependencies": [],
   "clans": [
@@ -1308,7 +1308,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10114110 \"自然妖精公主·阿丽雅\" (Follower, clan=Forestcraft, cost=6, atk=4, life=4, rarity=4):\n    fanfare:\n        gain_crest #10114110\n    evolve:\n        summon 3 #90011110\n\n    crest \"Aria, Lady of the Woods\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait Pixie):\n            grant_keyword storm to $trigger",
+      "text": "card 10114110 \"自然妖精公主·阿丽雅\" (Follower, clan=Forestcraft, cost=6, atk=4, life=4, rarity=4):\n    fanfare:\n        gain_crest #10114110\n    evolve:\n        summon 3 #90011110\n\n    crest \"自然妖精公主·阿丽雅\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait Pixie):\n            grant_keyword storm to $trigger",
       "rarity": 4,
       "alt_modes": [
         {
@@ -1647,7 +1647,7 @@
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10124130 \"常在战场·景光\" (Follower, clan=Swordcraft, cost=3, atk=2, life=2, rarity=4):\n    last_words:\n        gain_crest #10124130\n    super_evolve:\n        grant_keyword storm to $self\n\n    crest \"Kagemitsu, Enduring Warrior\" (cost=0):\n        countdown(2)\n        last_words:\n            summon 1 #10124130",
+      "text": "card 10124130 \"常在战场·景光\" (Follower, clan=Swordcraft, cost=3, atk=2, life=2, rarity=4):\n    last_words:\n        gain_crest #10124130\n    super_evolve:\n        grant_keyword storm to $self\n\n    crest \"常在战场·景光\" (cost=0):\n        countdown(2)\n        last_words:\n            summon 1 #10124130",
       "rarity": 4,
       "alt_modes": [
         {
@@ -1826,7 +1826,7 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10133110 \"黎明炼金术师·诺诺\" (Follower, clan=Runecraft, cost=5, atk=3, life=3, rarity=3):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        deal ctr:earth_sigil damage to $selected\n    evolve:\n        gain_crest #10133110\n\n    crest \"Juno, Visionary Alchemist\" (cost=0):\n        countdown(3)\n        turn_end turn=Self [earth_rite(1)]:\n            summon 1 #90031120",
+      "text": "card 10133110 \"黎明炼金术师·诺诺\" (Follower, clan=Runecraft, cost=5, atk=3, life=3, rarity=3):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        deal ctr:earth_sigil damage to $selected\n    evolve:\n        gain_crest #10133110\n\n    crest \"黎明炼金术师·诺诺\" (cost=0):\n        countdown(3)\n        turn_end turn=Self [earth_rite(1)]:\n            summon 1 #90031120",
       "rarity": 3,
       "alt_modes": [
         {
@@ -2190,7 +2190,7 @@
       "attack": 7,
       "life": 7,
       "source_format": "py_ast",
-      "text": "card 10144110 \"灼热的安纳提玛·班德奈特\" (Follower, clan=Dragoncraft, cost=7, atk=7, life=7, rarity=4):\n    traits: [Anathema]\n    fanfare:\n        select self:hand Choose(1)\n        move $selected to Cemetery\n        deal prop:Cost($selected) damage to opponent:board<Follower> All\n    super_evolve:\n        gain_crest #10144110 [owner=Opponent]\n\n    crest \"Burnite, Anathema of Flame\" (cost=0):\n        turn_start turn=Self:\n            deal 1 damage to self:leader\n        on_healed turn=Self max=1 on(self:leader):\n            deal 1 damage to $trigger",
+      "text": "card 10144110 \"灼热的安纳提玛·班德奈特\" (Follower, clan=Dragoncraft, cost=7, atk=7, life=7, rarity=4):\n    traits: [Anathema]\n    fanfare:\n        select self:hand Choose(1)\n        move $selected to Cemetery\n        deal prop:Cost($selected) damage to opponent:board<Follower> All\n    super_evolve:\n        gain_crest #10144110 [owner=Opponent]\n\n    crest \"灼热的安纳提玛·班德奈特\" (cost=0):\n        turn_start turn=Self:\n            deal 1 damage to self:leader\n        on_healed turn=Self max=1 on(self:leader):\n            deal 1 damage to $trigger",
       "rarity": 4,
       "alt_modes": [
         {
@@ -2448,7 +2448,7 @@
       "attack": 3,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 10153140 \"地下赏金猎人·巴尔特\" (Follower, clan=Abysscraft, cost=3, atk=3, life=1, rarity=3):\n    fanfare:\n        gain_crest #10153140\n\n    crest \"Balto, Dusk Bounty Hunter\" (cost=0):\n        countdown(4)\n        turn_end turn=Self:\n            deal 1 damage to any:leader +leader All",
+      "text": "card 10153140 \"地下赏金猎人·巴尔特\" (Follower, clan=Abysscraft, cost=3, atk=3, life=1, rarity=3):\n    fanfare:\n        gain_crest #10153140\n\n    crest \"地下赏金猎人·巴尔特\" (cost=0):\n        countdown(4)\n        turn_end turn=Self:\n            deal 1 damage to any:leader +leader All",
       "rarity": 3,
       "alt_modes": [
         {
@@ -2723,7 +2723,7 @@
       "attack": 7,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 10163130 \"伟大的炽天使·勒碧丝\" (Follower, clan=Havencraft, cost=8, atk=7, life=6, rarity=3):\n    last_words:\n        gain_crest #10163130\n\n    crest \"Lapis, Shining Seraph\" (cost=0):\n        countdown(2)\n        last_words:\n            summon 1 #10163130\n            grant_keyword storm to $created",
+      "text": "card 10163130 \"伟大的炽天使·勒碧丝\" (Follower, clan=Havencraft, cost=8, atk=7, life=6, rarity=3):\n    last_words:\n        gain_crest #10163130\n\n    crest \"伟大的炽天使·勒碧丝\" (cost=0):\n        countdown(2)\n        last_words:\n            summon 1 #10163130\n            grant_keyword storm to $created",
       "rarity": 3,
       "alt_modes": [
         {
@@ -3046,7 +3046,7 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10174110 \"崭新的少女·欧丝\" (Follower, clan=Portalcraft, cost=3, atk=3, life=3, rarity=4):\n    fanfare:\n        draw 1\n    evolve:\n        gain_crest #10174110\n\n    crest \"Eudie, Maiden Reborn\" (cost=0):\n        countdown(3)\n        turn_end turn=Self:\n            if count(self:hand All) <= 5:\n                draw 1\n            if count(self:hand All) >= 6:\n                restore 1 life to self:leader",
+      "text": "card 10174110 \"崭新的少女·欧丝\" (Follower, clan=Portalcraft, cost=3, atk=3, life=3, rarity=4):\n    fanfare:\n        draw 1\n    evolve:\n        gain_crest #10174110\n\n    crest \"崭新的少女·欧丝\" (cost=0):\n        countdown(3)\n        turn_end turn=Self:\n            if count(self:hand All) <= 5:\n                draw 1\n            if count(self:hand All) >= 6:\n                restore 1 life to self:leader",
       "rarity": 4,
       "alt_modes": [
         {
@@ -3185,7 +3185,7 @@
       "attack": 2,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10204120 \"飓风天业·格里姆尼尔\" (Follower, clan=Neutral, cost=3, atk=2, life=3, rarity=4):\n    keywords: [ward]\n    fanfare:\n        gain_crest #10204120\n\n    crest \"Grimnir, Heavenly Gale\" (cost=0):\n        turn_end turn=Self if count(self:board<Follower> All where is SuperEvolved) >= 1:\n            deal 2 damage to opponent:board<Follower> All",
+      "text": "card 10204120 \"飓风天业·格里姆尼尔\" (Follower, clan=Neutral, cost=3, atk=2, life=3, rarity=4):\n    keywords: [ward]\n    fanfare:\n        gain_crest #10204120\n\n    crest \"飓风天业·格里姆尼尔\" (cost=0):\n        turn_end turn=Self if count(self:board<Follower> All where is SuperEvolved) >= 1:\n            deal 2 damage to opponent:board<Follower> All",
       "keywords": [
         "Ward"
       ],
@@ -3327,7 +3327,7 @@
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10214110 \"翅翼女王·提泰妮娅\" (Follower, clan=Forestcraft, cost=4, atk=2, life=2, rarity=4):\n    fanfare:\n        summon 1 #90011110\n        gain_crest #10214110\n    evolve:\n        select opponent:board<Follower> Choose(1)\n        transform $selected into #90011110\n\n    crest \"Titania, Queen of Fairies\" (cost=0):\n        turn_start turn=Self:\n            add_to_hand 1 #90011110",
+      "text": "card 10214110 \"翅翼女王·提泰妮娅\" (Follower, clan=Forestcraft, cost=4, atk=2, life=2, rarity=4):\n    fanfare:\n        summon 1 #90011110\n        gain_crest #10214110\n    evolve:\n        select opponent:board<Follower> Choose(1)\n        transform $selected into #90011110\n\n    crest \"翅翼女王·提泰妮娅\" (cost=0):\n        turn_start turn=Self:\n            add_to_hand 1 #90011110",
       "rarity": 4,
       "alt_modes": [
         {
@@ -3557,7 +3557,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10232110 \"否定的咏唱·芭赛特\" (Follower, clan=Runecraft, cost=5, atk=4, life=4, rarity=2):\n    fanfare:\n        summon 2 #90032110\n    evolve:\n        gain_crest #10232110\n\n    crest \"Bergent, Rejected Artes\" (cost=0):\n        turn_start turn=Self:\n            summon 1 #90032110",
+      "text": "card 10232110 \"否定的咏唱·芭赛特\" (Follower, clan=Runecraft, cost=5, atk=4, life=4, rarity=2):\n    fanfare:\n        summon 2 #90032110\n    evolve:\n        gain_crest #10232110\n\n    crest \"否定的咏唱·芭赛特\" (cost=0):\n        turn_start turn=Self:\n            summon 1 #90032110",
       "rarity": 2,
       "alt_modes": [
         {
@@ -3625,7 +3625,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10233310 \"帕梅拉的舞蹈\" (Spell, clan=Runecraft, cost=2, rarity=3):\n    on_play:\n        gain_earth_sigil 1\n        gain_crest #10233310\n\n    crest \"Pascale's Dance\" (cost=0):\n        countdown(1)\n        turn_end turn=Self:\n            draw 1\n        on_play [earth_rite(10)]:\n            set_stats self:board<Follower> All to (prop:Attack * 2)/(prop:Life * 2)",
+      "text": "card 10233310 \"帕梅拉的舞蹈\" (Spell, clan=Runecraft, cost=2, rarity=3):\n    on_play:\n        gain_earth_sigil 1\n        gain_crest #10233310\n\n    crest \"帕梅拉的舞蹈\" (cost=0):\n        countdown(1)\n        turn_end turn=Self:\n            draw 1\n        on_play [earth_rite(10)]:\n            set_stats self:board<Follower> All to (prop:Attack * 2)/(prop:Life * 2)",
       "rarity": 3,
       "alt_modes": [
         {
@@ -3768,7 +3768,7 @@
       "attack": 5,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 10243110 \"苍海的制裁·尼普顿\" (Follower, clan=Dragoncraft, cost=7, atk=5, life=5, rarity=3):\n    keywords: [ward]\n    fanfare:\n        gain_crest #10243110\n        summon 2 #90041130\n    super_evolve:\n        summon 2 #90041130\n\n    crest \"Neptune, Arbiter of Tides\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait Marine):\n            restore 1 life to self:leader",
+      "text": "card 10243110 \"苍海的制裁·尼普顿\" (Follower, clan=Dragoncraft, cost=7, atk=5, life=5, rarity=3):\n    keywords: [ward]\n    fanfare:\n        gain_crest #10243110\n        summon 2 #90041130\n    super_evolve:\n        summon 2 #90041130\n\n    crest \"苍海的制裁·尼普顿\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait Marine):\n            restore 1 life to self:leader",
       "keywords": [
         "Ward"
       ],
@@ -3972,7 +3972,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10254120 \"流动堕落的冥河·凯伦\" (Follower, clan=Abysscraft, cost=5, atk=4, life=4, rarity=4):\n    fanfare:\n        reanimate(2) +departed\n        reanimate(1) +departed\n    on_enter on(self:board<Follower> All where has trait Departed):\n        grant_keyword ward to $trigger\n    super_evolve:\n        gain_crest #10254120\n\n    crest \"Charon, Stygian Oarswoman\" (cost=0):\n        countdown(2)\n        turn_start turn=Self:\n            reanimate(3) +departed",
+      "text": "card 10254120 \"流动堕落的冥河·凯伦\" (Follower, clan=Abysscraft, cost=5, atk=4, life=4, rarity=4):\n    fanfare:\n        reanimate(2) +departed\n        reanimate(1) +departed\n    on_enter on(self:board<Follower> All where has trait Departed):\n        grant_keyword ward to $trigger\n    super_evolve:\n        gain_crest #10254120\n\n    crest \"流动堕落的冥河·凯伦\" (cost=0):\n        countdown(2)\n        turn_start turn=Self:\n            reanimate(3) +departed",
       "rarity": 4,
       "alt_modes": [
         {
@@ -4097,7 +4097,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10263310 \"疯狂的恩宠\" (Spell, clan=Havencraft, cost=4, rarity=3):\n    on_play:\n        restore 10 life to self:leader\n        gain_crest #10263310\n\n    crest \"Maddening Benison\" (cost=0):\n        countdown(2)\n        last_words:\n            deal 10 damage to self:leader",
+      "text": "card 10263310 \"疯狂的恩宠\" (Spell, clan=Havencraft, cost=4, rarity=3):\n    on_play:\n        restore 10 life to self:leader\n        gain_crest #10263310\n\n    crest \"疯狂的恩宠\" (cost=0):\n        countdown(2)\n        last_words:\n            deal 10 damage to self:leader",
       "rarity": 3,
       "alt_modes": [
         {
@@ -4135,7 +4135,7 @@
       "attack": 4,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 10264120 \"呜咽的圣骑士·维尔伯特\" (Follower, clan=Havencraft, cost=6, atk=4, life=6, rarity=4):\n    keywords: [ward]\n    last_words:\n        summon 2 #90064110\n    evolve:\n        gain_crest #10264120\n\n    crest \"Wilbert, Desolate Paladin\" (cost=0):\n        on_enter on(self:board<Follower> All where has ward):\n            buff $trigger +1/+2",
+      "text": "card 10264120 \"呜咽的圣骑士·维尔伯特\" (Follower, clan=Havencraft, cost=6, atk=4, life=6, rarity=4):\n    keywords: [ward]\n    last_words:\n        summon 2 #90064110\n    evolve:\n        gain_crest #10264120\n\n    crest \"呜咽的圣骑士·维尔伯特\" (cost=0):\n        on_enter on(self:board<Follower> All where has ward):\n            buff $trigger +1/+2",
       "keywords": [
         "Ward"
       ],
@@ -4381,7 +4381,7 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10304110 \"绝大的显现·麦哲佩恩\" (Follower, clan=Neutral, cost=4, atk=3, life=3, rarity=4):\n    fanfare:\n        add_to_hand 1 #90004320\n    evolve:\n        gain_crest #10304110\n\n    crest \"Mjerrabaine, Great Manifest\" (cost=0):\n        on_enter on($self):\n            replace_deck \"the Mjerrabaine Deck\"\n            mark_victory_card owner=Self\n        turn_end turn=Self:\n            discard self:hand All where not named #90004320\n            draw 6",
+      "text": "card 10304110 \"绝大的显现·麦哲佩恩\" (Follower, clan=Neutral, cost=4, atk=3, life=3, rarity=4):\n    fanfare:\n        add_to_hand 1 #90004320\n    evolve:\n        gain_crest #10304110\n\n    crest \"绝大的显现·麦哲佩恩\" (cost=0):\n        on_enter on($self):\n            replace_deck \"the Mjerrabaine Deck\"\n            mark_victory_card owner=Self\n        turn_end turn=Self:\n            discard self:hand All where not named #90004320\n            draw 6",
       "rarity": 4,
       "alt_modes": [
         {
@@ -4535,7 +4535,7 @@
       "attack": 1,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10314110 \"不弑的继承者·库露露\" (Follower, clan=Forestcraft, cost=4, atk=1, life=3, rarity=4):\n    keywords: [ambush]\n    fanfare:\n        buff opponent:board<Follower> All -0/-2\n    on_statsmodified turn=Self max=1 on(opponent:board<Follower> All):\n        restore 1 life to self:leader\n    super_evolve:\n        gain_crest #10314110 [owner=Opponent]\n\n    crest \"Krulle, Heir to Unkilling\" (cost=0):\n        countdown(2)\n        on_enter on(self:board<Follower> All):\n            buff $trigger -1/-1",
+      "text": "card 10314110 \"不弑的继承者·库露露\" (Follower, clan=Forestcraft, cost=4, atk=1, life=3, rarity=4):\n    keywords: [ambush]\n    fanfare:\n        buff opponent:board<Follower> All -0/-2\n    on_statsmodified turn=Self max=1 on(opponent:board<Follower> All):\n        restore 1 life to self:leader\n    super_evolve:\n        gain_crest #10314110 [owner=Opponent]\n\n    crest \"不弑的继承者·库露露\" (cost=0):\n        countdown(2)\n        on_enter on(self:board<Follower> All):\n            buff $trigger -1/-1",
       "keywords": [
         "Ambush"
       ],
@@ -4699,7 +4699,7 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10324120 \"空绝的显现·奥克托丽丝\" (Follower, clan=Swordcraft, cost=3, atk=3, life=3, rarity=4):\n    fanfare:\n        gain_crest #10324120\n    evolve:\n        add_to_hand 1 #90021310\n        add_to_hand 1 #90021340\n\n    crest \"Octrice, Hollowness Manifest\" (cost=0):\n        countdown(8)\n        on_play or=OnFuse on(any:board Choose(1) where has trait Loot):\n            advance_countdown $self by 1\n        last_words:\n            add_to_hand 1 #90024310",
+      "text": "card 10324120 \"空绝的显现·奥克托丽丝\" (Follower, clan=Swordcraft, cost=3, atk=3, life=3, rarity=4):\n    fanfare:\n        gain_crest #10324120\n    evolve:\n        add_to_hand 1 #90021310\n        add_to_hand 1 #90021340\n\n    crest \"空绝的显现·奥克托丽丝\" (cost=0):\n        countdown(8)\n        on_play or=OnFuse on(any:board Choose(1) where has trait Loot):\n            advance_countdown $self by 1\n        last_words:\n            add_to_hand 1 #90024310",
       "rarity": 4,
       "alt_modes": [
         {
@@ -4748,7 +4748,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10331310 \"水晶的指引\" (Spell, clan=Runecraft, cost=4, rarity=1):\n    on_play:\n        gain_crest #10331310\n\n    crest \"Crystal Gazing\" (cost=0):\n        countdown(2)\n        last_words:\n            draw 2\n            deal 4 damage to opponent:board<Follower> All",
+      "text": "card 10331310 \"水晶的指引\" (Spell, clan=Runecraft, cost=4, rarity=1):\n    on_play:\n        gain_crest #10331310\n\n    crest \"水晶的指引\" (cost=0):\n        countdown(2)\n        last_words:\n            draw 2\n            deal 4 damage to opponent:board<Follower> All",
       "rarity": 1,
       "alt_modes": [
         {
@@ -5003,7 +5003,7 @@
       "attack": 5,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 10344120 \"烈绝的显现·嘉尔缪\" (Follower, clan=Dragoncraft, cost=5, atk=5, life=5, rarity=4):\n    fanfare [enhance(7)]:\n        if ctr:pp_at_play >= 7:\n            gain_crest #10344120\n            grant_keyword storm to $self\n        else:\n            gain_crest #10344120\n    on_damaged turn=Self max=1 on($self) if prop:Life($trigger) > 0:\n        deal 3 damage to opponent:board<Follower> Random(1)\n\n    crest \"Galmieux, Ardor Manifest\" (cost=0):\n        on_damaged turn=Self max=1 on(self:board<Follower> All) if prop:Life($trigger) > 0:\n            add_to_hand 1 #90044320",
+      "text": "card 10344120 \"烈绝的显现·嘉尔缪\" (Follower, clan=Dragoncraft, cost=5, atk=5, life=5, rarity=4):\n    fanfare [enhance(7)]:\n        if ctr:pp_at_play >= 7:\n            gain_crest #10344120\n            grant_keyword storm to $self\n        else:\n            gain_crest #10344120\n    on_damaged turn=Self max=1 on($self) if prop:Life($trigger) > 0:\n        deal 3 damage to opponent:board<Follower> Random(1)\n\n    crest \"烈绝的显现·嘉尔缪\" (cost=0):\n        on_damaged turn=Self max=1 on(self:board<Follower> All) if prop:Life($trigger) > 0:\n            add_to_hand 1 #90044320",
       "rarity": 4,
       "alt_modes": [
         {
@@ -5141,7 +5141,7 @@
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10354110 \"混融的继承者·莎木·纳克雅\" (Follower, clan=Abysscraft, cost=2, atk=2, life=2, rarity=4):\n    traits: [Encroacher]\n    fanfare:\n        pay faith(10):\n            grant_counter_ability to faith:\n                aura:\n                    counter mode_count by 1\n    super_evolve:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n        spawn_copy 1 of $selected to Hand\n\n    faith \"Sham-Nacha, Heir to Entwining\" (cost=0):\n        on_select_mode:\n            gain_faith 1\n        aura:\n            counter faith = 0",
+      "text": "card 10354110 \"混融的继承者·莎木·纳克雅\" (Follower, clan=Abysscraft, cost=2, atk=2, life=2, rarity=4):\n    traits: [Encroacher]\n    fanfare:\n        pay faith(10):\n            grant_counter_ability to faith:\n                aura:\n                    counter mode_count by 1\n    super_evolve:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n        spawn_copy 1 of $selected to Hand\n\n    faith \"混融的继承者·莎木·纳克雅\" (cost=0):\n        on_select_mode:\n            gain_faith 1\n        aura:\n            counter faith = 0",
       "rarity": 4,
       "alt_modes": [
         {
@@ -5176,7 +5176,7 @@
       "attack": 0,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10361110 \"安息的肯定者\" (Follower, clan=Havencraft, cost=2, atk=0, life=4, rarity=1):\n    fanfare:\n        gain_crest #10361110\n\n    crest \"Devotee of Repose\" (cost=0):\n        countdown(4)\n        turn_end turn=Self if ctr:turn_ally_attacks = 0:\n            buff self:board<Follower> Random(1) -2/-0\n            grant_keyword ward to self:board<Follower> Random(1)",
+      "text": "card 10361110 \"安息的肯定者\" (Follower, clan=Havencraft, cost=2, atk=0, life=4, rarity=1):\n    fanfare:\n        gain_crest #10361110\n\n    crest \"安息的肯定者\" (cost=0):\n        countdown(4)\n        turn_end turn=Self if ctr:turn_ally_attacks = 0:\n            buff self:board<Follower> Random(1) -2/-0\n            grant_keyword ward to self:board<Follower> Random(1)",
       "rarity": 1,
       "alt_modes": [
         {
@@ -5228,7 +5228,7 @@
       "attack": 1,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10362110 \"安息的祈祷者\" (Follower, clan=Havencraft, cost=3, atk=1, life=4, rarity=2):\n    keywords: [ward]\n    fanfare:\n        gain_crest #10362110\n\n    crest \"Supplicant of Repose\" (cost=0):\n        countdown(4)\n        turn_end turn=Self if ctr:turn_ally_attacks = 0:\n            restore 1 life to self:leader",
+      "text": "card 10362110 \"安息的祈祷者\" (Follower, clan=Havencraft, cost=3, atk=1, life=4, rarity=2):\n    keywords: [ward]\n    fanfare:\n        gain_crest #10362110\n\n    crest \"安息的祈祷者\" (cost=0):\n        countdown(4)\n        turn_end turn=Self if ctr:turn_ally_attacks = 0:\n            restore 1 life to self:leader",
       "keywords": [
         "Ward"
       ],
@@ -5280,7 +5280,7 @@
       "attack": 2,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10363110 \"安息的团结者\" (Follower, clan=Havencraft, cost=5, atk=2, life=4, rarity=3):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n    evolve:\n        gain_crest #10363110\n\n    crest \"Congregant of Repose\" (cost=0):\n        countdown(4)\n        turn_end turn=Self if ctr:turn_ally_attacks = 0:\n            tutor self:deck<Follower> Random(1) where prop:Life = 4",
+      "text": "card 10363110 \"安息的团结者\" (Follower, clan=Havencraft, cost=5, atk=2, life=4, rarity=3):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n    evolve:\n        gain_crest #10363110\n\n    crest \"安息的团结者\" (cost=0):\n        countdown(4)\n        turn_end turn=Self if ctr:turn_ally_attacks = 0:\n            tutor self:deck<Follower> Random(1) where prop:Life = 4",
       "rarity": 3,
       "alt_modes": [
         {
@@ -5315,7 +5315,7 @@
       "attack": 0,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10364110 \"安息的继承者·妃花\" (Follower, clan=Havencraft, cost=6, atk=0, life=4, rarity=4):\n    fanfare:\n        gain_crest #10364110\n    super_evolve:\n        set_stats opponent:board<Follower> All to 4/_\n\n    crest \"Himeka, Heir to Repose\" (cost=0):\n        countdown(4)\n        turn_end turn=Self if count(card:#10364110@self:board All) >= 1:\n            grant_keyword cannot_attack to opponent:board<Follower> Random(ctr:crest) where prop:Attack <= 4\n            grant_ability to opponent:board<Follower> Random(ctr:crest) where prop:Attack <= 4:\n                turn_end turn=Self:\n                    banish $self",
+      "text": "card 10364110 \"安息的继承者·妃花\" (Follower, clan=Havencraft, cost=6, atk=0, life=4, rarity=4):\n    fanfare:\n        gain_crest #10364110\n    super_evolve:\n        set_stats opponent:board<Follower> All to 4/_\n\n    crest \"安息的继承者·妃花\" (cost=0):\n        countdown(4)\n        turn_end turn=Self if count(card:#10364110@self:board All) >= 1:\n            grant_keyword cannot_attack to opponent:board<Follower> Random(ctr:crest) where prop:Attack <= 4\n            grant_ability to opponent:board<Follower> Random(ctr:crest) where prop:Attack <= 4:\n                turn_end turn=Self:\n                    banish $self",
       "rarity": 4,
       "alt_modes": [
         {
@@ -5336,7 +5336,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10364120 \"绝望的显现·玛温\" (Follower, clan=Havencraft, cost=4, atk=4, life=4, rarity=4):\n    fanfare:\n        add_to_hand 1 #90064310\n    evolve:\n        gain_crest #10364120\n\n    crest \"Marwynn, Despair Manifest\" (cost=0):\n        turn_end turn=Self if ctr:turn_ally_attacks = 0:\n            deal ctr:crest damage to opponent:board +leader All split",
+      "text": "card 10364120 \"绝望的显现·玛温\" (Follower, clan=Havencraft, cost=4, atk=4, life=4, rarity=4):\n    fanfare:\n        add_to_hand 1 #90064310\n    evolve:\n        gain_crest #10364120\n\n    crest \"绝望的显现·玛温\" (cost=0):\n        turn_end turn=Self if ctr:turn_ally_attacks = 0:\n            deal ctr:crest damage to opponent:board +leader All split",
       "rarity": 4,
       "alt_modes": [
         {
@@ -5582,7 +5582,7 @@
       "attack": 7,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 10404110 \"天司长的继承者·圣德芬\" (Follower, clan=Neutral, cost=6, atk=7, life=6, rarity=4):\n    turn_start zone=Deck turn=Self if ctr:evolve_count >= 6:\n        invoke_self\n    on_enter on($self):\n        gain_crest #10404110\n        bounce $self\n    fanfare if super_skybound_art:\n        repeat 5 times:\n            deal 2 damage to opponent:board Random(1)\n\n    crest \"Sandalphon, Primarch Successor\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            restore 1 life to self:board +leader All",
+      "text": "card 10404110 \"天司长的继承者·圣德芬\" (Follower, clan=Neutral, cost=6, atk=7, life=6, rarity=4):\n    turn_start zone=Deck turn=Self if ctr:evolve_count >= 6:\n        invoke_self\n    on_enter on($self):\n        gain_crest #10404110\n        bounce $self\n    fanfare if super_skybound_art:\n        repeat 5 times:\n            deal 2 damage to opponent:board Random(1)\n\n    crest \"天司长的继承者·圣德芬\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            restore 1 life to self:board +leader All",
       "rarity": 4,
       "alt_modes": [
         {
@@ -5673,7 +5673,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10412310 \"绮罗星\" (Spell, clan=Forestcraft, cost=1, rarity=2):\n    on_play:\n        deal 2 damage to opponent:board<Follower> Random(1)\n        if ctr:combo >= 5:\n            gain_crest #10412310\n\n    crest \"Starry Sky\" (cost=0):\n        countdown(1)\n        last_words:\n            deal 1 damage to opponent:leader\n            add_to_hand 1 #10412310",
+      "text": "card 10412310 \"绮罗星\" (Spell, clan=Forestcraft, cost=1, rarity=2):\n    on_play:\n        deal 2 damage to opponent:board<Follower> Random(1)\n        if ctr:combo >= 5:\n            gain_crest #10412310\n\n    crest \"绮罗星\" (cost=0):\n        countdown(1)\n        last_words:\n            deal 1 damage to opponent:leader\n            add_to_hand 1 #10412310",
       "rarity": 2,
       "alt_modes": [
         {
@@ -5739,7 +5739,7 @@
       "attack": 4,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10414120 \"调和的舞者·尤艾尔&苏丝雅\" (Follower, clan=Forestcraft, cost=5, atk=4, life=3, rarity=4):\n    fanfare:\n        repeat 2 times:\n            deal 4 damage to opponent:board<Follower> Random(1)\n    super_evolve:\n        gain_crest #10414120\n\n    crest \"Yuel & Societte, Dancing Duo\" (cost=0):\n        countdown(4)\n        on_play turn=Self max=1 on(self:board<Follower> All):\n            evolve $trigger",
+      "text": "card 10414120 \"调和的舞者·尤艾尔&苏丝雅\" (Follower, clan=Forestcraft, cost=5, atk=4, life=3, rarity=4):\n    fanfare:\n        repeat 2 times:\n            deal 4 damage to opponent:board<Follower> Random(1)\n    super_evolve:\n        gain_crest #10414120\n\n    crest \"调和的舞者·尤艾尔&苏丝雅\" (cost=0):\n        countdown(4)\n        on_play turn=Self max=1 on(self:board<Follower> All):\n            evolve $trigger",
       "rarity": 4,
       "alt_modes": [
         {
@@ -5997,7 +5997,7 @@
       "attack": 2,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 10433110 \"缅怀之火·埃尔默特\" (Follower, clan=Runecraft, cost=3, atk=2, life=1, rarity=3):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        silence $selected\n        deal 3 damage to $selected\n    super_evolve:\n        gain_crest #10433110\n\n    crest \"Elmott, Remembrance Aflame\" (cost=0):\n        turn_start turn=Self:\n            deal 1 damage to opponent:leader",
+      "text": "card 10433110 \"缅怀之火·埃尔默特\" (Follower, clan=Runecraft, cost=3, atk=2, life=1, rarity=3):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        silence $selected\n        deal 3 damage to $selected\n    super_evolve:\n        gain_crest #10433110\n\n    crest \"缅怀之火·埃尔默特\" (cost=0):\n        turn_start turn=Self:\n            deal 1 damage to opponent:leader",
       "rarity": 3,
       "alt_modes": [
         {
@@ -6046,7 +6046,7 @@
       "attack": 5,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10434120 \"天才美少女炼金术士·卡莉奥丝特罗\" (Follower, clan=Runecraft, cost=4, atk=5, life=3, rarity=4):\n    fanfare:\n        gain_earth_sigil 2\n        add_to_hand 1 #90034320\n    on_play if skybound_art:\n        evolve $self\n    on_play if super_skybound_art:\n        gain_crest #10434120\n\n    crest \"Cagliostro, Genius Alchemist\" (cost=0):\n        turn_start turn=Self [earth_rite(1)]:\n            add_to_hand 1 #90034320",
+      "text": "card 10434120 \"天才美少女炼金术士·卡莉奥丝特罗\" (Follower, clan=Runecraft, cost=4, atk=5, life=3, rarity=4):\n    fanfare:\n        gain_earth_sigil 2\n        add_to_hand 1 #90034320\n    on_play if skybound_art:\n        evolve $self\n    on_play if super_skybound_art:\n        gain_crest #10434120\n\n    crest \"天才美少女炼金术士·卡莉奥丝特罗\" (cost=0):\n        turn_start turn=Self [earth_rite(1)]:\n            add_to_hand 1 #90034320",
       "rarity": 4,
       "alt_modes": [
         {
@@ -6099,7 +6099,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10441310 \"破浪新月\" (Spell, clan=Dragoncraft, cost=2, rarity=1):\n    on_play:\n        gain_crest #10441310\n\n    crest \"Crescent Tube Ride\" (cost=0):\n        countdown(4)\n        turn_end turn=Self:\n            buff self:board<Follower> Random(1) +1/+1",
+      "text": "card 10441310 \"破浪新月\" (Spell, clan=Dragoncraft, cost=2, rarity=1):\n    on_play:\n        gain_crest #10441310\n\n    crest \"破浪新月\" (cost=0):\n        countdown(4)\n        turn_end turn=Self:\n            buff self:board<Follower> Random(1) +1/+1",
       "rarity": 1,
       "alt_modes": [
         {
@@ -6255,7 +6255,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10451310 \"妖异利刃\" (Spell, clan=Abysscraft, cost=2, rarity=1):\n    on_play:\n        deal 2 damage to self:leader\n        gain_crest #10451310\n\n    crest \"Valiant Edge\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            deal 2 damage to opponent:board<Follower> Random(1)\n            restore 1 life to self:leader",
+      "text": "card 10451310 \"妖异利刃\" (Spell, clan=Abysscraft, cost=2, rarity=1):\n    on_play:\n        deal 2 damage to self:leader\n        gain_crest #10451310\n\n    crest \"妖异利刃\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            deal 2 damage to opponent:board<Follower> Random(1)\n            restore 1 life to self:leader",
       "rarity": 1,
       "alt_modes": [
         {
@@ -6341,7 +6341,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10453310 \"堕落\" (Spell, clan=Abysscraft, cost=5, rarity=3):\n    on_play:\n        buff any:board<Follower> All -2/-2\n        gain_crest #10453310 [owner=Any]\n    on_play if super_skybound_art:\n        destroy self:crestarea All where named \"Corruption\"\n\n    crest \"Corruption\" (cost=0):\n        countdown(4)\n        turn_end turn=Self:\n            deal 2 damage to self:leader",
+      "text": "card 10453310 \"堕落\" (Spell, clan=Abysscraft, cost=5, rarity=3):\n    on_play:\n        buff any:board<Follower> All -2/-2\n        gain_crest #10453310 [owner=Any]\n    on_play if super_skybound_art:\n        destroy self:crestarea All where named \"Corruption\"\n\n    crest \"堕落\" (cost=0):\n        countdown(4)\n        turn_end turn=Self:\n            deal 2 damage to self:leader",
       "rarity": 3,
       "alt_modes": [
         {
@@ -6376,7 +6376,7 @@
       "attack": 7,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 10454120 \"狡诈的堕天司·彼列\" (Follower, clan=Abysscraft, cost=7, atk=7, life=6, rarity=4):\n    fanfare:\n        deal 10 damage to any:board<Follower> other All\n    on_play if super_skybound_art:\n        gain_crest #10454120\n    super_evolve:\n        advance_countdown self:crestarea All where named \"Belial, Archangel of Cunning\" by 1\n\n    crest \"Belial, Archangel of Cunning\" (cost=0):\n        countdown(4)\n        last_words:\n            deal 20 damage to opponent:leader",
+      "text": "card 10454120 \"狡诈的堕天司·彼列\" (Follower, clan=Abysscraft, cost=7, atk=7, life=6, rarity=4):\n    fanfare:\n        deal 10 damage to any:board<Follower> other All\n    on_play if super_skybound_art:\n        gain_crest #10454120\n    super_evolve:\n        advance_countdown self:crestarea All where named \"Belial, Archangel of Cunning\" by 1\n\n    crest \"狡诈的堕天司·彼列\" (cost=0):\n        countdown(4)\n        last_words:\n            deal 20 damage to opponent:leader",
       "rarity": 4,
       "alt_modes": [
         {
@@ -6667,7 +6667,7 @@
       "attack": 6,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 10474110 \"光之法则·龙敖\" (Follower, clan=Portalcraft, cost=5, atk=6, life=6, rarity=4):\n    fanfare:\n        repeat 6 times:\n            deal 1 damage to opponent:board<Follower> Random(1)\n        buff opponent:hand<Follower> All +1/+0\n    on_play if skybound_art:\n        gain_crest #10474110\n\n    crest \"Lu Woh, Light Personified\" (cost=0):\n        countdown(2)\n        strike on(opponent:board<Follower> All where has storm) if is CurrentAttackHitLeader($trigger):\n            buff $trigger -3/-0 [dur=ThisTurn]",
+      "text": "card 10474110 \"光之法则·龙敖\" (Follower, clan=Portalcraft, cost=5, atk=6, life=6, rarity=4):\n    fanfare:\n        repeat 6 times:\n            deal 1 damage to opponent:board<Follower> Random(1)\n        buff opponent:hand<Follower> All +1/+0\n    on_play if skybound_art:\n        gain_crest #10474110\n\n    crest \"光之法则·龙敖\" (cost=0):\n        countdown(2)\n        strike on(opponent:board<Follower> All where has storm) if is CurrentAttackHitLeader($trigger):\n            buff $trigger -3/-0 [dur=ThisTurn]",
       "rarity": 4,
       "alt_modes": [
         {
@@ -7063,7 +7063,7 @@
       "attack": 2,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10524120 \"丽金花·云庆\" (Follower, clan=Swordcraft, cost=5, atk=2, life=4, rarity=4):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        banish $selected\n        add_to_hand 1 #90021350\n    super_evolve:\n        gain_crest #10524120\n\n    crest \"Unkei, Goldbloom\" (cost=0):\n        countdown(4)\n        turn_end turn=Self:\n            add_to_hand 1 #90021350",
+      "text": "card 10524120 \"丽金花·云庆\" (Follower, clan=Swordcraft, cost=5, atk=2, life=4, rarity=4):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        banish $selected\n        add_to_hand 1 #90021350\n    super_evolve:\n        gain_crest #10524120\n\n    crest \"丽金花·云庆\" (cost=0):\n        countdown(4)\n        turn_end turn=Self:\n            add_to_hand 1 #90021350",
       "rarity": 4,
       "alt_modes": [
         {
@@ -7126,7 +7126,7 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10532110 \"失眠女巫\" (Follower, clan=Runecraft, cost=4, atk=3, life=3, rarity=2):\n    fanfare:\n        gain_crest #10532110\n    evolve:\n        destroy self:crestarea All where named \"Insomniac Witch\"\n\n    crest \"Insomniac Witch\" (cost=0):\n        countdown(2)\n        last_words:\n            deal 3 damage to any:board<Follower> All",
+      "text": "card 10532110 \"失眠女巫\" (Follower, clan=Runecraft, cost=4, atk=3, life=3, rarity=2):\n    fanfare:\n        gain_crest #10532110\n    evolve:\n        destroy self:crestarea All where named \"Insomniac Witch\"\n\n    crest \"失眠女巫\" (cost=0):\n        countdown(2)\n        last_words:\n            deal 3 damage to any:board<Follower> All",
       "rarity": 2,
       "alt_modes": [
         {
@@ -7203,7 +7203,7 @@
       "attack": 1,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 10534110 \"漫步的《愚者》·琳库露\" (Follower, clan=Runecraft, cost=1, atk=1, life=1, rarity=4):\n    keywords: [rush]\n    fanfare:\n        gain_crest #10534110\n    super_evolve:\n        spawn 10 #10534110 to Deck\n\n    crest \"Lhynkal, Wandering Fool\" (cost=0):\n        on_enter on(card:#10534110@self:board All):\n            buff opponent:leader _/-2",
+      "text": "card 10534110 \"漫步的《愚者》·琳库露\" (Follower, clan=Runecraft, cost=1, atk=1, life=1, rarity=4):\n    keywords: [rush]\n    fanfare:\n        gain_crest #10534110\n    super_evolve:\n        spawn 10 #10534110 to Deck\n\n    crest \"漫步的《愚者》·琳库露\" (cost=0):\n        on_enter on(card:#10534110@self:board All):\n            buff opponent:leader _/-2",
       "keywords": [
         "Rush"
       ],
@@ -7367,7 +7367,7 @@
       "attack": 1,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10544120 \"波摇花·夕夜\" (Follower, clan=Dragoncraft, cost=3, atk=1, life=2, rarity=4):\n    fanfare:\n        summon 1 #90041130\n    evolve:\n        select self:hand Choose(1)\n        move $selected to Cemetery\n        gain_crest #10544120\n\n    crest \"Yube, Crestpetal\" (cost=0):\n        strike on(self:board<Follower> All where has trait Marine):\n            buff $trigger +1/+0 [dur=ThisTurn]\n        strike turn=Self max=1 on(self:board<Follower> All where has trait Marine):\n            add_to_hand 1 #90041130",
+      "text": "card 10544120 \"波摇花·夕夜\" (Follower, clan=Dragoncraft, cost=3, atk=1, life=2, rarity=4):\n    fanfare:\n        summon 1 #90041130\n    evolve:\n        select self:hand Choose(1)\n        move $selected to Cemetery\n        gain_crest #10544120\n\n    crest \"波摇花·夕夜\" (cost=0):\n        strike on(self:board<Follower> All where has trait Marine):\n            buff $trigger +1/+0 [dur=ThisTurn]\n        strike turn=Self max=1 on(self:board<Follower> All where has trait Marine):\n            add_to_hand 1 #90041130",
       "rarity": 4,
       "alt_modes": [
         {
@@ -7489,7 +7489,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10553310 \"严酷的奥夜花\" (Spell, clan=Abysscraft, cost=2, rarity=3):\n    on_play:\n        gain_crest #10553310\n\n    crest \"Rigor of the Nightblossom\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            draw 1\n            if maxgroup(self:hand All) >= 4:\n                summon 1 #90051110\n                grant_keyword ward to $created",
+      "text": "card 10553310 \"严酷的奥夜花\" (Spell, clan=Abysscraft, cost=2, rarity=3):\n    on_play:\n        gain_crest #10553310\n\n    crest \"严酷的奥夜花\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            draw 1\n            if maxgroup(self:hand All) >= 4:\n                summon 1 #90051110\n                grant_keyword ward to $created",
       "rarity": 3,
       "alt_modes": [
         {
@@ -7510,7 +7510,7 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10554110 \"充实的《恋人与节制》·米路缇欧&卢泽\" (Follower, clan=Abysscraft, cost=7, atk=3, life=3, rarity=4):\n    fanfare:\n        reanimate(4) +departed\n        reanimate(2) +departed\n    on_evolve on($self):\n        destroy any:board<Follower> other Random(6)\n    on_super_evolve on($self):\n        gain_crest #10554110\n\n    crest \"Milteo & Luzen\" (cost=0):\n        aura:\n            grant_keyword suppress_fanfare to self:board<Follower> All\n            grant_keyword suppress_enhance to self:board<Follower> All\n        on_play on(self:board<Follower> All):\n            evolve $trigger",
+      "text": "card 10554110 \"充实的《恋人与节制》·米路缇欧&卢泽\" (Follower, clan=Abysscraft, cost=7, atk=3, life=3, rarity=4):\n    fanfare:\n        reanimate(4) +departed\n        reanimate(2) +departed\n    on_evolve on($self):\n        destroy any:board<Follower> other Random(6)\n    on_super_evolve on($self):\n        gain_crest #10554110\n\n    crest \"充实的《恋人与节制》·米路缇欧&卢泽\" (cost=0):\n        aura:\n            grant_keyword suppress_fanfare to self:board<Follower> All\n            grant_keyword suppress_enhance to self:board<Follower> All\n        on_play on(self:board<Follower> All):\n            evolve $trigger",
       "rarity": 4,
       "alt_modes": [
         {
@@ -7683,7 +7683,7 @@
       "attack": 5,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 10564120 \"雾卷花·茎白\" (Follower, clan=Havencraft, cost=7, atk=5, life=5, rarity=4):\n    keywords: [rush]\n    fanfare:\n        gain_crest #10564120\n        return_to_deck self:hand Random(2)\n        draw 2\n\n    crest \"Kukishiro, Mistbloom\" (cost=0):\n        on_draw turn=Self on(any:board Choose(1) where (prop:Cost = 1 or prop:Cost = 3 or prop:Cost = 5)):\n            modes Random(pick=1):\n                option 1:\n                    summon 1 #10061120\n                option 2:\n                    summon 1 #90061110\n        on_draw turn=Self on(any:board Choose(1) where (prop:Cost = 2 or prop:Cost = 4 or prop:Cost = 6)):\n            modes Random(pick=1):\n                option 1:\n                    summon 1 #10061120 [owner=Opponent]\n                option 2:\n                    summon 1 #90061110 [owner=Opponent]",
+      "text": "card 10564120 \"雾卷花·茎白\" (Follower, clan=Havencraft, cost=7, atk=5, life=5, rarity=4):\n    keywords: [rush]\n    fanfare:\n        gain_crest #10564120\n        return_to_deck self:hand Random(2)\n        draw 2\n\n    crest \"雾卷花·茎白\" (cost=0):\n        on_draw turn=Self on(any:board Choose(1) where (prop:Cost = 1 or prop:Cost = 3 or prop:Cost = 5)):\n            modes Random(pick=1):\n                option 1:\n                    summon 1 #10061120\n                option 2:\n                    summon 1 #90061110\n        on_draw turn=Self on(any:board Choose(1) where (prop:Cost = 2 or prop:Cost = 4 or prop:Cost = 6)):\n            modes Random(pick=1):\n                option 1:\n                    summon 1 #10061120 [owner=Opponent]\n                option 2:\n                    summon 1 #90061110 [owner=Opponent]",
       "keywords": [
         "Rush"
       ],
@@ -7825,7 +7825,7 @@
       "attack": 0,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10574110 \"转动的《命运之轮》·斯洛士\" (Follower, clan=Portalcraft, cost=3, atk=0, life=2, rarity=4):\n    keywords: [ambush]\n    turn_end turn=Self if is Evolved:\n        gain_crest #10574110 [owner=Opponent]\n        banish $self\n    turn_start turn=Self:\n        modes RandomUnused(pick=1):\n            option 1:\n                modify_cost self:hand All by -1 [dur=ThisTurn]\n            option 2:\n                buff self:board<Follower> All +2/+2\n            option 3:\n                restore 3 life to self:leader\n\n    crest \"Slaus, Revolving Wheel of Fortune\" (cost=0):\n        countdown(3)\n        turn_start turn=Self:\n            modes RandomUnused(pick=1):\n                option 1:\n                    modify_cost self:hand All by 1 [dur=ThisTurn]\n                option 2:\n                    buff self:board<Follower> All -2/-2\n                option 3:\n                    deal 3 damage to self:leader",
+      "text": "card 10574110 \"转动的《命运之轮》·斯洛士\" (Follower, clan=Portalcraft, cost=3, atk=0, life=2, rarity=4):\n    keywords: [ambush]\n    turn_end turn=Self if is Evolved:\n        gain_crest #10574110 [owner=Opponent]\n        banish $self\n    turn_start turn=Self:\n        modes RandomUnused(pick=1):\n            option 1:\n                modify_cost self:hand All by -1 [dur=ThisTurn]\n            option 2:\n                buff self:board<Follower> All +2/+2\n            option 3:\n                restore 3 life to self:leader\n\n    crest \"转动的《命运之轮》·斯洛士\" (cost=0):\n        countdown(3)\n        turn_start turn=Self:\n            modes RandomUnused(pick=1):\n                option 1:\n                    modify_cost self:hand All by 1 [dur=ThisTurn]\n                option 2:\n                    buff self:board<Follower> All -2/-2\n                option 3:\n                    deal 3 damage to self:leader",
       "keywords": [
         "Ambush"
       ],
@@ -8087,7 +8087,7 @@
       "attack": 1,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 10614120 \"古旧天枪·萨莎妮德\" (Follower, clan=Forestcraft, cost=1, atk=1, life=1, rarity=4):\n    traits: [Encroacher]\n    keywords: [drain]\n    fanfare:\n        pay faith(10):\n            add_to_hand 1 #90014330\n            grant_counter_ability to faith:\n                on_evolve on(self:board<Follower> All):\n                    deal 1 damage to opponent:leader\n\n    faith \"Sathanid, Eld Lance\" (cost=0):\n        on_evolve on(self:board<Follower> All):\n            gain_faith 1\n        aura:\n            counter faith = 0",
+      "text": "card 10614120 \"古旧天枪·萨莎妮德\" (Follower, clan=Forestcraft, cost=1, atk=1, life=1, rarity=4):\n    traits: [Encroacher]\n    keywords: [drain]\n    fanfare:\n        pay faith(10):\n            add_to_hand 1 #90014330\n            grant_counter_ability to faith:\n                on_evolve on(self:board<Follower> All):\n                    deal 1 damage to opponent:leader\n\n    faith \"古旧天枪·萨莎妮德\" (cost=0):\n        on_evolve on(self:board<Follower> All):\n            gain_faith 1\n        aura:\n            counter faith = 0",
       "keywords": [
         "Drain"
       ],
@@ -8192,7 +8192,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10622310 \"威风的行军\" (Spell, clan=Swordcraft, cost=1, rarity=2):\n    on_play [enhance(3)]:\n        if ctr:pp_at_play >= 3:\n            gain_crest #10622310\n            delay_countdown self:crestarea All where named \"Majestic Conquest\" by 2\n        else:\n            gain_crest #10622310\n\n    crest \"Majestic Conquest\" (cost=0):\n        countdown(2)\n        on_play on(self:board All where is Enhanced):\n            summon 1 #10621110",
+      "text": "card 10622310 \"威风的行军\" (Spell, clan=Swordcraft, cost=1, rarity=2):\n    on_play [enhance(3)]:\n        if ctr:pp_at_play >= 3:\n            gain_crest #10622310\n            delay_countdown self:crestarea All where named \"Majestic Conquest\" by 2\n        else:\n            gain_crest #10622310\n\n    crest \"威风的行军\" (cost=0):\n        countdown(2)\n        on_play on(self:board All where is Enhanced):\n            summon 1 #10621110",
       "rarity": 2,
       "alt_modes": [
         {
@@ -8259,7 +8259,7 @@
       "attack": 1,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10624120 \"古旧天剑·伊德梅塔\" (Follower, clan=Swordcraft, cost=2, atk=1, life=2, rarity=4):\n    traits: [Encroacher]\n    fanfare:\n        add_to_hand 1 #90024320\n    evolve:\n        pay faith(5):\n            grant_counter_ability to faith:\n                on_play on(self:board All where is Enhanced):\n                    buff self:board<Follower> All +1/+1\n\n    faith \"Yidmetra, Eld Sword\" (cost=0):\n        on_play on(self:board All where is Enhanced):\n            gain_faith 1\n        aura:\n            counter faith = 0",
+      "text": "card 10624120 \"古旧天剑·伊德梅塔\" (Follower, clan=Swordcraft, cost=2, atk=1, life=2, rarity=4):\n    traits: [Encroacher]\n    fanfare:\n        add_to_hand 1 #90024320\n    evolve:\n        pay faith(5):\n            grant_counter_ability to faith:\n                on_play on(self:board All where is Enhanced):\n                    buff self:board<Follower> All +1/+1\n\n    faith \"古旧天剑·伊德梅塔\" (cost=0):\n        on_play on(self:board All where is Enhanced):\n            gain_faith 1\n        aura:\n            counter faith = 0",
       "rarity": 4,
       "alt_modes": [
         {
@@ -8404,7 +8404,7 @@
       "attack": 1,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10634110 \"魔恋的爱慕·希姆\" (Follower, clan=Runecraft, cost=3, atk=1, life=2, rarity=4):\n    keywords: [drain]\n    fanfare:\n        summon 2 #10631110\n    super_evolve:\n        gain_crest #10634110\n\n    crest \"Shymm, Love Bewitched\" (cost=0):\n        strike on(card:#10631110@self:board All):\n            buff $trigger +1/+0",
+      "text": "card 10634110 \"魔恋的爱慕·希姆\" (Follower, clan=Runecraft, cost=3, atk=1, life=2, rarity=4):\n    keywords: [drain]\n    fanfare:\n        summon 2 #10631110\n    super_evolve:\n        gain_crest #10634110\n\n    crest \"魔恋的爱慕·希姆\" (cost=0):\n        strike on(card:#10631110@self:board All):\n            buff $trigger +1/+0",
       "keywords": [
         "Drain"
       ],
@@ -8430,7 +8430,7 @@
       "attack": 5,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 10634120 \"古旧天晶·卡卢基典瑟拉\" (Follower, clan=Runecraft, cost=10, atk=5, life=5, rarity=4):\n    traits: [Encroacher]\n    on_enter zone=Hand on(card:#10631110@self:board All):\n        modify_cost $self by -1\n    fanfare:\n        summon 2 #10631110\n        grant_keyword storm to $created\n    evolve:\n        add_to_hand 1 #90034330\n\n    faith \"Calge-Danthla, Eld Crystals\" (cost=0):\n        on_enter on(card:#10631110@self:board All):\n            gain_faith 1\n        aura:\n            counter faith = 0",
+      "text": "card 10634120 \"古旧天晶·卡卢基典瑟拉\" (Follower, clan=Runecraft, cost=10, atk=5, life=5, rarity=4):\n    traits: [Encroacher]\n    on_enter zone=Hand on(card:#10631110@self:board All):\n        modify_cost $self by -1\n    fanfare:\n        summon 2 #10631110\n        grant_keyword storm to $created\n    evolve:\n        add_to_hand 1 #90034330\n\n    faith \"古旧天晶·卡卢基典瑟拉\" (cost=0):\n        on_enter on(card:#10631110@self:board All):\n            gain_faith 1\n        aura:\n            counter faith = 0",
       "rarity": 4,
       "alt_modes": [
         {
@@ -8768,7 +8768,7 @@
       "attack": 4,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 10661110 \"崇奉的懦者\" (Follower, clan=Havencraft, cost=5, atk=4, life=5, rarity=1):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"Prostrating Coward\" (cost=2):\n        countdown(3)\n        last_words:\n            summon 1 #10661110",
+      "text": "card 10661110 \"崇奉的懦者\" (Follower, clan=Havencraft, cost=5, atk=4, life=5, rarity=1):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"崇奉的懦者\" (cost=2):\n        countdown(3)\n        last_words:\n            summon 1 #10661110",
       "keywords": [
         "Bane",
         "Ward"
@@ -8823,7 +8823,7 @@
       "attack": 5,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10662110 \"崇敬的涂描者\" (Follower, clan=Havencraft, cost=4, atk=5, life=3, rarity=2):\n    keywords: [rush, bane]\n\n    crystallize \"Venerating Dyer\" (cost=1):\n        countdown(3)\n        last_words:\n            summon 1 #10662110",
+      "text": "card 10662110 \"崇敬的涂描者\" (Follower, clan=Havencraft, cost=4, atk=5, life=3, rarity=2):\n    keywords: [rush, bane]\n\n    crystallize \"崇敬的涂描者\" (cost=1):\n        countdown(3)\n        last_words:\n            summon 1 #10662110",
       "keywords": [
         "Rush",
         "Bane"
@@ -8876,7 +8876,7 @@
       "attack": 2,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10663110 \"崇拜的圣骑士\" (Follower, clan=Havencraft, cost=6, atk=2, life=4, rarity=3):\n    keywords: [bane, aura]\n    fanfare:\n        summon 1 #10663110\n    evolve:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n\n    crystallize \"Worshipful Crusader\" (cost=1):\n        countdown(3)\n        last_words:\n            summon 1 #10663110",
+      "text": "card 10663110 \"崇拜的圣骑士\" (Follower, clan=Havencraft, cost=6, atk=2, life=4, rarity=3):\n    keywords: [bane, aura]\n    fanfare:\n        summon 1 #10663110\n    evolve:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n\n    crystallize \"崇拜的圣骑士\" (cost=1):\n        countdown(3)\n        last_words:\n            summon 1 #10663110",
       "keywords": [
         "Bane",
         "Aura"
@@ -8933,7 +8933,7 @@
       "attack": 9,
       "life": 9,
       "source_format": "py_ast",
-      "text": "card 10664120 \"古旧天书·莲妥丝\" (Follower, clan=Havencraft, cost=9, atk=9, life=9, rarity=4):\n    traits: [Encroacher]\n    keywords: [ward]\n    fanfare:\n        select any:board other Choose(3)\n        destroy $selected\n    turn_end turn=Self:\n        pay faith(10):\n            add_to_hand 1 #90064320\n\n    faith \"Lyanthoth, Eld Tome\" (cost=0):\n        on_destroy on(self:board<Amulet> All):\n            gain_faith 1\n        aura:\n            counter faith = 0",
+      "text": "card 10664120 \"古旧天书·莲妥丝\" (Follower, clan=Havencraft, cost=9, atk=9, life=9, rarity=4):\n    traits: [Encroacher]\n    keywords: [ward]\n    fanfare:\n        select any:board other Choose(3)\n        destroy $selected\n    turn_end turn=Self:\n        pay faith(10):\n            add_to_hand 1 #90064320\n\n    faith \"古旧天书·莲妥丝\" (cost=0):\n        on_destroy on(self:board<Amulet> All):\n            gain_faith 1\n        aura:\n            counter faith = 0",
       "keywords": [
         "Ward"
       ],
@@ -8957,7 +8957,7 @@
       "attack": 1,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10671110 \"低劣的玩具\" (Follower, clan=Portalcraft, cost=6, atk=1, life=3, rarity=1):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"Shoddy Plaything\" (cost=2):\n        on_play:\n            summon 1 #10671110",
+      "text": "card 10671110 \"低劣的玩具\" (Follower, clan=Portalcraft, cost=6, atk=1, life=3, rarity=1):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"低劣的玩具\" (cost=2):\n        on_play:\n            summon 1 #10671110",
       "keywords": [
         "Ward"
       ],
@@ -9011,7 +9011,7 @@
       "attack": 2,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 10672110 \"拙劣的人偶\" (Follower, clan=Portalcraft, cost=5, atk=2, life=1, rarity=2):\n    fanfare:\n        summon 1 #10672110\n        evolve $created\n        evolve $self\n\n    accelerate \"Substandard Puppet\" (cost=3):\n        on_play:\n            summon 2 #10672110",
+      "text": "card 10672110 \"拙劣的人偶\" (Follower, clan=Portalcraft, cost=5, atk=2, life=1, rarity=2):\n    fanfare:\n        summon 1 #10672110\n        evolve $created\n        evolve $self\n\n    accelerate \"拙劣的人偶\" (cost=3):\n        on_play:\n            summon 2 #10672110",
       "rarity": 2,
       "alt_modes": [
         {
@@ -9063,7 +9063,7 @@
       "attack": 3,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10673110 \"愚劣的兵器\" (Follower, clan=Portalcraft, cost=8, atk=3, life=4, rarity=3):\n    fanfare:\n        summon 2 #10673110\n    turn_end turn=Self:\n        deal 3 damage to opponent:board<Follower> All split\n    evolve:\n        deal 3 damage to opponent:board<Follower> All split\n\n    accelerate \"Ludicrous Ordnance\" (cost=4):\n        on_play:\n            summon 1 #10673110",
+      "text": "card 10673110 \"愚劣的兵器\" (Follower, clan=Portalcraft, cost=8, atk=3, life=4, rarity=3):\n    fanfare:\n        summon 2 #10673110\n    turn_end turn=Self:\n        deal 3 damage to opponent:board<Follower> All split\n    evolve:\n        deal 3 damage to opponent:board<Follower> All split\n\n    accelerate \"愚劣的兵器\" (cost=4):\n        on_play:\n            summon 1 #10673110",
       "rarity": 3,
       "alt_modes": [
         {
@@ -9203,7 +9203,7 @@
       "attack": 1,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10704110 \"特殊目标·海雷姆哈妮\" (Follower, clan=Neutral, cost=6, atk=1, life=4, rarity=4):\n    strike if not is CurrentAttackHitLeader:\n        grant_keyword barrier to $self\n        grant_keyword cannot_attack to $opposing\n        grant_ability to $opposing:\n            turn_end turn=Self:\n                banish $self\n    last_words:\n        gain_crest #10704110\n\n    crest \"Illamrita, Designated Target\" (cost=0):\n        countdown(2)\n        last_words:\n            summon 1 #10704110\n            evolve $created",
+      "text": "card 10704110 \"特殊目标·海雷姆哈妮\" (Follower, clan=Neutral, cost=6, atk=1, life=4, rarity=4):\n    strike if not is CurrentAttackHitLeader:\n        grant_keyword barrier to $self\n        grant_keyword cannot_attack to $opposing\n        grant_ability to $opposing:\n            turn_end turn=Self:\n                banish $self\n    last_words:\n        gain_crest #10704110\n\n    crest \"特殊目标·海雷姆哈妮\" (cost=0):\n        countdown(2)\n        last_words:\n            summon 1 #10704110\n            evolve $created",
       "rarity": 4,
       "alt_modes": [
         {
@@ -9319,7 +9319,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10712310 \"忧虑缩小\" (Spell, clan=Forestcraft, cost=1, rarity=2):\n    traits: [Anathema]\n    on_play:\n        restore 1 life to self:leader\n        if ctr:combo >= 3:\n            gain_crest #10712310\n\n    crest \"Minimized Anxiety\" (cost=0):\n        countdown(1)\n        last_words:\n            add_to_hand 1 #10713310",
+      "text": "card 10712310 \"忧虑缩小\" (Spell, clan=Forestcraft, cost=1, rarity=2):\n    traits: [Anathema]\n    on_play:\n        restore 1 life to self:leader\n        if ctr:combo >= 3:\n            gain_crest #10712310\n\n    crest \"忧虑缩小\" (cost=0):\n        countdown(1)\n        last_words:\n            add_to_hand 1 #10713310",
       "rarity": 2,
       "alt_modes": [
         {
@@ -9356,7 +9356,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10713310 \"恶意扩大\" (Spell, clan=Forestcraft, cost=1, rarity=3):\n    traits: [Anathema]\n    on_play:\n        deal 2 damage to opponent:board<Follower> Random(1)\n        if ctr:combo >= 3:\n            gain_crest #10713310\n\n    crest \"Magnified Malice\" (cost=0):\n        countdown(1)\n        last_words:\n            add_to_hand 1 #10712310",
+      "text": "card 10713310 \"恶意扩大\" (Spell, clan=Forestcraft, cost=1, rarity=3):\n    traits: [Anathema]\n    on_play:\n        deal 2 damage to opponent:board<Follower> Random(1)\n        if ctr:combo >= 3:\n            gain_crest #10713310\n\n    crest \"恶意扩大\" (cost=0):\n        countdown(1)\n        last_words:\n            add_to_hand 1 #10712310",
       "rarity": 3,
       "alt_modes": [
         {
@@ -9379,7 +9379,7 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10714110 \"操量的安纳提玛·达斯特迪兹\" (Follower, clan=Forestcraft, cost=4, atk=3, life=3, rarity=4):\n    traits: [Anathema]\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        buff $selected -0/-prop:Attack\n        counter combo by 1\n    evolve:\n        gain_crest #10714110\n\n    crest \"Thestae, Anathema of Distortion\" (cost=0):\n        countdown(3)\n        turn_end turn=Self [combo(3)]:\n            buff self:deck<Follower> All +1/+1",
+      "text": "card 10714110 \"操量的安纳提玛·达斯特迪兹\" (Follower, clan=Forestcraft, cost=4, atk=3, life=3, rarity=4):\n    traits: [Anathema]\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        buff $selected -0/-prop:Attack\n        counter combo by 1\n    evolve:\n        gain_crest #10714110\n\n    crest \"操量的安纳提玛·达斯特迪兹\" (cost=0):\n        countdown(3)\n        turn_end turn=Self [combo(3)]:\n            buff self:deck<Follower> All +1/+1",
       "rarity": 4,
       "alt_modes": [
         {
@@ -9400,7 +9400,7 @@
       "attack": 5,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 10714120 \"冰界鹿王\" (Follower, clan=Forestcraft, cost=6, atk=5, life=5, rarity=4):\n    fanfare:\n        add_to_hand 2 #90011310\n    turn_end turn=Self:\n        deal prop:Attack damage to opponent:board<Follower> All split\n    super_evolve:\n        gain_crest #10714120\n\n    crest \"Great Hart of the Glacial Realm\" (cost=0):\n        countdown(3)\n        turn_end turn=Self [combo(3)]:\n            add_to_hand 1 #90011310",
+      "text": "card 10714120 \"冰界鹿王\" (Follower, clan=Forestcraft, cost=6, atk=5, life=5, rarity=4):\n    fanfare:\n        add_to_hand 2 #90011310\n    turn_end turn=Self:\n        deal prop:Attack damage to opponent:board<Follower> All split\n    super_evolve:\n        gain_crest #10714120\n\n    crest \"冰界鹿王\" (cost=0):\n        countdown(3)\n        turn_end turn=Self [combo(3)]:\n            add_to_hand 1 #90011310",
       "rarity": 4,
       "alt_modes": [
         {
@@ -9541,7 +9541,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10724110 \"统音的安纳提玛·吉尔达利娅\" (Follower, clan=Swordcraft, cost=4, atk=4, life=4, rarity=4):\n    traits: [Anathema]\n    fanfare [rally(20)]:\n        gain_crest #10724110\n        evolve $self\n    on_enter turn=Self on(self:board<Follower> other All):\n        grant_keyword rush to $trigger\n    on_evolve on($self):\n        summon 2 #90021120\n\n    crest \"Gildaria, Anathema of Attunement\" (cost=0):\n        countdown(1)\n        on_enter turn=Self on(self:board<Follower> All):\n            deal 1 damage to opponent:leader",
+      "text": "card 10724110 \"统音的安纳提玛·吉尔达利娅\" (Follower, clan=Swordcraft, cost=4, atk=4, life=4, rarity=4):\n    traits: [Anathema]\n    fanfare [rally(20)]:\n        gain_crest #10724110\n        evolve $self\n    on_enter turn=Self on(self:board<Follower> other All):\n        grant_keyword rush to $trigger\n    on_evolve on($self):\n        summon 2 #90021120\n\n    crest \"统音的安纳提玛·吉尔达利娅\" (cost=0):\n        countdown(1)\n        on_enter turn=Self on(self:board<Follower> All):\n            deal 1 damage to opponent:leader",
       "rarity": 4,
       "alt_modes": [
         {
@@ -9708,7 +9708,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10734110 \"万食的安纳提玛·拉拉安瑟姆\" (Follower, clan=Runecraft, cost=7, atk=4, life=4, rarity=4):\n    traits: [Anathema]\n    keywords: [aura]\n    fanfare [earth_rite(1)]:\n        gain_crest #10734110\n    evolve [earth_rite(1)]:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n\n    crest \"Lilanthim, Anathema of Predation\" (cost=0):\n        countdown(1)\n        turn_end turn=Opponent:\n            summon 1 #10734110\n            evolve $created",
+      "text": "card 10734110 \"万食的安纳提玛·拉拉安瑟姆\" (Follower, clan=Runecraft, cost=7, atk=4, life=4, rarity=4):\n    traits: [Anathema]\n    keywords: [aura]\n    fanfare [earth_rite(1)]:\n        gain_crest #10734110\n    evolve [earth_rite(1)]:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n\n    crest \"万食的安纳提玛·拉拉安瑟姆\" (cost=0):\n        countdown(1)\n        turn_end turn=Opponent:\n            summon 1 #10734110\n            evolve $created",
       "keywords": [
         "Aura"
       ],
@@ -9875,7 +9875,7 @@
       "attack": 9,
       "life": 9,
       "source_format": "py_ast",
-      "text": "card 10744110 \"焦灰的安纳提玛·班德奈特\" (Follower, clan=Dragoncraft, cost=9, atk=9, life=9, rarity=4):\n    traits: [Anathema]\n    fanfare:\n        deal 9 damage to opponent:board<Follower> All\n    super_evolve:\n        gain_crest #10744110 [owner=Opponent]\n\n    crest \"Burnite, Anathema of Ash\" (cost=0):\n        turn_start turn=Self:\n            deal 2 damage to self:leader\n        on_healed turn=Self max=1 on(self:leader):\n            deal 1 damage to $trigger",
+      "text": "card 10744110 \"焦灰的安纳提玛·班德奈特\" (Follower, clan=Dragoncraft, cost=9, atk=9, life=9, rarity=4):\n    traits: [Anathema]\n    fanfare:\n        deal 9 damage to opponent:board<Follower> All\n    super_evolve:\n        gain_crest #10744110 [owner=Opponent]\n\n    crest \"焦灰的安纳提玛·班德奈特\" (cost=0):\n        turn_start turn=Self:\n            deal 2 damage to self:leader\n        on_healed turn=Self max=1 on(self:leader):\n            deal 1 damage to $trigger",
       "rarity": 4,
       "alt_modes": [
         {
@@ -9896,7 +9896,7 @@
       "attack": 7,
       "life": 7,
       "source_format": "py_ast",
-      "text": "card 10744120 \"龙峪的古龙\" (Follower, clan=Dragoncraft, cost=10, atk=7, life=7, rarity=4):\n    keywords: [ward]\n    fanfare:\n        summon 1 #90041120\n        gain_crest #10744120\n    super_evolve:\n        delay_countdown self:crestarea All where named \"Dragon's Vale Elder\" by 2\n\n    crest \"Dragon's Vale Elder\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            summon 1 #90041120",
+      "text": "card 10744120 \"龙峪的古龙\" (Follower, clan=Dragoncraft, cost=10, atk=7, life=7, rarity=4):\n    keywords: [ward]\n    fanfare:\n        summon 1 #90041120\n        gain_crest #10744120\n    super_evolve:\n        delay_countdown self:crestarea All where named \"Dragon's Vale Elder\" by 2\n\n    crest \"龙峪的古龙\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            summon 1 #90041120",
       "keywords": [
         "Ward"
       ],
@@ -10903,7 +10903,7 @@
       "attack": 3,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10833110 \"玛纳利亚文书官·琪可\" (Follower, clan=Runecraft, cost=3, atk=3, life=2, rarity=3):\n    traits: [Mysteria]\n    fanfare:\n        add_to_hand 2 #90031310\n    evolve:\n        modify_cost self:hand<Spell> All where has trait Mysteria by -1\n    super_evolve:\n        gain_crest #10833110\n\n    crest \"Tico, Mysterian Spellcrafter\" (cost=0):\n        on_play on(self:board<Spell> All where has trait Mysteria):\n            deal 1 damage to opponent:leader",
+      "text": "card 10833110 \"玛纳利亚文书官·琪可\" (Follower, clan=Runecraft, cost=3, atk=3, life=2, rarity=3):\n    traits: [Mysteria]\n    fanfare:\n        add_to_hand 2 #90031310\n    evolve:\n        modify_cost self:hand<Spell> All where has trait Mysteria by -1\n    super_evolve:\n        gain_crest #10833110\n\n    crest \"玛纳利亚文书官·琪可\" (cost=0):\n        on_play on(self:board<Spell> All where has trait Mysteria):\n            deal 1 damage to opponent:leader",
       "rarity": 3,
       "alt_modes": [
         {
@@ -11004,7 +11004,7 @@
       "attack": 1,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10841130 \"沧海之精\" (Follower, clan=Dragoncraft, cost=2, atk=1, life=2, rarity=1):\n    fanfare:\n        add_to_hand 1 #90041130\n    evolve:\n        gain_crest #10841130\n\n    crest \"Spirit of Wadatsumi\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait Marine):\n            buff $trigger +1/+1",
+      "text": "card 10841130 \"沧海之精\" (Follower, clan=Dragoncraft, cost=2, atk=1, life=2, rarity=1):\n    fanfare:\n        add_to_hand 1 #90041130\n    evolve:\n        gain_crest #10841130\n\n    crest \"沧海之精\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait Marine):\n            buff $trigger +1/+1",
       "rarity": 1,
       "alt_modes": [
         {
@@ -11102,7 +11102,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10844110 \"反照的赤红·德莱克&亚瑞札特\" (Follower, clan=Dragoncraft, cost=4, atk=4, life=4, rarity=4):\n    keywords: [ward]\n    fanfare:\n        buff $self +count(card:#10844110@self:board other history=EnteredThisMatch All)/+count(card:#10844110@self:board other history=EnteredThisMatch All)\n        if count(card:#10844110@self:board other history=EnteredThisMatch All) >= 2:\n            evolve $self\n    last_words:\n        gain_crest #10844110\n\n    crest \"Drache & Aluzard, Burning Blood\" (cost=0):\n        countdown(2)\n        last_words:\n            add_to_hand 1 #10844110\n            set_cost $created to 2",
+      "text": "card 10844110 \"反照的赤红·德莱克&亚瑞札特\" (Follower, clan=Dragoncraft, cost=4, atk=4, life=4, rarity=4):\n    keywords: [ward]\n    fanfare:\n        buff $self +count(card:#10844110@self:board other history=EnteredThisMatch All)/+count(card:#10844110@self:board other history=EnteredThisMatch All)\n        if count(card:#10844110@self:board other history=EnteredThisMatch All) >= 2:\n            evolve $self\n    last_words:\n        gain_crest #10844110\n\n    crest \"反照的赤红·德莱克&亚瑞札特\" (cost=0):\n        countdown(2)\n        last_words:\n            add_to_hand 1 #10844110\n            set_cost $created to 2",
       "keywords": [
         "Ward"
       ],
@@ -11126,7 +11126,7 @@
       "attack": 6,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 10844120 \"金银绚烂·璐米欧儿&雅尔贞特\" (Follower, clan=Dragoncraft, cost=8, atk=6, life=6, rarity=4):\n    fanfare:\n        select self:hand Choose(2)\n        move $selected to Cemetery\n        deal 4 damage to opponent:board +leader All\n    super_evolve:\n        draw 3\n\n    accelerate \"Lumiore & Argente, Shining Wings\" (cost=3):\n        on_play:\n            gain_max_pp 1",
+      "text": "card 10844120 \"金银绚烂·璐米欧儿&雅尔贞特\" (Follower, clan=Dragoncraft, cost=8, atk=6, life=6, rarity=4):\n    fanfare:\n        select self:hand Choose(2)\n        move $selected to Cemetery\n        deal 4 damage to opponent:board +leader All\n    super_evolve:\n        draw 3\n\n    accelerate \"金银绚烂·璐米欧儿&雅尔贞特\" (cost=3):\n        on_play:\n            gain_max_pp 1",
       "rarity": 4,
       "alt_modes": [
         {
@@ -11413,7 +11413,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10864110 \"飞跃的姐妹·贝尔迪俪亚&卡诗黛儿\" (Follower, clan=Havencraft, cost=7, atk=4, life=4, rarity=4):\n    fanfare:\n        move self:deck<Follower> Random(1) where prop:Cost <= 2 to Board\n        super_evolve $created\n    super_evolve:\n        gain_crest #10864110\n\n    crest \"Verdilia & Castelle, Sisters\" (cost=0):\n        strike on(self:board<Follower> All where is SuperEvolved) if not is CurrentAttackHitLeader($trigger):\n            grant_keyword max_attacks_per_turn(2) to self:board<Follower> All [dur=ThisTurn]",
+      "text": "card 10864110 \"飞跃的姐妹·贝尔迪俪亚&卡诗黛儿\" (Follower, clan=Havencraft, cost=7, atk=4, life=4, rarity=4):\n    fanfare:\n        move self:deck<Follower> Random(1) where prop:Cost <= 2 to Board\n        super_evolve $created\n    super_evolve:\n        gain_crest #10864110\n\n    crest \"飞跃的姐妹·贝尔迪俪亚&卡诗黛儿\" (cost=0):\n        strike on(self:board<Follower> All where is SuperEvolved) if not is CurrentAttackHitLeader($trigger):\n            grant_keyword max_attacks_per_turn(2) to self:board<Follower> All [dur=ThisTurn]",
       "rarity": 4,
       "alt_modes": [
         {
@@ -11434,7 +11434,7 @@
       "attack": 2,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10864120 \"希望的光彩·莉迪耶尔\" (Follower, clan=Havencraft, cost=5, atk=2, life=4, rarity=4):\n    on_play:\n        deal 3 damage to $self\n    fanfare:\n        modes Choose(pick=1):\n            option 1:\n                deal 3 damage to opponent:board<Follower> All\n            option 2:\n                deal 3 damage to opponent:leader\n            option 3:\n                restore 3 life to self:leader\n    evolve:\n        gain_crest #10864120\n\n    crest \"Zoe, Dazzling Hope\" (cost=0):\n        countdown(1)\n        last_words:\n            summon 1 #10864120\n            evolve $created",
+      "text": "card 10864120 \"希望的光彩·莉迪耶尔\" (Follower, clan=Havencraft, cost=5, atk=2, life=4, rarity=4):\n    on_play:\n        deal 3 damage to $self\n    fanfare:\n        modes Choose(pick=1):\n            option 1:\n                deal 3 damage to opponent:board<Follower> All\n            option 2:\n                deal 3 damage to opponent:leader\n            option 3:\n                restore 3 life to self:leader\n    evolve:\n        gain_crest #10864120\n\n    crest \"希望的光彩·莉迪耶尔\" (cost=0):\n        countdown(1)\n        last_words:\n            summon 1 #10864120\n            evolve $created",
       "rarity": 4,
       "alt_modes": [
         {
@@ -11604,7 +11604,7 @@
       "attack": 6,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 10901110 \"最古老的狱卒\" (Follower, clan=Neutral, cost=6, atk=6, life=6, rarity=1):\n    keywords: [ward]\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        deal 6 damage to $selected\n        deal 2 damage to opponent:board<Follower> Random(1) where not is selected\n\n    accelerate \"Jailor of Antiquity\" (cost=1):\n        on_play:\n            deal 2 damage to opponent:board<Follower> Random(1)",
+      "text": "card 10901110 \"最古老的狱卒\" (Follower, clan=Neutral, cost=6, atk=6, life=6, rarity=1):\n    keywords: [ward]\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        deal 6 damage to $selected\n        deal 2 damage to opponent:board<Follower> Random(1) where not is selected\n\n    accelerate \"最古老的狱卒\" (cost=1):\n        on_play:\n            deal 2 damage to opponent:board<Follower> Random(1)",
       "keywords": [
         "Ward"
       ],
@@ -12118,7 +12118,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 10934110 \"万术的罪人·赛菲\" (Follower, clan=Runecraft, cost=7, atk=4, life=4, rarity=4):\n    fuse: any:board All\n    on_fuse zone=Hand on($self):\n        pay pp(2):\n            summon 1 #10931110\n    fanfare:\n        summon 2 #10931110\n    super_evolve:\n        gain_crest #10934110\n\n    crest \"Sephie, Maven Convict\" (cost=0):\n        on_enter turn=Self max=1 on(card:#10931110@self:board All):\n            grant_keyword storm to $trigger",
+      "text": "card 10934110 \"万术的罪人·赛菲\" (Follower, clan=Runecraft, cost=7, atk=4, life=4, rarity=4):\n    fuse: any:board All\n    on_fuse zone=Hand on($self):\n        pay pp(2):\n            summon 1 #10931110\n    fanfare:\n        summon 2 #10931110\n    super_evolve:\n        gain_crest #10934110\n\n    crest \"万术的罪人·赛菲\" (cost=0):\n        on_enter turn=Self max=1 on(card:#10931110@self:board All):\n            grant_keyword storm to $trigger",
       "rarity": 4,
       "alt_modes": [
         {
@@ -12352,7 +12352,7 @@
       "attack": 4,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 10952110 \"渊底上校\" (Follower, clan=Abysscraft, cost=6, atk=4, life=6, rarity=2):\n    keywords: [ward]\n    last_words:\n        destroy opponent:board<Follower> Random(1)\n        restore 2 life to self:leader\n\n    crystallize \"Void Colonel\" (cost=2):\n        countdown(4)\n        last_words:\n            summon 1 #10952110",
+      "text": "card 10952110 \"渊底上校\" (Follower, clan=Abysscraft, cost=6, atk=4, life=6, rarity=2):\n    keywords: [ward]\n    last_words:\n        destroy opponent:board<Follower> Random(1)\n        restore 2 life to self:leader\n\n    crystallize \"渊底上校\" (cost=2):\n        countdown(4)\n        last_words:\n            summon 1 #10952110",
       "keywords": [
         "Ward"
       ],
@@ -12432,7 +12432,7 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 10954110 \"伊斯坦戴德 对 玛尔奇盖特\" (Follower, clan=Abysscraft, cost=7, atk=3, life=3, rarity=4):\n    fanfare:\n        repeat 3 times:\n            reanimate(2) +departed\n        deal 2 damage to opponent:board<Follower> All\n    super_evolve:\n        gain_crest #10954110\n\n    crest \"Istyndet vs. Mitilykket\" (cost=0):\n        turn_end turn=Self if count(self:board All where is HasLastWords) >= 1:\n            destroy self:board Random(1) where is HasLastWords\n            destroy opponent:board<Follower> Random(1)",
+      "text": "card 10954110 \"伊斯坦戴德 对 玛尔奇盖特\" (Follower, clan=Abysscraft, cost=7, atk=3, life=3, rarity=4):\n    fanfare:\n        repeat 3 times:\n            reanimate(2) +departed\n        deal 2 damage to opponent:board<Follower> All\n    super_evolve:\n        gain_crest #10954110\n\n    crest \"伊斯坦戴德 对 玛尔奇盖特\" (cost=0):\n        turn_end turn=Self if count(self:board All where is HasLastWords) >= 1:\n            destroy self:board Random(1) where is HasLastWords\n            destroy opponent:board<Follower> Random(1)",
       "rarity": 4,
       "alt_modes": [
         {
@@ -12529,7 +12529,7 @@
       "attack": 2,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 10962120 \"奇迹独角兔\" (Follower, clan=Havencraft, cost=3, atk=2, life=1, rarity=2):\n    keywords: [storm]\n\n    crystallize \"Miraculous Al-mi'raj\" (cost=1):\n        countdown(3)\n        last_words:\n            summon 1 #10962120\n        engage [engage(1)]:\n            advance_countdown $self by 1",
+      "text": "card 10962120 \"奇迹独角兔\" (Follower, clan=Havencraft, cost=3, atk=2, life=1, rarity=2):\n    keywords: [storm]\n\n    crystallize \"奇迹独角兔\" (cost=1):\n        countdown(3)\n        last_words:\n            summon 1 #10962120\n        engage [engage(1)]:\n            advance_countdown $self by 1",
       "keywords": [
         "Storm"
       ],
@@ -12598,7 +12598,7 @@
       "attack": 6,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 10964110 \"神纹的罪人·艾尔拉德\" (Follower, clan=Havencraft, cost=6, atk=6, life=6, rarity=4):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n    evolve:\n        gain_crest #10964110\n\n    crest \"Erralde, Signet Convict\" (cost=0):\n        turn_end turn=Self if count(self:board All where prop:BaseCost >= 6) >= 1:\n            deal 1 damage to opponent:leader\n            restore 1 life to self:leader",
+      "text": "card 10964110 \"神纹的罪人·艾尔拉德\" (Follower, clan=Havencraft, cost=6, atk=6, life=6, rarity=4):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        destroy $selected\n    evolve:\n        gain_crest #10964110\n\n    crest \"神纹的罪人·艾尔拉德\" (cost=0):\n        turn_end turn=Self if count(self:board All where prop:BaseCost >= 6) >= 1:\n            deal 1 damage to opponent:leader\n            restore 1 life to self:leader",
       "rarity": 4,
       "alt_modes": [
         {
@@ -12751,7 +12751,7 @@
       "attack": 1,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 10974110 \"束刃的罪人·卡特斯罗特\" (Follower, clan=Portalcraft, cost=1, atk=1, life=1, rarity=4):\n    keywords: [bane]\n    evolve:\n        tutor self:deck<Follower> Random(1) where (has clan Portalcraft and has bane)\n        if no duplicates in your deck:\n            gain_crest #10974110\n\n    crest \"Cutthroat, Fluxblade Convict\" (cost=0):\n        on_play turn=Self max=1 on(self:board<Follower> All):\n            evolve $trigger",
+      "text": "card 10974110 \"束刃的罪人·卡特斯罗特\" (Follower, clan=Portalcraft, cost=1, atk=1, life=1, rarity=4):\n    keywords: [bane]\n    evolve:\n        tutor self:deck<Follower> Random(1) where (has clan Portalcraft and has bane)\n        if no duplicates in your deck:\n            gain_crest #10974110\n\n    crest \"束刃的罪人·卡特斯罗特\" (cost=0):\n        on_play turn=Self max=1 on(self:board<Follower> All):\n            evolve $trigger",
       "keywords": [
         "Bane"
       ],
@@ -12867,7 +12867,7 @@
       "attack": 9,
       "life": 9,
       "source_format": "py_ast",
-      "text": "card 11004110 \"理想国之神·列加尔\" (Follower, clan=Neutral, cost=9, atk=9, life=9, rarity=4):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        deal 9 damage to $selected\n    super_evolve:\n        gain_crest #11004110\n\n    crest \"Rezeal, Goddess of Nacreheim\" (cost=0):\n        on_play on(self:board<Follower> All):\n            grant_ability to $trigger:\n                last_words:\n                    spawn_copy 1 of $self to Board\n            grant_keyword cannot_attack to $trigger [dur=ThisTurn]",
+      "text": "card 11004110 \"理想国之神·列加尔\" (Follower, clan=Neutral, cost=9, atk=9, life=9, rarity=4):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        deal 9 damage to $selected\n    super_evolve:\n        gain_crest #11004110\n\n    crest \"理想国之神·列加尔\" (cost=0):\n        on_play on(self:board<Follower> All):\n            grant_ability to $trigger:\n                last_words:\n                    spawn_copy 1 of $self to Board\n            grant_keyword cannot_attack to $trigger [dur=ThisTurn]",
       "rarity": 4,
       "alt_modes": [
         {
@@ -12964,7 +12964,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 11012310 \"鸟兽述怀\" (Spell, clan=Forestcraft, cost=2, rarity=2):\n    on_play:\n        summon 1 #90001210\n        gain_crest #11012310\n\n    crest \"Untamed Testimony\" (cost=0):\n        countdown(2)\n        turn_start turn=Self:\n            summon 1 #11012110",
+      "text": "card 11012310 \"鸟兽述怀\" (Spell, clan=Forestcraft, cost=2, rarity=2):\n    on_play:\n        summon 1 #90001210\n        gain_crest #11012310\n\n    crest \"鸟兽述怀\" (cost=0):\n        countdown(2)\n        turn_start turn=Self:\n            summon 1 #11012110",
       "rarity": 2,
       "alt_modes": [
         {
@@ -13179,7 +13179,7 @@
       "attack": 2,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 11024120 \"千金大参谋·阿尔梅莉洁\" (Follower, clan=Swordcraft, cost=3, atk=2, life=3, rarity=4):\n    fanfare:\n        add_to_hand 1 #90021350\n    evolve:\n        gain_crest #11024120\n    super_evolve:\n        delay_countdown self:crestarea All where named \"Almaelys, Affluent Strategist\" by 2\n\n    crest \"Almaelys, Affluent Strategist\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            modes Sequence(pick=1):\n                option 1:\n                    add_to_hand 1 #90021310\n                    set_cost $created to 0\n                option 2:\n                    add_to_hand 1 #90021320\n                    set_cost $created to 0",
+      "text": "card 11024120 \"千金大参谋·阿尔梅莉洁\" (Follower, clan=Swordcraft, cost=3, atk=2, life=3, rarity=4):\n    fanfare:\n        add_to_hand 1 #90021350\n    evolve:\n        gain_crest #11024120\n    super_evolve:\n        delay_countdown self:crestarea All where named \"Almaelys, Affluent Strategist\" by 2\n\n    crest \"千金大参谋·阿尔梅莉洁\" (cost=0):\n        countdown(2)\n        turn_end turn=Self:\n            modes Sequence(pick=1):\n                option 1:\n                    add_to_hand 1 #90021310\n                    set_cost $created to 0\n                option 2:\n                    add_to_hand 1 #90021320\n                    set_cost $created to 0",
       "rarity": 4,
       "alt_modes": [
         {
@@ -13301,7 +13301,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 11033310 \"诺茵华薇儿的审讯\" (Spell, clan=Runecraft, cost=2, rarity=3):\n    on_play:\n        add_to_hand 1 #90001210\n        gain_crest #11033310\n\n    crest \"Noeinhowell's Interrogation\" (cost=0):\n        engage on(any:board<Amulet> Choose(1)):\n            modes SequenceUnused(pick=1):\n                option 1:\n                    deal 3 damage to opponent:board<Follower> Random(1)\n                option 2:\n                    restore 2 life to self:leader\n                option 3:\n                    recover_ep 1\n                    destroy $self",
+      "text": "card 11033310 \"诺茵华薇儿的审讯\" (Spell, clan=Runecraft, cost=2, rarity=3):\n    on_play:\n        add_to_hand 1 #90001210\n        gain_crest #11033310\n\n    crest \"诺茵华薇儿的审讯\" (cost=0):\n        engage on(any:board<Amulet> Choose(1)):\n            modes SequenceUnused(pick=1):\n                option 1:\n                    deal 3 damage to opponent:board<Follower> Random(1)\n                option 2:\n                    restore 2 life to self:leader\n                option 3:\n                    recover_ep 1\n                    destroy $self",
       "rarity": 3,
       "alt_modes": [
         {
@@ -13322,7 +13322,7 @@
       "attack": 2,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 11034110 \"迷歌侦探·诺茵华薇儿\" (Follower, clan=Runecraft, cost=4, atk=2, life=4, rarity=4):\n    fanfare:\n        summon 1 #90001210\n    engage on(any:board<Amulet> Choose(1)):\n        deal 3 damage to opponent:board<Follower> Random(1)\n    evolve:\n        gain_crest #11034110\n\n    crest \"Noeinhowell, Hymnodic Detective\" (cost=0):\n        engage turn=Self max=1 on(any:board<Amulet> Choose(1)):\n            recover_pp 1",
+      "text": "card 11034110 \"迷歌侦探·诺茵华薇儿\" (Follower, clan=Runecraft, cost=4, atk=2, life=4, rarity=4):\n    fanfare:\n        summon 1 #90001210\n    engage on(any:board<Amulet> Choose(1)):\n        deal 3 damage to opponent:board<Follower> Random(1)\n    evolve:\n        gain_crest #11034110\n\n    crest \"迷歌侦探·诺茵华薇儿\" (cost=0):\n        engage turn=Self max=1 on(any:board<Amulet> Choose(1)):\n            recover_pp 1",
       "rarity": 4,
       "alt_modes": [
         {
@@ -13635,7 +13635,7 @@
       "attack": 1,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 11054120 \"末日变换·格莫瑞\" (Follower, clan=Abysscraft, cost=2, atk=1, life=3, rarity=4):\n    keywords: [ward]\n    last_words [necromancy(2)]:\n        draw 1\n    evolve:\n        gain_crest #11054120\n\n    crest \"Gremory, Doom Dispeller\" (cost=0):\n        turn_end turn=Self:\n            gain_shadows 2",
+      "text": "card 11054120 \"末日变换·格莫瑞\" (Follower, clan=Abysscraft, cost=2, atk=1, life=3, rarity=4):\n    keywords: [ward]\n    last_words [necromancy(2)]:\n        draw 1\n    evolve:\n        gain_crest #11054120\n\n    crest \"末日变换·格莫瑞\" (cost=0):\n        turn_end turn=Self:\n            gain_shadows 2",
       "keywords": [
         "Ward"
       ],
@@ -13760,7 +13760,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 11063310 \"徒然的证言\" (Spell, clan=Havencraft, cost=3, rarity=3):\n    on_play:\n        modes Choose(pick=1):\n            option 1:\n                deal 4 damage to opponent:board<Follower> Random(1)\n                gain_crest #11063310\n            option 2:\n                summon 1 #90061140\n\n    crest \"Fruitless Testimony\" (cost=0):\n        countdown(2)\n        turn_start turn=Self:\n            restore 1 life to self:leader\n            add_to_hand 1 #90001210",
+      "text": "card 11063310 \"徒然的证言\" (Spell, clan=Havencraft, cost=3, rarity=3):\n    on_play:\n        modes Choose(pick=1):\n            option 1:\n                deal 4 damage to opponent:board<Follower> Random(1)\n                gain_crest #11063310\n            option 2:\n                summon 1 #90061140\n\n    crest \"徒然的证言\" (cost=0):\n        countdown(2)\n        turn_start turn=Self:\n            restore 1 life to self:leader\n            add_to_hand 1 #90001210",
       "rarity": 3,
       "alt_modes": [
         {
@@ -13781,7 +13781,7 @@
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 11064110 \"地害三恶·拉碧妲赫特\" (Follower, clan=Havencraft, cost=6, atk=4, life=4, rarity=4):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        banish $selected\n        summon 1 #90061140\n    evolve:\n        gain_crest #11064110\n    super_evolve:\n        delay_countdown self:crestarea All where named \"Lapinette, Calamity of Desolation\" by 1\n\n    crest \"Lapinette, Calamity of Desolation\" (cost=0):\n        countdown(1)\n        turn_start turn=Self:\n            summon 1 #90061140",
+      "text": "card 11064110 \"地害三恶·拉碧妲赫特\" (Follower, clan=Havencraft, cost=6, atk=4, life=4, rarity=4):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        banish $selected\n        summon 1 #90061140\n    evolve:\n        gain_crest #11064110\n    super_evolve:\n        delay_countdown self:crestarea All where named \"Lapinette, Calamity of Desolation\" by 1\n\n    crest \"地害三恶·拉碧妲赫特\" (cost=0):\n        countdown(1)\n        turn_start turn=Self:\n            summon 1 #90061140",
       "rarity": 4,
       "alt_modes": [
         {
@@ -13959,7 +13959,7 @@
       "attack": 2,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 11074120 \"次元异客\" (Follower, clan=Portalcraft, cost=3, atk=2, life=1, rarity=4):\n    on_fuse:\n        grant_keyword rush to $self\n    last_words:\n        gain_crest #11074120\n    super_evolve:\n        grant_keyword storm to $self\n\n    crest \"Dimensional Wanderer\" (cost=0):\n        countdown(2)\n        on_fuse:\n            advance_countdown $self by 1\n        last_words:\n            summon 1 #11074120",
+      "text": "card 11074120 \"次元异客\" (Follower, clan=Portalcraft, cost=3, atk=2, life=1, rarity=4):\n    on_fuse:\n        grant_keyword rush to $self\n    last_words:\n        gain_crest #11074120\n    super_evolve:\n        grant_keyword storm to $self\n\n    crest \"次元异客\" (cost=0):\n        countdown(2)\n        on_fuse:\n            advance_countdown $self by 1\n        last_words:\n            summon 1 #11074120",
       "rarity": 4,
       "alt_modes": [
         {

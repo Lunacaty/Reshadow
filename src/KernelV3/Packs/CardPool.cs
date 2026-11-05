@@ -362,7 +362,11 @@ public static class CardPoolBuilder
                     if (prevWins) continue;
                 }
                 nameOwnerPack[c.NameEng] = (pack.PackId, effectiveId);
-                lexicon.AddCard(c.NameEng, effectiveId);
+                {
+                    var enName2 = string.IsNullOrWhiteSpace(c.NameEng)
+                        ? AuthoritativeNames.EnglishOf(effectiveId) : c.NameEng;
+                    if (!string.IsNullOrWhiteSpace(enName2)) lexicon.AddCard(enName2, effectiveId);
+                }
             }
         }
         if (res.Errors.Count > 0) return res;

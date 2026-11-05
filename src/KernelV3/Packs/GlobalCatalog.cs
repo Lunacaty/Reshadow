@@ -132,7 +132,19 @@ public sealed class GlobalCatalog
                 else if (eid > 0)
                     CardIndex.RegisterExplicit(pack.PackId, c.LocalId, eid);
                 _idOf[c] = eid;
-                if (eid > 0) Lexicon.AddCard(c.NameEng, eid);
+                if (eid > 0)
+                {
+                    // 英文名要进词法表：英文编译器靠它把 "Add a Fairy" 里的
+                    // Fairy 认成一张卡，缺了这一句整条效果会静默消失。
+                    //
+                    // 两个来源都登记，因为**产物卡包的 NameEng 里其实是中文名**
+                    // （卡包只剩一个 name 字段，加载器把它读进 NameEng）：
+                    //   · 权威表英文名 -> 编译英文原文时用
+                    //   · 卡包里的名字 -> 具名牌组按名引用、DIY 按名查询时用
+                    var authEn = AuthoritativeNames.EnglishOf(eid);
+                    if (!string.IsNullOrWhiteSpace(authEn)) Lexicon.AddCard(authEn, eid);
+                    if (!string.IsNullOrWhiteSpace(c.NameEng)) Lexicon.AddCard(c.NameEng, eid);
+                }
 
                 // 卡名中文注入 Glossary。
                 // 缺这一句，纹章名 / 衍生 Token 名在卡面上全是英文 ——

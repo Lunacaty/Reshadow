@@ -90,11 +90,22 @@ public sealed class DiyWorkshopController
             ? DiyWorkspace.For(ctx, glossary)
             : DiyWorkspace.Create(7, glossary);
 
-        // 把总表已注册的卡名灌进词法表，
-        // 否则编辑现有卡时它连自己的卡名都认不出。
-        foreach (var kv in Store.Catalog.CardsByName)
+        // 词法表只灌**当前卡池**的卡名。
+        //
+        // 从全局总表灌是错的：玩家在自己卡池里定义了一个 Knight，
+        // 写「Summon a Knight」会解析到官方卡池那个 Knight 的卡号 ——
+        // 名字一样、卡不一样，而且不报错，只表现为「召唤出了别的卡」。
+        // 每个卡池有自己的符号表，DIY 就该只认自己池子里的东西。
+        if (ctx != null)
         {
-            if (kv.Value != null) Workspace.Lexicon.AddCard(kv.Key, kv.Value.CardId);
+            var rt = Store.GetPoolRuntime(ActivePoolId);
+            if (rt != null)
+            {
+                foreach (var kv in rt.CardsByName)
+                {
+                    if (kv.Value != null) Workspace.Lexicon.AddCard(kv.Key, kv.Value.CardId);
+                }
+            }
         }
         Workspace.Lexicon.Build();
 
