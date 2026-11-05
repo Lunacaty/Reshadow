@@ -171,74 +171,6 @@ public sealed class DiyWorkshopController
         return true;
     }
 
-    /// <summary>从 AST JSON 文本编译。失败时 LastErrors 里带出具体原因。</summary>
-    public bool CompileFromAstJson(string json)
-    {
-        LastErrors.Clear();
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            LastStatusMessage = "AST JSON 为空";
-            return false;
-        }
-
-        // 「③ AST 端」收两种文本：
-        //   · 以 { 开头 -> 旧 JSON 存档（兼容）；
-        //   · 其余 -> ReshadowScript 的**效果块**（无卡头）。
-        // 效果块只含效果，卡名/费用/身材沿用当前卡，不在这里改。
-        string trimmed = json.TrimStart();
-        if (!trimmed.StartsWith("{") && !trimmed.StartsWith("["))
-        {
-            var head = CurrentDef ?? new CardDef { Kind = CardKind.Follower, Name = "DIY" };
-            var sc = new ReshadowScriptCompiler(Workspace);
-            var made = sc.CompileEffectOnly(json, head);
-            if (made == null)
-            {
-                LastErrors.AddRange(sc.Errors);
-                LastStatusMessage = "效果块解析失败";
-                return false;
-            }
-
-            CurrentDef = made;
-            // 同步其余三端；同步过程会重算 AstJsonText，所以最后覆盖回用户手写的文本，
-            // 避免「刚敲的效果块被格式化结果顶掉」。
-            string userText = json;
-            SyncAllEndpointsFromCurrentDef();
-            AstJsonText = userText;
-            AstJsonRaw = AstJsonCodec.Encode(CurrentDef);
-            LastStatusMessage = "✔ 从【AST 端】编译成功（仅效果，卡头沿用原卡）";
-            OnCardUpdated?.Invoke();
-            return true;
-        }
-
-        CardDef def;
-        try
-        {
-            // 必须传 Schema：SymbolId 只按 Id 判等，
-            // 不带 Schema 建的符号 Id 全是 0，storm 会变成 ward。
-            def = AstJsonCodec.Decode(json, Workspace.Schema, Workspace.Lexicon);
-        }
-        catch (Exception ex)
-        {
-            LastErrors.Add("AST JSON 解析失败：" + ex.Message);
-            LastStatusMessage = "AST JSON 解析失败";
-            return false;
-        }
-
-        if (def == null)
-        {
-            LastErrors.Add("AST JSON 解析结果为空");
-            LastStatusMessage = "AST JSON 解析失败";
-            return false;
-        }
-
-        CurrentDef = def;
-        AstJsonText = json;
-        SyncAllEndpointsFromCurrentDef();
-        LastStatusMessage = "✔ 从【AST 语法树端】编译成功，已同步至其余三端";
-        OnCardUpdated?.Invoke();
-        return true;
-    }
-
     /// <summary>
     /// ③ AST 端：编辑 PyAST DSL 的**效果块**（无卡头）。
     ///
@@ -364,9 +296,9 @@ public sealed class DiyWorkshopController
     {
         if (CurrentDef == null) return;
 
-        // ① 脚本端
-        var sc = new ReshadowScriptCompiler(Workspace);
-        ScriptText = sc.Print(CurrentDef);
+        // ① 脚本端：204/206 号文档后统一用 PyAST 规范语法。
+        // 旧 ReshadowScriptCompiler.Print 已不再参与生产，只在读旧卡包时保留兼容。
+        ScriptText = AstCanonicalPrinter.PrintCard(CurrentDef);
 
         // ② 积木端
         BlockModel = new DiyBlockDecompiler(Workspace.Schema).Decompile(CurrentDef);

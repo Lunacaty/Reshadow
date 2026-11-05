@@ -10,6 +10,12 @@ namespace ShadowverseFan.KernelV3.Diy;
 /// <summary>
 /// CardDef ⇄ AST JSON 的**完整双向**编解码器。
 ///
+/// ⚠ 自 204/206 号文档起，本类降级为**兼容层**：
+///   · UI 的第 ③ 端已换成 PyAST 规范语法（AstCanonicalPrinter / AstCanonicalParser）；
+///   · 新存档写 source_format: "py_ast"，不再写 ast_json；
+///   · 这里保留的能力是：读旧卡包里的 ast_json 数据、以及 UI 内部 AstJsonRaw 调试预览。
+///   新代码请用 AstCanonicalParser / AstCanonicalPrinter。
+///
 /// 为什么要有它：ReshadowScript 是手写的文本版 AST，
 /// 每加一个 EffectNode 字段都要同时改解析与打印两端，漏一个逗号就报错。
 /// AST JSON 由这一个文件跟随，加字段只在两处各补一行。

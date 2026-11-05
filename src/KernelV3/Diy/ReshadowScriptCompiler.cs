@@ -12,6 +12,12 @@ namespace ShadowverseFan.KernelV3.Diy;
 // ============================================================================
 // ReshadowScript —— 结构化 DIY 脚本（Parse <-> Print 双向无损）
 //
+// ⚠ 自 204/206 号文档起，本类降级为**只读兼容**：
+//   · 写入端已全部改用 AstCanonicalPrinter（PyAST 规范语法）；
+//   · 这里只负责把旧的 reshadow_script 卡包数据读出来；
+//   · PrintEffectOnly 已无调用方，保留仅为兼容历史存档。
+//   新代码请用 AstCanonicalParser / AstCanonicalPrinter。
+//
 // 为什么除了英文 CNL 还要有它：
 //   英文自然语言要求玩家背熟官方介词搭配（on the field vs in your hand），
 //   而写脚本的人想要的是「一行一个指令、结构清晰、关键字可中可英」。

@@ -300,7 +300,10 @@ public sealed class GameSessionStore
             Cost = card.BaseCost,
             Attack = card.BaseAttack,
             Life = card.BaseLife,
-            SourceFormat = "reshadow_script",
+            // 204/206 号文档后，新存档统一写规范 AST 语法。
+            // 旧 reshadow_script 只在**读取**旧卡包时保留兼容（见 GlobalCatalog / CardPool），
+            // 不再作为写入格式。
+            SourceFormat = "py_ast",
             Text = scriptText ?? "",
             DeckModifiers = card.DeckModifiers ?? new(),
             // 稀有度与常驻关键词必须带上：漏了它们，保存一张 DIY 卡

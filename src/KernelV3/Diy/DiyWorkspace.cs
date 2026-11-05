@@ -266,6 +266,28 @@ public sealed class DiyWorkspace
         return def;
     }
 
+
+    /// <summary>
+    /// 从 PyAST DSL 的**效果块**（纯能力列表，无卡头）编译。
+    ///
+    /// 与 CompileFromCanonicalAst 的区别：那个吃整卡（含 card 头），
+    /// 这个只吃能力列表 —— DIY 编辑器的 ③ 端与卡包里的 py_ast 都可能是这种形态。
+    /// 卡头字段（名/费/攻/命）由调用方沿用原卡。
+    /// </summary>
+    public List<AbilityDef> CompileAbilitiesFromCanonicalAst(string effectBlock, out IReadOnlyList<string> errors)
+    {
+        var parser = new AstCanonicalParser(Schema, Lexicon);
+        List<AbilityDef> abilities = null;
+        try { abilities = parser.ParseAbilities(effectBlock ?? ""); }
+        catch (Exception ex)
+        {
+            errors = new[] { "AST 解析失败：" + ex.Message };
+            return null;
+        }
+        errors = parser.Errors.ToList();
+        return abilities;
+    }
+
     /// <summary>把一张卡导出成 PyAST DSL 文本（与 CompileFromCanonicalAst 互逆）。</summary>
     public string ExportCanonicalAst(CardDef def) => AstCanonicalPrinter.PrintCard(def);
 
