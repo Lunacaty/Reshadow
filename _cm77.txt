@@ -1,0 +1,38 @@
+fix(162): 天剑深渊基础效果 —— 不是 bug，是我的验证程序把输出过滤掉了
+
+## 结论：代码一直是对的
+  按你的要求加了全链路日志（RESHADOW_TRACE=1 输出到 stderr），追踪结果：
+
+    PrintNodes IN count=2 [SelectTargetNode,ConditionalNode]
+    PrintNodes -> added SELECT to prefix, now=1
+    PrintNodes -> ENHANCE tree at i=1 prefix=1
+    ENH tiers=1 prefix=1 baseBody=2
+    ENH pre=1 baseTail=[对该目标造成1点伤害。]
+    ENH RET=[对该目标造成1点伤害。 | 【爆能强化】1；改为对该目标造成3点伤害。]
+    ABILITY body=[选择敌方战场的1个随从，对该目标造成1点伤害。 | 【爆能强化】1；…]
+    CARD abline=[选择敌方战场的1个随从，对该目标造成1点伤害。 | 【爆能强化】1；…]
+
+  每一层的返回值都完整包含基础效果。最终 PrintCard 返回值实测：
+    长度=45  换行数=2
+    [0] 选择敌方战场的1个随从，对该目标造成1点伤害。
+    [1] 【爆能强化】1；改为对该目标造成3点伤害。
+
+  根因：我用来验证的临时程序用 `grep -E '════|【'` 过滤输出，
+  而基础效果那行不含【，被 grep 滤掉了。我据此判断「基础效果丢失」，
+  然后开始改代码 —— 改的是一段本来正确的逻辑。
+
+## 保留的可复用调试设施
+  ChineseCardPrinter.Trace(string)：设置环境变量 RESHADOW_TRACE=1 即输出到 stderr。
+  这次的 Trace 调用已全部清除，方法本身保留，
+  下次排查 CardPrinter 链路直接用，不必再临时插 Console.WriteLine。
+
+## 爆能分档最终验证
+  天剑深渊（替换）：选择…造成1点伤害。 + 【爆能强化】1；改为对该目标造成3点伤害。
+  瓦路兹（累加）：入场曲…5点伤害。 + 【爆能强化】6；额外给予+2/+2。给予潜行。
+  剑王（累加）：基础 + 7档额外 + 8档额外。
+  黄金骑士（替换）：基础模式 + 【爆能强化】8；改为按顺序发动全部能力。
+
+验证：13 个门禁全绿（PyAST 10/10）。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED

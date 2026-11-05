@@ -586,6 +586,13 @@ public sealed class ChineseCardPrinter
 
     // ---------------------------------------------------------------- 节点
 
+
+    /// <summary>调试追踪。RESHADOW_TRACE=1 时输出到 stderr。</summary>
+    private static void Trace(string msg)
+    {
+        if (Environment.GetEnvironmentVariable("RESHADOW_TRACE") == "1")
+            Console.Error.WriteLine("[CP] " + msg);
+    }
     public string PrintNodes(IReadOnlyList<EffectNode> nodes)
     {
         if (nodes == null || nodes.Count == 0) return "";
@@ -608,7 +615,10 @@ public sealed class ChineseCardPrinter
             var s = PrintNode(cur);
             if (string.IsNullOrEmpty(s)) continue;
             parts.Add(s);
-            if (cur is SelectTargetNode) prefixNodes.Add(cur);
+            if (cur is SelectTargetNode)
+            {
+                prefixNodes.Add(cur);
+            }
         }
         return string.Join("", parts);
     }
