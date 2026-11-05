@@ -202,6 +202,9 @@ public sealed class DiyWorkspace
             BaseAttack = spec.Attack,
             BaseLife = spec.Life,
             Abilities = res.Abilities,
+            // 卡面裸关键词（Ward / Rush …）是卡牌定义属性，编译期收集在 Result 上。
+            // 不传会让 DIY 造的卡「卡面写着守护、实际不守护」。
+            InnateKeywords = res.InnateKeywords,
             Traits = traits,
             Clan = clan,
             HasFuse = res.HasFuse,
@@ -593,8 +596,15 @@ private static bool SubEqual(CardDef x, CardDef y, string label, out string diff
         // 裸关键词（PassiveAura 上的 Grant）是**集合**，不是序列：
         // [Ward, Rush] 与 [Rush, Ward] 是同一张卡，写序不同不该判不等。
         // 把它们抽出来单独按集合比，其余能力才按顺序比。
+        // 关键词有两个来源：卡牌定义属性（InnateKeywords，裸词）与能力节点
+        // （PassiveAura + Grant，动词短语如 Can't be played）。两边都要比，
+        // 只比后者会把「InnateKeywords 丢了」判成等价。
         var (ka, ra) = SplitKeywords(a.Abilities);
         var (kb, rb) = SplitKeywords(b.Abilities);
+        ka.AddRange((a.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>()).Select(x => x.Name));
+        kb.AddRange((b.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>()).Select(x => x.Name));
+        ka = ka.Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
+        kb = kb.Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
 
         string sak = string.Join(",", ka.OrderBy(x => x, StringComparer.Ordinal));
         string sbk = string.Join(",", kb.OrderBy(x => x, StringComparer.Ordinal));

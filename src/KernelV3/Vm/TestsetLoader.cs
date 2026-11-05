@@ -142,6 +142,9 @@ public static class TestsetLoader
                 BaseAttack = r.atk,
                 BaseLife = r.life,
                 Abilities = res.Abilities,
+                // 卡面裸关键词是卡牌定义属性，编译期收集在 Result 上。
+                // 不传会让测试集的 Ghost / Slaus / Yuna 等卡失去疾驰/潜行/守护。
+                InnateKeywords = res.InnateKeywords,
                 Traits = traits,
                 Clan = clan,
                 HasFuse = res.HasFuse,

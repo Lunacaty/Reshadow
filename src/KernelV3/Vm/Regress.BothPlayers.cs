@@ -142,6 +142,7 @@ public static partial class Regress
         {
             CardId = 500, Name = "Probe", Kind = CardKind.Follower,
             BaseAttack = 1, BaseLife = 1, BaseCost = 0, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         st.RegisterCard(new CardDef
         {
@@ -181,6 +182,7 @@ public static partial class Regress
         {
             CardId = 510, Name = "Gilnelise, Voracity Manifest", Kind = CardKind.Follower,
             BaseAttack = 1, BaseLife = 1, BaseCost = 0, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         st.RegisterCard(new CardDef
         {

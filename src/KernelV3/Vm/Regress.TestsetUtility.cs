@@ -165,6 +165,7 @@ public static partial class Regress
         {
             CardId = 2001, Name = "Drawer", Kind = CardKind.Follower,
             BaseAttack = 1, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         for (int i = 0; i < 6; i++)
         {
@@ -191,6 +192,7 @@ public static partial class Regress
         {
             CardId = 2002, Name = "Shooter", Kind = CardKind.Follower,
             BaseAttack = 1, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         st.RegisterCard(new CardDef { CardId = 2003, Name = "FoeA", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 5, BaseCost = 1 });
         st.RegisterCard(new CardDef { CardId = 2004, Name = "FoeB", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 5, BaseCost = 1 });
@@ -219,6 +221,7 @@ public static partial class Regress
         {
             CardId = 2005, Name = "Staff", Kind = CardKind.Amulet,
             BaseCost = 1, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         st.RegisterCard(new CardDef { CardId = 2006, Name = "AllyX", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 5, BaseCost = 1 });
         st.RegisterCard(new CardDef { CardId = 2007, Name = "AllyY", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 5, BaseCost = 1 });
@@ -304,6 +307,7 @@ public static partial class Regress
         {
             CardId = 2010, Name = "Ticker", Kind = CardKind.Amulet,
             BaseCost = 1, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         var c = st.SpawnCard(2010, ZoneRef.Hand, 0);
         c.Counters[st.Schema.Counter("countdown")] = 1;
@@ -325,6 +329,7 @@ public static partial class Regress
         {
             CardId = 2011, Name = "Ghost", Kind = CardKind.Follower,
             BaseAttack = 1, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         var g = st.SpawnCard(2011, ZoneRef.Board, 0);
         vm.DropPendingTriggers();
@@ -396,6 +401,7 @@ public static partial class Regress
         {
             CardId = 2030, Name = "WithEngage", Kind = CardKind.Amulet,
             BaseCost = 1, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         st.RegisterCard(new CardDef { CardId = 2031, Name = "Blank", Kind = CardKind.Amulet, BaseCost = 1 });
 
@@ -432,6 +438,7 @@ public static partial class Regress
             CardId = 2040, Name = "Aria", Kind = CardKind.Follower,
             BaseAttack = 1, BaseLife = 1, BaseCost = 3,
             Abilities = r.Abilities, CrestDef = r.CrestDef,
+            InnateKeywords = r.InnateKeywords,
         });
         var aria = st.SpawnCard(2040, ZoneRef.Hand, 0);
         vm.DropPendingTriggers();
@@ -471,6 +478,7 @@ public static partial class Regress
             CardId = 2050, Name = "Sham", Kind = CardKind.Follower,
             BaseAttack = 1, BaseLife = 1, BaseCost = 1,
             Abilities = r.Abilities, FaithDef = r.FaithDef,
+            InnateKeywords = r.InnateKeywords,
         });
         st.SpawnCard(2050, ZoneRef.Deck, 0);
         st.SetupFaith();
@@ -515,6 +523,7 @@ public static partial class Regress
         {
             CardId = 2060, Name = "Gold", Kind = CardKind.Spell,
             BaseCost = 1, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         for (int i = 0; i < 5; i++)
         {
@@ -561,6 +570,7 @@ public static partial class Regress
         {
             CardId = 2070, Name = "Ender", Kind = CardKind.Amulet,
             BaseCost = 1, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         for (int i = 0; i < 5; i++)
         {

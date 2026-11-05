@@ -40,6 +40,7 @@ public static partial class Regress
             {
                 CardId = 301, Name = "En", Kind = CardKind.Follower,
                 BaseAttack = 1, BaseLife = 1, BaseCost = 2, Abilities = r.Abilities,
+                InnateKeywords = r.InnateKeywords,
             });
             for (int i = 0; i < 8; i++) st.SpawnCard(301, ZoneRef.Deck, 0);
             st.WriteCounter(0, st.Schema.Counter("pp"), 5);
@@ -68,6 +69,7 @@ public static partial class Regress
             {
                 CardId = 302, Name = "Pump", Kind = CardKind.Follower,
                 BaseAttack = 1, BaseLife = 1, BaseCost = 2, Abilities = r.Abilities,
+                InnateKeywords = r.InnateKeywords,
             });
             st.WriteCounter(0, st.Schema.Counter("pp"), 5);
             var card = st.SpawnCard(302, ZoneRef.Hand, 0);
@@ -86,6 +88,7 @@ public static partial class Regress
             {
                 CardId = 303, Name = "En", Kind = CardKind.Follower,
                 BaseAttack = 1, BaseLife = 1, BaseCost = 2, Abilities = r.Abilities,
+                InnateKeywords = r.InnateKeywords,
             });
             for (int i = 0; i < 8; i++) st.SpawnCard(303, ZoneRef.Deck, 0);
             st.WriteCounter(0, st.Schema.Counter("pp"), 8);
@@ -108,6 +111,7 @@ public static partial class Regress
             st.RegisterCard(new CardDef
             {
                 CardId = 304, Name = "Am", Kind = CardKind.Amulet, BaseCost = 3, Abilities = r.Abilities,
+                InnateKeywords = r.InnateKeywords,
             });
             for (int i = 0; i < 8; i++) st.SpawnCard(304, ZoneRef.Deck, 0);
             st.WriteCounter(0, st.Schema.Counter("pp"), 10);
@@ -131,6 +135,7 @@ public static partial class Regress
             {
                 CardId = 305, Name = "NC", Kind = CardKind.Follower,
                 BaseAttack = 1, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities,
+                InnateKeywords = r.InnateKeywords,
             });
             for (int i = 0; i < 8; i++) st.SpawnCard(305, ZoneRef.Deck, 0);
             st.WriteCounter(0, st.Schema.Counter("pp"), 10);
@@ -175,6 +180,7 @@ public static partial class Regress
             {
                 CardId = 306, Name = "P", Kind = CardKind.Follower,
                 BaseAttack = 1, BaseLife = 1, BaseCost = 2, Abilities = r.Abilities,
+                InnateKeywords = r.InnateKeywords,
             });
             st.WriteCounter(0, st.Schema.Counter("pp"), 3);
             var card = st.SpawnCard(306, ZoneRef.Hand, 0);

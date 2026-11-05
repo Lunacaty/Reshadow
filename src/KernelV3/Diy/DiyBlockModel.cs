@@ -331,25 +331,16 @@ public sealed class DiyBlockCompiler
 
         var abilities = new List<AbilityDef>();
 
-        // 裸关键词：编译成 PassiveAura 上的 Grant（与官方卡同一套编码）
-        foreach (var kw in (doc.Keywords ?? new List<string>())
-                     .Where(k => !string.IsNullOrWhiteSpace(k))
-                     .Select(k => k.Contains('(') ? k.Substring(0, k.IndexOf('(')) : k)
-                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
-        {
-            abilities.Add(new AbilityDef
-            {
-                Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
-                Body = new List<EffectNode>
-                {
-                    new ModifyKeywordNode
-                    {
-                        Target = TargetSpec.Self, Op = KeywordOp.Grant, Keyword = _schema.Keyword(kw),
-                    },
-                },
-            });
-        }
+        // 裸关键词是**卡牌定义属性**，写进 InnateKeywords，不生成 PassiveAura 能力。
+        // 与 EnglishCompiler / 表单编译器同口径。
+        // 写成能力会让它在 Abilities 里再存一份，卡面还会多出一条空的 aura: 段。
+        var innateKeywords = (doc.Keywords ?? new List<string>())
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .Select(k => k.Contains('(') ? k.Substring(0, k.IndexOf('(')) : k)
+            .Select(k => _schema.Keyword(k))
+            .Where(k => k.IsValid)
+            .Distinct()
+            .ToList();
 
         foreach (var hat in doc.Hats ?? new List<Block>())
         {
@@ -366,6 +357,7 @@ public sealed class DiyBlockCompiler
             BaseAttack = doc.Attack,
             BaseLife = doc.Life,
             Abilities = abilities,
+            InnateKeywords = innateKeywords,
             Traits = (doc.Traits ?? new List<string>()).Select(t => _schema.Trait(t)).ToList(),
             Clan = string.IsNullOrEmpty(doc.Clan) ? SymbolId<ClanTag>.Invalid : _schema.Clan(doc.Clan),
             HasFuse = doc.HasFuse,
@@ -1333,16 +1325,18 @@ public sealed class DiyBlockDecompiler
             DeckModBlocks = DeckModBlocks(def),
         };
 
+        // 关键词有两个来源：卡牌定义属性（InnateKeywords，当前唯一编码）
+        // 与历史的能力节点（PassiveAura + Grant，旧数据兼容）。两者都要读，
+        // 否则只认后者会让新造的卡在积木端「关键词消失」。
+        foreach (var k in def.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+            if (k.IsValid && !string.IsNullOrEmpty(k.Name)) ws.Keywords.Add(k.Name);
+
+        // 能力形式的关键词（Can't be played / Can attack 2 times 这类动词短语）
+        // 保持原样当能力处理 —— 它们是带语义的能力节点，与裸词 InnateKeywords
+        // 是两种编码。混进 ws.Keywords 会在重建时被写成 InnateKeywords，
+        // 等于把动词短语降级成裸词，往返必然不等价。
         foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())
         {
-            if (IsBareKeyword(ab))
-            {
-                var mk = (ModifyKeywordNode)ab.Body[0];
-                ws.Keywords.Add(mk.Value != null && mk.Value.Op == NumOp.Const
-                    ? mk.Keyword.Name + "(" + mk.Value.Value + ")"
-                    : mk.Keyword.Name);
-                continue;
-            }
             var hat = Hat(ab);
             if (hat != null) ws.Hats.Add(hat);
         }

@@ -1,0 +1,37 @@
+fix(167): 关键词编码统一 —— 裸词进 InnateKeywords，动词短语仍走能力
+
+## 背景：关键词有两种合法编码，不能混为一谈
+  裸词        Ward / Storm / Rush        -> CardDef.InnateKeywords
+  动词短语    Can't be played. / Can attack 2 times. -> PassiveAura + ModifyKeywordNode
+  前者是卡牌定义属性，后者是带语义的能力节点（可能带 Value 表达式）。
+
+## 补齐遗漏的 6 处加载点
+  · TestsetLoader            测试集卡的 InnateKeywords 丢失
+                                -> Ghost/Slaus/Yuna 的疾驰/潜行/守护失效
+  · DiyWorkspace.CompileFromEnglishCnl  DIY 卡关键词丢失
+  · DiyBlockModel（编译侧）    原本把关键词编成 PassiveAura 能力，改为 InnateKeywords
+  · DiyBlockModel（解构侧）    原本只从 Abilities 解关键词，补读 InnateKeywords
+  · DiyWorkspace.StructurallyEqual  关键词比对只看 Abilities，补上 InnateKeywords
+  · 19 处测试内部 CardDef 构造点补 InnateKeywords
+
+## 修复的关键数据丢失
+  DiyBlockModel 解构时把能力关键词也塞进 ws.Keywords，重建时全写成 InnateKeywords ——
+  等于把「Can't be played」这个动词短语降级成裸词，往返必然不等价。
+  已改为：能力关键词保持原样走 Hats，只有 InnateKeywords 进 ws.Keywords。
+
+## 实测验证（实战，非仅数据）
+  对面有带 ward 的随从 -> CanAttack(主战者)=False「敌方有守护随从，不能攻击主战者」
+  对面无 ward          -> CanAttack(主战者)=True
+  InnateKeywords 确实参与战斗规则判定。
+
+## 门禁状态
+  VM 50/50、文档验收 102/102、Combat 16/16、效用 12/12、
+  逐卡矩阵 32/32、完整对局 7/7、PyAST 11/11、UI 3/3 —— 全绿。
+
+  剩余失败均为已知原因：
+  · 战斗 UI 21/31、DIYU 多项：CompileFromScript 改 PyAST 后仍在传旧脚本语法的测试
+  · DIY-3、POOL-L、POOL-U：表单降级为基础信息页后，
+    「四端各造一张完整卡」的前提不再成立
+  · BUG-2：构筑夹具与卡池不匹配（既有问题）
+
+卡数=1021  CompileFailures=0

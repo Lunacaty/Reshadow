@@ -568,10 +568,13 @@ public static class VmSelfTest
         // 测试用例只需要「常驻属性 + 触发能力」的骨架，不依赖卡名词表。
         var r = comp.Compile("Countdown (2) Last Words: Draw a card. Ward");
 
+        // 关键词自 164 号改造起是**卡牌定义属性**（InnateKeywords），不再是能力节点 ——
+        // 只传 r.Abilities 会让 Ward 丢失，实体上也就没有守护。
         var def = new CardDef
         {
             CardId = 500, Name = "GateAmulet", Kind = CardKind.Amulet,
             BaseAttack = 0, BaseLife = 1, BaseCost = 1, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         };
         st.RegisterCard(def);
         var e = st.SpawnCard(500, ZoneRef.Board, 0);

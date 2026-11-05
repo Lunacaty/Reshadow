@@ -62,6 +62,7 @@ public static partial class Regress
         {
             CardId = 501, Name = "TwoTwo", Kind = CardKind.Follower,
             BaseAttack = 2, BaseLife = 2, BaseCost = 2, Abilities = r.Abilities,
+            InnateKeywords = r.InnateKeywords,
         });
         st.WriteCounter(0, st.Schema.Counter("pp"), 10);
         var card = st.SpawnCard(501, ZoneRef.Hand, 0);
