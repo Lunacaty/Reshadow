@@ -232,7 +232,18 @@ public sealed class ChineseCardPrinter
         var cond = StripEvolveDomain(ab.Condition, ab.Trigger, out string domainPrefix);
         if (!string.IsNullOrEmpty(domainPrefix)) sb.Append(domainPrefix);
 
-        sb.Append(TriggerHeader(ab.Trigger, kind));
+        // 【随从攻击时】：OnAttack 且条件里有「非（上回合攻击过主战者）」时，
+        // 这是编译器为「随从攻击时」这个专用触发头打的标记，不是真的条件。
+        // 不剥离就会印成「【攻击时】若非（上回合攻击过主战者），给予…」——
+        // 玩家会以为每个攻击时效果都被加了前提。
+        bool isFollowerStrike = StripFollowerStrikeDomain(ref cond);
+
+        // 与 Costs 同源的条件必须剥离：编译器把「连击3」「唤灵6」「爆能5」
+        // 同时写进 Costs 与 Condition，两边都印就成了
+        // 「【连击3】若连击值≥3，」这种同一件事说两遍。
+        cond = StripRedundantCostConditions(cond, ab.Costs);
+
+        sb.Append(TriggerHeader(ab.Trigger, kind, isFollowerStrike));
 
         if (ab.Costs != null && ab.Costs.Count > 0)
             sb.Append(CostsText(ab.Costs));
@@ -248,7 +259,73 @@ public sealed class ChineseCardPrinter
 
     // ---------------------------------------------------------------- 触发头
 
-    private string TriggerHeader(TriggerSpec trig, CardKind kind = CardKind.Follower)
+
+    /// <summary>
+    /// 识别 OnAttack 条件里的 NotExpr(HasStateExpr{AttackedLeaderLastTurn})。
+    ///
+    /// 该字段的真实语义是「本次攻击目标为主战者」（见 CombatResolver：
+    ///   attacker.AttackedLeaderLastTurn = defender.Zone == ZoneRef.Leader），
+    /// 所以 Not(...) 表示「攻击的是随从，不是主战者」。
+    ///
+    /// 返回 true 表示这是「随从攻击时」这个专用触发头，调用方改用【随从攻击时】文案，
+    /// 且该条件本身已被消费、不必再印。
+    /// 只认这一种精确形态 —— 其他涉及 AttackedLeaderLastTurn 的写法是真实效果。
+    /// </summary>
+    private static bool StripFollowerStrikeDomain(ref BoolExpr cond)
+    {
+        bool Matches(BoolExpr e) =>
+            e is NotExpr { Inner: HasStateExpr { State: UnitState.AttackedLeaderLastTurn } };
+
+        if (cond == null) return false;
+        if (Matches(cond)) return true;
+        if (cond is AndExpr and)
+            foreach (var it in and.Items) if (Matches(it)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// 剥离与 Costs 同源的比较条件。
+    ///
+    /// 只认「计数器比较 + 阈值与某个代价完全相同」这一种精确形态，
+    /// 任何不确定的情况都保留原条件 —— 剥离是美化，不能改变语义。
+    /// </summary>
+    private static BoolExpr StripRedundantCostConditions(BoolExpr cond, IReadOnlyList<CostSpec> costs)
+    {
+        if (cond == null || costs == null || costs.Count == 0) return cond;
+
+        bool Redundant(BoolExpr e)
+        {
+            if (e is not CompareExpr c || c.Op != CompareOp.Ge) return false;
+            if (c.Left is not NumExpr { Op: NumOp.Counter } l) return false;
+            if (c.Right is not NumExpr { Op: NumOp.Const } r) return false;
+            string ctr = l.Counter.Name ?? "";
+            foreach (var cs in costs)
+            {
+                if (cs?.Amount is not NumExpr { Op: NumOp.Const } amt || amt.Value != r.Value) continue;
+                string lbl = (cs.Label ?? "").ToLowerInvariant().Replace("_", "").Replace(" ", "");
+                bool hit =
+                    (lbl == "combo" && ctr == "combo") ||
+                    (lbl == "rally" && (ctr == "match_play" || ctr == "rally")) ||
+                    (lbl is "necromancy" or "necromance" && (ctr == "shadow" || ctr == "necromancy")) ||
+                    (lbl == "earthrite" && (ctr == "earth_sigil" || ctr == "earth_rite")) ||
+                    (lbl == "enhance" && ctr == "pp_at_play") ||
+                    (lbl == "engage" && ctr == "pp_at_play");
+                if (hit) return true;
+            }
+            return false;
+        }
+
+        if (cond is AndExpr a)
+        {
+            var kept = a.Items.Where(x => !Redundant(x)).ToList();
+            if (kept.Count == a.Items.Count) return cond;
+            return kept.Count == 0 ? BoolExpr.True
+                 : kept.Count == 1 ? kept[0]
+                 : new AndExpr(kept);
+        }
+        return Redundant(cond) ? BoolExpr.True : cond;
+    }
+    private string TriggerHeader(TriggerSpec trig, CardKind kind = CardKind.Follower, bool followerStrike = false)
     {
         if (trig == null) return "";
 
@@ -302,7 +379,8 @@ public sealed class ChineseCardPrinter
             CoreEvent.OnSummon => "【召唤时】",
             CoreEvent.OnEvolve => "【进化时】",
             CoreEvent.OnSuperEvolve => "【超进化时】",
-            CoreEvent.OnAttack => "【攻击时】",
+            // 随从攻击时是专用触发头，与普通「攻击时」不是一回事。
+            CoreEvent.OnAttack => followerStrike ? "【随从攻击时】" : "【攻击时】",
             CoreEvent.OnClash => "【交战时】",
             CoreEvent.OnDamaged => "【受到伤害时】",
             CoreEvent.OnHealed => "【回复时】",
@@ -488,7 +566,12 @@ public sealed class ChineseCardPrinter
             string amt = c.Amount != null ? PrintNum(c.Amount) : "1";
             switch (c.Kind)
             {
-                case CostKind.UsePp: parts.Add(amt + "点能量点"); break;
+                case CostKind.UsePp:
+                    // 爆能强化已在正文以【爆能强化】N；独立成句，触发头里再印一遍
+                    // 「【5点能量点】」就是同一件事写两遍。
+                    if ((c.Label ?? "").ToLowerInvariant() == "enhance") break;
+                    parts.Add(amt + "点能量点");
+                    break;
                 case CostKind.Necromance: parts.Add("唤灵" + amt); break;
                 case CostKind.DestroyAlly: parts.Add("土之秘术" + amt); break;
                 case CostKind.TurnPlayCount: parts.Add("连击" + amt); break;
@@ -517,6 +600,17 @@ public sealed class ChineseCardPrinter
     }
 
     public string PrintNode(EffectNode n)
+    {
+        if (n == null) return "";
+        // 节点级前置条件（@if）必须印出来。漏了它就是静默吞条件 ——
+        // AST 里有、卡面看不到，玩家完全不知道这个效果是有前提的。
+        string prefix = "";
+        if (n.If != null && n.If is not ConstBoolExpr { Value: true })
+            prefix = "若" + PrintBool(n.If) + "，";
+        return prefix + PrintNodeCore(n);
+    }
+
+    private string PrintNodeCore(EffectNode n)
     {
         switch (n)
         {
@@ -596,6 +690,10 @@ public sealed class ChineseCardPrinter
                 return PrintMove(mv);
 
             case TransformNode t:
+                // CopySource 非空时是「变身成某物的复制」，CardId/CardName 都是空的，
+                // 按卡名印会印出空的《》。
+                if (t.CopySource != null)
+                    return "使" + PrintTarget(t.Target) + "【变身】为" + PrintTarget(t.CopySource) + "的复制。";
                 return "使" + PrintTarget(t.Target) + "【变身】为《" + CardZh(t.IntoCardName) + "》。";
 
             case EvolveNode e:
@@ -614,6 +712,9 @@ public sealed class ChineseCardPrinter
 
             case LoopNode l:
             {
+                // RepeatUntil 没有 Count（是 null），按次数印会得到「重复0次」。
+                if (l.Kind == LoopKind.RepeatUntil)
+                    return "重复以下效果直到" + PrintBool(l.Until) + "为止：「" + PrintNodes(l.Body) + "」";
                 string times = l.Kind == LoopKind.ForEach
                     ? "对" + PrintTarget(l.Collection)
                     : PrintNum(l.Count) + "次";
@@ -622,6 +723,9 @@ public sealed class ChineseCardPrinter
 
             case BranchModeNode b:
                 return PrintBranch(b);
+
+            case MarkVictoryCardNode mvc:
+                return "将" + OwnerZh(mvc.Owner) + "牌组底部的死神卡变为【胜利卡】。";
 
             case ReplaceDeckNode rd:
                 return "将我方的牌组替换为《" + DeckNameZh(rd.DeckName) + "》。";
@@ -835,6 +939,72 @@ public sealed class ChineseCardPrinter
     private string DepartedCostCap(SpawnCardNode sp)
         => Diy.ReanimateHelper.TryExtractCostCap(sp, out var cap) ? PrintNum(cap) : "N";
 
+
+    /// <summary>
+    /// 识别爆能强化分档树并渲染成卡面写法。
+    ///
+    /// 编译器把爆能编成 if (ctr:pp_at_play >= N) Then else Else，
+    /// 逐层嵌套。卡面习惯是先写基础效果，再用【爆能强化】N；标出各档的追加/改变。
+    /// 返回 null 表示不是爆能树，交给普通条件渲染。
+    /// </summary>
+    private string TryPrintEnhanceTier(ConditionalNode c)
+    {
+        if (c.Condition is not CompareExpr cmp || cmp.Op != CompareOp.Ge) return null;
+        if (cmp.Left is not NumExpr { Op: NumOp.Counter } l) return null;
+        if ((l.Counter.Name ?? "") != "pp_at_play") return null;
+        if (cmp.Right is not NumExpr { Op: NumOp.Const } r) return null;
+
+        // 收集从低到高的整条阶梯。
+        var tiers = new List<(int n, IReadOnlyList<EffectNode> body)>();
+        var baseBody = new List<EffectNode>();
+        ConditionalNode cur = c;
+        while (true)
+        {
+            if (cur.Condition is not CompareExpr cc || cc.Op != CompareOp.Ge) return null;
+            if (cc.Left is not NumExpr { Op: NumOp.Counter } ll || (ll.Counter.Name ?? "") != "pp_at_play") return null;
+            if (cc.Right is not NumExpr { Op: NumOp.Const } rr) return null;
+            tiers.Add((rr.Value, cur.Then));
+            if (cur.Else is { Count: 1 } && cur.Else[0] is ConditionalNode next) { cur = next; continue; }
+            if (cur.Else != null) baseBody.AddRange(cur.Else);
+            break;
+        }
+        if (tiers.Count == 0) return null;
+
+        var sb = new StringBuilder();
+        string baseText = PrintNodes(baseBody);
+        if (!string.IsNullOrEmpty(baseText)) sb.Append(baseText);
+
+        // 逐档对比「上一档」，但判据是**结构**而不是字符串前缀：
+        // PrintNodes 的拼接边界（句号 / 换行）不可靠，字符串 StartsWith 会误判成「改为」。
+        // 累加型 = 当前档的节点序列以「上一档」为前缀。
+        var prevNodes = baseBody.ToList();
+        foreach (var (n, body) in tiers.OrderBy(t => t.n))
+        {
+            var tierNodes = body?.ToList() ?? new List<EffectNode>();
+            string tierText = PrintNodes(tierNodes);
+            if (string.IsNullOrEmpty(tierText)) continue;
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append("【爆能强化】").Append(n).Append("；");
+
+            bool isPrefix = prevNodes.Count > 0 && tierNodes.Count >= prevNodes.Count;
+            if (isPrefix)
+            {
+                for (int i = 0; i < prevNodes.Count; i++)
+                {
+                    if (!ReferenceEquals(tierNodes[i], prevNodes[i])) { isPrefix = false; break; }
+                }
+            }
+
+            if (isPrefix)
+                sb.Append("额外").Append(PrintNodes(tierNodes.Skip(prevNodes.Count).ToList()));
+            else if (prevNodes.Count > 0)
+                sb.Append("改为").Append(tierText);
+            else sb.Append(tierText);
+
+            prevNodes = tierNodes;
+        }
+        return sb.ToString();
+    }
     private string PrintMove(MoveZoneNode mv)
     {
         string tgt = PrintTarget(mv.Target);
@@ -925,6 +1095,11 @@ public sealed class ChineseCardPrinter
             var rest = c.Then.Skip(1).ToList();
             return "消费" + amt + unit + "，" + PrintNodes(rest);
         }
+
+        // 爆能强化分档树：if ctr:pp_at_play >= N ... 是 EnhanceWeaver 的产物，
+        // 卡面写法是尾随的【爆能强化】N；而不是正文里的「若打出时能量点值≥N」。
+        string enhance = TryPrintEnhanceTier(c);
+        if (enhance != null) return enhance;
 
         string then = PrintNodes(c.Then);
         string els = PrintNodes(c.Else);
@@ -1039,8 +1214,20 @@ public sealed class ChineseCardPrinter
             _ => "",
         };
         string zone = ZoneZh(t.Zone);
-        if (t.Owner == ZoneScope.Any && t.IncludeLeader)
-            sb.Append("敌方的主战者与全体敌方随从");
+        // +leader 表示「连同主战者一起」。原实现写死成「敌方的主战者与全体敌方随从」，
+        // 且前置条件是 Owner == Any —— 这让 self:board +leader 也被印成敌方。
+        // 口径：只看 IncludeLeader，主语跟随 t.Owner。
+        if (t.IncludeLeader)
+        {
+            string who = t.Owner switch
+            {
+                ZoneScope.Self => "我方的主战者与全体我方随从",
+                ZoneScope.Opponent => "敌方的主战者与全体敌方随从",
+                _ => "双方的主战者与全体随从",
+            };
+            if (t.Mode == SelectMode.All) sb.Append(who);
+            else sb.Append("随机").Append(t.Count != null ? PrintNum(t.Count) : "1").Append("个").Append(who);
+        }
         else
         {
             if (owner.Length > 0) sb.Append(owner);
@@ -1164,7 +1351,10 @@ public sealed class ChineseCardPrinter
                 parts.Add(hs.State switch
                 {
                     UnitState.Damaged => "已受伤的",
-                    UnitState.AttackedLeaderLastTurn => "上回合攻击过主战者的",
+                    // 字段名有误导性：CombatResolver 里写的是
+                    //   attacker.AttackedLeaderLastTurn = defender.Zone == ZoneRef.Leader;
+                    // 即「这一击打的是主战者」，不是「上回合攻击过」。
+                    UnitState.AttackedLeaderLastTurn => "攻击目标为主战者",
                     UnitState.Evolved => "已进化的",
                     UnitState.SuperEvolved => "已超进化的",
                     // 缺这一条时，《古旧天剑》的「爆能强化的卡牌」会印成光秃秃的「卡牌」。
@@ -1198,6 +1388,30 @@ public sealed class ChineseCardPrinter
 
     // ---------------------------------------------------------------- 布尔 / 数值
 
+
+    /// <summary>
+    /// 固定阈值计数器比较 -> 官方术语。
+    ///
+    /// 只在阈值精确命中时翻译，其余原样返回 null（交给普通比较渲染）——
+    /// 名词化不能改变语义，max_pp>=10 硬翻成【觉醒】会让玩家误判条件。
+    /// </summary>
+    private static string TermOfCompare(CompareExpr c)
+    {
+        if (c.Op != CompareOp.Ge) return null;
+        if (c.Left is not NumExpr { Op: NumOp.Counter } l) return null;
+        if (c.Right is not NumExpr { Op: NumOp.Const } r) return null;
+        string n = l.Counter.Name ?? "";
+        return (n, r.Value) switch
+        {
+            ("max_pp", 7) => "【觉醒】状态已发动",
+            ("wrath", 7) => "【狂乱】状态已发动",
+            ("skybound_gauge", 10) => "满足【奥义】10条件",
+            ("skybound_gauge", 15) => "满足【解放奥义】15条件",
+            ("turn_ally_attacks", 0) => "本回合中我方随从尚未进行攻击",
+            ("ally_attacked_leader_last_turn", 1) => "上回合中有我方随从攻击过敌方主战者",
+            _ => null,
+        };
+    }
     public string PrintBool(BoolExpr e)
     {
         if (e == null) return "";
@@ -1221,10 +1435,19 @@ public sealed class ChineseCardPrinter
                             ?? new List<string>();
                 return parts.Count == 0 ? "" : string.Join("或", parts);
             }
-            case NotExpr n: return "非（" + PrintBool(n.Inner) + "）";
+            case NotExpr n:
+                // 「非（攻击目标为主战者）」→「攻击随从」，这是卡面写法。
+                if (n.Inner is HasStateExpr { State: UnitState.AttackedLeaderLastTurn })
+                    return "攻击随从";
+                return "非（" + PrintBool(n.Inner) + "）";
 
             case CompareExpr c:
             {
+                // 固定阈值计数器比较先翻成官方术语 —— 直接印
+                // 「若最大能量点值≥7」是机翻味，卡面写的是「若【觉醒】状态已发动」。
+                string term = TermOfCompare(c);
+                if (term != null) return term;
+
                 // 状态比较（is Evolved 之类）已在 StripEvolveDomain 处理，
                 // 这里处理数值比较。
                 string l = PrintNum(c.Left);

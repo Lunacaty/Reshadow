@@ -1,0 +1,46 @@
+fix(162): ChineseCardPrinter 第一轮 —— +leader / 随从攻击时 / 爆能强化 / 术语
+
+【最重要的修正：AttackedLeaderLastTurn 语义读反了】
+  这个字段名有严重误导性。CombatResolver 里写的是：
+    attacker.AttackedLeaderLastTurn = defender.Zone == ZoneRef.Leader;
+  即「这一击打的是主战者」，不是「上回合攻击过主战者」。
+  我此前按字面理解，把 Not(...) 印成「若非（上回合攻击过主战者）」——
+  等于把完全无关的语义塞进了卡面。
+
+  正确还原：Not(HasState(AttackedLeaderLastTurn)) = 「攻击随从」。
+  美杜莎现在输出：
+    【随从攻击时】若攻击随从，破坏交战的敌方随从。
+  与卡面「【攻击时】若攻击随从，则破坏交战对手」语义一致。
+
+【+leader 主语写死成敌方】
+  原代码 if (t.Owner == ZoneScope.Any && t.IncludeLeader) 直接印
+  「敌方的主战者与全体敌方随从」，导致 self:board +leader 也印成敌方。
+  改为只看 IncludeLeader，主语跟随 t.Owner；Random 模式印「随机N个…」。
+
+【爆能强化分档树】
+  EnhanceWeaver 把爆能编成 if(ctr:pp_at_play >= N) Then else Else 的嵌套树，
+  原先按普通条件印成「【5点能量点】若打出时能量点值≥5，…」。
+  现改为还原卡面写法：基础效果 + 逐档【爆能强化】N；额外/改为。
+  判据用**节点引用前缀比较**而不是字符串 StartsWith ——
+  PrintNodes 的拼接边界不可靠，字符串比较会把剑王的 8 档误判成「改为」。
+  剑王实测：基础 + 7档额外 + 8档额外（都是累加）。
+  黄金骑士实测：8档「改为」（替代）。
+  同时 CostsText 跳过 enhance 标签，不再在触发头重复「【8点能量点】」。
+
+【术语条件】
+  max_pp>=7->【觉醒】已发动 / wrath>=7->【狂乱】已发动 /
+  skybound_gauge>=10/15->【奥义】10 / 【解放奥义】15。
+  只在阈值精确命中时翻译，其余原样 —— 名词化不能改变语义。
+
+【条件双写】
+  与 Costs 同源的比较条件（连击/协作/唤灵/土之秘术/爆能）自动剥离。
+  凯尔贝洛斯：从「【唤灵6】若墓场值≥6，给予…」变成「【唤灵6】给予…」。
+
+【漏掉的节点】
+  MarkVictoryCardNode（原先完全空白）、TransformNode.CopySource（空的《》）、
+  LoopNode.RepeatUntil（「重复0次」）、PrintNode 入口的 n.If（静默吞条件）。
+
+验证：13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED
