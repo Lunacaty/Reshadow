@@ -1914,6 +1914,7 @@ public sealed class AstCanonicalParser
         "basecost" => StatKey.BaseCost,
         "maxlife" => StatKey.MaxLife,
         "countdown" or "chantcount" => StatKey.Countdown,
+
         _ => StatKey.None,
     };
 

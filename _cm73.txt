@@ -1,0 +1,39 @@
+test(161): 把 4 类语义断言固化成 pyast-7~10
+
+159/160/161 三轮暴露同一个系统缺陷：
+我的自检依赖 pyast-1（往返文本相等），但「两边一致地错」与
+「不进入文本的错误」它完全抓不到。本轮补 4 条独立语义断言。
+
+【pyast-7】card:#id 解析后 CardName 必须非空
+  打印器只写卡号，解析端必须用 Lexicon 反查补回卡名。
+  漏了它中文打印器会把《痴迷的试验体》渲染成「我方的所有该卡牌」，
+  而这个错误不进入 PyAST 文本，往返测试无感。
+  判据：遍历全卡池，统计 SelectTargetNode.Target.CardName 为空的次数。
+
+【pyast-8】prop:Stat 必须映射到真实 StatKey
+  StatOf 漏项会让 prop:Countdown 变成 StatKey.None（求值恒 0），
+  但打印出来仍是 prop:Countdown，文本上看不出任何异常。
+  判据：Countdown / Cost / Attack / Life / MaxLife 五个键逐个解析。
+
+【pyast-9】非默认主语后缀 (<Target>) 必须可往返
+  打印器对 has / named 会打 OfSuffix，非默认主语时是 has ward($trigger)。
+  解析端不消费这个括号，它会残留在行尾报错。
+  判据：has ward($trigger) / has trait X($trigger) / is Evolved($trigger)。
+
+【pyast-10】条件主语方向：顶层 $self，where 内 $item
+  打印器按 _inWherePrint 隐藏括号，解析器按 _whereDepth 还原默认主语。
+  两边只要有一边没对齐，顶层 if is Evolved 就会变成判 $item，
+  运行期在顶层作用域找不到 $item，条件恒为 false —— 而文本仍相等。
+  这是 160 号文档指出的最严重回归，往返测试永远抓不到。
+
+【反向验证（确认断言不是摆设）】
+  ① 临时删掉 StatOf 的 countdown 分支
+     -> pyast-8 立刻报：prop:Countdown => None，9/10
+  ② 临时把 DefaultSubject 改成恒 $self
+     -> pyast-10 报：顶层=$self where=$self，8/10（pyast-9 同时失败，存在交叉覆盖）
+  两处都已恢复，最终 10/10。
+
+验证：PyAST 门禁 10/10，13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED

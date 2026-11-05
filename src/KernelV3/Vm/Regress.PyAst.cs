@@ -254,6 +254,116 @@ public static partial class Regress
                   ifOk ? "ok" : "未生成 ConditionalNode");
         }
 
+
+        // ================================================================
+        // pyast-7 ~ 10：语义正确性断言。
+        //
+        // 为什么单列一组：pyast-1 只比对「打印 → 解析 → 打印」的文本是否相等，
+        // 而下面这些问题恰好是「两边一致地错」或「不进入文本」，
+        // 往返测试对它们完全无感 —— 159/160/161 三轮的遗留问题都属此类。
+        // 这一组不依赖两边一致，而是直接断言解析结果的语义。
+        // ================================================================
+        {
+            var semParser = new AstCanonicalParser(schema, lex);
+
+            // ---- pyast-7：card:#id 解析后 CardName 必须非空 ----
+            // 打印器只写卡号，解析端必须用 Lexicon 反查补回卡名，
+            // 否则中文打印器把《痴迷的试验体》渲染成「我方的所有该卡牌」。
+            int nameEmpty = 0, nameChecked = 0;
+            void WalkCardNames(EffectNode n)
+            {
+                if (n == null) return;
+                if (n is SelectTargetNode st && st.Target != null
+                    && st.Target.SourceKind == TargetSourceKind.CardId && st.Target.CardId > 0)
+                {
+                    nameChecked++;
+                    if (string.IsNullOrEmpty(st.Target.CardName)) nameEmpty++;
+                }
+                if (n is ConditionalNode c) { foreach (var x in c.Then) WalkCardNames(x); foreach (var x in c.Else) WalkCardNames(x); }
+                if (n is LoopNode lp) foreach (var x in lp.Body) WalkCardNames(x);
+            }
+            foreach (var card in catalog.AllCards.Values.OrderBy(x => x.CardId))
+            {
+                semParser.Errors.Clear();
+                var back7 = semParser.ParseCard(AstCanonicalPrinter.PrintCard(card));
+                if (back7 == null) continue;
+                foreach (var ab in back7.Abilities ?? Array.Empty<AbilityDef>())
+                    foreach (var n in ab.Body ?? Array.Empty<EffectNode>()) WalkCardNames(n);
+            }
+            Check("pyast-7 card:#id 解析后 CardName 必须由 Lexicon 反查补回",
+                  nameEmpty == 0, "空卡名=" + nameEmpty + "/" + nameChecked);
+
+            // ---- pyast-8：prop:Stat 必须映射到真实 StatKey ----
+            // StatOf 漏项会让 prop:Countdown 变成 StatKey.None（求值恒 0），
+            // 而打印出来仍是 prop:Countdown，文本看不出问题。
+            (string dsl, StatKey want)[] statCases =
+            {
+                ("aura: if prop:Countdown >= 2: draw 1", StatKey.Countdown),
+                ("aura: if prop:Cost >= 3: draw 1", StatKey.Cost),
+                ("aura: if prop:Attack >= 3: draw 1", StatKey.Attack),
+                ("aura: if prop:Life >= 3: draw 1", StatKey.Life),
+                ("aura: if prop:MaxLife >= 3: draw 1", StatKey.MaxLife),
+            };
+            var statBad = new List<string>();
+            foreach (var (dsl, want) in statCases)
+            {
+                semParser.Errors.Clear();
+                var abs8 = semParser.ParseAbilities(dsl);
+                var cond8 = abs8?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                    .OfType<ConditionalNode>().FirstOrDefault()?.Condition as CompareExpr;
+                var num8 = cond8?.Left;
+                if (semParser.Errors.Count > 0 || num8 == null || num8.Op != NumOp.Property || num8.Stat != want)
+                    statBad.Add(dsl + "=>" + (num8?.Stat.ToString() ?? "null"));
+            }
+            Check("pyast-8 prop:Stat 必须映射到真实 StatKey（不得为 None）",
+                  statBad.Count == 0, statBad.Count == 0 ? "ok" : string.Join("; ", statBad));
+
+            // ---- pyast-9：非默认主语后缀 (<Target>) 必须可往返 ----
+            // 打印器在 Of 不是上下文默认主语时会打 has ward($trigger)，
+            // 解析端若不消费这个括号，它会残留在行尾报错。
+            (string dsl, string must)[] suffixCases =
+            {
+                ("aura: if has ward($trigger): draw 1", "has ward($trigger)"),
+                ("aura: if has trait Artifact($trigger): draw 1", "has trait Artifact($trigger)"),
+                ("aura: if is Evolved($trigger): draw 1", "is Evolved($trigger)"),
+            };
+            var suffixBad = new List<string>();
+            foreach (var (dsl, must) in suffixCases)
+            {
+                semParser.Errors.Clear();
+                var abs9 = semParser.ParseAbilities(dsl);
+                string txt9 = abs9 == null ? "" : AstCanonicalPrinter.PrintAbilities(abs9, 0);
+                if (semParser.Errors.Count > 0 || !txt9.Contains(must))
+                    suffixBad.Add(dsl + "=>" + (semParser.Errors.Count > 0 ? semParser.Errors[0] : "文本不含 " + must));
+            }
+            Check("pyast-9 非默认主语后缀 (<Target>) 可往返",
+                  suffixBad.Count == 0, suffixBad.Count == 0 ? "ok" : string.Join("; ", suffixBad));
+
+            // ---- pyast-10：条件主语方向（顶层 $self / where 内 $item） ----
+            // 打印器按 _inWherePrint 隐藏括号，解析器按 _whereDepth 还原默认主语。
+            // 两边只要有一边没对齐，顶层 if is Evolved 就会变成判 $item，
+            // 运行期在顶层作用域里找不到 $item，条件恒为 false —— 而文本仍相等。
+            bool IsSlot(TargetSpec t, string slot)
+                => t != null && t.SourceKind == TargetSourceKind.Slot && t.Slot == slot;
+
+            semParser.Errors.Clear();
+            var topAbs = semParser.ParseAbilities("aura: if is Evolved: draw 1");
+            var topState = topAbs?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                .OfType<ConditionalNode>().FirstOrDefault()?.Condition as HasStateExpr;
+            bool topOk = topState != null && IsSlot(topState.Of, TargetSpec.SlotSelf);
+
+            semParser.Errors.Clear();
+            var whereAbs = semParser.ParseAbilities("tutor self:deck Random(1) where is Evolved");
+            var whereSpec = whereAbs?.SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                .OfType<MoveZoneNode>().FirstOrDefault()?.Target;
+            var whereState = whereSpec?.Where as HasStateExpr;
+            bool whereOk = whereState != null && IsSlot(whereState.Of, TargetSpec.SlotItem);
+
+            Check("pyast-10 条件主语方向：顶层默认 $self，where 内默认 $item",
+                  topOk && whereOk,
+                  "顶层=" + (topState?.Of?.Slot ?? "null") + " where=" + (whereState?.Of?.Slot ?? "null"));
+        }
+
         log.AppendLine();
         log.AppendLine("=== PyAST 门禁 " + pass + "/" + total + " ===");
         return log.ToString();
