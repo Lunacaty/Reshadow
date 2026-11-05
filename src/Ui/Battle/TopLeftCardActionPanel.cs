@@ -469,6 +469,28 @@ public partial class TopLeftCardActionPanel : Control
         _secondaryPopup.Position = new Vector2(rightX, alignY);
     }
 
+
+    /// <summary>
+    /// 这个全局坐标是否真的落在弹窗的可见内容上。
+    ///
+    /// 不能用 GetGlobalRect()：本类继承 Control，Size.Y 恒为 0
+    /// （Control 不会因为子节点 VBox 撑高而自动改自身尺寸）。
+    /// 用它做命中检测会让「点弹窗内的进化/启动按钮」判成点在窗外，
+    /// 于是 _Input 先把弹窗关掉，按钮永远点不中。
+    /// 改为逐个子控件判矩形。
+    /// </summary>
+    public bool HasGlobalPoint(Vector2 globalPos)
+    {
+        if (!Visible) return false;
+        if (_mainCardBox != null && IsInstanceValid(_mainCardBox) && _mainCardBox.Visible
+            && _mainCardBox.GetGlobalRect().HasPoint(globalPos)) return true;
+        if (_historyList != null && IsInstanceValid(_historyList) && _historyList.Visible
+            && _historyList.GetGlobalRect().HasPoint(globalPos)) return true;
+        if (_secondaryPopup != null && IsInstanceValid(_secondaryPopup) && _secondaryPopup.Visible
+            && _secondaryPopup.GetGlobalRect().HasPoint(globalPos)) return true;
+        return false;
+    }
+
     public void HidePanel()
     {
         _bound = null;

@@ -487,7 +487,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         foreach (var (key, zh) in DiyZh.Keywords)
         {
-            var cb = new CheckBox { Text = zh, ButtonPressed = _ws?.Keywords?.Contains(key) == true };
+            var cb = new CheckBox { Text = zh, ButtonPressed = _ws?.Keywords?.Any(x => x == key || x.StartsWith(key + "(")) == true };
             string captured = key;
             cb.Toggled += on =>
             {
@@ -495,9 +495,13 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 _ws.Keywords ??= new List<string>();
                 if (on)
                 {
-                    if (!_ws.Keywords.Contains(captured)) _ws.Keywords.Add(captured);
+                    // 带参关键词必须带 (N)：只写裸名的话，编译端会把次数丢掉，
+                    // 卡面写「1回合可攻击N次」，实战仍只能攻击 1 次。
+                    string stored = IsParameterizedKw(captured) ? captured + "(2)" : captured;
+                    if (!_ws.Keywords.Any(x => x == stored || x.StartsWith(captured + "(")))
+                        _ws.Keywords.Add(stored);
                 }
-                else _ws.Keywords.Remove(captured);
+                else _ws.Keywords.RemoveAll(x => x == captured || x.StartsWith(captured + "("));
 
                 _ctrl.CompileFromBlocks(_ws);
                 _ws = _ctrl.BlockModel ?? _ws;

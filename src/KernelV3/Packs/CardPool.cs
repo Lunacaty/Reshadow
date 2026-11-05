@@ -261,6 +261,24 @@ public static class CardPoolBuilder
         var cardOwnerPack = new Dictionary<int, string>();
         var nameOwnerPack = new Dictionary<string, (string packId, int cardId)>(StringComparer.OrdinalIgnoreCase);
 
+        // 卡池级职业与主战者计数器（165 专题二断链 B）。
+        // 只把它们塞进 CardPoolConfig 而不注册进 Schema/Glossary 的话，
+        // 效果里写 clan=机甲 或 ctr:my_charge 会拿到 Invalid 符号 ——
+        // 卡面照常显示，效果静默不生效。
+        foreach (var clanName in config.PoolClans ?? new List<string>())
+        {
+            if (string.IsNullOrWhiteSpace(clanName)) continue;
+            schema.Clan(clanName, config.PoolId);
+            lexicon.AddClan(clanName);
+        }
+        foreach (var ctr in config.LeaderCounters ?? new List<PoolCounterDef>())
+        {
+            if (ctr == null || string.IsNullOrWhiteSpace(ctr.Name)) continue;
+            schema.Counter(ctr.Name, config.PoolId);
+            schema.CounterLimits[ctr.Name] = (ctr.Min, ctr.Max);
+            if (!string.IsNullOrEmpty(ctr.NameChs)) glossary.Add(ctr.Name, ctr.NameChs);
+        }
+
         foreach (var pack in packs)
         {
             foreach (var t in pack.Traits)

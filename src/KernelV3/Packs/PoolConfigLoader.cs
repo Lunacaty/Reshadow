@@ -102,6 +102,32 @@ public static class PoolConfigLoader
             }
         }
 
+        // 卡池级职业与主战者计数器（165 专题二断链 A）。
+        // 只存在于内存里、不落盘的话，界面上一改职业或删个计数器，
+        // 一触发 ReloadCatalogAndPools 就全没了 —— 而且没有任何提示。
+        var poolClans = new List<string>();
+        if (r.TryGetProperty("pool_clans", out var pcs) && pcs.ValueKind == JsonValueKind.Array)
+            foreach (var x in pcs.EnumerateArray())
+                if (x.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(x.GetString()))
+                    poolClans.Add(x.GetString()!.Trim());
+
+        var leaderCounters = new List<PoolCounterDef>();
+        if (r.TryGetProperty("leader_counters", out var lcs) && lcs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var c in lcs.EnumerateArray())
+            {
+                Enum.TryParse<CounterLifecycle>(S(c, "lifecycle"), true, out var lc);
+                string cn = S(c, "name");
+                if (string.IsNullOrWhiteSpace(cn)) continue;
+                leaderCounters.Add(new PoolCounterDef
+                {
+                    Name = cn, NameChs = S(c, "name_chs"),
+                    Min = I(c, "min", 0), Max = I(c, "max", 99), Initial = I(c, "initial", 0),
+                    Lifecycle = lc, IsBuiltin = false,
+                });
+            }
+        }
+
         return new CardPoolConfig
         {
             PoolId = S(r, "pool_id") is { Length: > 0 } pid ? pid : "standard",
@@ -109,6 +135,8 @@ public static class PoolConfigLoader
             Rules = rules,
             EnabledPackIds = enabled,
             NamedDecks = namedDecks,
+            PoolClans = poolClans,
+            LeaderCounters = leaderCounters,
         };
     }
 

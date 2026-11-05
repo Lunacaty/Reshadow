@@ -121,12 +121,36 @@ public partial class DiyWorkshopView : Control
         title.AddThemeColorOverride("font_color", new Color("FEF08A"));
         row.AddChild(title);
 
-        // 从现有卡池导入一张真卡：把测试集里的卡拉进工坊看它的四端投影。
+        // 当前卡池选择器（165 专题二断链 D）。
+        // 工坊不是无环境的造卡器：卡池里定义的自定义职业、主战者计数器、
+        // 卡名对照都必须在造卡时拿得到，否则造出的卡在自己的池子里编译不过。
+        // 没有这个下拉框，BindPool 会永远停在默认卡池。
+        var poolPicker = new OptionButton { CustomMinimumSize = new Vector2(150, 32) };
+        SvWbTheme.StyleButton(poolPicker);
+        SvWbTheme.StyleOptionPopup(poolPicker);
+        var poolIds = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).ToList();
+        for (int pi = 0; pi < poolIds.Count; pi++)
+        {
+            var pcfg = _store.PoolConfigs[poolIds[pi]];
+            poolPicker.AddItem("卡池: " + (string.IsNullOrWhiteSpace(pcfg.Name) ? poolIds[pi] : pcfg.Name), pi);
+        }
+        int activeIdx = poolIds.IndexOf(_ctrl.ActivePoolId);
+        if (activeIdx >= 0) poolPicker.Select(activeIdx);
+        poolPicker.ItemSelected += idx =>
+        {
+            int k = (int)idx;
+            if (k < 0 || k >= poolIds.Count) return;
+            _ctrl.BindPool(poolIds[k]);
+            RefreshAll();
+        };
+        row.AddChild(poolPicker);
+
+        // 从当前卡池导入一张真卡，看它的四端投影。
         var loadPicker = new OptionButton { CustomMinimumSize = new Vector2(180, 32) };
         SvWbTheme.StyleButton(loadPicker);
         SvWbTheme.StyleOptionPopup(loadPicker);
         loadPicker.AddItem("📂 加载现有卡牌…", 0);
-        var allCards = _store.Catalog.AllCards.Values.OrderBy(c => c.CardId).ToList();
+        var allCards = CurrentPoolCards();
         for (int ci = 0; ci < allCards.Count; ci++)
         {
             var cd = allCards[ci];
@@ -402,6 +426,24 @@ public partial class DiyWorkshopView : Control
     }
 
     // ---------------------------------------------------------------- 刷新
+
+    /// <summary>
+    /// 当前卡池可见的卡。
+    ///
+    /// 从全局总表列卡会让玩家把别的卡池里的卡拉进当前池子，
+    /// 造出的卡引用了一个本池子根本没有的卡号，还不报错。
+    /// </summary>
+    private List<ShadowverseFan.KernelV3.Ast.CardDef> CurrentPoolCards()
+    {
+        try
+        {
+            var rt = _store.GetPoolRuntime(_ctrl.ActivePoolId);
+            if (rt != null)
+                return rt.AllCards.Values.OrderBy(c => c.CardId).ToList();
+        }
+        catch (Exception) { }
+        return _store.Catalog.AllCards.Values.OrderBy(c => c.CardId).ToList();
+    }
 
     private void RefreshAll()
     {

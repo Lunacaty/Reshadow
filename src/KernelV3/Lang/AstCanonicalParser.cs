@@ -276,30 +276,49 @@ public sealed class AstCanonicalParser
                         // 兵种/关键词名可能含空格（"Earth Sigil" / "max attacks per turn"），
                         // 必须按逗号分段整体收集，不能一个 token 当一个名字。
                         var cur2 = new List<string>();
+                        NumExpr kwParam = null;
+
+                        void FlushKwEntry()
+                        {
+                            if (cur2.Count == 0) return;
+                            string nm = string.Join(" ", cur2);
+                            if (head == "traits") traits.Add(_schema.Trait(nm));
+                            else if (kwParam != null)
+                            {
+                                abilities.Add(new AbilityDef
+                                {
+                                    Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                                    Condition = BoolExpr.True,
+                                    Body = new List<EffectNode>
+                                    {
+                                        new ModifyKeywordNode
+                                        {
+                                            Target = TargetSpec.Self, Op = KeywordOp.Grant,
+                                            Keyword = _schema.Keyword(nm), Value = kwParam,
+                                        },
+                                    },
+                                });
+                            }
+                            else keywords.Add(_schema.Keyword(nm));
+
+                            cur2.Clear();
+                            kwParam = null;
+                        }
+
                         while (!IsAtEnd && Current.Kind != PyTokKind.RBracket)
                         {
-                            if (Current.Kind == PyTokKind.Comma)
+                            if (Current.Kind == PyTokKind.Comma) { FlushKwEntry(); Advance(); continue; }
+                            if (head == "keywords" && Match(PyTokKind.LParen))
                             {
-                                if (cur2.Count > 0)
-                                {
-                                    string nm = string.Join(" ", cur2);
-                                    if (head == "traits") traits.Add(_schema.Trait(nm));
-                                    else keywords.Add(_schema.Keyword(nm));
-                                    cur2.Clear();
-                                }
-                                Advance();
+                                kwParam = ParseNumExpr();
+                                Expect(PyTokKind.RParen, "keyword param missing )");
                                 continue;
                             }
                             if (Current.Kind == PyTokKind.Ident || Current.Kind == PyTokKind.Number)
                                 cur2.Add(TakeIdent());
                             else Advance();
                         }
-                        if (cur2.Count > 0)
-                        {
-                            string nm = string.Join(" ", cur2);
-                            if (head == "traits") traits.Add(_schema.Trait(nm));
-                            else keywords.Add(_schema.Keyword(nm));
-                        }
+                        FlushKwEntry();
                         Expect(PyTokKind.RBracket, head + " 缺少右方括号");
                     }
                     SkipNewlines();

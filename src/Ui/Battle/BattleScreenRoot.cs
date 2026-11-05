@@ -406,13 +406,14 @@ public partial class BattleScreenRoot : Control
         _menuBtn.Draw += () => DrawMenuIcon(_menuBtn);
         AddChild(_menuBtn);
 
+        // 手牌收起与弹窗消隐统一由 _Input 判定。
+        // 这里原本还绑了一句 _actionPanel.HidePanel()，会和 OnCrestClicked 抢时序：
+        // 点非空纹章槽时先被它关掉面板，纹章详情就再也打不开。
         _field.GuiInput += (InputEvent e) =>
         {
             if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
             {
-                // 手牌收起统一由 _Input 按「是否在手牌区内」判定，
-                // 这里再收一次会与它抢时序（_Input 先跑，这里后跑）。
-                _actionPanel.HidePanel();
+                // 只吞掉战场空白处的点击，不做任何面板操作。
             }
         };
 
@@ -1817,9 +1818,11 @@ public partial class BattleScreenRoot : Control
     // ---------------------------------------------------------------- 输入
 
     /// <summary>该屏幕坐标是否落在左上角详情弹窗（含二级历史弹窗）内。</summary>
+    // 必须问面板自己的子控件矩形：本类继承 Control，Size.Y 恒为 0，
+    // 用 GetGlobalRect() 会把「点在弹窗内」判成窗外，
+    // 于是 _Input 先 HidePanel，弹窗里的进化/启动按钮永远点不中。
     private bool IsPointOnActionPanel(Vector2 globalPos)
-        => _actionPanel != null && _actionPanel.Visible
-           && _actionPanel.GetGlobalRect().HasPoint(globalPos);
+        => _actionPanel != null && _actionPanel.HasGlobalPoint(globalPos);
 
     /// <summary>该屏幕坐标是否落在手牌区、场上随从或纹章槽上。</summary>
     private bool IsPointOnAnyCardOrUnit(Vector2 globalPos)
@@ -1833,11 +1836,24 @@ public partial class BattleScreenRoot : Control
             foreach (var w in BoardUnitsOf(_boardFoe))
                 if (IsInstanceValid(w) && w.GetGlobalRect().HasPoint(globalPos)) return true;
 
-        // 纹章槽：不在随从控件里，按圆形命中区判。
+        // 双方主战者：点它会打开详情面板，不该同时把手牌收起来。
+        if (_allyLeader != null && IsInstanceValid(_allyLeader)
+            && _allyLeader.GetGlobalRect().HasPoint(globalPos)) return true;
+        if (_foeLeader != null && IsInstanceValid(_foeLeader)
+            && _foeLeader.GetGlobalRect().HasPoint(globalPos)) return true;
+
+        // 纹章槽：只认**非空**槽位。空槽点上去是地面，不该豁免 ——
+        // 否则每局开头 5 个空槽各自一块 44px 的死区，点哪儿都不收手牌。
         var sz = GetEffectiveViewportSize();
-        foreach (var c in BattlefieldCanvas.GetAllyCrestCenters(sz)
-                         .Concat(BattlefieldCanvas.GetEnemyCrestCenters(sz)))
-            if (globalPos.DistanceTo(c) <= 22f) return true;
+        var allyCenters = BattlefieldCanvas.GetAllyCrestCenters(sz);
+        var allyCrests = _ctrl?.Crests(0);
+        for (int i = 0; i < allyCenters.Length && allyCrests != null && i < allyCrests.Count; i++)
+            if (allyCrests[i] != null && globalPos.DistanceTo(allyCenters[i]) <= 22f) return true;
+
+        var foeCenters = BattlefieldCanvas.GetEnemyCrestCenters(sz);
+        var foeCrests = _ctrl?.Crests(1);
+        for (int i = 0; i < foeCenters.Length && foeCrests != null && i < foeCrests.Count; i++)
+            if (foeCrests[i] != null && globalPos.DistanceTo(foeCenters[i]) <= 22f) return true;
 
         return false;
     }

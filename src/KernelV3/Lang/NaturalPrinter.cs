@@ -57,15 +57,14 @@ public sealed class NaturalPrinter
 
         // PassiveAura + 授予自身关键词 = 裸关键词（"Ward" / "Storm"）。
         // 官方卡面就是这么写的，给它加上 "Fanfare:" 会把常驻光环变成入场曲。
-        if (IsBareKeywordAbility(a, out var bareKw))
-            return Word(bareKw) + Period();
-
-        // 带参关键词必须渲染成合法英文限制句，不能当成裸词直接吐出内码：
-        //   max_attacks_per_turn(2) -> "Can attack 2 times per turn."
-        //   damage_cap(5)           -> "Can't take more than 5 damage at a time."
-        // 早先输出成 "max_attacks_per_turn."，切到英文端再编译当场报错。
+        // 带参关键词必须先判：裸词分支排前面会把
+        // max_attacks_per_turn(2) 直接输出成 "max_attacks_per_turn."，
+        // 次数丢了，英文端再编译还会报错。
         if (TryPrintParameterizedKeyword(a, out var kwSentence))
             return kwSentence + Period();
+
+        if (IsBareKeywordAbility(a, out var bareKw))
+            return Word(bareKw) + Period();
 
         var head = Head(a.Trigger);
         var costs = PrintCosts(a.Costs);

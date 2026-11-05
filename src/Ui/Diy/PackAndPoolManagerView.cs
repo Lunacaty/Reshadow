@@ -296,6 +296,11 @@ public partial class PackAndPoolManagerView : Control
         clanTitle.AddThemeFontSizeOverride("font_size", 13);
         clanTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentPurple);
         clanBar.AddChild(clanTitle);
+        var addClanBtn = new Button { Text = "+ 新增职业", CustomMinimumSize = new Vector2(88, 26) };
+        SvWbTheme.StyleButton(addClanBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
+        addClanBtn.AddThemeFontSizeOverride("font_size", 11);
+        addClanBtn.Pressed += OpenAddPoolClanDialog;
+        clanBar.AddChild(addClanBtn);
         right.AddChild(clanBar);
 
         _poolClanList = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -312,6 +317,11 @@ public partial class PackAndPoolManagerView : Control
         ctrTitle.AddThemeFontSizeOverride("font_size", 13);
         ctrTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentPurple);
         ctrBar.AddChild(ctrTitle);
+        var addCtrBtn = new Button { Text = "+ 新增计数器", CustomMinimumSize = new Vector2(96, 26) };
+        SvWbTheme.StyleButton(addCtrBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
+        addCtrBtn.AddThemeFontSizeOverride("font_size", 11);
+        addCtrBtn.Pressed += OpenAddPoolCounterDialog;
+        ctrBar.AddChild(addCtrBtn);
         right.AddChild(ctrBar);
 
         _poolCounterList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -321,6 +331,117 @@ public partial class PackAndPoolManagerView : Control
         SvWbTheme.StyleScroll(ctrScroll);
         ctrScroll.AddChild(_poolCounterList);
         right.AddChild(ctrScroll);
+    }
+
+
+    /// <summary>新增卡池职业：填英文内部 ID 与显示名，注册进 Schema 与本卡池配置。</summary>
+    private void OpenAddPoolClanDialog()
+    {
+        if (string.IsNullOrEmpty(_selectedPoolId)) { _ruleStatus.Text = "请先选择一个卡池"; return; }
+        if (!_store.PoolConfigs.TryGetValue(_selectedPoolId, out var cfg)) return;
+
+        var dlg = new AcceptDialog { Title = "新增卡池职业" };
+        dlg.OkButtonText = "创建";
+
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
+        box.AddThemeConstantOverride("separation", 6);
+
+        var nameEdit = new LineEdit { PlaceholderText = "内部 ID（英文，如 Mecha）" };
+        var showEdit = new LineEdit { PlaceholderText = "显示名（如 机甲）" };
+        box.AddChild(new Label { Text = "内部 ID" });
+        box.AddChild(nameEdit);
+        box.AddChild(new Label { Text = "显示名" });
+        box.AddChild(showEdit);
+        dlg.AddChild(box);
+
+        dlg.Confirmed += () =>
+        {
+            string id = nameEdit.Text?.Trim();
+            string show = showEdit.Text?.Trim();
+            if (string.IsNullOrEmpty(id)) { _ruleStatus.Text = "内部 ID 不能为空"; return; }
+            if (string.IsNullOrEmpty(show)) show = id;
+
+            // 注册进 Schema 与 Glossary：不注册的话效果里写 clan=Mecha 会拿到 Invalid。
+            _store.Catalog.Schema.Clan(id, cfg.PoolId);
+            _store.Catalog.Lexicon.AddClan(id);
+            _store.Catalog.Glossary.Add(id, show);
+
+            var clans = new List<string>(cfg.PoolClans ?? new List<string>());
+            if (!clans.Contains(id, StringComparer.OrdinalIgnoreCase)) clans.Add(id);
+            _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds, cfg.Rules, cfg.NamedDecks,
+                                     out string msg, clans, cfg.LeaderCounters);
+            _ruleStatus.Text = msg;
+            RefreshPoolClans();
+        };
+        AddChild(dlg);
+        dlg.PopupCentered();
+    }
+
+    /// <summary>新增卡池主战者计数器：填名称、范围、初值与回合生命周期。</summary>
+    private void OpenAddPoolCounterDialog()
+    {
+        if (string.IsNullOrEmpty(_selectedPoolId)) { _ruleStatus.Text = "请先选择一个卡池"; return; }
+        if (!_store.PoolConfigs.TryGetValue(_selectedPoolId, out var cfg)) return;
+
+        var dlg = new AcceptDialog { Title = "新增主战者计数器" };
+        dlg.OkButtonText = "创建";
+
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
+        box.AddThemeConstantOverride("separation", 6);
+
+        var nameEdit = new LineEdit { PlaceholderText = "内部 ID（如 my_charge）" };
+        var showEdit = new LineEdit { PlaceholderText = "显示名（如 充能）" };
+        var minEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 0 };
+        var maxEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 99 };
+        var initEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 0 };
+        var lifePick = new OptionButton();
+        foreach (var lc in Enum.GetValues<KernelV3.Packs.CounterLifecycle>())
+            lifePick.AddItem(lc.ToString());
+
+        box.AddChild(new Label { Text = "内部 ID" });
+        box.AddChild(nameEdit);
+        box.AddChild(new Label { Text = "显示名" });
+        box.AddChild(showEdit);
+        box.AddChild(new Label { Text = "最小值" });
+        box.AddChild(minEdit);
+        box.AddChild(new Label { Text = "最大值" });
+        box.AddChild(maxEdit);
+        box.AddChild(new Label { Text = "初始值" });
+        box.AddChild(initEdit);
+        box.AddChild(new Label { Text = "回合生命周期" });
+        box.AddChild(lifePick);
+        dlg.AddChild(box);
+
+        dlg.Confirmed += () =>
+        {
+            string id = nameEdit.Text?.Trim();
+            string show = showEdit.Text?.Trim();
+            if (string.IsNullOrEmpty(id)) { _ruleStatus.Text = "内部 ID 不能为空"; return; }
+            if (string.IsNullOrEmpty(show)) show = id;
+
+            var def = new KernelV3.Packs.PoolCounterDef
+            {
+                Name = id, NameChs = show,
+                Min = (int)minEdit.Value, Max = (int)maxEdit.Value, Initial = (int)initEdit.Value,
+                Lifecycle = (KernelV3.Packs.CounterLifecycle)lifePick.Selected,
+                IsBuiltin = false,
+            };
+
+            // 注册进 Schema：不注册的话效果里写 ctr:my_charge 会拿到 Invalid。
+            _store.Catalog.Schema.Counter(id, cfg.PoolId);
+            _store.Catalog.Schema.CounterLimits[id] = (def.Min, def.Max);
+            _store.Catalog.Glossary.Add(id, show);
+
+            var ctrs = new List<KernelV3.Packs.PoolCounterDef>(cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>());
+            ctrs.RemoveAll(x => x != null && string.Equals(x.Name, id, StringComparison.OrdinalIgnoreCase));
+            ctrs.Add(def);
+            _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds, cfg.Rules, cfg.NamedDecks,
+                                     out string msg, cfg.PoolClans, ctrs);
+            _ruleStatus.Text = msg;
+            RefreshPoolCounters();
+        };
+        AddChild(dlg);
+        dlg.PopupCentered();
     }
 
     /// <summary>刷新「本卡池职业」勾选区（随卡池下拉切换）。</summary>
@@ -356,6 +477,25 @@ public partial class PackAndPoolManagerView : Control
         foreach (var c in _poolCounterList.GetChildren()) { _poolCounterList.RemoveChild(c); c.QueueFree(); }
 
         if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var cfg)) return;
+
+        // 先展示**内置**计数器（165 专题二断链 C）。
+        // 它们由引擎维护、不进 cfg.LeaderCounters，只遍历配置会让这一栏看起来是空的，
+        // 玩家会以为「本卡池没有任何计数器」。内置的锁死只读。
+        foreach (var (bName, bMin, bMax) in KernelV3.Core.GameSchema.BuiltinCounterDefs)
+        {
+            var brow = new HBoxContainer();
+            brow.AddThemeConstantOverride("separation", 6);
+            var bname = new Label
+            {
+                Text = "[锁] " + bName + "  [" + bMin + ".." + bMax + "]",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                ClipText = true,
+            };
+            bname.AddThemeFontSizeOverride("font_size", 11);
+            bname.AddThemeColorOverride("font_color", SvWbTheme.BorderSubtle);
+            brow.AddChild(bname);
+            _poolCounterList.AddChild(brow);
+        }
 
         foreach (var def in cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>())
         {

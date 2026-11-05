@@ -566,6 +566,25 @@ public sealed class GameSessionStore
         sb.Append("  \"pool_id\": ").Append(JsonStr(cfg.PoolId)).Append(",\n");
         sb.Append("  \"name\": ").Append(JsonStr(cfg.Name ?? cfg.PoolId)).Append(",\n");
         sb.Append("  \"enabled_packs\": ").Append(JsonArr(cfg.EnabledPackIds)).Append(",\n");
+
+        // 卡池级职业与主战者计数器（165 专题二断链 A）。
+        // 不写回的话，界面上勾选的职业与新增的计数器在下一次重载时全部丢失。
+        sb.Append("  \"pool_clans\": ").Append(JsonArr(cfg.PoolClans ?? new List<string>())).Append(",\n");
+        sb.Append("  \"leader_counters\": [\n");
+        var ctrs = (cfg.LeaderCounters ?? new List<ShadowverseFan.KernelV3.Packs.PoolCounterDef>())
+            .Where(x => x != null && !x.IsBuiltin).ToList();
+        for (int ci = 0; ci < ctrs.Count; ci++)
+        {
+            var c = ctrs[ci];
+            sb.Append("    { \"name\": ").Append(JsonStr(c.Name))
+              .Append(", \"name_chs\": ").Append(JsonStr(c.NameChs ?? ""))
+              .Append(", \"min\": ").Append(c.Min)
+              .Append(", \"max\": ").Append(c.Max)
+              .Append(", \"initial\": ").Append(c.Initial)
+              .Append(", \"lifecycle\": ").Append(JsonStr(c.Lifecycle.ToString()))
+              .Append(" }").Append(ci < ctrs.Count - 1 ? ",\n" : "\n");
+        }
+        sb.Append("  ],\n");
         sb.Append("  \"rules\": {\n");
 
         var props = typeof(MatchRules).GetProperties()

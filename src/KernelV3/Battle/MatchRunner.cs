@@ -145,6 +145,7 @@ public sealed class MatchRunner
         _state.WriteCounter(playerId, schema.Counter("combo"), 0);
         _state.WriteCounter(playerId, schema.Counter("rally"), 0);
         _state.WriteCounter(playerId, schema.Counter("evolve_count"), 0);
+        InitPoolCounters(playerId, schema);
     }
 
     /// <summary>
@@ -274,6 +275,28 @@ public sealed class MatchRunner
         _state.WriteCounter(playerId, _schema.Counter("combo"), 0);
         _state.WriteCounter(playerId, _schema.Counter("rally"), 0);
         _state.WriteCounter(playerId, _schema.Counter("evolve_count"), 0);
+        InitPoolCounters(playerId, _schema);
+    }
+
+
+    /// <summary>
+    /// 按卡池配置写入自定义主战者计数器的初始值（165 续·专题二）。
+    ///
+    /// 少了这一步，卡池里定义的计数器开局是 0 而不是 Initial，
+    /// 玩家在卡池管理器里填的初值永远不生效，且没有任何提示。
+    /// 内置计数器由上面几行逐个写死，这里只处理卡池自定义的那批。
+    /// </summary>
+    private void InitPoolCounters(int playerId, GameSchema schema)
+    {
+        var defs = _state.PoolCounterDefs;
+        if (defs == null || defs.Count == 0) return;
+        foreach (var ctrDef in defs)
+        {
+            if (ctrDef == null || ctrDef.IsBuiltin || string.IsNullOrWhiteSpace(ctrDef.Name)) continue;
+            var key = schema.Counter(ctrDef.Name);
+            if (!key.IsValid) continue;
+            _state.WriteCounter(playerId, key, ctrDef.Initial);
+        }
     }
 
     private void FillDeck(int playerId, IReadOnlyList<int> cardIds)
