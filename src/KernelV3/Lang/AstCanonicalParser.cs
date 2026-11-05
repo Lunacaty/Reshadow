@@ -108,6 +108,7 @@ public sealed class AstCanonicalParser
         var abilities = new List<AbilityDef>();
         Ast.CardDef crestDef = null, faithDef = null, accelDef = null, crystDef = null;
         bool fuseSet = false;
+        var deckMods = new List<DeckBuildModifier>();
         TargetSpec fuseFilter = null;
 
         SkipNewlines();
@@ -117,6 +118,35 @@ public sealed class AstCanonicalParser
             SkipNewlines();
             while (!IsAtEnd && Current.Kind != PyTokKind.Dedent)
             {
+                if (Current.Kind == PyTokKind.Ident && Current.Text == "deck_mod")
+                {
+                    Advance();
+                    Expect(PyTokKind.Colon, "deck_mod 后缺少冒号");
+                    string kindStr = TakeIdent();
+                    int v1 = TakeNumber();
+                    int v2 = TakeNumber();
+                    string dclan = "";
+                    bool stack = false;
+                    string grp = "";
+                    while (!IsAtEnd && Current.Kind == PyTokKind.Ident)
+                    {
+                        if (Current.Text == "clan") { Advance(); Match(PyTokKind.Assign); dclan = TakeIdent(); continue; }
+                        if (Current.Text == "stack") { Advance(); stack = true; continue; }
+                        if (Current.Text == "group") { Advance(); Match(PyTokKind.Assign); grp = TakeIdent(); continue; }
+                        break;
+                    }
+                    if (Enum.TryParse<DeckModKind>(kindStr, true, out var dk))
+                    {
+                        deckMods.Add(new DeckBuildModifier
+                        {
+                            Kind = dk, Value = v1, Value2 = v2,
+                            TargetClan = dclan, StackPerCopy = stack, ExclusiveGroup = grp,
+                        });
+                    }
+                    SkipNewlines();
+                    continue;
+                }
+
                 if (Current.Kind == PyTokKind.Ident && Current.Text == "fuse")
                 {
                     Advance();
@@ -198,7 +228,7 @@ public sealed class AstCanonicalParser
             Traits = traits,
             InnateKeywords = keywords,
             Abilities = abilities,
-            HasFuse = fuseSet, FuseMaterialFilter = fuseFilter,
+            HasFuse = fuseSet, FuseMaterialFilter = fuseFilter, DeckModifiers = deckMods,
             CrestDef = crestDef, FaithDef = faithDef,
             AccelerateDef = accelDef, CrystallizeDef = crystDef,
             IsToken = attrs.ContainsKey("token"),

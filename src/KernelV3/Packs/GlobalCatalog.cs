@@ -238,6 +238,48 @@ public sealed class GlobalCatalog
                 PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
             };
         }
+        // ---- source_format: "py_ast"（204 号文档第五节第 2 步）
+        // 复用本总表的 Schema / Lexicon：SymbolId 只按 Id 判等，
+        // 新造一套会让同一张卡里的 trait / keyword 与本仓串号。
+        if (string.Equals(c.SourceFormat, "py_ast", StringComparison.OrdinalIgnoreCase))
+        {
+            var pyParser = new Lang.AstCanonicalParser(Schema, Lexicon);
+            CardDef pyDef = null;
+            try { pyDef = pyParser.ParseCard(c.Text); }
+            catch (Exception ex)
+            {
+                Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》PyAST 解析失败：" + ex.Message);
+                return null;
+            }
+            foreach (var e in pyParser.Errors)
+                Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》PyAST：" + e);
+            if (pyDef == null)
+            {
+                Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》PyAST 解析为空");
+                return null;
+            }
+
+            // 卡包声明优先：卡号 / 名 / 费 / 攻 / 命 以外层为准，与 ast_json 分支同口径。
+            return new CardDef
+            {
+                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = pyDef.Kind,
+                BaseCost = c.Cost > 0 ? c.Cost : pyDef.BaseCost,
+                BaseAttack = c.Attack > 0 ? c.Attack : pyDef.BaseAttack,
+                BaseLife = c.Life > 0 ? c.Life : pyDef.BaseLife,
+                Abilities = pyDef.Abilities,
+                Traits = traits.Count > 0 ? traits : pyDef.Traits,
+                Clan = clan.IsValid ? clan : pyDef.Clan,
+                InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k))
+                    .Concat(pyDef.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+                    .Distinct().ToList(),
+                DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
+                HasFuse = pyDef.HasFuse, FuseMaterialFilter = pyDef.FuseMaterialFilter,
+                CrestDef = pyDef.CrestDef, FaithDef = pyDef.FaithDef,
+                AccelerateDef = pyDef.AccelerateDef, CrystallizeDef = pyDef.CrystallizeDef,
+                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
+            };
+        }
+
         if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
         {
             // 与 CardPool.CompileCard 保持完全一致：

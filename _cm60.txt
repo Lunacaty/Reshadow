@@ -1,0 +1,39 @@
+feat(204/206 补完): 永久门禁 + DIY 接入 + 打印器去耦 + deck_mod
+
+上一轮 1021/1021 只覆盖了 AST 层往返，204/206 还有 4 项没做。本轮补齐：
+
+【1. 永久门禁 Regress.PyAst.cs（最重要）】
+  之前的 1021/1021 是临时脚本跑出来的，一提交就没了 ——
+  下次改代码没人能发现回归。现在固化成常驻门禁，三条断言：
+    pyast-1  全量 1021 张卡：打印 → 解析 → 再打印，文本必须字节级相等
+    pyast-2  IsFanfare / AppendToSlot / IsDestroy 三个高危字段显式往返
+    pyast-3  DIY CompileFromCanonicalAst ↔ ExportCanonicalAst 往返
+  已接入回归套件，跑一次 12 个门禁就顺带验了。
+
+【2. DIY 接入 py_ast（204 号第五节第 2 步）】
+  · DiyWorkspace.CompileFromCanonicalAst(dsl) / ExportCanonicalAst(def)
+  · GlobalCatalog 支持 source_format: "py_ast"，与 ast_json 同口径
+    （外层卡包的卡号/名/费/攻/命优先，AST 只提供效果）
+  · 复用同一份 Schema / Lexicon —— SymbolId 只按 Id 判等，
+    另造一套会让同一张卡的 trait / keyword 与本仓串号
+
+【3. 打印器去耦（204 号第一节铁律）】
+  原先 AstCanonicalPrinter 有 56 处直接调 AstEnglishPrinter 的
+  PrintTarget / PrintNum / PrintBool —— 那意味着 PyAST 的语法
+  随时会被旧打印器的改动带偏，而解析端不得不对齐一份自己没有定义权的格式。
+  现已把这三个子树连同全部辅助方法（OfSuffix / CmpWord / OwnerWord /
+  PrintExists / NeedsParen / PrintArith）整体搬进 AstCanonicalPrinter，
+  改名为 PrintT / PrintN / PrintB。残留调用数 = 0。
+
+【4. deck_mod: 往返】
+  构筑期修正（容量 +20 / 同名上限 / 任选职业 …）原先完全不打印，
+  往返后静默丢失 —— 而卡面中文一模一样，只有进组牌界面才发现数值没变。
+  现已支持打印与解析，字段含 Kind / Value / Value2 / TargetClan /
+  StackPerCopy / ExclusiveGroup。
+
+验证：
+  PyAST 门禁 3/3（含 1021/1021 全量往返）
+  12 个既有门禁全部保持绿
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED

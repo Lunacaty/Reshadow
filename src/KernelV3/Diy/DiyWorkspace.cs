@@ -215,6 +215,60 @@ public sealed class DiyWorkspace
         return def;
     }
 
+
+    // ---------------------------------------------------------------- 方式 ⑤：PyAST DSL
+
+    /// <summary>
+    /// 从 PyAST DSL 文本编译一张卡（204 号文档第五节第 2 步）。
+    ///
+    /// 与 CNL 那条路的区别：CNL 吃自然语言，这条路吃 AstCanonicalPrinter 打出来的规范文本。
+    /// 两者共用同一个 Schema 与 Lexicon —— SymbolId 只按 Id 判等，
+    /// 另造一套会让 storm 解析成别的 Id。
+    /// </summary>
+    public CardDef CompileFromCanonicalAst(string dslText, out IReadOnlyList<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(dslText))
+        {
+            errors = new[] { "DSL 文本为空" };
+            return null;
+        }
+
+        var parser = new AstCanonicalParser(Schema, Lexicon);
+        var def = parser.ParseCard(dslText);
+        errors = parser.Errors.ToList();
+
+        if (def == null) return null;
+        // 解析器只填 AST 字段，卡名要先登记进词法层，
+        // 否则同一张卡里的 summon/transform 按名反查会查不到自己。
+        if (!string.IsNullOrEmpty(def.Name)) DefineCardName(def.Name, def.CardId);
+        def = new CardDef
+        {
+            CardId = def.CardId,
+            Name = def.Name,
+            NameChs = def.NameChs,
+            Kind = def.Kind,
+            BaseCost = def.BaseCost,
+            BaseAttack = def.BaseAttack,
+            BaseLife = def.BaseLife,
+            Abilities = def.Abilities,
+            Traits = def.Traits,
+            InnateKeywords = def.InnateKeywords,
+            Clan = def.Clan,
+            HasFuse = def.HasFuse,
+            FuseMaterialFilter = def.FuseMaterialFilter,
+            CrestDef = def.CrestDef,
+            FaithDef = def.FaithDef,
+            AccelerateDef = def.AccelerateDef,
+            CrystallizeDef = def.CrystallizeDef,
+            IsToken = def.IsToken,
+            SourceText = dslText,
+        };
+        return def;
+    }
+
+    /// <summary>把一张卡导出成 PyAST DSL 文本（与 CompileFromCanonicalAst 互逆）。</summary>
+    public string ExportCanonicalAst(CardDef def) => AstCanonicalPrinter.PrintCard(def);
+
     /// <summary>把造好的卡登记进本工作区与运行时卡池。</summary>
     public void Register(CardDef def)
     {

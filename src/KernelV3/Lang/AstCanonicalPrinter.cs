@@ -65,7 +65,25 @@ public static class AstCanonicalPrinter
         if (card.HasFuse)
         {
             sb.Append('\n').Append(Pad(1)).Append("fuse: ");
-            sb.Append(card.FuseMaterialFilter == null ? "any" : AstEnglishPrinter.PrintTarget(card.FuseMaterialFilter));
+            sb.Append(card.FuseMaterialFilter == null ? "any" : PrintT(card.FuseMaterialFilter));
+        }
+
+
+        // 构筑期修正（capacity +20 / max cop 10 / 任选 N 个职业 …）。
+        // 不打出来的话，往返后牌组上限、同名上限这些全部静默丢失 ——
+        // 而卡面中文读起来完全一样，只有进入组牌界面才会发现数值没变。
+        if (card.DeckModifiers != null && card.DeckModifiers.Count > 0)
+        {
+            foreach (var dm in card.DeckModifiers)
+            {
+                if (dm == null) continue;
+                sb.Append('\n').Append(Pad(1)).Append("deck_mod: ").Append(dm.Kind)
+                  .Append(' ').Append(dm.Value)
+                  .Append(' ').Append(dm.Value2);
+                if (!string.IsNullOrEmpty(dm.TargetClan)) sb.Append(" clan=").Append(dm.TargetClan);
+                if (dm.StackPerCopy) sb.Append(" stack");
+                if (!string.IsNullOrEmpty(dm.ExclusiveGroup)) sb.Append(" group=").Append(dm.ExclusiveGroup);
+            }
         }
 
         if (card.Abilities != null && card.Abilities.Count > 0)
@@ -173,8 +191,8 @@ public static class AstCanonicalPrinter
         if (t.ActiveZone != ActiveZoneScope.Board) sb.Append(" zone=").Append(t.ActiveZone);
         if (t.DuringTurn != TurnOwnerScope.Any) sb.Append(" turn=").Append(t.DuringTurn);
         if (t.MaxTriggersPerTurn > 0) sb.Append(" max=").Append(t.MaxTriggersPerTurn);
-        if (t.SubjectFilter != null) sb.Append(" on(").Append(AstEnglishPrinter.PrintTarget(t.SubjectFilter)).Append(')');
-        if (t.SecondaryFilter != null) sb.Append(" vs(").Append(AstEnglishPrinter.PrintTarget(t.SecondaryFilter)).Append(')');
+        if (t.SubjectFilter != null) sb.Append(" on(").Append(PrintT(t.SubjectFilter)).Append(')');
+        if (t.SecondaryFilter != null) sb.Append(" vs(").Append(PrintT(t.SecondaryFilter)).Append(')');
 
         if (a.Costs is { Count: > 0 })
         {
@@ -183,13 +201,13 @@ public static class AstCanonicalPrinter
                 string name = !string.IsNullOrEmpty(c.Label)
                     ? c.Label.ToLowerInvariant().Replace(' ', '_')
                     : c.Kind.ToString().ToLowerInvariant();
-                return name + "(" + AstEnglishPrinter.PrintNum(c.Amount) + ")";
+                return name + "(" + PrintN(c.Amount) + ")";
             });
             sb.Append(" [").Append(string.Join(", ", costs)).Append(']');
         }
 
         if (a.Condition != null && a.Condition is not ConstBoolExpr { Value: true })
-            sb.Append(" if ").Append(AstEnglishPrinter.PrintBool(a.Condition));
+            sb.Append(" if ").Append(PrintB(a.Condition));
 
         return sb.ToString();
     }
@@ -218,7 +236,7 @@ public static class AstCanonicalPrinter
 
         if (n.If != null && n.If is not ConstBoolExpr { Value: true })
         {
-            sb.Append(Pad(indent)).Append("@if ").Append(AstEnglishPrinter.PrintBool(n.If)).Append(":\n");
+            sb.Append(Pad(indent)).Append("@if ").Append(PrintB(n.If)).Append(":\n");
             indent++;
         }
 
@@ -238,23 +256,23 @@ public static class AstCanonicalPrinter
                 break;
 
             case SelectTargetNode s:
-                sb.Append(p).Append("select ").Append(AstEnglishPrinter.PrintTarget(s.Target));
+                sb.Append(p).Append("select ").Append(PrintT(s.Target));
                 if (!string.IsNullOrEmpty(s.OutSlot) && s.OutSlot != TargetSpec.SlotSelected)
                     sb.Append(" -> ").Append(s.OutSlot);
                 if (s.AppendToSlot) sb.Append(" +append");
                 break;
 
             case DealDamageNode d:
-                sb.Append(p).Append("deal ").Append(AstEnglishPrinter.PrintNum(d.Amount))
-                  .Append(" damage to ").Append(AstEnglishPrinter.PrintTarget(d.Target));
+                sb.Append(p).Append("deal ").Append(PrintN(d.Amount))
+                  .Append(" damage to ").Append(PrintT(d.Target));
                 if (d.IsSplit) sb.Append(" split");
                 if (!d.IsAbility) sb.Append(" combat");
                 break;
 
             case RestoreLifeNode r:
                 sb.Append(p).Append(r.FullRestore
-                    ? "fully_restore " + AstEnglishPrinter.PrintTarget(r.Target)
-                    : "restore " + AstEnglishPrinter.PrintNum(r.Amount) + " life to " + AstEnglishPrinter.PrintTarget(r.Target));
+                    ? "fully_restore " + PrintT(r.Target)
+                    : "restore " + PrintN(r.Amount) + " life to " + PrintT(r.Target));
                 break;
 
             case ModifyStatsNode m:
@@ -263,9 +281,9 @@ public static class AstCanonicalPrinter
                 string life = m.Life == null ? "_" : FormatSignedNum(m.Life, m.Op == StatModOp.Add);
                 string statCmd = m.Op switch
                 {
-                    StatModOp.Swap => "swap_stats " + AstEnglishPrinter.PrintTarget(m.Target),
-                    StatModOp.Set => "set_stats " + AstEnglishPrinter.PrintTarget(m.Target) + " to " + atk + "/" + life,
-                    _ => "buff " + AstEnglishPrinter.PrintTarget(m.Target) + " " + atk + "/" + life,
+                    StatModOp.Swap => "swap_stats " + PrintT(m.Target),
+                    StatModOp.Set => "set_stats " + PrintT(m.Target) + " to " + atk + "/" + life,
+                    _ => "buff " + PrintT(m.Target) + " " + atk + "/" + life,
                 };
                 sb.Append(p).Append(statCmd).Append(DurSuffix(m.Duration));
                 break;
@@ -279,18 +297,18 @@ public static class AstCanonicalPrinter
             {
                 string kwCmd = k.Op switch
                 {
-                    KeywordOp.SilenceAll => "silence " + AstEnglishPrinter.PrintTarget(k.Target),
-                    KeywordOp.Remove => "remove_keyword " + k.Keyword.Name + " from " + AstEnglishPrinter.PrintTarget(k.Target),
+                    KeywordOp.SilenceAll => "silence " + PrintT(k.Target),
+                    KeywordOp.Remove => "remove_keyword " + k.Keyword.Name + " from " + PrintT(k.Target),
                     _ => "grant_keyword " + k.Keyword.Name
-                         + (k.Value != null ? "(" + AstEnglishPrinter.PrintNum(k.Value) + ")" : "")
-                         + " to " + AstEnglishPrinter.PrintTarget(k.Target) + DurSuffix(k.Duration),
+                         + (k.Value != null ? "(" + PrintN(k.Value) + ")" : "")
+                         + " to " + PrintT(k.Target) + DurSuffix(k.Duration),
                 };
                 sb.Append(p).Append(kwCmd);
                 break;
             }
 
             case GrantAbilityNode g:
-                sb.Append(p).Append("grant_ability to ").Append(AstEnglishPrinter.PrintTarget(g.Target))
+                sb.Append(p).Append("grant_ability to ").Append(PrintT(g.Target))
                   .Append(DurSuffix(g.Duration)).Append(':');
                 // 冒号后必须换行：否则子能力的触发头紧贴冒号同一行，
                 // 解析端拿不到 Indent，整块被当成无缩进的单行。
@@ -307,7 +325,7 @@ public static class AstCanonicalPrinter
                 break;
 
             case ConditionalNode cn:
-                sb.Append(p).Append("if ").Append(AstEnglishPrinter.PrintBool(cn.Condition)).Append(':');
+                sb.Append(p).Append("if ").Append(PrintB(cn.Condition)).Append(':');
                 PrintBlockBody(cn.Then, sb, indent + 1);
                 if (cn.Else is { Count: > 0 })
                 {
@@ -320,9 +338,9 @@ public static class AstCanonicalPrinter
             {
                 string loopHead = lp.Kind switch
                 {
-                    LoopKind.ForEach => "for_each in " + AstEnglishPrinter.PrintTarget(lp.Collection),
-                    LoopKind.RepeatUntil => "repeat_until " + AstEnglishPrinter.PrintBool(lp.Until),
-                    _ => "repeat " + AstEnglishPrinter.PrintNum(lp.Count) + " times",
+                    LoopKind.ForEach => "for_each in " + PrintT(lp.Collection),
+                    LoopKind.RepeatUntil => "repeat_until " + PrintB(lp.Until),
+                    _ => "repeat " + PrintN(lp.Count) + " times",
                 };
                 if (lp.MaxIterations != 30) loopHead += " (max=" + lp.MaxIterations + ")";
                 sb.Append(p).Append(loopHead).Append(':');
@@ -333,8 +351,8 @@ public static class AstCanonicalPrinter
             case BranchModeNode bm:
             {
                 sb.Append(p).Append("modes ").Append(bm.Kind)
-                  .Append("(pick=").Append(AstEnglishPrinter.PrintNum(bm.PickCount)).Append(')');
-                if (bm.GrantTarget != null) sb.Append(" grant_to=").Append(AstEnglishPrinter.PrintTarget(bm.GrantTarget));
+                  .Append("(pick=").Append(PrintN(bm.PickCount)).Append(')');
+                if (bm.GrantTarget != null) sb.Append(" grant_to=").Append(PrintT(bm.GrantTarget));
                 sb.Append(':');
                 if (bm.Options == null || bm.Options.Count == 0)
                 {
@@ -351,33 +369,33 @@ public static class AstCanonicalPrinter
 
             case EvolveNode ev:
                 sb.Append(p).Append(ev.IsSuperEvolve ? "super_evolve " : "evolve ")
-                  .Append(AstEnglishPrinter.PrintTarget(ev.Target));
+                  .Append(PrintT(ev.Target));
                 break;
 
             case TransformNode tr:
-                sb.Append(p).Append("transform ").Append(AstEnglishPrinter.PrintTarget(tr.Target)).Append(" into ");
+                sb.Append(p).Append("transform ").Append(PrintT(tr.Target)).Append(" into ");
                 if (tr.CopySource != null)
-                    sb.Append("copy of ").Append(AstEnglishPrinter.PrintTarget(tr.CopySource));
+                    sb.Append("copy of ").Append(PrintT(tr.CopySource));
                 else
                     sb.Append('"').Append(tr.IntoCardName).Append("\" id=").Append(tr.IntoCardId);
                 break;
 
             case InvokeAbilityNode ia:
                 sb.Append(p).Append("invoke_ability ").Append(ia.Event).Append(" on ")
-                  .Append(AstEnglishPrinter.PrintTarget(ia.Target));
+                  .Append(PrintT(ia.Target));
                 break;
 
             case DamageModifierNode dm:
                 sb.Append(p).Append("damage_modifier ").Append(dm.Kind)
-                  .Append(" amount=").Append(AstEnglishPrinter.PrintNum(dm.Amount))
+                  .Append(" amount=").Append(PrintN(dm.Amount))
                   .Append(" mask=").Append(dm.SourceMask)
                   .Append(dm.IsReduction ? " reduce" : " increase")
-                  .Append(" on ").Append(AstEnglishPrinter.PrintTarget(dm.Target))
+                  .Append(" on ").Append(PrintT(dm.Target))
                   .Append(DurSuffix(dm.Duration));
                 break;
 
             case RevealCardNode rv:
-                sb.Append(p).Append("reveal ").Append(AstEnglishPrinter.PrintTarget(rv.Target));
+                sb.Append(p).Append("reveal ").Append(PrintT(rv.Target));
                 break;
 
             case ReplaceDeckNode rd:
@@ -392,7 +410,7 @@ public static class AstCanonicalPrinter
             case MacroNode mac:
                 sb.Append(p).Append("macro ").Append(mac.Macro.Name);
                 if (mac.Args is { Count: > 0 })
-                    sb.Append('(').Append(string.Join(", ", mac.Args.Select(AstEnglishPrinter.PrintNum))).Append(')');
+                    sb.Append('(').Append(string.Join(", ", mac.Args.Select(PrintN))).Append(')');
                 break;
 
             default:
@@ -406,7 +424,7 @@ public static class AstCanonicalPrinter
     private static string FormatSignedNum(NumExpr e, bool signed)
     {
         if (e == null) return "_";
-        string s = AstEnglishPrinter.PrintNum(e);
+        string s = PrintN(e);
         if (!signed || s.StartsWith("-")) return s;
         return "+" + s;
     }
@@ -427,34 +445,34 @@ public static class AstCanonicalPrinter
             && t.CardId == 0 && string.IsNullOrEmpty(t.CardName))
         {
             string owner = t.Owner == ZoneScope.Opponent ? " [owner=Opponent]" : "";
-            string cnt = t.Count != null ? AstEnglishPrinter.PrintNum(t.Count) : "1";
+            string cnt = t.Count != null ? PrintN(t.Count) : "1";
             return "draw " + cnt + owner + slotSuffix;
         }
         // 2. 定向检索
         if (mv.ToZone == ZoneRef.Hand && t.SourceKind == TargetSourceKind.Zone && t.Zone == ZoneRef.Deck)
-            return "tutor " + AstEnglishPrinter.PrintTarget(t) + slotSuffix;
+            return "tutor " + PrintT(t) + slotSuffix;
         // 3. 瞬念召唤自身
         if (mv.ToZone == ZoneRef.Board && t.SourceKind == TargetSourceKind.Slot && t.Slot == TargetSpec.SlotSelf && !mv.IsDestroy)
             return "invoke_self" + slotSuffix;
         // 4. 破坏
         if (mv.ToZone == ZoneRef.Cemetery && mv.IsDestroy)
-            return "destroy " + AstEnglishPrinter.PrintTarget(t) + slotSuffix;
+            return "destroy " + PrintT(t) + slotSuffix;
         // 5. 舍弃手牌
         if (mv.ToZone == ZoneRef.Cemetery && !mv.IsDestroy
             && t.SourceKind == TargetSourceKind.Zone && t.Zone == ZoneRef.Hand)
-            return "discard " + AstEnglishPrinter.PrintTarget(t) + slotSuffix;
+            return "discard " + PrintT(t) + slotSuffix;
         // 6. 消失
         if (mv.ToZone == ZoneRef.Banished && !mv.IsDestroy)
-            return "banish " + AstEnglishPrinter.PrintTarget(t) + slotSuffix;
+            return "banish " + PrintT(t) + slotSuffix;
         // 7. 回手
         if (mv.ToZone == ZoneRef.Hand && !mv.IsDestroy)
-            return "bounce " + AstEnglishPrinter.PrintTarget(t) + slotSuffix;
+            return "bounce " + PrintT(t) + slotSuffix;
         // 8. 洗回牌库
         if (mv.ToZone == ZoneRef.Deck && !mv.IsDestroy)
-            return "return_to_deck " + AstEnglishPrinter.PrintTarget(t) + slotSuffix;
+            return "return_to_deck " + PrintT(t) + slotSuffix;
 
         // 9. 兜底通用移区
-        return "move " + AstEnglishPrinter.PrintTarget(t) + " to " + mv.ToZone
+        return "move " + PrintT(t) + " to " + mv.ToZone
              + (mv.IsDestroy ? " destroy" : "") + slotSuffix;
     }
 
@@ -470,7 +488,7 @@ public static class AstCanonicalPrinter
             && sp.ToZone == ZoneRef.Board && sp.ToOwner == ZoneScope.Self)
         {
             string dep = sp.AddDepartedTrait ? " +departed" : "";
-            return "reanimate(" + AstEnglishPrinter.PrintNum(cap) + ")" + dep + slotSuffix;
+            return "reanimate(" + PrintN(cap) + ")" + dep + slotSuffix;
         }
 
         // 2. 获得纹章
@@ -486,8 +504,8 @@ public static class AstCanonicalPrinter
             string verb = choose ? (chaos ? "chaos_discover" : "discover") : "pool_spawn";
             string offer = choose && sp.OfferCount != 3 ? " offer=" + sp.OfferCount : "";
             string toZone = sp.ToZone != ZoneRef.Hand ? " to=" + sp.ToZone : "";
-            return verb + " " + AstEnglishPrinter.PrintNum(sp.Count) + " from "
-                 + AstEnglishPrinter.PrintTarget(sp.CopyFrom) + offer + toZone + ownerSuffix + slotSuffix;
+            return verb + " " + PrintN(sp.Count) + " from "
+                 + PrintT(sp.CopyFrom) + offer + toZone + ownerSuffix + slotSuffix;
         }
 
         // 4. 复制体
@@ -495,25 +513,25 @@ public static class AstCanonicalPrinter
         {
             string exact = sp.IsExactCopy ? "exact_copy" : "copy";
             string dep = sp.AddDepartedTrait ? " +departed" : "";
-            return "spawn_" + exact + " " + AstEnglishPrinter.PrintNum(sp.Count) + " of "
-                 + AstEnglishPrinter.PrintTarget(sp.CopyFrom) + " to " + sp.ToZone
+            return "spawn_" + exact + " " + PrintN(sp.Count) + " of "
+                 + PrintT(sp.CopyFrom) + " to " + sp.ToZone
                  + ownerSuffix + dep + slotSuffix;
         }
 
         // 5. 延续上一次生成
         if (sp.SourceKind == CardSourceKind.CopyOfPrevious)
-            return "spawn_previous " + AstEnglishPrinter.PrintNum(sp.Count) + " to " + sp.ToZone
+            return "spawn_previous " + PrintN(sp.Count) + " to " + sp.ToZone
                  + ownerSuffix + slotSuffix;
 
         // 6. 常规具名召唤 / 加手牌
         string idTag = sp.CardId > 0 ? " id=" + sp.CardId : "";
         string depTag = sp.AddDepartedTrait ? " +departed" : "";
         if (sp.ToZone == ZoneRef.Board)
-            return "summon " + AstEnglishPrinter.PrintNum(sp.Count) + " \"" + sp.CardName + "\"" + idTag + ownerSuffix + depTag + slotSuffix;
+            return "summon " + PrintN(sp.Count) + " \"" + sp.CardName + "\"" + idTag + ownerSuffix + depTag + slotSuffix;
         if (sp.ToZone == ZoneRef.Hand)
-            return "add_to_hand " + AstEnglishPrinter.PrintNum(sp.Count) + " \"" + sp.CardName + "\"" + idTag + ownerSuffix + depTag + slotSuffix;
+            return "add_to_hand " + PrintN(sp.Count) + " \"" + sp.CardName + "\"" + idTag + ownerSuffix + depTag + slotSuffix;
 
-        return "spawn " + AstEnglishPrinter.PrintNum(sp.Count) + " \"" + sp.CardName + "\"" + idTag
+        return "spawn " + PrintN(sp.Count) + " \"" + sp.CardName + "\"" + idTag
              + " to " + sp.ToZone + ownerSuffix + depTag + slotSuffix;
     }
 
@@ -527,12 +545,12 @@ public static class AstCanonicalPrinter
             CounterOp.Fill => " fill ",
             _ => " by ",
         };
-        string delta = AstEnglishPrinter.PrintNum(ctr.Delta);
+        string delta = PrintN(ctr.Delta);
 
         // 实体级
         if (ctr.Target != null)
         {
-            string tgt = AstEnglishPrinter.PrintTarget(ctr.Target);
+            string tgt = PrintT(ctr.Target);
             if (name == "spellboost" && ctr.Op == CounterOp.Add)
                 return "spellboost " + tgt + " by " + delta;
             if (name == "countdown" && ctr.Op == CounterOp.Add)
@@ -554,8 +572,8 @@ public static class AstCanonicalPrinter
 
     private static string FormatModifyCost(ModifyCostNode mc)
     {
-        string tgt = AstEnglishPrinter.PrintTarget(mc.Target);
-        string val = AstEnglishPrinter.PrintNum(mc.Value);
+        string tgt = PrintT(mc.Target);
+        string val = PrintN(mc.Value);
         string cmd = mc.Op switch
         {
             CostModOp.Set => "set_cost " + tgt + " to " + val,
@@ -563,5 +581,239 @@ public static class AstCanonicalPrinter
             _ => "modify_cost " + tgt + " by " + val,
         };
         return cmd + DurSuffix(mc.Duration);
+    }
+
+
+    // ============================================================
+    // 目标 / 数值 / 布尔 的规范化打印（204 号文档要求自给自足）
+    //
+    // 这三个子树原先直接调 AstEnglishPrinter —— 那意味着 PyAST 的语法
+    // 随时会被旧打印器的改动带偏，而且解析端不得不去对齐一份自己没有
+    // 定义权的格式。搬进来之后，打印器与解析器共用同一份语法约定。
+    // ============================================================
+
+    private static string OfSuffix(TargetSpec of)
+    {
+        if (of == null) return "";
+        if (of.SourceKind == TargetSourceKind.Slot && of.Slot == TargetSpec.SlotItem) return "";
+        return "(" + PrintT(of) + ")";
+    }
+
+
+    private static string PrintT(TargetSpec t)
+    {
+        if (t == null) return "null";
+
+        // 槽位引用就是 $self / $selected / $created 本身，
+        // 再套一层 slot: 前缀、再拖一句 All n=1，纯属噪音。
+        if (t.SourceKind == TargetSourceKind.Slot)
+        {
+            var s = new StringBuilder(t.Slot ?? TargetSpec.SlotSelf);
+            if (t.Where != null && t.Where is not ConstBoolExpr) s.Append(" where " + PrintB(t.Where));
+            return s.ToString();
+        }
+
+        var sb = new StringBuilder();
+        switch (t.SourceKind)
+        {
+            case TargetSourceKind.Slot:
+                sb.Append(t.Slot ?? TargetSpec.SlotSelf);
+                break;
+            case TargetSourceKind.CardId:
+                // 必须打 Owner 与 Zone：不然 "hand" / "deck" / "hand and deck"
+                // 三种写法的 AST 打印完全一样，审计时分不出编译器到底取了哪个区域。
+                // 卡名与卡号都要打：CardId==0 时运行期会退化成「任意卡」
+                // （VmEval 的历史池分支写的是 `t.CardId == 0 || …`），
+                // 只打卡名会让 Obsessed Test Subject 的「同名卡 5 张」变成「任意随从 5 张」。
+                sb.Append("card:" + (string.IsNullOrEmpty(t.CardName) ? t.CardId.ToString() : t.CardName)
+                          + "#" + t.CardId
+                          + "@" + t.Owner.ToString().ToLowerInvariant()
+                          + ":" + t.Zone.ToString().ToLowerInvariant());
+                // history 由下面的统一出口打印一次即可。
+                // 这里再打一次会变成 "history=EnteredThisMatch history=EnteredThisMatch"，
+                // 审计时看不出是不是重复限定。
+                break;
+            default:
+                sb.Append(t.Owner.ToString().ToLowerInvariant() + ":" + t.Zone.ToString().ToLowerInvariant());
+                break;
+        }
+
+        if (t.History != HistoryScope.None) sb.Append(" history=" + t.History);
+        if (t.IncludeLeader) sb.Append(" +leader");
+        if (t.DistinctByName) sb.Append(" distinct");
+        // "Banish all duplicates"：只处理重复份。不打印的话这个属性在 AST 里完全不可见，
+        // 排查「为什么只放逐了一张」时没有任何线索。
+        if (t.DuplicatesOnly) sb.Append(" duplicates");
+        if (t.Sort != SortKey.None) sb.Append(" sort=" + t.Sort + (t.SortDescending ? "-desc" : ""));
+        if (t.TopN > 0) sb.Append(" topN=" + t.TopN);
+
+        // All 不需要数量；只有 Choose / Random / First 才印 (n)。
+        if (t.Mode == SelectMode.All)
+            sb.Append(" All");
+        else
+            sb.Append(' ').Append(t.Mode).Append('(').Append(PrintN(t.Count ?? NumExpr.Const(1))).Append(')');
+
+        if (t.Where != null && t.Where is not ConstBoolExpr) sb.Append(" where " + PrintB(t.Where));
+        return sb.ToString();
+    }
+
+
+    private static string PrintN(NumExpr e)
+    {
+        if (e == null) return "null";
+        return e.Op switch
+        {
+            NumOp.Const => e.Value.ToString(),
+            // 锁定随机数必须打出上下界与变量槽，否则两边读回来的
+            // rand(2,10,X) 全变成同一个 "randomrange"，往返对不上。
+            NumOp.RandomRange => "rand(" + e.Value + ","
+                + (e.Args != null && e.Args.Count > 0 ? PrintN(e.Args[0]) : e.Value.ToString())
+                + ")#" + e.RollId,
+            // 显式取值玩家必须打印出来：否则两侧读同一个计数器名的条件
+            // （"both players have N max play points"）打印成完全相同的两半，
+            // 验收时看不出它到底只判了一侧还是判了两侧。
+            NumOp.Counter => "ctr:" + e.Counter.Name + CounterOwnerSuffix(e),
+            NumOp.Property => "prop:" + e.Stat + (e.Of != null ? "(" + PrintT(e.Of) + ")" : ""),
+            NumOp.Count => "count(" + PrintT(e.Of) + ")",
+            // 必须打印 Stat，否则 sum(攻击) 与 sum(防御) 看起来完全一样。
+            NumOp.Sum => "sum:" + e.Stat + "(" + PrintT(e.Of) + ")",
+            NumOp.Arith => PrintArith(e),
+            NumOp.Cond => "(if " + PrintB(e.Cond) + " then " + PrintN(e.Then) + " else " + PrintN(e.Else) + ")",
+            NumOp.Clamp => "clamp(" + PrintN(e.Args[0]) + "," + PrintN(e.Args[1]) + "," + PrintN(e.Args[2]) + ")",
+            NumOp.Extreme => (e.TakeMax ? "max(" : "min(") + string.Join(",", e.Args.Select(PrintN)) + ")",
+            NumOp.SplitOf => "split:" + e.Counter.Name + "#" + e.Value,
+            NumOp.DistinctCount => "distinct(" + PrintT(e.Of) + ")",
+            NumOp.MaxGroupSize => "maxgroup(" + PrintT(e.Of) + ")",
+            _ => e.Op.ToString().ToLowerInvariant(),
+        };
+    }
+
+    /// <summary>Counter 的取值玩家后缀：未指定（=自我侧默认）时不打。</summary>
+    private static string CounterOwnerSuffix(NumExpr e)
+        => e.Of == null ? "" : e.Of.Owner switch
+        {
+            Core.ZoneScope.Self => "@self",
+            Core.ZoneScope.Opponent => "@opp",
+            _ => "@any",
+        };
+
+    /// <summary>
+    /// 该数值表达式打印出来是否需要加括号。
+    /// 常量与单个名字不需要；任何复合式（count / prop / 算术）都需要 ——
+    /// 否则在 "攻/防" 这种以斜杠分隔的位置上会被读成除法。
+    /// </summary>
+
+    private static bool NeedsParen(NumExpr e) => e != null
+        && e.Op != NumOp.Const && e.Op != NumOp.Counter && e.Op != NumOp.Property;
+
+    private static string PrintArith(NumExpr e)
+    {
+        if (e.Arith == ArithOp.Sub && e.Args != null && e.Args.Count == 2
+            && e.Args[0].Op == NumOp.Const && e.Args[0].Value == 0)
+            return "-" + PrintN(e.Args[1]);
+        var op = e.Arith switch
+        {
+            ArithOp.Add => " + ",
+            ArithOp.Sub => " - ",
+            ArithOp.Mul => " * ",
+            ArithOp.Div => " / ",
+            ArithOp.Mod => " % ",
+            _ => " + ",
+        };
+        return "(" + string.Join(op, e.Args.Select(PrintN)) + ")";
+    }
+
+
+    private static string CmpWord(Core.CompareOp op) => op switch
+    {
+        Core.CompareOp.Eq => "=",
+        Core.CompareOp.Ne => "!=",
+        Core.CompareOp.Gt => ">",
+        Core.CompareOp.Ge => ">=",
+        Core.CompareOp.Lt => "<",
+        Core.CompareOp.Le => "<=",
+        _ => "=",
+    };
+
+
+    /// <summary>归属方的人读写法（供条件表达式打印用）。</summary>
+
+    private static string OwnerWord(Core.ZoneScope o) => o switch
+    {
+        Core.ZoneScope.Self => "your",
+        Core.ZoneScope.Opponent => "enemy",
+        _ => "either",
+    };
+
+
+    private static string PrintB(BoolExpr e)
+    {
+        if (e == null) return "null";
+        return e switch
+        {
+            ConstBoolExpr c => c.Value ? "true" : "false",
+            CompareExpr cmp => PrintN(cmp.Left) + " " + CmpWord(cmp.Op) + " " + PrintN(cmp.Right),
+            // Of 必须打出来：能力级条件判的是 $self，where 里判的是 $item。
+            // 不打它，「本卡是否已进化」与「被筛的那张是否已进化」打印完全一样，
+            // 而前者在触发时作用域里只有 $self，写成 $item 会恒为 false。
+            HasStateExpr hs => "is " + hs.State + OfSuffix(hs.Of),
+            HasKindExpr hk => "is " + hk.Kind + OfSuffix(hk.Of),
+            HasKeywordExpr hk => "has " + hk.Keyword.Name,
+            HasTraitExpr ht => "has trait " + ht.Trait.Name,
+            HasPackExpr hp => "in pack " + hp.PackId,
+            // CardId 与 CardName 都为空时，Of 是「参照槽位」——
+            //   "Banish all enemy copies of it" 要印成 same name as $selected，
+            //   而不是空洞的 "named "。
+            HasCardNameExpr hcn => (hcn.CardId == 0 && string.IsNullOrEmpty(hcn.CardName) && hcn.Of != null)
+                ? "same name as " + PrintT(hcn.Of)
+                : "named "
+                + (string.IsNullOrEmpty(hcn.CardName) ? hcn.CardId.ToString() : hcn.CardName),
+            HasClanExpr hc => hc.IsSelfClan
+                ? "has clan $self"
+                : (hc.Clans != null && hc.Clans.Count > 0
+                    ? "has clan " + string.Join("|", hc.Clans.Select(x => x.Name))
+                    : "has clan " + hc.Clan.Name),
+            // 排除的是「某槽位里的那个实体」，不是本卡自己。
+            // 一律印 other than itself 会让 "other than it"（排除被使用的那张卡）
+            // 在 AST 上与 "other than this follower" 完全无法区分。
+            NotSameEntityExpr nse => nse.ExcludeSlot == TargetSpec.SlotTrigger
+                ? "other than $trigger"
+                : nse.ExcludeSlot == TargetSpec.SlotOpposing
+                    ? "other than $opposing"
+                    : TargetSpec.TryParseChooseSlotIndex(nse.ExcludeSlot, out _)
+                        ? "other than " + nse.ExcludeSlot
+                        : "other than itself",
+            IsPreviousExpr ip => "is selected",
+            // 牌库规则条件。缺这条会落进默认分支，打印成裸的 "deckruleexpr" ——
+            // Rule 与 Owner 两个字段全部丢失，审计时只能靠反射挖对象值才能判断
+            // 它查的到底是「无重复」「全偶数费」还是「全奇数费」。
+            DeckRuleExpr dr => dr.Rule switch
+            {
+                DeckRule.NoDuplicates => "no duplicates in " + OwnerWord(dr.Owner) + " deck",
+                DeckRule.EvenCostOnly => "only even-cost cards in " + OwnerWord(dr.Owner) + " deck",
+                DeckRule.OddCostOnly => "only odd-cost cards in " + OwnerWord(dr.Owner) + " deck",
+                _ => "deck rule " + dr.Rule,
+            },
+            // "If you selected an allied amulet" —— 对 $selected 槽位做存在性检验。
+            // 缺这条会落进默认分支，打印成裸的 "existsexpr"，
+            // AST 上完全看不出它在校验什么。
+            ExistsExpr ex => PrintExists(ex),
+            AndExpr a => "(" + string.Join(" and ", a.Items.Select(PrintB)) + ")",
+            OrExpr o => "(" + string.Join(" or ", o.Items.Select(PrintB)) + ")",
+            NotExpr n => "not " + PrintB(n.Inner),
+            _ => e.GetType().Name.ToLowerInvariant(),
+        };
+    }
+
+
+    private static string PrintExists(ExistsExpr ex)
+    {
+        var t = ex.Target;
+        if (t == null) return "exists";
+        string who = t.SourceKind == TargetSourceKind.Slot && t.Slot == TargetSpec.SlotSelected
+            ? "$selected" : PrintT(t);
+        string cond = (t.Where != null && t.Where is not ConstBoolExpr)
+            ? " where " + PrintB(t.Where) : "";
+        return "exists(" + who + cond + ")";
     }
 }
