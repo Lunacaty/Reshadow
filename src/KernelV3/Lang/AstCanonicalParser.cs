@@ -1913,7 +1913,28 @@ public sealed class AstCanonicalParser
         "baselife" => StatKey.BaseLife,
         "basecost" => StatKey.BaseCost,
         "maxlife" => StatKey.MaxLife,
-        "countdown" or "chantcount" => StatKey.Countdown,
+        // 计数
+        "countdown" => StatKey.Countdown,
+        "chantcount" => StatKey.ChantCount,
+
+        // 玩家与区域计数：手写 DIY 时会用到。
+        // 打印器打的是枚举名（HandCount / DeckCount / ...），这里必须逐一对应，
+        // 漏一个就会让那一项解析成 StatKey.None（求值恒 0），而文本上看不出来。
+        "handcount" => StatKey.HandCount,
+        "deckcount" => StatKey.DeckCount,
+        "boardcount" => StatKey.BoardCount,
+        "cemeterycount" => StatKey.CemeteryCount,
+        "banishedcount" => StatKey.BanishedCount,
+        "playpoint" => StatKey.PlayPoint,
+        "maxplaypoint" => StatKey.MaxPlayPoint,
+        "evolvepoint" => StatKey.EvolvePoint,
+        "maxevolvepoint" => StatKey.MaxEvolvePoint,
+
+        // 本局累计
+        "turnindex" => StatKey.TurnIndex,
+        "damagedealtthisturn" => StatKey.DamageDealtThisTurn,
+        "cardsplayedthisturn" => StatKey.CardsPlayedThisTurn,
+        "cardsplayedthismatch" => StatKey.CardsPlayedThisMatch,
 
         _ => StatKey.None,
     };

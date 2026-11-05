@@ -1,0 +1,30 @@
+fix(161 复查): StatOf 补全到 22 项 + 谓词 OfSuffix 全面验证
+
+逐段核对 161 号文档：4 项均已落实，但发现 1 处同类遗漏并补齐。
+
+【发现：StatOf 只覆盖 8/22 个 StatKey】
+  161 号文档只要求补 countdown，补完后仍是 8 项，
+  而 StatKey 枚举有 22 个非 None 值。
+  打印器打的是枚举名（prop:HandCount / prop:PlayPoint ...），
+  解析器只认小写形式，两边靠 StatOf 对应 —— 漏一项就会解析成
+  StatKey.None（求值恒 0），而文本上看不出任何异常。
+  已补齐全部 22 项：计数 / 区域计数 / 玩家资源 / 本局累计。
+
+【逐项验证（不只看门禁通过）】
+  · StatKey 覆盖 22/22：每种 key 都能解析出非 None 的 Stat
+  · StatKey 往返 22/22：构造 prop:<key> 打印后重解析，Stat 完全一致
+  · OfSuffix 谓词 6/6：打印器有 6 处会打 OfSuffix
+      prop / is State / is Kind / has Keyword / has trait / named
+    逐一验证 ($trigger) 后缀都能被正确消费并回打
+  · card 引用 3/3：ParseCardRef / card:#id / named #N 三处都做了反查
+    4 个 ParseCardRef 调用点共用同一实现
+  · 161 边界用例 9/9：覆盖文档 4 项涉及的全部形态
+
+【交叉验证】
+  打印器 6 处 OfSuffix vs 解析器 6 处 TryParseOfSuffix —— 一一对应，无遗漏。
+  goldens: 每处都构造了带 ($trigger) 的输入实测，不是只数调用次数。
+
+验证：PyAST 门禁 10/10，13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED
