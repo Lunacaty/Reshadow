@@ -521,6 +521,58 @@ public static class CardPoolBuilder
                 SourceText = c.Text,
             };
         }
+        // 卡包也可以声明 source_format: "py_ast"（204/206 号文档后的规范 AST 语法）。
+        // 与 GlobalCatalog 的同名分支保持完全一致 —— 两处口径不同会让
+        // 「总表能读、卡池读不出」这种最难查的错位。
+        if (string.Equals(c.SourceFormat, "py_ast", StringComparison.OrdinalIgnoreCase))
+        {
+            var pyParser = new Lang.AstCanonicalParser(schema, sharedLex);
+            Ast.CardDef pyDef = null;
+            try { pyDef = pyParser.ParseCard(c.Text); }
+            catch (Exception ex)
+            {
+                errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》PyAST 解析失败：" + ex.Message);
+                return null;
+            }
+            foreach (var pe in pyParser.Errors)
+                errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》PyAST：" + pe);
+            if (pyDef == null)
+            {
+                errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》PyAST 解析为空");
+                return null;
+            }
+
+            var mergedModsPy = (pyDef.DeckModifiers is { Count: > 0 })
+                ? pyDef.DeckModifiers
+                : (c.DeckModifiers ?? new List<DeckBuildModifier>());
+            var mergedKwsPy = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k))
+                .Concat(pyDef.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+                .Distinct().ToList();
+
+            return new CardDef
+            {
+                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = pyDef.Kind,
+                BaseCost = c.Cost > 0 ? c.Cost : pyDef.BaseCost,
+                BaseAttack = pyDef.BaseAttack,
+                BaseLife = pyDef.BaseLife,
+                Clan = string.IsNullOrEmpty(c.Clan) ? pyDef.Clan : schema.Clan(c.Clan),
+                Traits = (pyDef.Traits ?? Array.Empty<SymbolId<TraitTag>>()).ToList(),
+                Abilities = pyDef.Abilities ?? Array.Empty<AbilityDef>(),
+                InnateKeywords = mergedKwsPy,
+                DeckModifiers = mergedModsPy,
+                HasFuse = pyDef.HasFuse,
+                FuseMaterialFilter = pyDef.FuseMaterialFilter,
+                AccelerateDef = pyDef.AccelerateDef,
+                CrystallizeDef = pyDef.CrystallizeDef,
+                CrestDef = pyDef.CrestDef,
+                FaithDef = pyDef.FaithDef,
+                PackId = pack.PackId,
+                IsToken = c.IsToken,
+                Rarity = c.Rarity,
+                SourceText = c.Text,
+            };
+        }
+
         if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
         {
             // 必须**复用当前卡池的 schema 与 lexicon**。

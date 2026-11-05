@@ -451,7 +451,12 @@ public sealed class AstCanonicalParser
         {
             "countdown" => CostKind.Countdown,
             "earth_rite" or "destroy_ally" or "destroyally" => CostKind.DestroyAlly,
-            "necromance" or "shadow" => CostKind.Necromance,
+            // 打印器打的是 necromancy（全拼），"necromance" 只是历史别名。
+            // 漏了全拼会让唤灵退化成 UsePp —— 既不检查也不扣墓场，卡面完全看不出。
+            "necromancy" or "necromance" or "shadow" => CostKind.Necromance,
+            // combo / rally 同理：条件型代价，退化成 UsePp 会白付 PP 而不判连击。
+            "combo" or "turn_play_count" or "turnplaycount" => CostKind.TurnPlayCount,
+            "rally" or "match_play_count" or "matchplaycount" => CostKind.MatchPlayCount,
             "ep" => CostKind.UsePp,
             "sep" => CostKind.UsePp,
             _ => CostKind.UsePp,
@@ -525,7 +530,7 @@ public sealed class AstCanonicalParser
             case "gain_crest": return ParseGainCrest();
             case "discover": return ParseDiscover(false);
             case "chaos_discover": return ParseDiscover(true);
-            case "pool_spawn": return ParseDiscover(false);
+            case "pool_spawn": return ParseDiscover(false, isChoose: false);
             case "summon": return ParseNamedSpawn(ZoneRef.Board);
             case "add_to_hand": return ParseNamedSpawn(ZoneRef.Hand);
             case "spawn_exact_copy": return ParseCopySpawn(true);
@@ -608,14 +613,18 @@ public sealed class AstCanonicalParser
         or "on_select_mode" or "on_earth_rite" or "on_deck_out" or "on_countdown_expire"
         or "on_counter_change" or "on_spellboost";
 
+    /// <summary>
+    /// 给单个节点套上 @if 条件。
+    ///
+    /// 用 ConditionalNode 包一层而不是逐个复制节点的 If 属性：
+    ///   1. VM 里两者完全等价（节点级 If 就是包一层条件）；
+    ///   2. 补齐 22 种节点的 if 分支是重复劳动，漏一种就静默失效；
+    ///   3. 已经有 If 的节点再包一层也不会出错。
+    /// </summary>
     private static EffectNode WithIf(EffectNode n, BoolExpr cond)
     {
         if (n == null) return null;
-        if (n is MoveZoneNode x)
-            return new MoveZoneNode { Target = x.Target, ToZone = x.ToZone, OutSlot = x.OutSlot, IsDestroy = x.IsDestroy, If = cond };
-        if (n is DealDamageNode d)
-            return new DealDamageNode { Target = d.Target, Amount = d.Amount, IsSplit = d.IsSplit, IsAbility = d.IsAbility, If = cond };
-        return n;
+        return new ConditionalNode { Condition = cond, Then = new[] { n } };
     }
     // ---------------------------------------------------------------- 具体语句
 
@@ -703,7 +712,7 @@ public sealed class AstCanonicalParser
         return granted ?? new AbilityDef { Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura }, Condition = BoolExpr.True };
     }
 
-    private SpawnCardNode ParseDiscover(bool chaos)
+    private SpawnCardNode ParseDiscover(bool chaos, bool isChoose = true)
     {
         var count = ParseNumExpr();
         EatIdent("from");
@@ -714,7 +723,9 @@ public sealed class AstCanonicalParser
         if (Current.Kind == PyTokKind.Ident && Current.Text == "to") { Advance(); Match(PyTokKind.Assign); toZone = ZoneRefOf(TakeIdent()); }
         if (from == null) from = TargetSpec.InZone(ZoneRef.CardPool, ZoneScope.Self);
         from = WithZone(from, chaos ? ZoneRef.GlobalPool : ZoneRef.CardPool);
-        from = WithMode(from, SelectMode.Choose);
+        // pool_spawn 是「卡池随机生成」，不是「弹窗三选一」——
+        // 一律写 Choose 会把随机生成变成发现。
+        from = WithMode(from, isChoose ? SelectMode.Choose : SelectMode.Random);
         return new SpawnCardNode
         {
             SourceKind = CardSourceKind.PoolQuery, CopyFrom = from, OfferCount = offer,
@@ -750,10 +761,28 @@ public sealed class AstCanonicalParser
         var from = ParseTarget();
         EatIdent("to");
         var toZone = ZoneRefOf(TakeIdent());
+        // 给对手召唤复制体时会带 [owner=Opponent]，非标亡者召还带 +departed。
+        // 这两个后缀不消费会留在行尾，让本行解析失败。
+        var owner = ZoneScope.Self;
+        bool dep = false;
+        while (!IsAtEnd)
+        {
+            if (Current.Kind == PyTokKind.LBracket)
+            {
+                Advance();
+                if (MatchIdent("owner")) { Match(PyTokKind.Assign); owner = OwnerOf(TakeIdent()); }
+                Expect(PyTokKind.RBracket, "copy 属性缺少右方括号");
+                continue;
+            }
+            if (Current.Kind == PyTokKind.Plus && PeekText(1) == "departed") { Advance(); Advance(); dep = true; continue; }
+            break;
+        }
         return new SpawnCardNode
         {
             SourceKind = CardSourceKind.CopyOfTarget, CopyFrom = from, IsExactCopy = exact,
-            Count = count, ToZone = toZone, OutSlot = TryOutSlot(TargetSpec.SlotCreated),
+            Count = count, ToZone = toZone, ToOwner = owner,
+            AddDepartedTrait = dep,
+            OutSlot = TryOutSlot(TargetSpec.SlotCreated),
         };
     }
 
@@ -809,9 +838,14 @@ public sealed class AstCanonicalParser
         {
             Advance();
             var tgt = ParseTarget();
-            if (Current.Kind == PyTokKind.Ident && Current.Text == "by") Advance();
+            // on <target> 后面同样可能是 = / fill / by —— 不能硬编码 Add，
+            // 否则 "counter countdown on $self = 4" 会在 = 处解析失败。
+            var opE = CounterOp.Add;
+            if (Match(PyTokKind.Assign)) opE = CounterOp.Set;
+            else if (Current.Kind == PyTokKind.Ident && Current.Text == "fill") { Advance(); opE = CounterOp.Fill; }
+            else if (Current.Kind == PyTokKind.Ident && Current.Text == "by") Advance();
             var d = ParseNumExpr();
-            return new ModifyCounterNode { Counter = _schema.Counter(name), Op = CounterOp.Add, Delta = d, Target = tgt };
+            return new ModifyCounterNode { Counter = _schema.Counter(name), Op = opE, Delta = d, Target = tgt };
         }
 
         // 主战者级：Add -> "by" / Set -> "=" / Fill -> "fill"
@@ -1330,27 +1364,6 @@ public sealed class AstCanonicalParser
         IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
     };
 
-    private static Token ToCnToken(PyToken t)
-    {
-        switch (t.Kind)
-        {
-            case PyTokKind.Number: return new Token { Kind = TokKind.Number, Text = t.Text, Value = t.IntVal };
-            case PyTokKind.Slot: return new Token { Kind = TokKind.Word, Text = t.Text };
-            case PyTokKind.String: return new Token { Kind = TokKind.Word, Text = t.Text };
-            case PyTokKind.LParen: return new Token { Kind = TokKind.OpenParen, Text = "(" };
-            case PyTokKind.RParen: return new Token { Kind = TokKind.CloseParen, Text = ")" };
-            case PyTokKind.Comma: return new Token { Kind = TokKind.Comma, Text = "," };
-            case PyTokKind.Colon: return new Token { Kind = TokKind.Word, Text = ":" };
-            case PyTokKind.Assign: return new Token { Kind = TokKind.Word, Text = "=" };
-            case PyTokKind.Gt: return new Token { Kind = TokKind.Word, Text = ">" };
-            case PyTokKind.Ge: return new Token { Kind = TokKind.Word, Text = ">=" };
-            case PyTokKind.Lt: return new Token { Kind = TokKind.Word, Text = "<" };
-            case PyTokKind.Le: return new Token { Kind = TokKind.Word, Text = "<=" };
-            case PyTokKind.Minus: return new Token { Kind = TokKind.Dash, Text = "-" };
-            case PyTokKind.Slash: return new Token { Kind = TokKind.Word, Text = "/" };
-            default: return new Token { Kind = TokKind.Word, Text = t.Text };
-        }
-    }
 
     // ============================================================
     // 递归下降数值解析器（206 号文档方案 3）
@@ -1771,19 +1784,6 @@ public sealed class AstCanonicalParser
         _ => ZoneRef.Board,
     };
 
-    private static ZoneRef ZoneRefOfOld(string s) => s switch
-    {
-        "Hand" => ZoneRef.Hand,
-        "Deck" => ZoneRef.Deck,
-        "Cemetery" => ZoneRef.Cemetery,
-        "Banished" => ZoneRef.Banished,
-        "ExArea" => ZoneRef.ExArea,
-        "CrestArea" => ZoneRef.CrestArea,
-        "CardPool" => ZoneRef.CardPool,
-        "GlobalPool" => ZoneRef.GlobalPool,
-        "Leader" => ZoneRef.Leader,
-        _ => ZoneRef.Board,
-    };
 
     private static DamageSourceMask ParseMask(string s)
         => s == "Combat" ? DamageSourceMask.Combat : s == "Ability" ? DamageSourceMask.Ability
@@ -1792,9 +1792,6 @@ public sealed class AstCanonicalParser
     private static CoreEvent EventOf(string s)
     {
         if (string.IsNullOrEmpty(s)) return CoreEvent.OnPlay;
-        // 打印器写的是 on_spellboost / on_select_mode 这种下划线形式，
-        // Event 枚举是 OnSpellboost / OnSelectMode。统一去掉下划线再比对，
-        // 不能简单 Substring(2) —— 那会得到 "_spellboost" 并解析失败。
         string key = s.StartsWith("On", StringComparison.OrdinalIgnoreCase) && s.Length > 2 ? s.Substring(2) : s;
         key = key.Replace("_", "").ToLowerInvariant();
         return key switch
@@ -1832,6 +1829,7 @@ public sealed class AstCanonicalParser
             _ => Enum.TryParse<CoreEvent>(s, true, out var ev) ? ev : CoreEvent.OnPlay,
         };
     }
+
 
     // ---------------------------------------------------------------- 游标
 
