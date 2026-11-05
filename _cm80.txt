@@ -1,0 +1,31 @@
+chore(162 复查): 清理死代码 + 补充剥离约束说明
+
+逐段核对 162 号文档的 19 项，全部落实。本轮查出并处理 2 处问题：
+
+## 1. 死代码：随从攻击时相关的三个遗留
+  你要求触发头改回【攻击时】之后，原实现留下了三处无用代码：
+    · StripFollowerStrikeDomain 已不再剥离条件，但函数名仍叫 Strip
+    · isFollowerStrike 变量算出后从未使用
+    · TriggerHeader / TriggerHeaderCore 的 followerStrike 参数无人传值
+  已全部删除，并把原注释改成说明「为什么不剥离」。
+
+## 2. enhance 剥离的误删风险（已确认当前不会触发，但加注说明）
+  StripRedundantCostConditions 里 lbl=="enhance" && ctr=="pp_at_play" 这一条，
+  会把任何 pp_at_play 比较剥掉。若某张卡把「打出时能量点≥N」作为独立条件，
+  条件会被静默删除。
+  实测：当前全卡池「enhance 代价 + pp_at_play 条件」同时存在的卡 = 0 张，
+  所以现在不会误删。已加注释说明 engage / enhance 的语义区别与剥离前提
+  （阈值必须与代价完全相等）。
+
+## 19 项逐项实测（不只看代码是否存在）
+  支柱一：条件双写 / 爆能分档 / if-else 折叠 / 术语条件
+  支柱二：进化区分 / 每回合限次 / 回合限定 / engage 代价
+  支柱三：+leader 主语 / 排除词 / TopN
+  支柱四：胜利卡 / CopySource / RepeatUntil / GrantTarget / 完全回费 /
+          三种布尔 / 三种数值
+  共 18 条直接断言全部通过。
+
+验证：13 个门禁全绿（PyAST 10/10）。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED

@@ -232,17 +232,16 @@ public sealed class ChineseCardPrinter
         var cond = StripEvolveDomain(ab.Condition, ab.Trigger, out string domainPrefix);
         if (!string.IsNullOrEmpty(domainPrefix)) sb.Append(domainPrefix);
 
-        // OnAttack 条件里的「非（攻击目标为主战者）」即「攻击随从」。
-        // 卡面写作【攻击时】若攻击随从，…，所以要作为条件正常印出来，
-        // 而不是当成噪音剥掉 —— 剥掉会让玩家不知道这个效果有前提。
-        bool isFollowerStrike = StripFollowerStrikeDomain(ref cond);
+        // 注：OnAttack 条件里的「非（攻击目标为主战者）」即「攻击随从」，
+        // 卡面写作【攻击时】若攻击随从，…。它作为普通条件印出来即可，
+        // 不另立触发头、也不剥掉 —— 剥掉玩家就不知道这个效果有前提。
 
         // 与 Costs 同源的条件必须剥离：编译器把「连击3」「唤灵6」「爆能5」
         // 同时写进 Costs 与 Condition，两边都印就成了
         // 「【连击3】若连击值≥3，」这种同一件事说两遍。
         cond = StripRedundantCostConditions(cond, ab.Costs);
 
-        sb.Append(TriggerHeader(ab.Trigger, kind, isFollowerStrike));
+        sb.Append(TriggerHeader(ab.Trigger, kind));
 
         if (ab.Costs != null && ab.Costs.Count > 0)
             sb.Append(CostsText(ab.Costs));
@@ -263,28 +262,6 @@ public sealed class ChineseCardPrinter
     // ---------------------------------------------------------------- 触发头
 
 
-    /// <summary>
-    /// 识别 OnAttack 条件里的 NotExpr(HasStateExpr{CurrentAttackHitLeader})。
-    ///
-    /// 该字段的真实语义是「本次攻击目标为主战者」（见 CombatResolver：
-    ///   attacker.CurrentAttackHitLeader = defender.Zone == ZoneRef.Leader），
-    /// 所以 Not(...) 表示「攻击的是随从，不是主战者」。
-    ///
-    /// 返回 true 表示这是「随从攻击时」这个专用触发头，调用方改用【随从攻击时】文案，
-    /// 且该条件本身已被消费、不必再印。
-    /// 只认这一种精确形态 —— 其他涉及 CurrentAttackHitLeader 的写法是真实效果。
-    /// </summary>
-    private static bool StripFollowerStrikeDomain(ref BoolExpr cond)
-    {
-        bool Matches(BoolExpr e) =>
-            e is NotExpr { Inner: HasStateExpr { State: UnitState.CurrentAttackHitLeader } };
-
-        if (cond == null) return false;
-        if (Matches(cond)) return true;
-        if (cond is AndExpr and)
-            foreach (var it in and.Items) if (Matches(it)) return true;
-        return false;
-    }
 
     /// <summary>
     /// 剥离与 Costs 同源的比较条件。
@@ -311,6 +288,10 @@ public sealed class ChineseCardPrinter
                     (lbl == "rally" && (ctr == "match_play" || ctr == "rally")) ||
                     (lbl is "necromancy" or "necromance" && (ctr == "shadow" || ctr == "necromancy")) ||
                     (lbl == "earthrite" && (ctr == "earth_sigil" || ctr == "earth_rite")) ||
+                    // engage 与 enhance 都是 pp_at_play 比较，但语义不同：
+                    //   engage  = 主动启动的付费，触发头里要印【消耗N点能量点】，条件该剥；
+                    //   enhance = 爆能档位，档位树已在正文展开，条件该剥。
+                    // 两者都只在阈值与代价完全相等时才剥，避免误删真实的独立条件。
                     (lbl == "enhance" && ctr == "pp_at_play") ||
                     (lbl == "engage" && ctr == "pp_at_play");
                 if (hit) return true;
@@ -328,10 +309,10 @@ public sealed class ChineseCardPrinter
         }
         return Redundant(cond) ? BoolExpr.True : cond;
     }
-    private string TriggerHeader(TriggerSpec trig, CardKind kind = CardKind.Follower, bool followerStrike = false)
+    private string TriggerHeader(TriggerSpec trig, CardKind kind = CardKind.Follower)
     {
         if (trig == null) return "";
-        return DecorateTrigger(trig, TriggerHeaderCore(trig, kind, followerStrike));
+        return DecorateTrigger(trig, TriggerHeaderCore(trig, kind));
     }
 
     /// <summary>
@@ -351,7 +332,7 @@ public sealed class ChineseCardPrinter
         }
         return head;
     }
-    private string TriggerHeaderCore(TriggerSpec trig, CardKind kind, bool followerStrike)
+    private string TriggerHeaderCore(TriggerSpec trig, CardKind kind)
     {
         if (trig == null) return "";
 
