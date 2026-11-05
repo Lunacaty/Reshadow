@@ -202,7 +202,7 @@ public static class PoolIntegrityHasher
               .Append(c.BaseAttack).Append('|')
               .Append(c.BaseLife).Append('|')
               .Append(c.HasFuse).Append('|')
-              .Append(AstEnglishPrinter.PrintCard(c.Abilities)).Append('\n');
+              .Append(AstCanonicalPrinter.PrintAbilities(c.Abilities)).Append('\n');
         }
     }
 }

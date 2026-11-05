@@ -387,11 +387,11 @@ public static partial class Regress
         if (bad.Count > 0) return (false, string.Join(" | ", bad));
 
         // 四端在两种渲染下的输出必须逐字相同。
-        string en0 = AstEnglishPrinter.PrintCard(made[0].def.Abilities);
+        string en0 = AstCanonicalPrinter.PrintAbilities(made[0].def.Abilities);
         string zh0 = ws.Printer.PrintCard(made[0].def);
         foreach (var (way, def, _) in made.Skip(1))
         {
-            string en = AstEnglishPrinter.PrintCard(def.Abilities);
+            string en = AstCanonicalPrinter.PrintAbilities(def.Abilities);
             string zh = ws.Printer.PrintCard(def);
             if (en != en0) bad.Add(way + " 的英文 AST 与 CNL 不同：\n    " + en + "\n    vs " + en0);
             if (zh != zh0) bad.Add(way + " 的中文卡面与 CNL 不同：\n    " + zh.Replace("\n", " / ") + "\n    vs " + zh0.Replace("\n", " / "));

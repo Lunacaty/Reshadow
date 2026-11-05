@@ -1145,7 +1145,7 @@ public sealed class ChineseCardPrinter
     /// </summary>
     private static bool SameNode(EffectNode a, EffectNode b)
         => ReferenceEquals(a, b)
-           || (a != null && b != null && AstEnglishPrinter.PrintNode(a) == AstEnglishPrinter.PrintNode(b));
+           || (a != null && b != null && AstCanonicalPrinter.PrintEffectNode(a) == AstCanonicalPrinter.PrintEffectNode(b));
     private string PrintConditional(ConditionalNode c)
     {
         // PayThenDo：「扣 N 资源 → 做某事」编译成 if(ctr>=N) then 扣减 + 动作。
@@ -1628,7 +1628,7 @@ public sealed class ChineseCardPrinter
                     && a.Items[1] is CompareExpr { Op: CompareOp.Le, Right: NumExpr { Op: NumOp.Const } rf2 } cf2
                     && rf1.Value == rf2.Value
                     && cf1.Left != null && cf2.Left != null
-                    && AstEnglishPrinter.PrintNum(cf1.Left) == AstEnglishPrinter.PrintNum(cf2.Left))
+                    && AstCanonicalPrinter.PrintNumExpr(cf1.Left) == AstCanonicalPrinter.PrintNumExpr(cf2.Left))
                     return PrintNum(cf1.Left) + "为" + rf1.Value;
 
                 // 恒真项（`true and ctr:faith >= 10` 里的 true）不是条件，

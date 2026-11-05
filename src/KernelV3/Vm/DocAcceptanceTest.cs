@@ -79,12 +79,12 @@ public static partial class DocAcceptanceTest
     {
         if (n is ConditionalNode c)
         {
-            sb.Append(" IF ").Append(AstEnglishPrinter.PrintBool(c.Condition));
+            sb.Append(" IF ").Append(AstCanonicalPrinter.PrintBoolExpr(c.Condition));
             foreach (var t in c.Then) DumpNode(t, sb);
             if (c.Else != null) foreach (var e in c.Else) DumpNode(e, sb);
             return;
         }
-        sb.Append(' ').Append(AstEnglishPrinter.PrintNode(n));
+        sb.Append(' ').Append(AstCanonicalPrinter.PrintEffectNode(n));
     }
 
     private static Lexicon BuildFullLexicon()

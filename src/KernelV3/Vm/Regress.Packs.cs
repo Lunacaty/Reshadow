@@ -1131,7 +1131,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
                                    null, "Probe", 1);
             if (r2.Abilities == null || r2.Abilities.Count == 0) return "compile-failed";
             var cond = r2.Abilities[0].Condition;
-            return AstEnglishPrinter.PrintBool(cond);
+            return AstCanonicalPrinter.PrintBoolExpr(cond);
         }
 
         var printA = OverflowAst(4);
@@ -1848,7 +1848,7 @@ card 943001 ""四端选卡"" (Follower, cost: 2, atk: 2, life: 2) {
         bool formOk = back != null && DiyWorkspace.StructurallyEqual(def0, back, out dF);
 
         // 英文打印含 offer=4（否则判等看不见差异）
-        bool printOffer = AstEnglishPrinter.PrintCard(def0.Abilities).Contains("offer=4");
+        bool printOffer = AstCanonicalPrinter.PrintAbilities(def0.Abilities).Contains("offer=4");
 
         // 中文含（4选2）
         var cn = ws.Printer.PrintCard(def0);

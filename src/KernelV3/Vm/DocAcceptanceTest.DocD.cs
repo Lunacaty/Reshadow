@@ -28,7 +28,7 @@ public static partial class DocAcceptanceTest
             // E31/E32：比较双侧必须带 Of
             var r = comp.Compile("Fanfare: If your leader's defense is lower than the enemy leader's defense, draw a card.");
             string cond = r.Abilities.Count > 0 && r.Abilities[0].Condition != null
-                ? AstEnglishPrinter.PrintBool(r.Abilities[0].Condition) : "";
+                ? AstCanonicalPrinter.PrintBoolExpr(r.Abilities[0].Condition) : "";
             bool hasOf = cond.Contains("prop:") && cond.Contains("(");
             Ok("d-P1", "E32 比较双侧带 Of（不是 prop:Life = prop:Life）",
                hasOf, cond);
@@ -37,14 +37,15 @@ public static partial class DocAcceptanceTest
             // E8：Swap 不打出假 0/0
             var r = comp.Compile("Fanfare: Swap this follower's attack and defense.");
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
-            bool noFake = !body.Contains("0/0") && body.Contains("Swap");
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
+            // PyAST 的交换动词是 swap_stats（旧英文打印器写作 Swap）。
+            bool noFake = !body.Contains("0/0") && (body.Contains("swap_stats") || body.Contains("Swap"));
             Ok("d-P1", "E8 Swap 不打印假 0/0", noFake, body);
         }
         {
             // E3：回合限制要打印
             var r = comp.Compile("During your turn, whenever an allied follower attacks, draw a card.");
-            string p = r.Abilities.Count > 0 ? AstEnglishPrinter.PrintAbility(r.Abilities[0]) : "";
+            string p = r.Abilities.Count > 0 ? AstCanonicalPrinter.PrintAbilityDef(r.Abilities[0]) : "";
             bool shown = p.Contains("turn") || p.Contains("self") || p.Contains("opponent");
             Ok("d-P1", "E3 回合限制不丢失", shown, p);
         }
@@ -66,7 +67,7 @@ public static partial class DocAcceptanceTest
             // E5：引号内无 fanfare
             var r = comp.Compile("Fanfare: Give this follower \"Ward\".");
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
             bool noInnerPlay = body.Contains("keyword");
             Ok("d-P2", "E5 引号内常驻效果不变 fanfare", noInnerPlay, body);
         }
@@ -81,21 +82,23 @@ public static partial class DocAcceptanceTest
         {
             var r = comp.Compile("Whenever an allied follower enters the field, give it Ward.");
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
             Ok("d-P3", "E4 $trigger 绑定", body.Contains("$trigger"), body);
         }
         {
             var r = comp.Compile("Fanfare: If its cost is 4, draw a card.");
             string cond = r.Abilities.Count > 0 && r.Abilities[0].Condition != null
-                ? AstEnglishPrinter.PrintBool(r.Abilities[0].Condition) : "";
+                ? AstCanonicalPrinter.PrintBoolExpr(r.Abilities[0].Condition) : "";
             bool costOk = cond.Contains("Cost");
             Ok("d-P3", "E7 cost 不被当成 Life", costOk, cond);
         }
         {
             var r = comp.Compile("Summon a Majestic Megalorca. If you're in Overflow, summon 2 instead.");
             string body = DumpDeep(r.Abilities);
+            // PyAST 只写卡号，判据改为「两句话指向同一张卡」。
+            bool sameCard9 = body.Contains("#90041130") || body.Contains("Majestic Megalorca");
             Ok("d-P3", "E9 Summon N instead 继承卡名（Ocean Rider）",
-               body.Contains("Majestic Megalorca") && body.Contains("spawn 2"), body.Replace("\n", " "));
+               sameCard9 && (body.Contains("summon 2") || body.Contains("spawn 2")), body.Replace("\n", " "));
         }
         {
             var r = comp.Compile("X starts at 2. On Spellboost: Increase X by 1.");

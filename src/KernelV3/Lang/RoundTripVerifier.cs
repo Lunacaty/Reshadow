@@ -60,7 +60,7 @@ public static class RoundTripVerifier
             return r;
         }
 
-        r.Rendered = AstEnglishPrinter.PrintCard(abilities);
+        r.Rendered = AstCanonicalPrinter.PrintAbilities(abilities);
 
         var tokens = Tokenize(originalText);
         var astVerbs = new List<string>();

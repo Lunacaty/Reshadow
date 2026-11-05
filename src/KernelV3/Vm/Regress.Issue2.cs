@@ -102,7 +102,7 @@ public static partial class Regress
             var r = comp.Compile("Engage (1): Draw a card.");
             // Engage 不得在 AndCosts 里生成 pp 条件
             string cond = r.Abilities.Count > 0 && r.Abilities[0].Condition != null
-                ? AstEnglishPrinter.PrintBool(r.Abilities[0].Condition) : "null";
+                ? AstCanonicalPrinter.PrintBoolExpr(r.Abilities[0].Condition) : "null";
             bool noPpCond = !cond.Contains("pp");
 
             st.RegisterCard(new CardDef
@@ -155,7 +155,7 @@ public static partial class Regress
                 foreach (var n in nodes ?? Array.Empty<EffectNode>())
                 {
                     if (n is not ConditionalNode cn) continue;
-                    conds.Add(AstEnglishPrinter.PrintBool(cn.Condition));
+                    conds.Add(AstCanonicalPrinter.PrintBoolExpr(cn.Condition));
                     Walk(cn.Then);
                     Walk(cn.Else);
                 }

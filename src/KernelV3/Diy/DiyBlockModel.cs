@@ -104,6 +104,9 @@ public sealed class CardBlockWorkspace
     public List<Block> DeckModBlocks { get; set; } = new();
     public int CardId { get; set; }
     public string Name { get; set; } = "";
+    /// <summary>子卡（纹章/信仰）的美术卡号。缺失会让四端同构比对断链：
+    /// 原卡走 ArtCardId 打印成 #N，重建后 CardId=0 且 ArtCardId=0，只能退回卡名。</summary>
+    public int SubArtCardId { get; set; }
     public string Kind { get; set; } = "Follower";
     public int Cost { get; set; }
     public int Attack { get; set; }
@@ -392,7 +395,7 @@ public sealed class DiyBlockCompiler
         }
         return new CardDef
         {
-            CardId = 0, Name = doc.Name, Kind = kind, BaseCost = Math.Max(0, cost),
+            CardId = 0, ArtCardId = doc.SubArtCardId, Name = doc.Name, Kind = kind, BaseCost = Math.Max(0, cost),
             Abilities = abil,
             Traits = (doc.Traits ?? new List<string>()).Select(t => _schema.Trait(t)).ToList(),
         };
@@ -567,7 +570,9 @@ public sealed class DiyBlockCompiler
                 {
                     Kind = LoopKind.Times,
                     Count = n ?? NumExpr.Const(1),
-                    MaxIterations = n != null && n.Op == NumOp.Const ? Math.Max(1, n.Value) : 30,
+                    // MaxIterations 是「防止无限循环的安全上限」，不是循环次数。
+                    // 早先错把它设成 Count，导致同一张卡在积木端重建后
+                    // 打印成「repeat 2 times (max=2)」，与原 AST 的默认 30 不等价。
                     Body = CompileStackList(b.Stacks),
                 };
             }
@@ -1352,7 +1357,12 @@ public sealed class DiyBlockDecompiler
             ws.CrystallizeCost = def.CrystallizeDef.BaseCost;
             ws.CrystallizeHats = Hats(def.CrystallizeDef.Abilities);
         }
-        if (def.CrestDef != null) ws.CrestHats = Hats(def.CrestDef.Abilities);
+        if (def.CrestDef != null)
+        {
+            ws.CrestHats = Hats(def.CrestDef.Abilities);
+            // 美术卡号必须带过去：卡面上「获得纹章」只写卡号，丢了它比对必然不等价。
+            ws.SubArtCardId = def.CrestDef.ArtCardId > 0 ? def.CrestDef.ArtCardId : def.CrestDef.CardId;
+        }
         if (def.FaithDef != null) ws.FaithHats = Hats(def.FaithDef.Abilities);
 
         return ws;

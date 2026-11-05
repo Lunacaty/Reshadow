@@ -39,7 +39,7 @@ public static partial class Regress
         // ── 1. AST 形态：双方条件必须是 And(自己侧, 对手侧) ──
         {
             var r = comp.Compile("Fanfare: If both players have 10 max play points, draw a card.");
-            string cond = r.Ok ? AstEnglishPrinter.PrintBool(r.Abilities[0].Condition) : "<err>";
+            string cond = r.Ok ? AstCanonicalPrinter.PrintBoolExpr(r.Abilities[0].Condition) : "<err>";
             bool twoSides = cond.Contains("@self") && cond.Contains("@opp");
             bool hasTen = cond.Contains(">= 10");
             Chk("both-1 both players 编译成 (自己 >= 10) and (对手 >= 10)",
@@ -71,7 +71,7 @@ public static partial class Regress
             string CondOf(string text)
             {
                 var r = comp.Compile(text);
-                return r.Ok ? AstEnglishPrinter.PrintBool(r.Abilities[0].Condition) : "<err>";
+                return r.Ok ? AstCanonicalPrinter.PrintBoolExpr(r.Abilities[0].Condition) : "<err>";
             }
             string overflow = CondOf("Fanfare: If both players are in Overflow, draw a card.");
             string hand4 = CondOf("Fanfare: If both players have 4 or more cards in hand, draw a card.");
@@ -102,7 +102,7 @@ public static partial class Regress
             bool compiled = r.Ok;
             var condAbility = r.Abilities.FirstOrDefault(a => a.Trigger?.Event == CoreEvent.OnPlay
                                                               && a.Condition is not ConstBoolExpr cb0);
-            string cond = condAbility != null ? AstEnglishPrinter.PrintBool(condAbility.Condition) : "<none>";
+            string cond = condAbility != null ? AstCanonicalPrinter.PrintBoolExpr(condAbility.Condition) : "<none>";
             bool twoSides = cond.Contains("@self") && cond.Contains("@opp");
             Chk("both-6 真实卡 10304120 的条件是两侧合取",
                 compiled && twoSides, "ok=" + compiled + " cond=" + cond);

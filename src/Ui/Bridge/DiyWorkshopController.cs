@@ -366,7 +366,7 @@ public sealed class DiyWorkshopController
         => CurrentDef == null ? "" : Workspace.PrintChinese(CurrentDef);
 
     public string GetCanonicalAstText()
-        => CurrentDef == null ? "" : AstEnglishPrinter.PrintCard(CurrentDef.Abilities);
+        => CurrentDef == null ? "" : AstCanonicalPrinter.PrintAbilities(CurrentDef.Abilities);
 
     /// <summary>四端往返同构自检：Script 打印 → 重编译 → 结构化判等。</summary>
     public bool VerifyRoundTripIsomorphism(out string diff)

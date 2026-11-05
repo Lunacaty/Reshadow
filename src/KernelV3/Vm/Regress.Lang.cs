@@ -85,7 +85,7 @@ public static partial class Regress
                 "Fanfare: If you have at least 4 cards with the same cost in your hand, deal 4 damage to the enemy leader.");
             var cmp = r.Abilities.SelectMany(a => a.Body).Count()
                       + (r.Abilities.FirstOrDefault()?.Condition == null ? 0 : 1);
-            bool usesMaxGroup = AstEnglishPrinter.PrintBool(r.Abilities.FirstOrDefault()?.Condition)
+            bool usesMaxGroup = AstCanonicalPrinter.PrintBoolExpr(r.Abilities.FirstOrDefault()?.Condition)
                                     .Contains("maxgroup(");
 
             // 手牌 4 张同费 → 触发；手牌 3 张同费 → 不触发。
@@ -120,14 +120,14 @@ public static partial class Regress
         {
             var r = comp.Compile("When you've Fused both to this card, deal 4 damage to the enemy leader.");
             // 分档判据现在是实体级 fuse_kinds（融合种类数）。
-            bool hasCond = AstEnglishPrinter.PrintBool(r.Abilities.FirstOrDefault()?.Condition)
+            bool hasCond = AstCanonicalPrinter.PrintBoolExpr(r.Abilities.FirstOrDefault()?.Condition)
                               .Contains("fuse_kinds");
 
             // 条件必须真正可求值：融合 1 次为假，2 次为真。
             bool evals = FuseBothConditionEvaluates(comp, out bool once, out bool twice);
             Check("lang-6 Fused both 生成可求值的 fuse_count >= 2 条件",
                   r.Ok && hasCond && evals && !once && twice,
-                  $"ok={r.Ok} cond={AstEnglishPrinter.PrintBool(r.Abilities.FirstOrDefault()?.Condition)} once={once} twice={twice}");
+                  $"ok={r.Ok} cond={AstCanonicalPrinter.PrintBoolExpr(r.Abilities.FirstOrDefault()?.Condition)} once={once} twice={twice}");
         }
 
         // ── 7. "Halve the enemy leader's defense" 对真实目标求值且向上取整 ──

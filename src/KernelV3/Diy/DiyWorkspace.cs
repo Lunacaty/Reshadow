@@ -338,7 +338,7 @@ public sealed class DiyWorkspace
                 Body = (ab.Body ?? Array.Empty<EffectNode>()).Select(NormalizeNode).ToList(),
             });
         }
-        return AstEnglishPrinter.PrintCard(norm);
+        return AstCanonicalPrinter.PrintAbilities(norm);
     }
 
     /// <summary>归一化一条 AbilityDef（用于被授予的能力）。</summary>
@@ -481,7 +481,7 @@ public sealed class DiyWorkspace
             // （如 Cost>=2 与 Cost<=4）谁先谁后取决于原始顺序 ——
             // 不同端产出的顺序不同，判等就随机失败。
             kept = kept.OrderBy(x => x.GetType().Name, StringComparer.Ordinal)
-                       .ThenBy(x => AstEnglishPrinter.PrintBool(x), StringComparer.Ordinal)
+                       .ThenBy(x => AstCanonicalPrinter.PrintBoolExpr(x), StringComparer.Ordinal)
                        .ToList();
             return new AndExpr(kept);
         }
@@ -551,8 +551,8 @@ private static bool SubEqual(CardDef x, CardDef y, string label, out string diff
         string sky = string.Join(",", ky.OrderBy(z => z, StringComparer.Ordinal));
         if (skx != sky) { diff = label + " 关键词不同：A=[" + skx + "] B=[" + sky + "]"; return false; }
 
-        string sx = AstEnglishPrinter.PrintCard(rx);
-        string sy = AstEnglishPrinter.PrintCard(ry);
+        string sx = AstCanonicalPrinter.PrintAbilities(rx);
+        string sy = AstCanonicalPrinter.PrintAbilities(ry);
         if (sx != sy) { diff = label + " 能力不同：\n  A=" + sx + "\n  B=" + sy; return false; }
         return true;
     }
@@ -615,9 +615,9 @@ private static bool SubEqual(CardDef x, CardDef y, string label, out string diff
 
         // All 模式的 Count 是等价字段（null 与 Const(1) 都表示「所有」），
         // 比对前先归一，否则会把同一份筛选判成两份。
-        string fa = AstEnglishPrinter.PrintTarget(
+        string fa = AstCanonicalPrinter.PrintTargetExpr(
             a.FuseMaterialFilter == null ? null : NormalizeTarget(a.FuseMaterialFilter));
-        string fb = AstEnglishPrinter.PrintTarget(
+        string fb = AstCanonicalPrinter.PrintTargetExpr(
             b.FuseMaterialFilter == null ? null : NormalizeTarget(b.FuseMaterialFilter));
         if (fa != fb) { diff = "融合材料过滤不同：A=" + fa + " B=" + fb; return false; }
 

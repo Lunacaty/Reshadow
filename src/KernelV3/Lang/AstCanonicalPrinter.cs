@@ -22,6 +22,39 @@ namespace ShadowverseFan.KernelV3.Lang;
 
 public static class AstCanonicalPrinter
 {
+
+    // ---------------------------------------------------------------- 公开入口
+    //
+    // 旧 AstEnglishPrinter 的调用方（文档验收 / DIY 同构比对 / 等价性判定）
+    // 全部迁移到这里。PyAST 是唯一的 AST 文本序列化格式，
+    // 再保留第二套英文规范串只会让两边判据漂移。
+
+    /// <summary>打印一个目标表达式。</summary>
+    public static string PrintTargetExpr(TargetSpec t) => PrintT(t);
+
+    /// <summary>打印一个数值表达式。</summary>
+    public static string PrintNumExpr(NumExpr e) => PrintN(e);
+
+    /// <summary>打印一个布尔表达式。</summary>
+    public static string PrintBoolExpr(BoolExpr e) => PrintB(e);
+
+    /// <summary>打印单个效果节点（不带缩进前缀，用于判据串）。</summary>
+    public static string PrintEffectNode(EffectNode n)
+    {
+        if (n == null) return "";
+        var sb = new StringBuilder();
+        PrintNode(n, sb, 0);
+        return sb.ToString().TrimStart();
+    }
+
+    /// <summary>打印单条能力（含触发头与代价）。</summary>
+    public static string PrintAbilityDef(AbilityDef a)
+    {
+        if (a == null) return "";
+        var sb = new StringBuilder();
+        PrintAbility(a, sb, 0);
+        return sb.ToString();
+    }
     private static string Pad(int indent) => new string(' ', indent * 4);
 
     /// <summary>
@@ -646,10 +679,16 @@ public static class AstCanonicalPrinter
         // 2. 获得纹章
         if (sp.IsCrest)
         {
-            // 纹章优先用 CardDef 上的美术卡号，其次退回引号卡名 —— 绝不打出 #0。
-            string crestRef = sp.CardId > 0 ? "#" + sp.CardId
-                : (sp.CrestDef != null && sp.CrestDef.ArtCardId > 0 ? "#" + sp.CrestDef.ArtCardId
-                   : "\"" + (sp.CardName ?? sp.CrestDef?.Name ?? "") + "\"");
+            // 纹章的卡号优先序必须与「没有 CrestDef 的等价节点」一致，否则
+            // DIY 的四端同构比对会把同一张纹章判成两种写法：
+            //   有 CrestDef 且 CardId==0 -> 走 ArtCardId
+            //   无 CrestDef 且 CardId>0  -> 走 CardId
+            // 统一为「CardId > ArtCardId > 引号卡名」，两边才稳定。
+            int crestId = sp.CardId > 0 ? sp.CardId
+                : (sp.CrestDef != null && sp.CrestDef.ArtCardId > 0 ? sp.CrestDef.ArtCardId : 0);
+            string crestRef = crestId > 0
+                ? "#" + crestId
+                : "\"" + (sp.CardName ?? sp.CrestDef?.Name ?? "") + "\"";
             return "gain_crest " + crestRef + ownerSuffix + slotSuffix;
         }
 

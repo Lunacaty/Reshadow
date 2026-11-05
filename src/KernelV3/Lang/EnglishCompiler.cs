@@ -1334,7 +1334,7 @@ public sealed class EnglishCompiler
                 var prevCond = currentAbility.Condition;
                 bool prevHasExtraCond = prevCond != null
                     && !(prevCond is ConstBoolExpr)
-                    && AstEnglishPrinter.PrintBool(prevCond) != AstEnglishPrinter.PrintBool(zoneBaseCond);
+                    && AstCanonicalPrinter.PrintBoolExpr(prevCond) != AstCanonicalPrinter.PrintBoolExpr(zoneBaseCond);
 
                 var bodyList = (List<EffectNode>)currentAbility.Body;
                 if (prevHasExtraCond && bodyList.Count > 0)
@@ -2069,7 +2069,7 @@ public sealed class EnglishCompiler
         if (ab == null) return false;
         foreach (var n in ab.Body ?? Array.Empty<EffectNode>())
         {
-            var text = AstEnglishPrinter.PrintNode(n) ?? "";
+            var text = AstCanonicalPrinter.PrintEffectNode(n) ?? "";
             if (text.Contains("total cost", StringComparison.OrdinalIgnoreCase)) return true;
         }
         return false;

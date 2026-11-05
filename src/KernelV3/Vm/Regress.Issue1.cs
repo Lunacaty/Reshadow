@@ -60,7 +60,7 @@ public static partial class Regress
                   "count=" + r.Abilities.Count + (r.Errors.Count > 0 ? " err=" + string.Join(";", r.Errors) : ""));
             Check("1 外层 Trigger 保持 OnPlay", onPlay, "event=" + ab?.Trigger?.Event);
             Check("1 外层 Condition 不含 max_pp（为 true / null）", outerCondClean,
-                  "cond=" + (ab == null ? "null" : AstEnglishPrinter.PrintBool(ab.Condition)));
+                  "cond=" + (ab == null ? "null" : AstCanonicalPrinter.PrintBoolExpr(ab.Condition)));
             Check("1 Body 是 1 个 ConditionalNode（Then 打 4 / Else 打 2）", bodyShape,
                   branch == null ? "no ConditionalNode" : "then=" + PrintAmount(thenDmg?.Amount) + " else=" + PrintAmount(elseDmg?.Amount));
             Check("1 Else 分支确实打敌方主战者 / Then 亦然", elseHitsLeader && thenHitsLeader,
@@ -138,7 +138,7 @@ public static partial class Regress
                   "count=" + r.Abilities.Count + " err=" + string.Join(";", r.Errors));
             Check("4 Trigger 分别是 OnEvolve / OnSuperEvolve", split, "events=" + string.Join(",", evs));
             Check("4 OnEvolve 那条的条件含 SuperEvolved 的否定", guard,
-                  "cond=" + (evoAb == null ? "null" : AstEnglishPrinter.PrintBool(evoAb.Condition)));
+                  "cond=" + (evoAb == null ? "null" : AstCanonicalPrinter.PrintBoolExpr(evoAb.Condition)));
             Check("4 OnEvolve 那条 Body 内也有一道同样的门", guardInBody,
                   "body=" + (evoAb == null ? "null" : string.Join("|", evoAb.Body.Select(x => x.GetType().Name))));
             Check("4 两条分别召唤 1 张 / 2 张同一张卡", counts && card,
@@ -251,7 +251,7 @@ public static partial class Regress
     private static bool IsConst(NumExpr e, int v)
         => e != null && e.Op == NumOp.Const && e.Value == v;
 
-    private static string PrintAmount(NumExpr e) => e == null ? "null" : AstEnglishPrinter.PrintNum(e);
+    private static string PrintAmount(NumExpr e) => e == null ? "null" : AstCanonicalPrinter.PrintNumExpr(e);
 
     private static string PrintTarget(TargetSpec t)
         => t == null ? "null" : t.SourceKind + ":" + t.Owner + "/" + t.Zone;

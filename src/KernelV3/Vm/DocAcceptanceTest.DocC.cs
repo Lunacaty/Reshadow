@@ -455,10 +455,13 @@ public static partial class DocAcceptanceTest
             var r2 = comp.Compile("Super Skybound Art - Deal 3 damage to the enemy leader.");
             bool a1 = r1.Abilities.Count > 0 && r1.Abilities[0].Condition != null;
             bool a2 = r2.Abilities.Count > 0 && r2.Abilities[0].Condition != null;
-            string c1 = a1 ? AstEnglishPrinter.PrintBool(r1.Abilities[0].Condition) : "";
-            string c2 = a2 ? AstEnglishPrinter.PrintBool(r2.Abilities[0].Condition) : "";
-            Ok("c-6.2-5", "奥义 10 / 解放奥义 15 阈值",
-               a1 && a2 && c1.Contains("10") && c2.Contains("15"), $"{c1} | {c2}");
+            string c1 = a1 ? AstCanonicalPrinter.PrintBoolExpr(r1.Abilities[0].Condition) : "";
+            string c2 = a2 ? AstCanonicalPrinter.PrintBoolExpr(r2.Abilities[0].Condition) : "";
+            // PyAST 把固定阈值翻成术语（skybound_art / super_skybound_art），
+            // 数字不再出现在文本里 —— 判据认术语或数字都算通过。
+            bool t1 = c1.Contains("skybound_art") || c1.Contains("10");
+            bool t2 = c2.Contains("super_skybound_art") || c2.Contains("15");
+            Ok("c-6.2-5", "奥义 10 / 解放奥义 15 阈值", a1 && a2 && t1 && t2, $"{c1} | {c2}");
         }
 
         // 6.2-6 信仰

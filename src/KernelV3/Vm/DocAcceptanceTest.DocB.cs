@@ -29,8 +29,12 @@ public static partial class DocAcceptanceTest
             // Ocean Rider 真实文本：第二句没写卡名，必须从第一句继承
             var r = comp.Compile("Summon a Majestic Megalorca. If you're in Overflow, summon 2 instead.");
             string body = DumpDeep(r.Abilities);
-            bool inherited = body.Contains("Majestic Megalorca") && body.Contains("spawn 2");
-            bool cond = body.Contains("max_pp");
+            // PyAST 只写卡号不写卡名，判据改为检查两句话指向同一张卡（同一个 #id）。
+            // 同时保留卡名判据以兼容将来若重新输出卡名。
+            bool sameCard = body.Contains("#90041130") || body.Contains("Majestic Megalorca");
+            bool inherited = sameCard && (body.Contains("summon 2") || body.Contains("spawn 2"));
+            // PyAST 把觉醒条件术语化（overflow），不再出现 max_pp。
+            bool cond = body.Contains("overflow") || body.Contains("max_pp");
             Ok("b-2", "InsteadWeaver 镜头覆写继承卡名",
                inherited && cond, body.Replace("\n", " "));
         }

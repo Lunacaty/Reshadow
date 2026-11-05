@@ -64,7 +64,7 @@ public static partial class DocAcceptanceTest
         {
             var r = comp.Compile("Whenever an allied follower enters the field, give it Ward.");
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
             Ok("a-病根3", "触发器下的 it 指向 $trigger",
                body.Contains("$trigger"), body);
         }
@@ -73,7 +73,7 @@ public static partial class DocAcceptanceTest
         {
             var r = comp.Compile("Fanfare: Select an enemy follower on the field and destroy it.");
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
             Ok("a-病根3", "Select 后的 it 指向 $selected",
                body.Contains("$selected"), body);
         }
@@ -98,19 +98,19 @@ public static partial class DocAcceptanceTest
 
             // (1) SubjectFilter
             var r1 = comp.Compile("Whenever an allied follower enters the field, draw a card.");
-            string p1 = r1.Abilities.Count > 0 ? AstEnglishPrinter.PrintAbility(r1.Abilities[0]) : "";
+            string p1 = r1.Abilities.Count > 0 ? AstCanonicalPrinter.PrintAbilityDef(r1.Abilities[0]) : "";
             sb.Add(p1);
             // 打印格式是「e事件 on(主体)」；只要主体出现在 on(...) 里就算打出了
             if (p1.Contains("on(") == false) allPrinted = false;
 
             // (2) Property 要带 Of
             var r2 = comp.Compile("Fanfare: Deal damage equal to your leader's attack to the enemy leader.");
-            string p2 = r2.Abilities.Count > 0 ? AstEnglishPrinter.PrintAbility(r2.Abilities[0]) : "";
+            string p2 = r2.Abilities.Count > 0 ? AstCanonicalPrinter.PrintAbilityDef(r2.Abilities[0]) : "";
             sb.Add(p2);
 
             // (3) GrantCounterAbilityNode 不能打出裸类名
             var r3 = comp.Compile("Fanfare: Give your faith \"Whenever an allied follower evolves, deal 1 damage to the enemy leader.\"");
-            string p3 = r3.Abilities.Count > 0 ? AstEnglishPrinter.PrintAbility(r3.Abilities[0]) : "";
+            string p3 = r3.Abilities.Count > 0 ? AstCanonicalPrinter.PrintAbilityDef(r3.Abilities[0]) : "";
             sb.Add(p3);
             if (p3.Contains("grantcounterabilitynode")) allPrinted = false;
 
@@ -152,7 +152,7 @@ public static partial class DocAcceptanceTest
         {
             var r = comp.Compile("Fanfare: Deal X damage to the enemy leader. X is the number of earth sigils you have.");
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
             Ok("a-方案一", "变量名不会把整句拼进去",
                body.Contains("ctr:earth_sigil"), body);
         }

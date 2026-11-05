@@ -78,8 +78,8 @@ public static partial class Regress
         {
             var a = comp.Compile("Whenever this follower is damaged, draw a card.");
             var b = comp.Compile("Whenever this follower takes damage, draw a card.");
-            string pa = a.Abilities.Count > 0 ? AstEnglishPrinter.PrintAbility(a.Abilities[0]) : "";
-            string pb = b.Abilities.Count > 0 ? AstEnglishPrinter.PrintAbility(b.Abilities[0]) : "";
+            string pa = a.Abilities.Count > 0 ? AstCanonicalPrinter.PrintAbilityDef(a.Abilities[0]) : "";
+            string pb = b.Abilities.Count > 0 ? AstCanonicalPrinter.PrintAbilityDef(b.Abilities[0]) : "";
             Chk("trg2-4 is damaged 与 takes damage 编译结果逐字等价",
                 a.Ok && b.Ok && pa.Length > 0 && pa == pb,
                 $"isDamaged=[{pa}] takes=[{pb}]");

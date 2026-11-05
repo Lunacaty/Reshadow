@@ -723,11 +723,13 @@ public static class VmSelfTest
         var r1 = comp.Compile("Fanfare: Skybound Art - Deal 5 damage to 2 random enemy followers.");
         var r2 = comp.Compile("Fanfare: Super Skybound Art - Deal 3 damage to the enemy leader.");
 
-        string c1 = r1.Abilities.Count > 0 ? Lang.AstEnglishPrinter.PrintBool(r1.Abilities[0].Condition) : "";
-        string c2 = r2.Abilities.Count > 0 ? Lang.AstEnglishPrinter.PrintBool(r2.Abilities[0].Condition) : "";
+        string c1 = r1.Abilities.Count > 0 ? Lang.AstCanonicalPrinter.PrintBoolExpr(r1.Abilities[0].Condition) : "";
+        string c2 = r2.Abilities.Count > 0 ? Lang.AstCanonicalPrinter.PrintBoolExpr(r2.Abilities[0].Condition) : "";
 
-        bool ok1 = c1.Contains("skybound_gauge") && c1.Contains("10");
-        bool ok2 = c2.Contains("skybound_gauge") && c2.Contains("15");
+        // PyAST 把固定阈值翻成术语（skybound_art / super_skybound_art），
+        // 数字不再出现在文本里 —— 认术语或原始计数器名都算通过。
+        bool ok1 = (c1.Contains("skybound_art") && !c1.Contains("super_")) || (c1.Contains("skybound_gauge") && c1.Contains("10"));
+        bool ok2 = c2.Contains("super_skybound_art") || (c2.Contains("skybound_gauge") && c2.Contains("15"));
 
         Check("门禁8 奥义/解放奥义阈值", ok1 && ok2, "art=" + c1 + " super=" + c2);
     }
@@ -984,11 +986,11 @@ public static class VmSelfTest
 
         // 触发器下：it 应指向 $trigger
         var r1 = comp.Compile("Whenever an allied follower enters the field, give it Ward.");
-        string b1 = r1.Abilities.Count > 0 ? string.Join("|", r1.Abilities[0].Body.Select(Lang.AstEnglishPrinter.PrintNode)) : "";
+        string b1 = r1.Abilities.Count > 0 ? string.Join("|", r1.Abilities[0].Body.Select(Lang.AstCanonicalPrinter.PrintEffectNode)) : "";
 
         // Select 后：it 应指向 $selected
         var r2 = comp.Compile("Fanfare: Select an enemy follower on the field and destroy it.");
-        string b2 = r2.Abilities.Count > 0 ? string.Join("|", r2.Abilities[0].Body.Select(Lang.AstEnglishPrinter.PrintNode)) : "";
+        string b2 = r2.Abilities.Count > 0 ? string.Join("|", r2.Abilities[0].Body.Select(Lang.AstCanonicalPrinter.PrintEffectNode)) : "";
 
         bool ok = b1.Contains("$trigger") && b2.Contains("$selected");
         Check("门禁17 代词槽位随上下文变化", ok,
@@ -1271,8 +1273,9 @@ public static class VmSelfTest
 
         var r2 = comp.Compile("Fanfare: Draw all copies of Rusty.");
         string s2 = r2.Abilities.Count > 0
-            ? string.Join("|", r2.Abilities[0].Body.Select(Lang.AstEnglishPrinter.PrintNode)) : "";
-        bool allCopies = s2.Contains("Rusty") && s2.Contains("All");
+            ? string.Join("|", r2.Abilities[0].Body.Select(Lang.AstCanonicalPrinter.PrintEffectNode)) : "";
+        // PyAST 只写卡号，卡名不再出现 —— 认卡号 #777 或卡名都算通过。
+        bool allCopies = (s2.Contains("#777") || s2.Contains("Rusty")) && s2.Contains("All");
 
         Check("门禁27 抽牌语义（牌库顶 / 指定卡）", topOfDeck && allCopies,
               "top=" + topOfDeck + " all=" + allCopies);

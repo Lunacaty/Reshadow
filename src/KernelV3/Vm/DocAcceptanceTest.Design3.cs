@@ -46,7 +46,8 @@ public static partial class DocAcceptanceTest
             // 情况 1 引号内嵌式：引号内自带编号选项块，必须递归构造内层模式树
             var r = comp.Compile("Fanfare: Do this 2 times: \"Select a Mode to activate. 1. Draw a card. 2. Deal 2 damage to the enemy leader.\"");
             string body = DumpDeep(r.Abilities);
-            bool nested = body.Contains("modes") && body.Contains("loop");
+            // PyAST 的循环动词是 repeat（旧英文打印器写作 loop），判据同步。
+            bool nested = body.Contains("modes") && (body.Contains("repeat") || body.Contains("loop"));
             Ok("d3-S5.1.2", "引号内嵌式模式树（情况 1）", nested, body);
         }
         {
@@ -95,7 +96,7 @@ public static partial class DocAcceptanceTest
             var r = comp.Compile("Add an Istyndet vs. Mitilykket to your hand.");
             bool ok2 = r.Abilities.Count > 0 && r.Errors.Count == 0;
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
             Ok("d3-S2", "含句号的卡名不被误切", ok2,
                body.Length > 0 ? body : string.Join(";", r.Errors));
         }
@@ -127,7 +128,7 @@ public static partial class DocAcceptanceTest
             // TargetParser：限定从句
             var r = comp.Compile("Select an enemy follower with 2 attack or less and destroy it.");
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
             bool clause = body.Contains("where");
             Ok("d3-S3", "TargetParser 识别限定从句", clause, body);
         }
@@ -152,7 +153,7 @@ public static partial class DocAcceptanceTest
             // Pass 4.2 变量符号表
             var r = comp.Compile("Fanfare: Deal X damage to the enemy leader. X is the number of cards in your hand.");
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
             bool resolved = body.Contains("count(") || body.Contains("ctr:");
             Ok("d3-S4.2", "变量后置定义回填", resolved, body);
         }
@@ -160,14 +161,16 @@ public static partial class DocAcceptanceTest
             // Pass 4.3 代词寄存器
             var r = comp.Compile("Whenever an allied follower enters the field, give it Ward.");
             string body = r.Abilities.Count > 0
-                ? string.Join("|", r.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                ? string.Join("|", r.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
             Ok("d3-S4.3", "代词寄存器绑定 $trigger", body.Contains("$trigger"), body);
         }
         {
             // Pass 4.4 Instead 透镜
             var r = comp.Compile("Summon a Majestic Megalorca. If you're in Overflow, summon 2 instead.");
             string body = DumpDeep(r.Abilities);
-            bool lens = body.Contains("Majestic Megalorca") && body.Contains("spawn 2");
+            // PyAST 只写卡号，判据改为「两句话指向同一张卡」。
+            bool lens = (body.Contains("#90041130") || body.Contains("Majestic Megalorca"))
+                        && (body.Contains("summon 2") || body.Contains("spawn 2"));
             Ok("d3-S4.4", "Instead 透镜覆写（保留卡名与目标）", lens, body);
         }
 
@@ -186,7 +189,7 @@ public static partial class DocAcceptanceTest
             {
                 var rr = comp.Compile(input);
                 string body = rr.Abilities.Count > 0
-                    ? string.Join("|", rr.Abilities[0].Body.Select(AstEnglishPrinter.PrintNode)) : "";
+                    ? string.Join("|", rr.Abilities[0].Body.Select(AstCanonicalPrinter.PrintEffectNode)) : "";
                 if (!body.Contains(expect)) { bad++; detail.Add(label + "=>" + body); }
             }
             Ok("d3-S5.3", "代词寄存器四种来源全部正确", bad == 0,
@@ -233,9 +236,10 @@ public static partial class DocAcceptanceTest
                 "<hr>Whenever an allied Marine follower enters the field, give it Ward.");
             string body = DumpDeep(r.Abilities);
             bool s1 = r.Abilities.Count == 2;
-            bool s2 = body.Contains("Majestic Megalorca");
-            bool s3 = body.Contains("max_pp");
-            bool s4 = body.Contains("spawn 2");
+            // PyAST 只写卡号、并把固定阈值术语化 —— 判据按同一语义放宽。
+            bool s2 = body.Contains("#90041130") || body.Contains("Majestic Megalorca");
+            bool s3 = body.Contains("overflow") || body.Contains("max_pp");
+            bool s4 = body.Contains("summon 2") || body.Contains("spawn 2");
             bool s5 = body.Contains("keyword");
             bool s6 = body.Contains("$trigger");
             Ok("d3-E2E", "六层端到端（Ocean Rider 全链路）",
