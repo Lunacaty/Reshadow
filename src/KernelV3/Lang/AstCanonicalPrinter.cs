@@ -292,8 +292,10 @@ public static class AstCanonicalPrinter
             case GrantAbilityNode g:
                 sb.Append(p).Append("grant_ability to ").Append(AstEnglishPrinter.PrintTarget(g.Target))
                   .Append(DurSuffix(g.Duration)).Append(':');
+                // 冒号后必须换行：否则子能力的触发头紧贴冒号同一行，
+                // 解析端拿不到 Indent，整块被当成无缩进的单行。
                 if (g.Granted == null) sb.Append('\n').Append(Pad(indent + 1)).Append("pass");
-                else PrintAbility(g.Granted, sb, indent + 1);
+                else { sb.Append('\n'); PrintAbility(g.Granted, sb, indent + 1); }
                 break;
 
             case GrantCounterAbilityNode gc:
@@ -301,7 +303,7 @@ public static class AstCanonicalPrinter
                 if (gc.Owner != ZoneScope.Self) sb.Append(" owner=").Append(gc.Owner);
                 sb.Append(':');
                 if (gc.Granted == null) sb.Append('\n').Append(Pad(indent + 1)).Append("pass");
-                else PrintAbility(gc.Granted, sb, indent + 1);
+                else { sb.Append('\n'); PrintAbility(gc.Granted, sb, indent + 1); }
                 break;
 
             case ConditionalNode cn:

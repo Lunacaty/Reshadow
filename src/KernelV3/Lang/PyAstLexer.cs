@@ -76,7 +76,6 @@ public static class PyAstLexer
             {
                 char c = line[i];
                 if (c == ' ' || c == '\t') { i++; continue; }
-                if (c == '#') break;
                 if (c == '/' && i + 1 < line.Length && line[i + 1] == '/') break;
 
                 if (c == '(' || c == '[') parenDepth++;
@@ -142,6 +141,8 @@ public static class PyAstLexer
             '=' => PyTokKind.Assign,
             '|' => PyTokKind.Pipe,
             '@' => PyTokKind.At,
+            '#' => PyTokKind.Hash,
+            '&' => PyTokKind.Pipe,   // 卡名里的 & 与 clan 的 | 共用分隔语义   // 卡号 / 随机槽 / 拆分槽定界符，绝不能当注释吞掉
             '_' => null,   // _ 可能是单独的「不修改」占位符，也可能是标识符开头
             _ => null,
         };
@@ -190,7 +191,9 @@ public static class PyAstLexer
                 char d = line[j];
                 // 冒号绝不能并进标识符：它是块结构的定界符（`fanfare:` / `option 1:`）。
                 // 目标表达式里的 `self:board` 由解析端自己把两段拼回去。
-                if (char.IsLetterOrDigit(d) || d == '_' || d == '.') { j++; continue; }
+                // ' 与 & 也属于名字的一部分（Dread Pirate's Flag / Drache & Aluzard），
+                // 放进标识符里，解析端就不用再拼碎片。
+                if (char.IsLetterOrDigit(d) || d == '_' || d == '.' || d == '\'' || d == '&') { j++; continue; }
                 break;
             }
             string id = line.Substring(i, j - i);

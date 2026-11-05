@@ -106,6 +106,9 @@ public sealed class AstCanonicalParser
         var traits = new List<SymbolId<TraitTag>>();
         var keywords = new List<SymbolId<KeywordTag>>();
         var abilities = new List<AbilityDef>();
+        Ast.CardDef crestDef = null, faithDef = null, accelDef = null, crystDef = null;
+        bool fuseSet = false;
+        TargetSpec fuseFilter = null;
 
         SkipNewlines();
         if (Current.Kind == PyTokKind.Indent)
@@ -114,22 +117,54 @@ public sealed class AstCanonicalParser
             SkipNewlines();
             while (!IsAtEnd && Current.Kind != PyTokKind.Dedent)
             {
+                if (Current.Kind == PyTokKind.Ident && Current.Text == "fuse")
+                {
+                    Advance();
+                    Expect(PyTokKind.Colon, "fuse 后缺少冒号");
+                    fuseSet = true;
+                    // 只有「bare any」才表示「任意材料」；
+                    // any:board... 是一个真正的目标过滤，必须交给 ParseTarget。
+                    if (Current.Kind == PyTokKind.Ident && Current.Text == "any" && PeekText(1) != ":")
+                    {
+                        Advance();
+                        fuseFilter = null;
+                    }
+                    else fuseFilter = ParseTarget();
+                    SkipNewlines();
+                    continue;
+                }
                 if (Current.Kind == PyTokKind.Ident && (Current.Text == "traits" || Current.Text == "keywords"))
                 {
                     string head = TakeIdent();
                     Expect(PyTokKind.Colon, head + " 后缺少冒号");
                     if (Match(PyTokKind.LBracket))
                     {
+                        // 兵种/关键词名可能含空格（"Earth Sigil" / "max attacks per turn"），
+                        // 必须按逗号分段整体收集，不能一个 token 当一个名字。
+                        var cur2 = new List<string>();
                         while (!IsAtEnd && Current.Kind != PyTokKind.RBracket)
                         {
-                            if (Current.Kind == PyTokKind.Ident)
+                            if (Current.Kind == PyTokKind.Comma)
                             {
-                                string nm = TakeIdent();
-                                if (head == "traits") traits.Add(_schema.Trait(nm));
-                                else keywords.Add(_schema.Keyword(nm));
+                                if (cur2.Count > 0)
+                                {
+                                    string nm = string.Join(" ", cur2);
+                                    if (head == "traits") traits.Add(_schema.Trait(nm));
+                                    else keywords.Add(_schema.Keyword(nm));
+                                    cur2.Clear();
+                                }
+                                Advance();
+                                continue;
                             }
+                            if (Current.Kind == PyTokKind.Ident || Current.Kind == PyTokKind.Number)
+                                cur2.Add(TakeIdent());
                             else Advance();
-                            Match(PyTokKind.Comma);
+                        }
+                        if (cur2.Count > 0)
+                        {
+                            string nm = string.Join(" ", cur2);
+                            if (head == "traits") traits.Add(_schema.Trait(nm));
+                            else keywords.Add(_schema.Keyword(nm));
                         }
                         Expect(PyTokKind.RBracket, head + " 缺少右方括号");
                     }
@@ -137,8 +172,15 @@ public sealed class AstCanonicalParser
                     continue;
                 }
                 int guardCard = _pos;
-                var ab = ParseAbility();
-                if (ab != null) abilities.Add(ab);
+                try
+                {
+                    var ab = ParseAbility();
+                    if (ab != null) abilities.Add(ab);
+                }
+                catch (SubDefException)
+                {
+                    ParseSubDef(ref crestDef, ref faithDef, ref accelDef, ref crystDef);
+                }
                 SkipNewlines();
                 if (_pos == guardCard) { Error("卡内能力解析无进展，强制跳过"); _pos++; }
             }
@@ -156,10 +198,71 @@ public sealed class AstCanonicalParser
             Traits = traits,
             InnateKeywords = keywords,
             Abilities = abilities,
+            HasFuse = fuseSet, FuseMaterialFilter = fuseFilter,
+            CrestDef = crestDef, FaithDef = faithDef,
+            AccelerateDef = accelDef, CrystallizeDef = crystDef,
             IsToken = attrs.ContainsKey("token"),
         };
     }
     // ---------------------------------------------------------------- 能力
+
+
+    /// <summary>解析子卡段：crest / faith / accelerate / crystallize。</summary>
+    private void ParseSubDef(ref Ast.CardDef crest, ref Ast.CardDef faith,
+                             ref Ast.CardDef accel, ref Ast.CardDef cryst)
+    {
+        string kind = TakeIdent();
+        string name = Current.Kind == PyTokKind.String ? TakeString() : "";
+        int cost = 0;
+        if (Current.Kind == PyTokKind.LParen)
+        {
+            Advance();
+            while (!IsAtEnd && Current.Kind != PyTokKind.RParen)
+            {
+                if (Current.Kind == PyTokKind.Ident && Current.Text == "cost")
+                {
+                    Advance(); Match(PyTokKind.Assign);
+                    cost = TakeNumber();
+                    continue;
+                }
+                Advance();
+                Match(PyTokKind.Comma);
+            }
+            Expect(PyTokKind.RParen, "子卡头缺少右括号");
+        }
+        Expect(PyTokKind.Colon, "子卡头缺少冒号");
+        SkipNewlines();
+
+        var body = new List<AbilityDef>();
+        if (Current.Kind == PyTokKind.Indent)
+        {
+            Advance();
+            SkipNewlines();
+            while (!IsAtEnd && Current.Kind != PyTokKind.Dedent)
+            {
+                int g = _pos;
+                if (Current.Kind == PyTokKind.Ident && Current.Text == "pass") { Advance(); SkipNewlines(); continue; }
+                try
+                {
+                    var ab = ParseAbility();
+                    if (ab != null) body.Add(ab);
+                }
+                catch (SubDefException) { /* 嵌套子卡，忽略 */ }
+                SkipNewlines();
+                if (_pos == g) { Error("子卡段无进展"); _pos++; }
+            }
+            if (Current.Kind == PyTokKind.Dedent) Advance();
+        }
+
+        var def = new Ast.CardDef { Name = name, BaseCost = cost, Abilities = body, Kind = CardKind.Crest };
+        switch (kind)
+        {
+            case "crest": crest = def; break;
+            case "faith": faith = def; break;
+            case "accelerate": accel = def; break;
+            case "crystallize": cryst = def; break;
+        }
+    }
 
     private AbilityDef ParseAbility()
     {
@@ -207,6 +310,11 @@ public sealed class AstCanonicalParser
             case "on_deck_out": t = new TriggerSpec { Event = CoreEvent.OnDeckOut }; break;
             case "on_countdown_expire": t = new TriggerSpec { Event = CoreEvent.OnCountdownExpire }; break;
             case "on_counter_change": t = new TriggerSpec { Event = CoreEvent.OnCounterChange }; break;
+            // 子卡段头：crest "Name" (...) / faith / accelerate / crystallize。
+            // 它们不是能力，遇到时应把游标退回，由 ParseCard 的子卡循环处理。
+            case "crest": case "faith": case "accelerate": case "crystallize":
+                _pos--;
+                throw new SubDefException();
             default:
                 if (word.StartsWith("on")) t = new TriggerSpec { Event = EventOf(word.Substring(2)) };
                 else { Error("未知的触发头：" + word); t = new TriggerSpec { Event = CoreEvent.OnPlay }; }
@@ -223,7 +331,9 @@ public sealed class AstCanonicalParser
         while (!IsAtEnd && Current.Kind == PyTokKind.Ident)
         {
             string w = Current.Text;
-            if (w == "or") { Advance(); secondary = EventOf(TakeIdent()); secondarySet = true; continue; }
+            // 打印器写的是 or=OnFuse，等号必须消费掉，否则游标停在 '=' 上
+            // 直接撞上 Expect(Colon)（206 文档 E5）。
+            if (w == "or") { Advance(); Match(PyTokKind.Assign); secondary = EventOf(TakeIdent()); secondarySet = true; continue; }
             if (w == "zone") { Advance(); Match(PyTokKind.Assign); zoneV = ZoneOf(TakeIdent()); zoneSet = true; continue; }
             if (w == "turn") { Advance(); Match(PyTokKind.Assign); turnV = TurnOf(TakeIdent()); turnSet = true; continue; }
             if (w == "max") { Advance(); Match(PyTokKind.Assign); maxTrig = TakeNumber(); continue; }
@@ -385,9 +495,24 @@ public sealed class AstCanonicalParser
             case "replace_deck":
             {
                 string dn = Current.Kind == PyTokKind.String ? TakeString() : TakeIdent();
-                return new ReplaceDeckNode { DeckName = dn };
+                var rdOwner = ZoneScope.Self;
+                if (Current.Kind == PyTokKind.Ident && Current.Text == "owner")
+                {
+                    Advance(); Match(PyTokKind.Assign);
+                    rdOwner = OwnerOf(TakeIdent());
+                }
+                return new ReplaceDeckNode { DeckName = dn, Owner = rdOwner };
             }
-            case "mark_victory_card": return new MarkVictoryCardNode();
+            case "mark_victory_card":
+            {
+                var mvOwner = ZoneScope.Self;
+                if (Current.Kind == PyTokKind.Ident && Current.Text == "owner")
+                {
+                    Advance(); Match(PyTokKind.Assign);
+                    mvOwner = OwnerOf(TakeIdent());
+                }
+                return new MarkVictoryCardNode { Owner = mvOwner };
+            }
             case "macro":
             {
                 string mn = TakeIdent();
@@ -405,6 +530,16 @@ public sealed class AstCanonicalParser
         }
     }
 
+
+    /// <summary>该标识符是否是一个触发头（用于块内遇到子能力时转交 ParseAbility）。</summary>
+    private static bool IsTriggerHead(string w) => w is
+        "fanfare" or "on_play" or "last_words" or "on_destroy" or "evolve" or "on_evolve"
+        or "super_evolve" or "on_super_evolve" or "strike" or "clash" or "engage" or "aura"
+        or "turn_start" or "turn_end" or "on_enter" or "on_leave" or "on_summon" or "on_draw"
+        or "on_discard" or "on_damaged" or "on_healed" or "on_banish" or "on_fuse"
+        or "on_select_mode" or "on_earth_rite" or "on_deck_out" or "on_countdown_expire"
+        or "on_counter_change" or "on_spellboost";
+
     private static EffectNode WithIf(EffectNode n, BoolExpr cond)
     {
         if (n == null) return null;
@@ -418,8 +553,11 @@ public sealed class AstCanonicalParser
 
     private MoveZoneNode ParseDraw()
     {
+        // draw 的数量可能是表达式（draw ctr:combo）而不只是数字。
         NumExpr count = NumExpr.Const(1);
-        if (Current.Kind == PyTokKind.Number || Current.Kind == PyTokKind.Minus) count = ParseNumExpr();
+        if (Current.Kind == PyTokKind.Number || Current.Kind == PyTokKind.Minus
+            || (Current.Kind == PyTokKind.Ident && (Current.Text == "ctr" || Current.Text == "count" || Current.Text == "prop")))
+            count = ParseNumExpr();
         var owner = ZoneScope.Self;
         if (Current.Kind == PyTokKind.LBracket)
         {
@@ -451,10 +589,14 @@ public sealed class AstCanonicalParser
         var cap = ParseNumExpr();
         Expect(PyTokKind.RParen, "reanimate 参数缺少右括号");
         var node = Diy.ReanimateHelper.Build(cap);
+        // 打印器会在 reanimate(n) 之后打 +departed，必须消费掉。
+        bool dep = false;
+        if (Current.Kind == PyTokKind.Plus && PeekText(1) == "departed") { Advance(); Advance(); dep = true; }
         return new SpawnCardNode
         {
             SourceKind = node.SourceKind, CopyFrom = node.CopyFrom, ToZone = node.ToZone,
-            ToOwner = node.ToOwner, Count = node.Count, AddDepartedTrait = node.AddDepartedTrait,
+            ToOwner = node.ToOwner, Count = node.Count,
+            AddDepartedTrait = node.AddDepartedTrait || dep,
             OutSlot = TryOutSlot(TargetSpec.SlotCreated),
         };
     }
@@ -464,12 +606,33 @@ public sealed class AstCanonicalParser
         string name = Current.Kind == PyTokKind.String ? TakeString() : TakeIdent();
         int id = 0;
         if (Current.Kind == PyTokKind.Ident && Current.Text == "id") { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
-        if (id <= 0 && _lex != null && _lex.TryGetCardId(name, out int r0)) id = r0;
+        // 纹章不补 id：打印器只在 CardId>0 时才打 id=，
+        // 这里若自动反查，重新打印会多出一个 id=，往返就对不上。
+        var crestOwner = ZoneScope.Self;
+        if (Current.Kind == PyTokKind.LBracket)
+        {
+            Advance();
+            if (MatchIdent("owner")) { Match(PyTokKind.Assign); crestOwner = OwnerOf(TakeIdent()); }
+            Expect(PyTokKind.RBracket, "gain_crest 属性缺少右方括号");
+        }
         return new SpawnCardNode
         {
             SourceKind = CardSourceKind.CardId, CardId = id, CardName = name, IsCrest = true,
+            ToOwner = crestOwner,
             ToZone = ZoneRef.CrestArea, Count = NumExpr.Const(1), OutSlot = TryOutSlot(TargetSpec.SlotCreated),
         };
+    }
+
+    /// <summary>解析 grant_ability / grant_counter_ability 的子能力块（含触发头）。</summary>
+    private AbilityDef ParseGrantedAbility()
+    {
+        Expect(PyTokKind.Indent, "grant 块缺少缩进");
+        SkipNewlines();
+        AbilityDef granted = null;
+        if (!MatchIdent("pass")) granted = ParseAbility();
+        SkipNewlines();
+        if (Current.Kind == PyTokKind.Dedent) Advance();
+        return granted ?? new AbilityDef { Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura }, Condition = BoolExpr.True };
     }
 
     private SpawnCardNode ParseDiscover(bool chaos)
@@ -498,9 +661,16 @@ public sealed class AstCanonicalParser
         int id = 0;
         if (Current.Kind == PyTokKind.Ident && Current.Text == "id") { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
         if (id <= 0 && _lex != null && _lex.TryGetCardId(name, out int r1)) id = r1;
+        var spawnOwner = ZoneScope.Self;
+        if (Current.Kind == PyTokKind.LBracket)
+        {
+            Advance();
+            if (MatchIdent("owner")) { Match(PyTokKind.Assign); spawnOwner = OwnerOf(TakeIdent()); }
+            Expect(PyTokKind.RBracket, "spawn 属性缺少右方括号");
+        }
         return new SpawnCardNode
         {
-            SourceKind = CardSourceKind.CardId, CardId = id, CardName = name,
+            SourceKind = CardSourceKind.CardId, CardId = id, CardName = name, ToOwner = spawnOwner,
             ToZone = toZone, Count = count, OutSlot = TryOutSlot(TargetSpec.SlotCreated),
         };
     }
@@ -540,6 +710,8 @@ public sealed class AstCanonicalParser
     }
     private ModifyCounterNode ParseCounterSugar(string name)
     {
+        // ParseTarget 会贪婪收集到行尾，把 "by 2" 一起吞掉。
+        // 先找到 by 的位置，只把之前的部分交给目标解析。
         var target = ParseTarget();
         EatIdent("by");
         // 这里的数值是紧跟在 by 后面的裸数字，不能交给 ParseNumExpr 的宽松收集
@@ -562,18 +734,34 @@ public sealed class AstCanonicalParser
     private ModifyCounterNode ParseRawCounter()
     {
         string name = TakeIdent();
-        string opWord = Current.Kind == PyTokKind.Ident ? Current.Text : "by";
-        if (opWord == "by" || opWord == "=" || opWord == "fill") Advance();
-        var op = opWord == "=" ? CounterOp.Set : (opWord == "fill" ? CounterOp.Fill : CounterOp.Add);
+
+        // 实体级形态：counter <name> on <target> [by <n>]
+        // 它没有 op 词，on 直接跟在名字后面 —— 必须先于 op 判定检查。
         if (Current.Kind == PyTokKind.Ident && Current.Text == "on")
         {
             Advance();
             var tgt = ParseTarget();
+            if (Current.Kind == PyTokKind.Ident && Current.Text == "by") Advance();
             var d = ParseNumExpr();
-            return new ModifyCounterNode { Counter = _schema.Counter(name), Op = op, Delta = d, Target = tgt };
+            return new ModifyCounterNode { Counter = _schema.Counter(name), Op = CounterOp.Add, Delta = d, Target = tgt };
         }
+
+        // 主战者级：Add -> "by" / Set -> "=" / Fill -> "fill"
+        string opWord = "by";
+        if (Current.Kind == PyTokKind.Assign) opWord = "=";
+        else if (Current.Kind == PyTokKind.Ident && (Current.Text == "by" || Current.Text == "fill")) opWord = Current.Text;
+        if (opWord == "=" || opWord == "by" || opWord == "fill") Advance();
+        var op = opWord == "=" ? CounterOp.Set : (opWord == "fill" ? CounterOp.Fill : CounterOp.Add);
+
         var delta = ParseNumExpr();
-        return new ModifyCounterNode { Counter = _schema.Counter(name), Op = op, Delta = delta };
+        var owner = ZoneScope.Self;
+        if (Current.Kind == PyTokKind.LBracket)
+        {
+            Advance();
+            if (MatchIdent("owner")) { Match(PyTokKind.Assign); owner = OwnerOf(TakeIdent()); }
+            Expect(PyTokKind.RBracket, "counter 属性缺少右方括号");
+        }
+        return new ModifyCounterNode { Counter = _schema.Counter(name), Op = op, Delta = delta, Owner = owner };
     }
 
     private SelectTargetNode ParseSelectNode()
@@ -636,11 +824,19 @@ public sealed class AstCanonicalParser
     private NumExpr ParseStatPart()
     {
         if (Current.Kind == PyTokKind.Ident && Current.Text == "_") { Advance(); return null; }
-        bool neg = false;
-        if (Current.Kind == PyTokKind.Plus) Advance();
-        else if (Current.Kind == PyTokKind.Minus) { Advance(); neg = true; }
-        var e = ParseNumExpr();
-        return neg ? (NumExpr)NumExpr.Sub(NumExpr.Const(0), e) : e;
+        // 攻/防之间用斜杠分隔，必须禁止把斜杠当除法：
+        //   +3/+3      两个独立项
+        //   (a / 2)/b  括号内的除法仍要能解析
+        //
+        // "-0" 是个特例：NumExpr.Const 是 int，-0 == 0，
+        // 打印器按值判断符号会把它打成 "+0"。
+        // 这里显式构造 Arith(0 - 0)，PrintNum 会输出 "-0"，往返才守恒。
+        if (Current.Kind == PyTokKind.Minus && PeekText(1) == "0")
+        {
+            Advance(); Advance();
+            return NumExpr.Sub(NumExpr.Const(0), NumExpr.Const(0));
+        }
+        return ParseNumExpr(true);
     }
 
     private ModifyStatsNode ParseSwapStats()
@@ -650,7 +846,7 @@ public sealed class AstCanonicalParser
 
     private ModifyKeywordNode ParseGrantKeyword()
     {
-        string kw = TakeIdent();
+        string kw = ReadMultiWordUntilBoundary("to");
         NumExpr val = null;
         if (Match(PyTokKind.LParen)) { val = ParseNumExpr(); Expect(PyTokKind.RParen, "关键词参数缺少右括号"); }
         EatIdent("to");
@@ -660,7 +856,8 @@ public sealed class AstCanonicalParser
 
     private ModifyKeywordNode ParseRemoveKeyword()
     {
-        string kw = TakeIdent();
+        // 关键词名可能是多个词：last words / ignores ward / cannot be played
+        string kw = ReadMultiWordUntilBoundary("from");
         EatIdent("from");
         var tgt = ParseTarget();
         return new ModifyKeywordNode { Target = tgt, Op = KeywordOp.Remove, Keyword = _schema.Keyword(kw) };
@@ -681,8 +878,7 @@ public sealed class AstCanonicalParser
         var dur = TryDur();
         Expect(PyTokKind.Colon, "grant_ability 后缺少冒号");
         SkipNewlines();
-        var inner = ParseIndentedBlock();
-        var granted = new AbilityDef { Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura }, Condition = BoolExpr.True, Body = inner };
+        var granted = ParseGrantedAbility();
         return new GrantAbilityNode { Target = tgt, Granted = granted, Duration = dur };
     }
 
@@ -694,8 +890,7 @@ public sealed class AstCanonicalParser
         if (Current.Kind == PyTokKind.Ident && Current.Text == "owner") { Advance(); Match(PyTokKind.Assign); owner = OwnerOf(TakeIdent()); }
         Expect(PyTokKind.Colon, "grant_counter_ability 后缺少冒号");
         SkipNewlines();
-        var inner = ParseIndentedBlock();
-        var granted = new AbilityDef { Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura }, Condition = BoolExpr.True, Body = inner };
+        var granted = ParseGrantedAbility();
         return new GrantCounterAbilityNode { Counter = _schema.Counter(counter), Owner = owner, Granted = granted };
     }
 
@@ -825,393 +1020,203 @@ public sealed class AstCanonicalParser
     }
     // ---------------------------------------------------------------- 目标 / 数值 / 布尔
 
+    /// <summary>
+    /// 语法驱动的目标解析器（206 号文档方案 2）。
+    ///
+    /// 不再把 token 先收集成数组再猜边界 —— 那种做法要么少吞、
+    /// 要么把后面的 [dur=...] / +1/+1 / by / 外层右括号一起吞掉。
+    /// 这里严格按 PrintTarget 的输出顺序消费，读完自己的成分就停。
+    /// </summary>
     private TargetSpec ParseTarget(ZoneRef? defaultZone = null)
     {
+        if (MatchIdent("null")) return null;
+        if (IsAtEnd) return defaultZone.HasValue ? TargetSpec.InZone(defaultZone.Value, ZoneScope.Self) : null;
+
+        TargetSpec spec;
+
+        // A. 槽位：$self [$choose1 …]
         if (Current.Kind == PyTokKind.Slot)
         {
-            string s = TakeSlot();
-            return new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = s };
+            spec = new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = TakeSlot(), Mode = SelectMode.All };
+            if (MatchIdent("where")) spec = spec.WithWhere(ParseBoolExpr());
+            return spec;
         }
-        var toks = new List<Token>();
-        int depth = 0;
+
+        // B. 具名卡：card:<Name>#<Id>@<owner>:<zone>
+        if (Current.Kind == PyTokKind.Ident && Current.Text == "card" && PeekText(1) == ":")
+        {
+            Advance(); Advance();
+            var nameParts = new List<string>();
+            while (!IsAtEnd && Current.Kind != PyTokKind.Hash && Current.Kind != PyTokKind.At
+                   && Current.Kind != PyTokKind.Newline && Current.Kind != PyTokKind.Dedent)
+            {
+                if (Current.Kind == PyTokKind.Comma)
+                {
+                    if (nameParts.Count > 0) nameParts[^1] = nameParts[^1] + ",";
+                    Advance();
+                    continue;
+                }
+                // 卡名里的 & 是独立 token，要作为名字一部分保留
+                if (Current.Kind == PyTokKind.Pipe)
+                {
+                    nameParts.Add("&");
+                    Advance();
+                    continue;
+                }
+                if (Current.Kind == PyTokKind.Ident || Current.Kind == PyTokKind.Number) nameParts.Add(TakeIdent());
+                else Advance();
+            }
+            string cardName = string.Join(" ", nameParts);
+            int cardId = 0;
+            if (Match(PyTokKind.Hash)) cardId = TakeNumber();
+            var owner0 = ZoneScope.Self;
+            var zone0 = ZoneRef.Board;
+            if (Match(PyTokKind.At))
+            {
+                owner0 = OwnerOf(TakeIdent());
+                Match(PyTokKind.Colon);
+                zone0 = ZoneRefOf(TakeIdent());
+            }
+            spec = new TargetSpec
+            {
+                SourceKind = TargetSourceKind.CardId, CardId = cardId, CardName = cardName,
+                Owner = owner0, Zone = zone0, Mode = SelectMode.All,
+            };
+        }
+        // C. 区域：<owner>:<zone>[<Kind>]
+        else if (Current.Kind == PyTokKind.Ident && PeekText(1) == ":")
+        {
+            var ow = OwnerOf(TakeIdent());
+            Advance();
+            var zw = ZoneRefOf(TakeIdent());
+            spec = new TargetSpec { SourceKind = TargetSourceKind.Zone, Owner = ow, Zone = zw, Mode = SelectMode.All };
+            if (Match(PyTokKind.Lt))
+            {
+                string kStr = TakeIdent().ToLowerInvariant();
+                var k = kStr == "spell" ? CardKind.Spell : kStr == "amulet" ? CardKind.Amulet : CardKind.Follower;
+                if (Match(PyTokKind.Gt)) { }
+                spec = spec.WithWhere(new HasKindExpr { Kind = k, Of = TargetSpec.Item });
+            }
+        }
+        else return defaultZone.HasValue ? TargetSpec.InZone(defaultZone.Value, ZoneScope.Self) : null;
+
+        // D. 修饰词（严格对齐 PrintTarget 的打印顺序）
         while (!IsAtEnd)
         {
-            var t = Current;
-            if (t.Kind == PyTokKind.Newline || t.Kind == PyTokKind.Dedent || t.Kind == PyTokKind.Eof) break;
-            if (depth == 0)
+            if (MatchIdent("history"))
             {
-                if (t.Kind == PyTokKind.Arrow) break;
-                if (t.Kind == PyTokKind.Plus && PeekText(1) == "append") break;
-                if (t.Kind == PyTokKind.Ident && (t.Text == "to" || t.Text == "destroy" || t.Text == "combat" || t.Text == "split")) break;
+                Match(PyTokKind.Assign);
+                string hs = TakeIdent();
+                if (Enum.TryParse<HistoryScope>(hs, true, out var h2)) spec = WithHistory(spec, h2);
+                continue;
             }
-            // 与开头配对的右括号属于外层（on(...) / vs(...) 的收尾），不能收进目标。
-            if (t.Kind == PyTokKind.RParen && depth == 0) break;
-            if (t.Kind == PyTokKind.LParen) depth++;
-            if (t.Kind == PyTokKind.RParen) depth = Math.Max(0, depth - 1);
-            toks.Add(ToCnToken(t));
-            Advance();
-        }
-        if (toks.Count == 0)
-            return defaultZone.HasValue ? TargetSpec.InZone(defaultZone.Value, ZoneScope.Self) : null;
-
-        // 直接构造 TargetSpec，不借道 TargetParser（见 DirectTarget 的说明）。
-        var direct = DirectTarget(toks);
-        if (direct != null) return direct;
-
-        var lex = _lex ?? new Lexicon(_schema);
-        var parser = new TargetParser(lex);
-        try
-        {
-            var spec = parser.TryParse(new TokenCursor(toks));
-            if (spec != null) return spec;
-        }
-        catch (Exception ex) { Debug.Add("ParseTarget 异常: " + ex.Message + " 串=" + string.Join("|", toks.Select(x => x.Text))); }
-        Debug.Add("ParseTarget 失败: " + string.Join("|", toks.Select(x => x.Text)));
-        return defaultZone.HasValue ? TargetSpec.InZone(defaultZone.Value, ZoneScope.Self) : null;
-    }
-
-
-
-    /// <summary>
-    /// 把 self:board&lt;Follower&gt; Choose(1) where ... 这类 DSL 速记
-    /// 展开成 TargetParser 能读的英文短语。
-    /// </summary>
-    private static List<Token> ExpandZoneShorthand(List<Token> toks)
-    {
-        if (toks == null || toks.Count == 0) return toks;
-        var outp = new List<Token>();
-        int i = 0;
-
-        if (toks.Count >= 3 && toks[1].Text == ":")
-        {
-            string owner = toks[0].Text.ToLowerInvariant();
-            string zone = toks[2].Text.ToLowerInvariant();
-            string ownerWord = owner == "opponent" || owner == "opp" ? "enemy" : (owner == "any" ? "any" : "allied");
-
-            if (zone == "leader")
+            if (Current.Kind == PyTokKind.Plus && PeekText(1) == "leader")
             {
-                outp.Add(new Token { Kind = TokKind.Word, Text = ownerWord == "enemy" ? "enemy" : "your" });
-                outp.Add(new Token { Kind = TokKind.Word, Text = "leader" });
-                i = 3;
+                Advance(); Advance();
+                spec = WithIncludeLeader(spec, true);
+                continue;
             }
-            else
+            if (MatchIdent("distinct")) { spec = WithDistinct(spec, true); continue; }
+            if (MatchIdent("duplicates")) { spec = WithDuplicates(spec, true); continue; }
+            if (MatchIdent("sort"))
             {
-                if (ownerWord.Length > 0) outp.Add(new Token { Kind = TokKind.Word, Text = ownerWord });
-                outp.Add(new Token { Kind = TokKind.Word, Text = "__N__" + zone });
-                i = 3;
-            }
-        }
-
-        if (i < toks.Count && toks[i].Text == "<")
-        {
-            int close = i + 1;
-            while (close < toks.Count && toks[close].Text != ">") close++;
-            string kind = i + 1 < toks.Count ? toks[i + 1].Text.ToLowerInvariant() : "";
-            string noun = kind == "spell" ? "spells" : kind == "amulet" ? "amulets" : "followers";
-            outp.Add(new Token { Kind = TokKind.Word, Text = noun });
-            i = close + 1;
-        }
-
-        // 选取模式：Choose(n) / All / Random(n) / First(n)
-        bool sawChoose = false;
-        int chooseN = 1;
-        bool sawExplicitMode = false;
-        if (i < toks.Count)
-        {
-            string mode = toks[i].Text;
-            if (mode == "Choose" || mode == "Random" || mode == "First")
-            {
-                i++;
-                if (i < toks.Count && toks[i].Text == "(")
+                Match(PyTokKind.Assign);
+                string sk = TakeIdent();
+                bool desc = false;
+                if (Current.Kind == PyTokKind.Minus)
                 {
-                    i++;
-                    if (i < toks.Count && toks[i].Kind == TokKind.Number) { int.TryParse(toks[i].Text, out chooseN); i++; }
-                    if (i < toks.Count && toks[i].Text == ")") i++;
+                    Advance();
+                    if (MatchIdent("desc")) desc = true;
                 }
-                sawChoose = true;
+                var skv = sk == "Attack" ? SortKey.Attack : sk == "Life" ? SortKey.Life
+                        : sk == "Cost" ? SortKey.Cost : sk == "BaseCost" ? SortKey.BaseCost : SortKey.None;
+                spec = WithSort(spec, skv, desc);
+                continue;
             }
-            else if (mode == "All") { sawExplicitMode = true; i++; }
+            if (MatchIdent("topN")) { Match(PyTokKind.Assign); spec = WithTopN(spec, TakeNumber()); continue; }
+            break;
         }
 
-        // where <BoolExpr>：转成英文 "with ..." 结构交给条件解析
-        List<Token> whereToks = null;
-        if (i < toks.Count && toks[i].Text == "where")
+        // E. 量词模式
+        if (!IsAtEnd && Current.Kind == PyTokKind.Ident)
         {
-            i++;
-            whereToks = new List<Token>();
-            for (; i < toks.Count; i++) whereToks.Add(toks[i]);
-        }
-
-        // 组装：把 __N__ 占位符展开
-        var final = new List<Token>();
-        foreach (var t in outp)
-        {
-            if (!t.Text.StartsWith("__N__")) { final.Add(t); continue; }
-            string zone = t.Text.Substring(5);
-            string phrase = zone == "board" ? "on the field"
-                          : zone == "hand" ? "in your hand"
-                          : zone == "deck" ? "in your deck"
-                          : zone == "cemetery" ? "in your cemetery"
-                          : zone == "banished" ? "in your banished"
-                          : zone == "crestarea" ? "in your crest area"
-                          : "on the field";
-            foreach (var w in phrase.Split(' ')) final.Add(new Token { Kind = TokKind.Word, Text = w });
-        }
-
-        foreach (var t in WhereToEnglish(whereToks)) final.Add(t);
-
-        // Choose(n) 等价于 "choose n" —— TargetParser 用 "N random/any" 或 "choose" 表达
-        // Choose(n) 必须无条件保留：连 n=1 也不能丢，
-        // 否则 TargetParser 会默认成 All，弹窗变成「选全部」。
-        // Choose(n) 在 TargetParser 里的表达就是「纯数字 + 名词」（不带 random 词）：
-        //   2 followers -> mode=Choose, count=2
-        //   2 random followers -> mode=Random, count=2
-        // 所以这里只插数字，绝不能插 random。
-        if (sawChoose)
-        {
-            // 数量必须插在**归属词之后、名词之前**：
-            //   "allied followers on the field" -> "allied 1 followers on the field"
-            // 直接 Insert(0) 会变成 "1 allied followers ..."，
-            // TargetParser 认「数字紧跟名词」，前面隔了归属词就退化成 All。
-            int insertAt = 0;
-            for (int k = 0; k < final.Count; k++)
+            if (MatchIdent("All"))
             {
-                string tx = final[k].Text.ToLowerInvariant();
-                if (tx == "allied" || tx == "enemy" || tx == "any") { insertAt = k + 1; break; }
+                spec = WithMode(spec, SelectMode.All);
             }
-            final.Insert(insertAt, new Token { Kind = TokKind.Number, Text = chooseN.ToString(), Value = chooseN });
-        }
-        return final;
-    }
-
-    /// <summary>把 where 之后的 DSL 布尔式翻成英文短语（认常见的几种）。</summary>
-    private static List<Token> WhereToEnglish(List<Token> whereToks)
-    {
-        var outp = new List<Token>();
-        if (whereToks == null || whereToks.Count == 0) return outp;
-        bool needAnd = false;
-        for (int i = 0; i < whereToks.Count; i++)
-        {
-            var t = whereToks[i];
-            string w = t.Text.ToLowerInvariant();
-            if (w == "and") continue;
-            if (w == "is") continue;
-            if (w == "(" || w == ")") continue;
-
-            if (w == "has" && i + 1 < whereToks.Count && whereToks[i + 1].Text == "trait")
+            else if (Enum.TryParse<SelectMode>(Current.Text, true, out var mode))
             {
-                if (i + 2 < whereToks.Count)
+                Advance();
+                spec = WithMode(spec, mode);
+                if (Match(PyTokKind.LParen))
                 {
-                    outp.Add(new Token { Kind = TokKind.Word, Text = "with" });
-                    outp.Add(new Token { Kind = TokKind.Word, Text = "the" });
-                    outp.Add(new Token { Kind = TokKind.Word, Text = "trait" });
-                    outp.Add(whereToks[i + 2]);
-                    i += 2;
-                }
-                continue;
-            }
-            if (w == "other")
-            {
-                outp.Add(new Token { Kind = TokKind.Word, Text = "other" });
-                continue;
-            }
-            // `is Follower` / `is Spell` / `is Amulet` —— 卡种名词是英文里的普通名词，
-            // 直接透传即可，但必须给它补一个名词位置而不是当作独立子句。
-            if (w == "follower" || w == "followers" || w == "spell" || w == "spells"
-                || w == "amulet" || w == "amulets")
-            {
-                outp.Add(t);
-                continue;
-            }
-            if (w == "not" && i + 1 < whereToks.Count && whereToks[i + 1].Text == "is")
-            {
-                outp.Add(new Token { Kind = TokKind.Word, Text = "not" });
-                i++;
-                continue;
-            }
-            outp.Add(t);
-        }
-        return outp;
-    }
-
-
-    /// <summary>
-    /// 直接把 DSL 速记解析成 TargetSpec，不再借道 TargetParser。
-    ///
-    /// 起初想复用 TargetParser（把 self:board 翻成英文短语再喂进去），
-    /// 但那条路的语义鸿沟太大：Choose/All/Random 的表达方式、
-    /// 归属词与名词的先后、where 子句的语法都不同，转译层越写越像平行实现。
-    /// 直接构造 TargetSpec 反而更短、更确定。
-    /// </summary>
-    private TargetSpec DirectTarget(List<Token> toks)
-    {
-        if (toks == null || toks.Count == 0) return null;
-        var spec = new TargetSpec { Owner = ZoneScope.Self, Zone = ZoneRef.Board, Mode = SelectMode.All };
-        int i = 0;
-
-        // owner : zone
-        if (toks.Count >= 3 && toks[1].Text == ":")
-        {
-            string owner = toks[0].Text.ToLowerInvariant();
-            string zone = toks[2].Text.ToLowerInvariant();
-            spec = WithOwner(spec, owner == "opponent" || owner == "opp" ? ZoneScope.Opponent
-                                  : owner == "any" ? ZoneScope.Any : ZoneScope.Self);
-            spec = WithZone(spec, zone == "hand" ? ZoneRef.Hand
-                                 : zone == "deck" ? ZoneRef.Deck
-                                 : zone == "cemetery" ? ZoneRef.Cemetery
-                                 : zone == "banished" ? ZoneRef.Banished
-                                 : zone == "leader" ? ZoneRef.Leader
-                                 : zone == "crestarea" ? ZoneRef.CrestArea : ZoneRef.Board);
-            i = 3;
-        }
-        else if (toks[0].Text.StartsWith("$"))
-        {
-            return new TargetSpec { SourceKind = TargetSourceKind.Slot, Slot = toks[0].Text, Mode = SelectMode.All };
-        }
-
-        // <Kind>
-        bool sawKind = false;
-        if (i < toks.Count && toks[i].Text == "<")
-        {
-            i++;
-            if (i < toks.Count)
-            {
-                string kind = toks[i].Text.ToLowerInvariant();
-                var k = kind == "spell" ? CardKind.Spell : kind == "amulet" ? CardKind.Amulet : CardKind.Follower;
-                spec = spec.WithWhere(new HasKindExpr { Kind = k, Of = TargetSpec.Item });
-                sawKind = true;
-                i++;
-            }
-            if (i < toks.Count && toks[i].Text == ">") i++;
-        }
-
-        // 选取模式
-        bool sawExplicitMode = false;
-        if (i < toks.Count)
-        {
-            string mode = toks[i].Text;
-            if (mode == "Choose" || mode == "Random" || mode == "First")
-            {
-                var m = mode == "Random" ? SelectMode.Random : mode == "First" ? SelectMode.First : SelectMode.Choose;
-                spec = WithMode(spec, m);
-                sawExplicitMode = true;
-                i++;
-                if (i < toks.Count && toks[i].Text == "(")
-                {
-                    i++;
-                    if (i < toks.Count && toks[i].Kind == TokKind.Number && int.TryParse(toks[i].Text, out int n))
-                    {
-                        spec = WithCount(spec, NumExpr.Const(n));
-                        i++;
-                    }
-                    if (i < toks.Count && toks[i].Text == ")") i++;
+                    spec = WithCount(spec, ParseNumExpr());
+                    Expect(PyTokKind.RParen, "Mode(Count) 缺少右括号");
                 }
             }
-            else if (mode == "All") { sawExplicitMode = true; i++; }
         }
 
-        // where 子句
-        if (i < toks.Count && toks[i].Text == "where")
-        {
-            i++;
-            var wh = new List<Token>();
-            for (; i < toks.Count; i++) wh.Add(toks[i]);
-            var wspec = ParseWhereTokens(wh, spec);
-            if (wspec != null) spec = wspec;
-        }
-
-        // 只有「战场/手牌 + 卡种」这类集合目标才默认 Choose(1)。
-        // 主战者（leader）不该被当成可选目标 —— 它本来就是单数。
-        if (spec.Mode == SelectMode.All && spec.Count == null && !sawExplicitMode
-            && spec.Zone != ZoneRef.Leader)
-            spec = WithMode(spec, SelectMode.Choose);
+        // F. where <BoolExpr>
+        if (MatchIdent("where")) spec = spec.WithWhere(ParseBoolExpr());
 
         return spec;
     }
 
-    /// <summary>解析 where 之后的 DSL 布尔式，附加到 spec 的 Where 上。</summary>
-    private TargetSpec ParseWhereTokens(List<Token> wh, TargetSpec spec)
+    private static TargetSpec WithHistory(TargetSpec t, HistoryScope h) => new TargetSpec
     {
-        if (wh == null || wh.Count == 0) return spec;
-        // 去掉最外层成对括号（可能多层）
-        for (int guard = 0; guard < 8; guard++)
-        {
-            if (wh.Count < 2 || wh[0].Text != "(" || wh[wh.Count - 1].Text != ")") break;
-            int d = 0; bool balanced = true;
-            for (int k = 0; k < wh.Count; k++)
-            {
-                if (wh[k].Text == "(") d++;
-                else if (wh[k].Text == ")")
-                {
-                    d--;
-                    if (d == 0 && k < wh.Count - 1) { balanced = false; break; }
-                }
-            }
-            if (!balanced) break;
-            wh = wh.Skip(1).Take(wh.Count - 2).ToList();
-        }
-
-        // 按顶层 and 切分
-        var parts = new List<List<Token>>();
-        var curPart = new List<Token>();
-        int depth = 0;
-        foreach (var t in wh)
-        {
-            if (t.Text == "(") depth++;
-            if (t.Text == ")") depth = Math.Max(0, depth - 1);
-            if (depth == 0 && t.Text == "and") { parts.Add(curPart); curPart = new List<Token>(); continue; }
-            curPart.Add(t);
-        }
-        parts.Add(curPart);
-
-        foreach (var part in parts)
-        {
-            if (part.Count == 0) continue;
-            if (part[0].Text == "is" && part.Count >= 2)
-            {
-                string kind = part[1].Text.ToLowerInvariant();
-                var k = kind.StartsWith("spell") ? CardKind.Spell : kind.StartsWith("amulet") ? CardKind.Amulet : CardKind.Follower;
-                spec = spec.WithWhere(new HasKindExpr { Kind = k, Of = TargetSpec.Item });
-                continue;
-            }
-            if (part[0].Text == "has" && part.Count >= 3 && part[1].Text == "trait")
-            {
-                spec = spec.WithWhere(new HasTraitExpr { Trait = _schema.Trait(part[2].Text), Of = TargetSpec.Item });
-                continue;
-            }
-            if (part[0].Text == "has" && part.Count >= 3 && part[1].Text == "clan")
-            {
-                spec = spec.WithWhere(new HasClanExpr { Clan = _schema.Clan(part[2].Text), Of = TargetSpec.Item });
-                continue;
-            }
-            if (part[0].Text == "other")
-            {
-                spec = spec.WithWhere(new NotSameEntityExpr { Of = TargetSpec.Item, ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf });
-                continue;
-            }
-            if (part[0].Text == "not" && part.Count >= 2 && part[1].Text == "is" && part.Count >= 3)
-            {
-                // not is Evolved 之类交给条件解析
-                var bt = new List<Token>();
-                for (int k = 1; k < part.Count; k++) bt.Add(part[k]);
-                try
-                {
-                    var lex = _lex ?? new Lexicon(_schema);
-                    var b = ConditionCompiler.Build(bt, lex);
-                    if (b != null) spec = spec.WithWhere(new NotExpr(b));
-                }
-                catch { }
-                continue;
-            }
-        }
-        return spec;
-    }
-
-    private static TargetSpec WithOwner(TargetSpec t, ZoneScope o) => new TargetSpec
-    {
-        SourceKind = t.SourceKind, Owner = o, Zone = t.Zone, Slot = t.Slot,
+        SourceKind = t.SourceKind, Owner = t.Owner, Zone = t.Zone, Slot = t.Slot,
         CardId = t.CardId, CardName = t.CardName, Where = t.Where,
         Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
+        DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
+        Mode = t.Mode, Count = t.Count, History = h,
+        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
+    };
+
+    private static TargetSpec WithIncludeLeader(TargetSpec t, bool b) => new TargetSpec
+    {
+        SourceKind = t.SourceKind, Owner = t.Owner, Zone = t.Zone, Slot = t.Slot,
+        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+        Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
+        DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
+        Mode = t.Mode, Count = t.Count, History = t.History,
+        IncludeLeader = b, OmittedFields = t.OmittedFields,
+    };
+
+    private static TargetSpec WithDistinct(TargetSpec t, bool b) => new TargetSpec
+    {
+        SourceKind = t.SourceKind, Owner = t.Owner, Zone = t.Zone, Slot = t.Slot,
+        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+        Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
+        DistinctByName = b, DuplicatesOnly = t.DuplicatesOnly,
+        Mode = t.Mode, Count = t.Count, History = t.History,
+        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
+    };
+
+    private static TargetSpec WithDuplicates(TargetSpec t, bool b) => new TargetSpec
+    {
+        SourceKind = t.SourceKind, Owner = t.Owner, Zone = t.Zone, Slot = t.Slot,
+        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+        Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
+        DistinctByName = t.DistinctByName, DuplicatesOnly = b,
+        Mode = t.Mode, Count = t.Count, History = t.History,
+        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
+    };
+
+    private static TargetSpec WithTopN(TargetSpec t, int n) => new TargetSpec
+    {
+        SourceKind = t.SourceKind, Owner = t.Owner, Zone = t.Zone, Slot = t.Slot,
+        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+        Sort = t.Sort, SortDescending = t.SortDescending, TopN = n,
+        DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
+        Mode = t.Mode, Count = t.Count, History = t.History,
+        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
+    };
+
+    private static TargetSpec WithSort(TargetSpec t, SortKey k, bool desc) => new TargetSpec
+    {
+        SourceKind = t.SourceKind, Owner = t.Owner, Zone = t.Zone, Slot = t.Slot,
+        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+        Sort = k, SortDescending = desc, TopN = t.TopN,
         DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
         Mode = t.Mode, Count = t.Count, History = t.History,
         IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
@@ -1224,6 +1229,36 @@ public sealed class AstCanonicalParser
         Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
         DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
         Mode = t.Mode, Count = c, History = t.History,
+        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
+    };
+
+    private static TargetSpec WithMode(TargetSpec t, SelectMode m) => new TargetSpec
+    {
+        SourceKind = t.SourceKind, Owner = t.Owner, Zone = t.Zone, Slot = t.Slot,
+        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+        Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
+        DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
+        Mode = m, Count = t.Count, History = t.History,
+        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
+    };
+
+    private static TargetSpec WithZone(TargetSpec t, ZoneRef z) => new TargetSpec
+    {
+        SourceKind = t.SourceKind, Owner = t.Owner, Zone = z, Slot = t.Slot,
+        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+        Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
+        DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
+        Mode = t.Mode, Count = t.Count, History = t.History,
+        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
+    };
+
+    private static TargetSpec WithOwner(TargetSpec t, ZoneScope o) => new TargetSpec
+    {
+        SourceKind = t.SourceKind, Owner = o, Zone = t.Zone, Slot = t.Slot,
+        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+        Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
+        DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
+        Mode = t.Mode, Count = t.Count, History = t.History,
         IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
     };
 
@@ -1249,121 +1284,365 @@ public sealed class AstCanonicalParser
         }
     }
 
-    private NumExpr ParseNumExpr()
-    {
-        bool neg = false;
-        if (Current.Kind == PyTokKind.Minus) { Advance(); neg = true; }
-        if (Current.Kind == PyTokKind.Number)
-        {
-            int v = TakeNumber();
-            return neg ? (NumExpr)NumExpr.Const(-v) : NumExpr.Const(v);
-        }
-        if (Current.Kind == PyTokKind.Ident && Current.Text.StartsWith("ctr:"))
-        {
-            string nm = Current.Text.Substring(4);
-            Advance();
-            return NumExpr.Ctr(_schema.Counter(nm));
-        }
+    // ============================================================
+    // 递归下降数值解析器（206 号文档方案 3）
+    //
+    // 与 AstEnglishPrinter.PrintNum 严格对齐，绝不借道英文编译器 ——
+    // 后者只认自然语言（"if you are in overflow"），
+    // 对 count(...) / prop:... 这类 AST 表达式一律失败并静默返回 Const(1)。
+    // ============================================================
 
-        var toks = new List<Token>();
-        int depth = 0;
+    private NumExpr ParseNumExpr(bool stopAtSlash = false)
+    {
+        var left = ParseNumTerm(stopAtSlash);
         while (!IsAtEnd)
         {
-            var t = Current;
-            if (depth == 0 && (t.Kind == PyTokKind.Newline || t.Kind == PyTokKind.Dedent || t.Kind == PyTokKind.Eof)) break;
-            if (depth == 0 && t.Kind == PyTokKind.Slash) break;
-            if (depth == 0 && t.Kind == PyTokKind.Ident && (t.Text == "damage" || t.Text == "life" || t.Text == "to" || t.Text == "times")) break;
-            if (t.Kind == PyTokKind.LParen) depth++;
-            if (t.Kind == PyTokKind.RParen) depth = Math.Max(0, depth - 1);
-            toks.Add(ToCnToken(t));
+            if (Current.Kind != PyTokKind.Plus && Current.Kind != PyTokKind.Minus) break;
+            // select 的 +append 后缀不是算术加号
+            if (Current.Kind == PyTokKind.Plus && PeekText(1) == "append") break;
+            var op = Current.Kind == PyTokKind.Plus ? ArithOp.Add : ArithOp.Sub;
             Advance();
+            var right = ParseNumTerm(stopAtSlash);
+            left = Arith(left, op, right);
         }
-        if (toks.Count == 0) return NumExpr.Const(neg ? -1 : 1);
+        return left;
+    }
 
-        var lex = _lex ?? new Lexicon(_schema);
-        var cur = new TokenCursor(toks);
-        try
+    private NumExpr ParseNumTerm(bool stopAtSlash)
+    {
+        var left = ParseNumFactor(stopAtSlash);
+        while (!IsAtEnd)
         {
-            var comp = new EnglishCompiler(lex);
-            var e = ActionParser.NumExprForDsl(cur, lex);
-            if (e != null) return e;
+            if (Current.Kind == PyTokKind.Star)
+            { Advance(); left = Arith(left, ArithOp.Mul, ParseNumFactor(stopAtSlash)); continue; }
+            if (!stopAtSlash && Current.Kind == PyTokKind.Slash)
+            { Advance(); left = Arith(left, ArithOp.Div, ParseNumFactor(stopAtSlash)); continue; }
+            if (Current.Kind == PyTokKind.Percent)
+            { Advance(); left = Arith(left, ArithOp.Mod, ParseNumFactor(stopAtSlash)); continue; }
+            break;
         }
-        catch { }
+        return left;
+    }
+
+    private NumExpr ParseNumFactor(bool stopAtSlash)
+    {
+        if (Match(PyTokKind.Plus)) return ParseNumFactor(stopAtSlash);
+        if (Match(PyTokKind.Minus))
+        {
+            // 打印器把「0 - X」写成 "-X"，读回来必须还原成同一个结构
+            var inner = ParseNumFactor(stopAtSlash);
+            if (inner != null && inner.Op == NumOp.Const) return NumExpr.Const(-inner.Value);
+            return NumExpr.Sub(NumExpr.Const(0), inner);
+        }
+        if (Current.Kind == PyTokKind.Number) return NumExpr.Const(TakeNumber());
+
+        if (Match(PyTokKind.LParen))
+        {
+            if (MatchIdent("if"))
+            {
+                var cond = ParseBoolExpr();
+                EatIdent("then");
+                var thenE = ParseNumExpr();
+                EatIdent("else");
+                var elseE = ParseNumExpr();
+                Expect(PyTokKind.RParen, "条件数值缺少右括号");
+                return new NumExpr { Op = NumOp.Cond, Cond = cond, Then = thenE, Else = elseE };
+            }
+            var inner = ParseNumExpr(false);
+            Expect(PyTokKind.RParen, "括号数值缺少右括号");
+            return inner;
+        }
+
+        if (Current.Kind == PyTokKind.Ident) return ParseNumAtom();
         return NumExpr.Const(1);
     }
 
-    private BoolExpr ParseBoolExpr()
+    private NumExpr ParseNumAtom()
     {
-        var toks = new List<Token>();
-        int depth = 0;
+        string head = TakeIdent();
+
+        // ctr:name[@self|@opp|@any]
+        if (head == "ctr" && Match(PyTokKind.Colon))
+        {
+            string cname = TakeIdent();
+            TargetSpec of = null;
+            if (Match(PyTokKind.At))
+            {
+                string ow = TakeIdent();
+                of = new TargetSpec
+                {
+                    Owner = ow == "opp" ? ZoneScope.Opponent : ow == "self" ? ZoneScope.Self : ZoneScope.Any,
+                    Zone = ZoneRef.Leader,
+                };
+            }
+            return new NumExpr { Op = NumOp.Counter, Counter = _schema.Counter(cname), Of = of };
+        }
+
+        // prop:Stat[(Target)]
+        if (head == "prop" && Match(PyTokKind.Colon))
+        {
+            string st = TakeIdent();
+            TargetSpec of = null;
+            if (Match(PyTokKind.LParen)) { of = ParseTarget(); Expect(PyTokKind.RParen, "prop 缺少右括号"); }
+            return new NumExpr { Op = NumOp.Property, Stat = StatOf(st), Of = of };
+        }
+
+        // sum:Stat(Target)
+        if (head == "sum" && Match(PyTokKind.Colon))
+        {
+            string st = TakeIdent();
+            Expect(PyTokKind.LParen, "sum 缺少左括号");
+            var of = ParseTarget();
+            Expect(PyTokKind.RParen, "sum 缺少右括号");
+            return new NumExpr { Op = NumOp.Sum, Stat = StatOf(st), Of = of };
+        }
+
+        // split:name#idx
+        if (head == "split" && Match(PyTokKind.Colon))
+        {
+            string cname = TakeIdent();
+            int idx = Match(PyTokKind.Hash) ? TakeNumber() : 0;
+            return new NumExpr { Op = NumOp.SplitOf, Counter = _schema.Counter(cname), Value = idx };
+        }
+
+        // count(...) / distinct(...) / maxgroup(...)
+        if ((head == "count" || head == "distinct" || head == "maxgroup") && Match(PyTokKind.LParen))
+        {
+            var of = ParseTarget();
+            Expect(PyTokKind.RParen, head + " 缺少右括号");
+            var op = head == "count" ? NumOp.Count : head == "distinct" ? NumOp.DistinctCount : NumOp.MaxGroupSize;
+            return new NumExpr { Op = op, Of = of };
+        }
+
+        // rand(min,max)#rollId
+        if (head == "rand" && Match(PyTokKind.LParen))
+        {
+            int min = TakeNumber();
+            Match(PyTokKind.Comma);
+            var maxE = ParseNumExpr();
+            Expect(PyTokKind.RParen, "rand 缺少右括号");
+            int rollId = Match(PyTokKind.Hash) ? TakeNumber() : 0;
+            return new NumExpr { Op = NumOp.RandomRange, Value = min, Args = new[] { maxE }, RollId = rollId };
+        }
+
+        // clamp(a,b,c) / max(...) / min(...)
+        if ((head == "clamp" || head == "max" || head == "min") && Match(PyTokKind.LParen))
+        {
+            var args = new List<NumExpr>();
+            while (!IsAtEnd && Current.Kind != PyTokKind.RParen)
+            {
+                args.Add(ParseNumExpr());
+                Match(PyTokKind.Comma);
+            }
+            Expect(PyTokKind.RParen, head + " 缺少右括号");
+            if (head == "clamp") return new NumExpr { Op = NumOp.Clamp, Args = args };
+            return new NumExpr { Op = NumOp.Extreme, TakeMax = head == "max", Args = args };
+        }
+
+        return NumExpr.Const(1);
+    }
+
+    private static NumExpr Arith(NumExpr l, ArithOp op, NumExpr r)
+        => new NumExpr { Op = NumOp.Arith, Arith = op, Args = new[] { l, r } };
+
+    private static StatKey StatOf(string s) => s switch
+    {
+        "Attack" => StatKey.Attack,
+        "Life" => StatKey.Life,
+        "Cost" => StatKey.Cost,
+        "BaseAttack" => StatKey.BaseAttack,
+        "BaseLife" => StatKey.BaseLife,
+        "BaseCost" => StatKey.BaseCost,
+        "MaxLife" => StatKey.MaxLife,
+        _ => StatKey.None,
+    };
+
+    // ============================================================
+    // 递归下降布尔解析器（206 号文档方案 3）
+    // 优先级：or < and < not < 原子
+    // ============================================================
+
+    private BoolExpr ParseBoolExpr() => ParseBoolOr();
+
+    private BoolExpr ParseBoolOr()
+    {
+        var items = new List<BoolExpr> { ParseBoolAnd() };
+        while (MatchIdent("or")) items.Add(ParseBoolAnd());
+        return items.Count == 1 ? items[0] : new OrExpr(items);
+    }
+
+    private BoolExpr ParseBoolAnd()
+    {
+        var items = new List<BoolExpr> { ParseBoolUnary() };
+        while (MatchIdent("and")) items.Add(ParseBoolUnary());
+        return items.Count == 1 ? items[0] : new AndExpr(items);
+    }
+
+    private BoolExpr ParseBoolUnary()
+    {
+        if (MatchIdent("not")) return new NotExpr(ParseBoolUnary());
+        if (Current.Kind == PyTokKind.LParen)
+        {
+            // 括号可能是布尔分组 (A and B)，也可能是算术左操作数 ((a + b) >= 3)。
+            int save = _pos;
+            Advance();
+            var inner = ParseBoolExpr();
+            if (Match(PyTokKind.RParen) && !IsCompareOp(Current.Kind)) return inner;
+            _pos = save;
+        }
+        return ParseBoolAtom();
+    }
+
+    private static bool IsCompareOp(PyTokKind k)
+        => k == PyTokKind.Assign || k == PyTokKind.Eq || k == PyTokKind.Ne
+        || k == PyTokKind.Ge || k == PyTokKind.Le || k == PyTokKind.Gt || k == PyTokKind.Lt;
+
+    private BoolExpr ParseBoolAtom()
+    {
+        if (MatchIdent("true")) return BoolExpr.True;
+        if (MatchIdent("false")) return BoolExpr.False;
+
+        // is selected | is <CardKind>[(Of)] | is <UnitState>[(Of)]
+        if (MatchIdent("is"))
+        {
+            if (MatchIdent("selected")) return new IsPreviousExpr { Slot = TargetSpec.SlotSelected };
+            string what = TakeIdent();
+            TargetSpec of = TargetSpec.Item;
+            if (Match(PyTokKind.LParen)) { of = ParseTarget(); Expect(PyTokKind.RParen, "is(...) 缺少右括号"); }
+            if (Enum.TryParse<CardKind>(what, true, out var ck))
+                return new HasKindExpr { Kind = ck, Of = of };
+            if (Enum.TryParse<UnitState>(what, true, out var us))
+                return new HasStateExpr { State = us, Of = of };
+            return new HasKindExpr { Kind = CardKind.Follower, Of = of };
+        }
+
+        // has trait <Name> | has clan <C|$self> | has <Keyword>
+        if (MatchIdent("has"))
+        {
+            if (MatchIdent("trait"))
+                return new HasTraitExpr { Trait = _schema.Trait(ReadMultiWordUntilBoundary()), Of = TargetSpec.Item };
+            if (MatchIdent("clan"))
+            {
+                if (Current.Kind == PyTokKind.Slot && Current.Text == TargetSpec.SlotSelf)
+                {
+                    Advance();
+                    return new HasClanExpr { IsSelfClan = true, Of = TargetSpec.Item };
+                }
+                var clans = new List<SymbolId<ClanTag>> { _schema.Clan(TakeIdent()) };
+                while (Match(PyTokKind.Pipe)) clans.Add(_schema.Clan(TakeIdent()));
+                if (clans.Count == 1) return new HasClanExpr { Clan = clans[0], Of = TargetSpec.Item };
+                return new HasClanExpr { Clans = clans, Of = TargetSpec.Item };
+            }
+            return new HasKeywordExpr { Keyword = _schema.Keyword(ReadMultiWordUntilBoundary()), Of = TargetSpec.Item };
+        }
+
+        // in pack <id>
+        if (MatchIdent("in") && MatchIdent("pack"))
+            return new HasPackExpr { PackId = ReadMultiWordUntilBoundary(), Of = TargetSpec.Item };
+
+        // same name as <Target> | named <Name>
+        if (MatchIdent("same") && MatchIdent("name") && MatchIdent("as"))
+            return new HasCardNameExpr { Of = ParseTarget() };
+        if (MatchIdent("named"))
+        {
+            // 卡名可能带逗号与撇号（Belial, Archangel of Cunning / Dragon's Vale Elder）
+            var nameParts2 = new List<string>();
+            while (!IsAtEnd)
+            {
+                if (Current.Kind == PyTokKind.Newline || Current.Kind == PyTokKind.Dedent
+                    || Current.Kind == PyTokKind.Eof || Current.Kind == PyTokKind.RParen) break;
+                if (Current.Kind == PyTokKind.Comma) { if (nameParts2.Count > 0) nameParts2[^1] += ","; Advance(); continue; }
+                if (Current.Kind == PyTokKind.Ident
+                    && (Current.Text == "by" || Current.Text == "to" || Current.Text == "from"
+                        || Current.Text == "and" || Current.Text == "or")) break;
+                if (Current.Kind == PyTokKind.Ident || Current.Kind == PyTokKind.Number) { nameParts2.Add(TakeIdent()); continue; }
+                break;
+            }
+            string cname = string.Join(" ", nameParts2);
+            int cid = 0;
+            if (_lex != null) _lex.TryGetCardId(cname, out cid);
+            return new HasCardNameExpr { CardId = cid, CardName = cname, Of = TargetSpec.Item };
+        }
+
+        // other than ($trigger | $opposing | $chooseN | itself)
+        if (MatchIdent("other") && MatchIdent("than"))
+        {
+            if (MatchIdent("itself"))
+                return new NotSameEntityExpr { ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf, Of = TargetSpec.Item };
+            string slot = Current.Kind == PyTokKind.Slot ? TakeSlot() : TakeIdent();
+            return new NotSameEntityExpr { ExcludeSlot = slot, Of = TargetSpec.Item };
+        }
+
+        // exists(<Target>)
+        if (MatchIdent("exists") && Match(PyTokKind.LParen))
+        {
+            var tgt = ParseTarget();
+            Expect(PyTokKind.RParen, "exists 缺少右括号");
+            return new ExistsExpr { Target = tgt, Op = CompareOp.Ge, Count = NumExpr.Const(1) };
+        }
+
+        // 牌库规则
+        if (MatchIdent("no") && MatchIdent("duplicates") && MatchIdent("in"))
+        {
+            var ow = ParseOwnerWord(); EatIdent("deck");
+            return new DeckRuleExpr { Rule = DeckRule.NoDuplicates, Owner = ow };
+        }
+        if (MatchIdent("only"))
+        {
+            string parity = TakeIdent();
+            if (Match(PyTokKind.Minus)) EatIdent("cost");
+            EatIdent("cards"); EatIdent("in");
+            var ow = ParseOwnerWord(); EatIdent("deck");
+            return new DeckRuleExpr
+            {
+                Rule = parity == "even" ? DeckRule.EvenCostOnly : DeckRule.OddCostOnly,
+                Owner = ow,
+            };
+        }
+
+        // 通用数值比较
+        var left = ParseNumExpr();
+        CompareOp? op = null;
+        if (Match(PyTokKind.Assign) || Match(PyTokKind.Eq)) op = CompareOp.Eq;
+        else if (Match(PyTokKind.Ne)) op = CompareOp.Ne;
+        else if (Match(PyTokKind.Ge)) op = CompareOp.Ge;
+        else if (Match(PyTokKind.Le)) op = CompareOp.Le;
+        else if (Match(PyTokKind.Gt)) op = CompareOp.Gt;
+        else if (Match(PyTokKind.Lt)) op = CompareOp.Lt;
+        if (op == null) return BoolExpr.True;
+        var right = ParseNumExpr();
+        return new CompareExpr { Left = left, Op = op.Value, Right = right };
+    }
+
+    /// <summary>读一个可能含空格的词条名，遇到布尔/括号边界即停。</summary>
+    private string ReadMultiWordUntilBoundary(params string[] stops)
+    {
+        var parts = new List<string>();
         while (!IsAtEnd)
         {
-            var t = Current;
-            // 冒号在 DSL 里有两种角色：
-            //   · 块定界符（能力头 / option 行的末尾）—— 遇到就该停；
-            //   · 计数器名的一部分（ctr:pp_at_play）—— 必须连着读。
-            // 判据：前一 token 是 ctr 时，这个冒号属于名字。
-            if (depth == 0 && t.Kind == PyTokKind.Colon)
+            if (Current.Kind == PyTokKind.Newline || Current.Kind == PyTokKind.Dedent
+                || Current.Kind == PyTokKind.Eof || Current.Kind == PyTokKind.RParen
+                || Current.Kind == PyTokKind.Comma || Current.Kind == PyTokKind.Colon) break;
+            if (Current.Kind == PyTokKind.Ident)
             {
-                bool isCounterName = toks.Count > 0 && toks[^1].Text == "ctr";
-                if (!isCounterName) break;
+                string w = Current.Text;
+                if (w == "and" || w == "or") break;
+                bool hit = false;
+                foreach (var sw in stops) if (w == sw && parts.Count > 0) { hit = true; break; }
+                if (hit) break;
+                parts.Add(TakeIdent());
+                continue;
             }
-            if (depth == 0 && (t.Kind == PyTokKind.Newline || t.Kind == PyTokKind.Dedent || t.Kind == PyTokKind.Eof)) break;
-            if (t.Kind == PyTokKind.LParen) depth++;
-            if (t.Kind == PyTokKind.RParen) depth = Math.Max(0, depth - 1);
-            toks.Add(ToCnToken(t));
-            Advance();
+            if (Current.Kind == PyTokKind.Number) { parts.Add(TakeIdent()); continue; }
+            break;
         }
-        if (toks.Count == 0) return BoolExpr.True;
-
-        // ctr:<name> <op> <n> 是打印器的专用写法，ConditionCompiler 不认识。
-        // 直接构造 CompareExpr，比让条件编译器去猜可靠。
-        var cmp = TryParseCounterCompare(toks);
-        if (cmp != null) return cmp;
-        var direct = TryParseSimpleNot(toks);
-        if (direct != null) return direct;
-
-        var lex = _lex ?? new Lexicon(_schema);
-        try { return ConditionCompiler.Build(toks, lex) ?? BoolExpr.True; }
-        catch { return BoolExpr.True; }
+        return string.Join(" ", parts);
     }
 
-
-    /// <summary>识别 ctr : name op num 形式的计数器比较。</summary>
-    private BoolExpr TryParseCounterCompare(List<Token> toks)
+    private ZoneScope ParseOwnerWord()
     {
-        if (toks.Count < 5) return null;
-        if (toks[0].Text != "ctr" || toks[1].Text != ":") return null;
-        string name = toks[2].Text;
-        CompareOp? op = toks[3].Text switch
-        {
-            ">=" => CompareOp.Ge,
-            "<=" => CompareOp.Le,
-            ">" => CompareOp.Gt,
-            "<" => CompareOp.Lt,
-            "==" => CompareOp.Eq,
-            "=" => CompareOp.Eq,
-            "!=" => CompareOp.Ne,
-            _ => (CompareOp?)null,
-        };
-        if (op == null) return null;
-        if (!int.TryParse(toks[4].Text, out int n)) return null;
-        return new CompareExpr { Left = NumExpr.Ctr(_schema.Counter(name)), Op = op.Value, Right = NumExpr.Const(n) };
-    }
-
-
-    /// <summary>识别 not is Xxx($self) 这类打印器专用形态。</summary>
-    private BoolExpr TryParseSimpleNot(List<Token> toks)
-    {
-        if (toks.Count < 3) return null;
-        if (toks[0].Text != "not" || toks[1].Text != "is") return null;
-        string name = toks[2].Text;
-        int paren = name.IndexOf('(');
-        if (paren > 0) name = name.Substring(0, paren);
-        var key = name.ToLowerInvariant();
-        if (key == "superevolved") return new NotExpr(new HasStateExpr { State = UnitState.SuperEvolved, Of = TargetSpec.Self });
-        if (key == "evolved") return new NotExpr(new HasStateExpr { State = UnitState.Evolved, Of = TargetSpec.Self });
-        return null;
+        string w = TakeIdent();
+        return w == "enemy" ? ZoneScope.Opponent : w == "either" ? ZoneScope.Any : ZoneScope.Self;
     }
 
     private DurationKind TryDur()
@@ -1397,25 +1676,7 @@ public sealed class AstCanonicalParser
         return fallback;
     }
 
-    private static TargetSpec WithZone(TargetSpec t, ZoneRef z) => new TargetSpec
-    {
-        SourceKind = t.SourceKind, Owner = t.Owner, Zone = z, Slot = t.Slot,
-        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
-        Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
-        DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
-        Mode = t.Mode, Count = t.Count, History = t.History,
-        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
-    };
 
-    private static TargetSpec WithMode(TargetSpec t, SelectMode m) => new TargetSpec
-    {
-        SourceKind = t.SourceKind, Owner = t.Owner, Zone = t.Zone, Slot = t.Slot,
-        CardId = t.CardId, CardName = t.CardName, Where = t.Where,
-        Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
-        DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
-        Mode = m, Count = t.Count, History = t.History,
-        IncludeLeader = t.IncludeLeader, OmittedFields = t.OmittedFields,
-    };
 
     private static ZoneScope OwnerOf(string s)
         => s == "Opponent" || s == "opponent" ? ZoneScope.Opponent
@@ -1428,11 +1689,33 @@ public sealed class AstCanonicalParser
     private static TurnOwnerScope TurnOf(string s)
         => s == "Self" ? TurnOwnerScope.Self : s == "Opponent" ? TurnOwnerScope.Opponent : TurnOwnerScope.Any;
 
-    private static ZoneRef ZoneRefOf(string s)
-        => s == "Hand" ? ZoneRef.Hand : s == "Deck" ? ZoneRef.Deck
-         : s == "Cemetery" ? ZoneRef.Cemetery : s == "Banished" ? ZoneRef.Banished
-         : s == "ExArea" ? ZoneRef.ExArea : s == "CrestArea" ? ZoneRef.CrestArea
-         : s == "CardPool" ? ZoneRef.CardPool : s == "GlobalPool" ? ZoneRef.GlobalPool : ZoneRef.Board;
+    private static ZoneRef ZoneRefOf(string s) => (s ?? "").ToLowerInvariant() switch
+    {
+        "leader" => ZoneRef.Leader,
+        "hand" => ZoneRef.Hand,
+        "deck" => ZoneRef.Deck,
+        "cemetery" => ZoneRef.Cemetery,
+        "banished" => ZoneRef.Banished,
+        "exarea" => ZoneRef.ExArea,
+        "crestarea" => ZoneRef.CrestArea,
+        "cardpool" => ZoneRef.CardPool,
+        "globalpool" => ZoneRef.GlobalPool,
+        _ => ZoneRef.Board,
+    };
+
+    private static ZoneRef ZoneRefOfOld(string s) => s switch
+    {
+        "Hand" => ZoneRef.Hand,
+        "Deck" => ZoneRef.Deck,
+        "Cemetery" => ZoneRef.Cemetery,
+        "Banished" => ZoneRef.Banished,
+        "ExArea" => ZoneRef.ExArea,
+        "CrestArea" => ZoneRef.CrestArea,
+        "CardPool" => ZoneRef.CardPool,
+        "GlobalPool" => ZoneRef.GlobalPool,
+        "Leader" => ZoneRef.Leader,
+        _ => ZoneRef.Board,
+    };
 
     private static DamageSourceMask ParseMask(string s)
         => s == "Combat" ? DamageSourceMask.Combat : s == "Ability" ? DamageSourceMask.Ability
@@ -1440,8 +1723,46 @@ public sealed class AstCanonicalParser
 
     private static CoreEvent EventOf(string s)
     {
-        string key = s.StartsWith("On") && s.Length > 2 ? s : "On" + s;
-        return Enum.TryParse<CoreEvent>(key, true, out var ev) ? ev : CoreEvent.OnPlay;
+        if (string.IsNullOrEmpty(s)) return CoreEvent.OnPlay;
+        // 打印器写的是 on_spellboost / on_select_mode 这种下划线形式，
+        // Event 枚举是 OnSpellboost / OnSelectMode。统一去掉下划线再比对，
+        // 不能简单 Substring(2) —— 那会得到 "_spellboost" 并解析失败。
+        string key = s.StartsWith("On", StringComparison.OrdinalIgnoreCase) && s.Length > 2 ? s.Substring(2) : s;
+        key = key.Replace("_", "").ToLowerInvariant();
+        return key switch
+        {
+            "play" or "onplay" or "fanfare" => CoreEvent.OnPlay,
+            "destroy" or "ondestroy" or "lastwords" => CoreEvent.OnDestroy,
+            "evolve" or "onevolve" => CoreEvent.OnEvolve,
+            "superevolve" or "onsuperevolve" => CoreEvent.OnSuperEvolve,
+            "attack" or "onattack" or "strike" => CoreEvent.OnAttack,
+            "clash" or "onclash" => CoreEvent.OnClash,
+            "engage" or "onengage" => CoreEvent.OnEngage,
+            "aura" or "passiveaura" => CoreEvent.PassiveAura,
+            "turnstart" => CoreEvent.TurnStart,
+            "turnend" => CoreEvent.TurnEnd,
+            "battlestart" or "onbattlestart" => CoreEvent.BattleStart,
+            "enter" or "enterfield" or "onenter" or "onenterfield" => CoreEvent.OnEnterField,
+            "leave" or "leavefield" or "onleave" or "onleavefield" => CoreEvent.OnLeaveField,
+            "summon" or "onsummon" => CoreEvent.OnSummon,
+            "draw" or "ondraw" => CoreEvent.OnDraw,
+            "discard" or "ondiscard" => CoreEvent.OnDiscard,
+            "returntohand" or "onreturntohand" => CoreEvent.OnReturnToHand,
+            "addtohand" or "onaddtohand" => CoreEvent.OnAddToHand,
+            "damaged" or "ondamaged" => CoreEvent.OnDamaged,
+            "healed" or "onhealed" => CoreEvent.OnHealed,
+            "banish" or "onbanish" => CoreEvent.OnBanish,
+            "fuse" or "onfuse" => CoreEvent.OnFuse,
+            "spellboost" or "onspellboost" => CoreEvent.OnSpellboost,
+            "transform" or "ontransform" => CoreEvent.OnTransform,
+            "selectmode" or "onselectmode" => CoreEvent.OnSelectMode,
+            "earthrite" or "onearthrite" => CoreEvent.OnEarthRite,
+            "deckout" or "ondeckout" => CoreEvent.OnDeckOut,
+            "countdownexpire" or "oncountdownexpire" => CoreEvent.OnCountdownExpire,
+            "counterchange" or "oncounterchange" => CoreEvent.OnCounterChange,
+            "statsmodified" or "onstatsmodified" => CoreEvent.OnStatsModified,
+            _ => Enum.TryParse<CoreEvent>(s, true, out var ev) ? ev : CoreEvent.OnPlay,
+        };
     }
 
     // ---------------------------------------------------------------- 游标
@@ -1482,3 +1803,6 @@ public sealed class AstCanonicalParser
 
     private void Error(string msg) { Errors.Add("第 " + Current.Line + " 行：" + msg); }
 }
+
+/// <summary>子卡段（crest/faith/accelerate/crystallize）不是能力，遇到时用它退出能力解析。</summary>
+public sealed class SubDefException : Exception { }
