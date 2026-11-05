@@ -104,7 +104,12 @@ public static class DiyZh
         ("immune_effects_except_stats", "不受能力影响（身材除外）"),
         ("free_evolve", "免费进化"),
         ("free_super_evolve", "免费超进化"),
-        ("multi_attack", "多次攻击"),
+        // 引擎侧的规范名是 max_attacks_per_turn（见 GameSchema.BuiltinKeywords
+        // 与 CombatResolver.CanAttack）。写 multi_attack 会注册一个引擎不认识的关键词，
+        // 卡面显示「多次攻击」但实战仍然只能攻击 1 次。
+        ("max_attacks_per_turn", "1回合可攻击N次"),
+        ("damage_cap", "受到伤害上限N"),
+        ("damage_taken_bonus", "受到伤害+N"),
         ("intimidate", "威吓"),
     };
 

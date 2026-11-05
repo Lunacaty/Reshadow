@@ -393,10 +393,54 @@ public static partial class Regress
             Check("pyast-11 中文卡面质量：无空书名号 / 无英文内码外泄 / 无重复修饰词",
                   faceBad.Count == 0,
                   faceBad.Count == 0 ? "1021 张全部通过" : string.Join(" ;; ", faceBad.Take(5)));
+
+        // pyast-12：带参关键词的次数必须活过整条链路。
+        //
+        // 164 专题四暴露的 4 处断链全部集中在这一点：
+        //   积木词表名写错（multi_attack）、属性面板没有 N 输入孔位、
+        //   积木编译器把 (N) 截断、英文端反向渲染丢 N。
+        // 任一处断掉，玩家造出的「1回合可攻击N次」都会静默退化成攻击 1 次。
+        {
+            var ws12 = Diy.DiyWorkspace.Create(1);
+            foreach (var k in new[] { "ward", "max_attacks_per_turn", "damage_cap" }) ws12.Context.Keywords(k);
+
+            var doc12 = new Diy.CardBlockWorkspace
+            {
+                CardId = 990012, Name = "带参关键词探针", Kind = "Follower",
+                Cost = 3, Attack = 2, Life = 3,
+            };
+            doc12.Keywords.Add("max_attacks_per_turn(3)");
+            doc12.Keywords.Add("ward");
+
+            var res12 = new Diy.DiyBlockCompiler(ws12.Schema, ws12.Lexicon).Compile(doc12);
+            bool ok12 = res12.Ok && res12.Def != null;
+
+            // ① 无参的进 InnateKeywords，带参的留在能力里且 Value=3
+            bool innate12 = ok12 && (res12.Def.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+                .Any(k => k.Name == "ward");
+            bool valued12 = ok12 && (res12.Def.Abilities ?? Array.Empty<AbilityDef>())
+                .SelectMany(a => a.Body ?? Array.Empty<EffectNode>())
+                .OfType<ModifyKeywordNode>()
+                .Any(mk => mk.Keyword.Name == "max_attacks_per_turn"
+                           && mk.Value is NumExpr { Op: NumOp.Const } v && v.Value == 3);
+
+            // ② 反解必须带回 (3)
+            var back12 = ok12 ? new Diy.DiyBlockDecompiler(ws12.Schema).Decompile(res12.Def) : null;
+            bool round12 = back12?.Keywords != null
+                           && back12.Keywords.Contains("max_attacks_per_turn(3)");
+
+            // ③ 积木词表不能再用引擎不认识的 multi_attack
+            bool zh12 = Ui.Diy.DiyZh.Keywords.Any(k => k.Key == "max_attacks_per_turn")
+                        && !Ui.Diy.DiyZh.Keywords.Any(k => k.Key == "multi_attack");
+
+            Check("pyast-12 带参关键词次数活过积木整链路",
+                  innate12 && valued12 && round12 && zh12,
+                  $"innate={innate12} value={valued12} round={round12} zh={zh12}");
         }
 
         log.AppendLine();
         log.AppendLine("=== PyAST 门禁 " + pass + "/" + total + " ===");
         return log.ToString();
     }
+}
 }

@@ -1016,8 +1016,18 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
             case "act_grant_kw":
             case "act_remove_kw":
-                BuildEnumCombo(col, "关键词", DiyZh.Keywords, b.Text, v => { b.Text = v; Apply(); });
+                BuildEnumCombo(col, "关键词", DiyZh.Keywords, b.Text, v =>
+                {
+                    b.Text = v;
+                    // 带参关键词（1回合可攻击N次 / 受到伤害上限N）默认补一个数值，
+                    // 否则玩家只能填到关键词、填不到 N，实战退化成默认次数。
+                    if (IsParameterizedKw(v) && b.Number == null)
+                        b.Number = new Block { Opcode = "num_const", IntA = 2 };
+                    Apply();
+                });
                 BuildTargetSlotEditor(col, "给予谁", b.Target, v => { b.Target = v; Apply(); });
+                if (IsParameterizedKw(b.Text))
+                    BuildNumberSlotEditor(col, "参数数值 (N)", b.Number, v => { b.Number = v; Apply(); });
                 break;
 
             case "act_mod_cost":
@@ -1722,4 +1732,13 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         row.AddChild(margin);
         return row;
     }
+
+    /// <summary>
+    /// 该关键词是否带数值参数。
+    ///
+    /// 带参的（1回合可攻击N次 / 受到伤害上限N / 受到伤害+N）必须露出数值孔位，
+    /// 否则玩家只能选到关键词、填不到 N，实战会退化成默认值。
+    /// </summary>
+    private static bool IsParameterizedKw(string kw)
+        => kw is "max_attacks_per_turn" or "damage_cap" or "damage_taken_bonus";
 }

@@ -331,16 +331,47 @@ public sealed class DiyBlockCompiler
 
         var abilities = new List<AbilityDef>();
 
-        // 裸关键词是**卡牌定义属性**，写进 InnateKeywords，不生成 PassiveAura 能力。
-        // 与 EnglishCompiler / 表单编译器同口径。
-        // 写成能力会让它在 Abilities 里再存一份，卡面还会多出一条空的 aura: 段。
-        var innateKeywords = (doc.Keywords ?? new List<string>())
-            .Where(k => !string.IsNullOrWhiteSpace(k))
-            .Select(k => k.Contains('(') ? k.Substring(0, k.IndexOf('(')) : k)
-            .Select(k => _schema.Keyword(k))
-            .Where(k => k.IsValid)
-            .Distinct()
-            .ToList();
+        // 关键词分两种编码，与 EnglishCompiler 同口径：
+        //   无参（Ward / Guard …）        -> CardDef.InnateKeywords
+        //   带参（max_attacks_per_turn(2)）-> PassiveAura + ModifyKeywordNode(Value=N)
+        // InnateKeywords 是 List<SymbolId>，存不下数值；早先把括号里的 N 直接
+        // Substring 掉了，导致「1回合可攻击N次」实战退化成默认 1 次。
+        var innateKeywords = new List<SymbolId<KeywordTag>>();
+        foreach (var rawKw in (doc.Keywords ?? new List<string>()).Where(k => !string.IsNullOrWhiteSpace(k)))
+        {
+            string kwName = rawKw.Trim();
+            NumExpr kwVal = null;
+            int lp = kwName.IndexOf('(');
+            if (lp > 0 && kwName.EndsWith(")"))
+            {
+                if (int.TryParse(kwName.Substring(lp + 1, kwName.Length - lp - 2), out int n))
+                    kwVal = NumExpr.Const(n);
+                kwName = kwName.Substring(0, lp).Trim();
+            }
+
+            var kwSym = _schema.Keyword(kwName);
+            if (!kwSym.IsValid) continue;
+
+            if (kwVal == null)
+            {
+                if (!innateKeywords.Contains(kwSym)) innateKeywords.Add(kwSym);
+                continue;
+            }
+
+            abilities.Add(new AbilityDef
+            {
+                Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                Condition = BoolExpr.True,
+                Body = new List<EffectNode>
+                {
+                    new ModifyKeywordNode
+                    {
+                        Target = TargetSpec.Self, Op = KeywordOp.Grant,
+                        Keyword = kwSym, Value = kwVal,
+                    },
+                },
+            });
+        }
 
         foreach (var hat in doc.Hats ?? new List<Block>())
         {
@@ -1331,10 +1362,25 @@ public sealed class DiyBlockDecompiler
         foreach (var k in def.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
             if (k.IsValid && !string.IsNullOrEmpty(k.Name)) ws.Keywords.Add(k.Name);
 
-        // 能力形式的关键词（Can't be played / Can attack 2 times 这类动词短语）
-        // 保持原样当能力处理 —— 它们是带语义的能力节点，与裸词 InnateKeywords
-        // 是两种编码。混进 ws.Keywords 会在重建时被写成 InnateKeywords，
-        // 等于把动词短语降级成裸词，往返必然不等价。
+        // 带参关键词（max_attacks_per_turn(3) / damage_cap(5)）以能力形式存在，
+        // 必须带回 (N) 写进 ws.Keywords，否则反解只剩关键词名、次数丢失。
+        // 注意只收「有 Value 的」：无参能力关键词（Can't be played）仍当能力处理，
+        // 混进 ws.Keywords 会在重建时被写成 InnateKeywords，等于降级成裸词。
+        foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())
+        {
+            if (ab?.Trigger?.Event == CoreEvent.PassiveAura
+                && (ab.Costs == null || ab.Costs.Count == 0)
+                && ab.Body != null && ab.Body.Count == 1
+                && ab.Body[0] is ModifyKeywordNode pmk && pmk.Op == KeywordOp.Grant
+                && pmk.Value is NumExpr { Op: NumOp.Const } pv
+                && pmk.Target != null && pmk.Target.SourceKind == TargetSourceKind.Slot
+                && pmk.Target.Slot == TargetSpec.SlotSelf)
+            {
+                string pk = pmk.Keyword.Name + "(" + pv.Value + ")";
+                if (!ws.Keywords.Contains(pk)) ws.Keywords.Add(pk);
+            }
+        }
+
         foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())
         {
             var hat = Hat(ab);

@@ -60,6 +60,13 @@ public sealed class NaturalPrinter
         if (IsBareKeywordAbility(a, out var bareKw))
             return Word(bareKw) + Period();
 
+        // 带参关键词必须渲染成合法英文限制句，不能当成裸词直接吐出内码：
+        //   max_attacks_per_turn(2) -> "Can attack 2 times per turn."
+        //   damage_cap(5)           -> "Can't take more than 5 damage at a time."
+        // 早先输出成 "max_attacks_per_turn."，切到英文端再编译当场报错。
+        if (TryPrintParameterizedKeyword(a, out var kwSentence))
+            return kwSentence + Period();
+
         var head = Head(a.Trigger);
         var costs = PrintCosts(a.Costs);
 
@@ -302,6 +309,34 @@ public sealed class NaturalPrinter
     // 早期实现把全部事件一律写成大写冒号形式，于是生造出
     // "Enter the Field:" / "Damaged:" 这种官方从不使用的写法，编译器自然不认。
     // ========================================================================
+
+    /// <summary>
+    /// 带参关键词 → 合法英文限制句。无参的返回 false，交给 IsBareKeywordAbility。
+    /// </summary>
+    private static bool TryPrintParameterizedKeyword(AbilityDef a, out string sentence)
+    {
+        sentence = null;
+        if (a == null) return false;
+        if ((a.Trigger?.Event ?? CoreEvent.OnPlay) != CoreEvent.PassiveAura) return false;
+        if (a.Costs != null && a.Costs.Count > 0) return false;
+        if (a.Body == null || a.Body.Count != 1) return false;
+        if (a.Body[0] is not ModifyKeywordNode mk) return false;
+        if (mk.Op != KeywordOp.Grant) return false;
+        if (mk.Target == null || mk.Target.SourceKind != TargetSourceKind.Slot) return false;
+        if (mk.Target.Slot != TargetSpec.SlotSelf) return false;
+        if (mk.Value == null) return false;
+
+        string n = mk.Value.Op == NumOp.Const ? mk.Value.Value.ToString() : "X";
+        sentence = mk.Keyword.Name switch
+        {
+            "max_attacks_per_turn" => "Can attack " + n + " times per turn",
+            "damage_cap" => "Can't take more than " + n + " damage at a time",
+            "damage_taken_bonus" => "Takes " + n + " more damage",
+            _ => null,
+        };
+        return sentence != null;
+    }
+
     private static bool IsBareKeywordAbility(AbilityDef a, out string keyword)
     {
         keyword = null;
