@@ -878,9 +878,14 @@ public sealed class ChineseCardPrinter
                 : "召唤" + count + "个" + PrintTarget(sp.CopyFrom) + "的" + kind + "到战场上。";
         }
 
+        // CopyOfPrevious（spawn_previous）等形态的 CardName 是空串，
+        // 直接拼会印出空书名号《》。
+        string cardTitle = string.IsNullOrEmpty(sp.CardName)
+            ? "同名卡牌"
+            : "《" + CardZh(sp.CardName) + "》";
         return sp.ToZone == ZoneRef.Hand
-            ? "将" + count + "张《" + CardZh(sp.CardName) + "》加入我方手牌。"
-            : "召唤" + count + "个《" + CardZh(sp.CardName) + "》到战场上。";
+            ? "将" + count + "张" + cardTitle + "加入我方手牌。"
+            : "召唤" + count + "个" + cardTitle + "到战场上。";
     }
 
     /// <summary>
@@ -1113,7 +1118,7 @@ public sealed class ChineseCardPrinter
             int skip = 0;
             for (int i = 0; i < prevNodes.Count && i < tierNodes.Count; i++)
             {
-                if (ReferenceEquals(tierNodes[i], prevNodes[i])) { skip++; continue; }
+                if (SameNode(tierNodes[i], prevNodes[i])) { skip++; continue; }
                 break;
             }
             bool isPrefix = prevNodes.Count > 0 && skip == prevNodes.Count && tierNodes.Count > skip;
@@ -1129,6 +1134,18 @@ public sealed class ChineseCardPrinter
         return sb.ToString();
     }
 
+
+    /// <summary>
+    /// 判定两个节点是否等价。
+    ///
+    /// 不能只用 ReferenceEquals：从 py_ast / ast_json 加载的卡，
+    /// Then 与 Else 里的同形节点是分别反序列化出来的不同实例，
+    /// 引用比较永远为 false，累加前缀就识别不出来。
+    /// 退回用规范打印文本比对。
+    /// </summary>
+    private static bool SameNode(EffectNode a, EffectNode b)
+        => ReferenceEquals(a, b)
+           || (a != null && b != null && AstEnglishPrinter.PrintNode(a) == AstEnglishPrinter.PrintNode(b));
     private string PrintConditional(ConditionalNode c)
     {
         // PayThenDo：「扣 N 资源 → 做某事」编译成 if(ctr>=N) then 扣减 + 动作。
@@ -1161,10 +1178,15 @@ public sealed class ChineseCardPrinter
         // 而不是「若 X 则 A，否则 B」。按累加 / 替代两种关系分别措辞：
         //   累加型：Then 以 Else 为前缀 -> <Else>若<cond>，则额外<Then 新增部分>
         //   替代型：两者互斥           -> <Else>若<cond>，则改为<Then>
+        // elif 多分支链（融合分档表 1/2/3+ 之类）：Else 里本身又是 ConditionalNode，
+        // 没有无条件兜底动作。倒过来印会把最后一档的条件吞掉，必须保持正序。
+        if (c.Else.Any(n => n is ConditionalNode))
+            return "若" + cond + "，" + then + "否则，" + els;
+
         int skip = 0;
         for (int i = 0; i < c.Else.Count && i < c.Then.Count; i++)
         {
-            if (ReferenceEquals(c.Then[i], c.Else[i])) { skip++; continue; }
+            if (SameNode(c.Then[i], c.Else[i])) { skip++; continue; }
             break;
         }
         bool isPrefix = skip == c.Else.Count && c.Then.Count > skip;
@@ -1321,8 +1343,18 @@ public sealed class ChineseCardPrinter
                 ZoneScope.Opponent => "敌方的主战者与全体敌方随从",
                 _ => "双方的主战者与全体随从",
             };
-            if (t.Mode == SelectMode.All) sb.Append(who);
-            else sb.Append("随机").Append(t.Count != null ? PrintNum(t.Count) : "1").Append("个").Append(who);
+            // 必须直接 return！否则会继续往下走「量词」与「名词」两步，
+            // 印成「敌方的主战者与全体敌方随从所有卡牌造成2点伤害」。
+            if (t.Mode == SelectMode.All)
+                return who;
+            string cntL = t.Count != null ? PrintNum(t.Count) : "1";
+            string oneWho = t.Owner switch
+            {
+                ZoneScope.Self => "我方主战者或我方随从",
+                ZoneScope.Opponent => "敌方主战者或敌方随从",
+                _ => "主战者或随从",
+            };
+            return (t.Mode == SelectMode.Random ? "随机" : "") + cntL + "个" + oneWho;
         }
         else
         {
@@ -1338,12 +1370,14 @@ public sealed class ChineseCardPrinter
         {
             if (exclusion.ExcludeSlot == TargetSpec.SlotOpposing) sb.Append("除交战目标以外的");
             else if (TargetSpec.TryParseChooseSlotIndex(exclusion.ExcludeSlot, out var cni))
-                sb.Append("除第").Append(cni + 1).Append("个所选目标以外的");
+                sb.Append("除第").Append(cni).Append("个所选目标以外的");
             else sb.Append("其他的");
         }
 
         // ③ 选法 + 数量
-        int cnt = t.Count != null ? EvalConst(t.Count, 1) : 1;
+        // 必须用 PrintNum：Count 可能是动态表达式（如「破坏 X 个」），
+        // EvalConst 会把动态变量一律压成 1。
+        string cnt = t.Count != null ? PrintNum(t.Count) : "1";
         switch (t.Mode)
         {
             case SelectMode.All: sb.Append("所有"); break;
@@ -1486,8 +1520,53 @@ public sealed class ChineseCardPrinter
                 }
                 break;
             }
+            // 具名卡与「或」列表：融合材料「Ominous Artifact β or γ」的 Where
+            // 就是 OrExpr(HasCardNameExpr, HasCardNameExpr)，漏了会印成空白「卡牌」。
+            case HasCardNameExpr hcnW:
+                parts.Add(hcnW.CardId == 0 && string.IsNullOrEmpty(hcnW.CardName) && hcnW.Of != null
+                    ? "与" + PrintTarget(hcnW.Of) + "同名的"
+                    : "《" + CardZh(hcnW.CardName) + "》");
+                break;
+
+            case OrExpr oW:
+            {
+                var branchTxt = new List<string>();
+                foreach (var sub in oW.Items)
+                {
+                    var tmp = new List<string>();
+                    CollectWhere(sub, tmp, skipExclusion);
+                    if (tmp.Count > 0) branchTxt.Add(string.Concat(tmp).TrimEnd('的'));
+                }
+                if (branchTxt.Count > 0) parts.Add(string.Join("或", branchTxt) + "的");
+                break;
+            }
+
             case NotSameEntityExpr: if (!skipExclusion) parts.Add("其他的"); break;
-            case NotExpr nt: break;
+            // 否定修饰词绝不能直接 break —— "an unevolved follower"、
+            // "a non-Encroacher follower"、"a card not named X" 全挂在 NotExpr 上，
+            // 吞掉它们等于把这些关键限定词从卡面抹掉。
+            case NotExpr nt:
+                switch (nt.Inner)
+                {
+                    case HasStateExpr { State: UnitState.Evolved }: parts.Add("未进化的"); break;
+                    case HasStateExpr { State: UnitState.SuperEvolved }: parts.Add("未超进化的"); break;
+                    case HasStateExpr { State: UnitState.AttackedThisTurn }: parts.Add("本回合尚未攻击的"); break;
+                    case IsPreviousExpr: parts.Add("未被选择的"); break;
+                    case HasTraitExpr htNot: parts.Add("非" + TraitZh(htNot.Trait.Name) + "兵种的"); break;
+                    case HasKeywordExpr hkNot: parts.Add("未拥有【" + KeywordZh(hkNot.Keyword.Name) + "】的"); break;
+                    case HasCardNameExpr hcnNot:
+                        parts.Add(string.IsNullOrEmpty(hcnNot.CardName)
+                            ? "卡名不同的"
+                            : "卡名不为《" + CardZh(hcnNot.CardName) + "》的");
+                        break;
+                    default:
+                    {
+                        string inner = PrintBool(nt.Inner);
+                        if (!string.IsNullOrEmpty(inner)) parts.Add("不满足「" + inner + "」的");
+                        break;
+                    }
+                }
+                break;
         }
     }
 
@@ -1502,6 +1581,14 @@ public sealed class ChineseCardPrinter
     /// </summary>
     private static string TermOfCompare(CompareExpr c)
     {
+        if (c.Left is not NumExpr { Op: NumOp.Counter } l0) return null;
+        if (c.Right is not NumExpr { Op: NumOp.Const } r0) return null;
+
+        // 「本回合我方随从尚未攻击」是 == 0，不是 >= 0。
+        // 放在 Ge 检查之前，否则这条永远进不去，卡面会印出英文内码。
+        if (c.Op == CompareOp.Eq && (l0.Counter.Name ?? "") == "turn_ally_attacks" && r0.Value == 0)
+            return "本回合中我方随从尚未进行攻击";
+
         if (c.Op != CompareOp.Ge) return null;
         if (c.Left is not NumExpr { Op: NumOp.Counter } l) return null;
         if (c.Right is not NumExpr { Op: NumOp.Const } r) return null;
@@ -1525,6 +1612,16 @@ public sealed class ChineseCardPrinter
             case ConstBoolExpr cb: return cb.Value ? "成立" : "不成立";
             case AndExpr a:
             {
+                // 融合分档表生成的 [X >= N and X <= N] 是精确档位，简化为「X为N」。
+                // 原样印会变成拗口的「融合次数≥1且融合次数≤1」。
+                if (a.Items is { Count: 2 }
+                    && a.Items[0] is CompareExpr { Op: CompareOp.Ge, Right: NumExpr { Op: NumOp.Const } rf1 } cf1
+                    && a.Items[1] is CompareExpr { Op: CompareOp.Le, Right: NumExpr { Op: NumOp.Const } rf2 } cf2
+                    && rf1.Value == rf2.Value
+                    && cf1.Left != null && cf2.Left != null
+                    && AstEnglishPrinter.PrintNum(cf1.Left) == AstEnglishPrinter.PrintNum(cf2.Left))
+                    return PrintNum(cf1.Left) + "为" + rf1.Value;
+
                 // 恒真项（`true and ctr:faith >= 10` 里的 true）不是条件，
                 // 打出来会变成「若成立且信仰≥10」这种机器味。
                 var parts = a.Items?
@@ -1593,6 +1690,14 @@ public sealed class ChineseCardPrinter
                 if (hcn.CardId == 0 && string.IsNullOrEmpty(hcn.CardName) && hcn.Of != null)
                     return "与" + PrintTarget(hcn.Of) + "同名";
                 return "卡名为《" + CardZh(hcn.CardName) + "》";
+
+            case HasClanExpr hcB:
+                if (hcB.IsSelfClan) return "属于本职业";
+                if (hcB.Clans != null && hcB.Clans.Count > 0)
+                    return "属于" + string.Join("或", hcB.Clans.Select(x => ClanZh(x.Name))) + "职业";
+                return "属于" + ClanZh(hcB.Clan.Name) + "职业";
+
+            case HasPackExpr hpB: return "来自【" + hpB.PackId + "】卡包";
 
             case IsPreviousExpr: return "已选择目标";
 
@@ -1818,6 +1923,13 @@ public sealed class ChineseCardPrinter
         "damage_dealt_this_turn" => "本回合造成的伤害",
         // 以下内码以前直接漏到卡面上（玩家看到的是 pp_at_play 这种变量名）。
         "pp_at_play" => "打出时能量点",
+        "turn_ally_attacks" => "本回合我方随从攻击次数",
+        "ally_attacked_leader_last_turn" => "上回合我方随从攻击主战者次数",
+        "ally_attacked_leader_this_turn" => "本回合我方随从攻击主战者次数",
+        "cards_destroyed_by_ability" => "本次能力破坏的卡牌数",
+        "cards_banished_by_ability" => "本次能力消失的卡牌数",
+        "cards_discarded_by_ability" => "本次能力舍弃的卡牌数",
+        "last_moved_count" => "本次能力移动的卡牌数",
         "match_play" => "本局打出次数",
         "turn_play" => "本回合打出次数",
         "skybound_gauge" => "奥义值",
