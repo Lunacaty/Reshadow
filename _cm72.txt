@@ -1,0 +1,40 @@
+fix(161): 4 处收尾遗漏
+
+161 号文档的 4 项已逐条核实（全部属实）并修复。
+
+【1. card:#id 解析漏反查卡名】
+  打印器只写卡号，ParseCardRef 与 named #N 都加了 TryGetCardName，
+  唯独 ParseTarget 的 card:#id 分支漏了。后果：往返后 CardName 为空串，
+  中文打印器把《痴迷的试验体》渲染成「我方的所有该卡牌」。
+  已补。实测：4 处 card:#id 解析后卡名为空 0 处。
+
+【2. earth_rite 去下划线后比对永远为 false】
+  两处代码都是先 Replace("_", "") 再拿 "earth_rite" 比对 ——
+  字面量带下划线，删完变 earthrite，永远匹配不上。
+  土之秘术的条件去重与还原形同虚设。已改用 earthrite。
+  同时 rally 的计数器名补上 match_play（编译器实际产物）。
+  实测：earth_rite 双写从多处降到 0，rally 双写 0。
+
+【3. StatOf 仍漏 countdown】
+  护符条件 prop:Countdown >= 2 会读到 StatKey.None（恒 0）。已补。
+  实测：prop:Countdown 往返 OK。
+
+【4. PrintN 的 prop: 未用 OfSuffix + has/named 不消费 (<Target>)】
+  ① PrintN 仍写 (e.Of != null ? "(" + PrintT(e.Of) + ")" : "")，
+     where 里会打出 prop:Cost($item)。已改用 OfSuffix(e.Of)。
+  ② 打印器对 has/named 会打 OfSuffix（非默认主语时是 has ward($trigger)），
+     但解析端读完词条名不消费括号，($trigger) 会残留行尾报错。
+     已新增 TryParseOfSuffix 并在 has trait / clan / keyword / named 全部接入。
+  实测：has ward($trigger) 往返 OK，零报错。
+
+【为什么 pyast-1 抓不到这 4 项】
+  它们都是「本来就对不上，但因为当前卡池没触发所以文本恰好相等」：
+  · card:#id 的卡名只影响中文打印器与英文比对，不影响 PyAST 文本
+  · earth_rite 去重失效只是「少去掉一个重复条件」，文本仍自洽
+  · StatOf 与 OfSuffix 的问题需要特定输入才暴露
+  因此本轮对每一项都做了直接断言，而不是只看门禁通过。
+
+验证：PyAST 门禁 6/6（含 1021/1021 全量往返），13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED

@@ -478,14 +478,14 @@ public sealed class AstCanonicalParser
         foreach (var c in costs)
         {
             if (c?.Amount is not NumExpr { Op: NumOp.Const } amt) continue;
-            string lbl = (c.Label ?? "").ToLowerInvariant().Replace("_", "");
+            string lbl = (c.Label ?? "").ToLowerInvariant().Replace("_", "").Replace(" ", "");
             string ctrName = lbl switch
             {
                 "combo" => "combo",
                 // rally 的实际计数器名是 match_play（见卡的 Condition：ctr:match_play >= N）
                 "rally" => "match_play",
                 "necromancy" => "shadow",
-                "earth_rite" => "earth_sigil",
+                "earthrite" => "earth_sigil",
                 "countdown" => "countdown",
                 _ => null,
             };
@@ -1526,6 +1526,12 @@ public sealed class AstCanonicalParser
             string cardName = string.Join(" ", nameParts);
             int cardId = 0;
             if (Match(PyTokKind.Hash)) cardId = TakeNumber();
+            // 打印器只写卡号，这里必须用 Lexicon 把卡名补回来。
+            // 漏了它，往返后 TargetSpec.CardName 是空串，
+            // 中文打印器会把「该卡牌」渲染错，英文打印器比对也不相等。
+            if (cardId > 0 && string.IsNullOrEmpty(cardName) && _lex != null
+                && _lex.TryGetCardName(cardId, out var resolvedName))
+                cardName = resolvedName;
             var owner0 = ZoneScope.Self;
             var zone0 = ZoneRef.Board;
             if (Match(PyTokKind.At))
@@ -1907,6 +1913,7 @@ public sealed class AstCanonicalParser
         "baselife" => StatKey.BaseLife,
         "basecost" => StatKey.BaseCost,
         "maxlife" => StatKey.MaxLife,
+        "countdown" or "chantcount" => StatKey.Countdown,
         _ => StatKey.None,
     };
 
@@ -1965,6 +1972,20 @@ public sealed class AstCanonicalParser
         };
     }
 
+
+    /// <summary>
+    /// 读取可选的主语后缀 (<Target>)。
+    ///
+    /// 打印器在 Of 不是当前上下文默认主语时会打出 (…) 后缀；
+    /// 没有括号就取当前上下文的默认主语。
+    /// </summary>
+    private TargetSpec TryParseOfSuffix()
+    {
+        if (!Match(PyTokKind.LParen)) return DefaultSubject;
+        var t = ParseTarget();
+        Expect(PyTokKind.RParen, "主语后缀缺少右括号");
+        return t;
+    }
     private BoolExpr ParseBoolAtom()
     {
         if (MatchIdent("true")) return BoolExpr.True;
@@ -1995,21 +2016,24 @@ public sealed class AstCanonicalParser
         // has trait <Name> | has clan <C|$self> | has <Keyword>
         if (MatchIdent("has"))
         {
+            // 打印器在 Of 是非默认槽位时会打出 has ward($trigger) 这种后缀，
+            // 不消费它会让括号残留在行尾报错。
             if (MatchIdent("trait"))
-                return new HasTraitExpr { Trait = _schema.Trait(ReadMultiWordUntilBoundary()), Of = DefaultSubject };
+                return new HasTraitExpr { Trait = _schema.Trait(ReadMultiWordUntilBoundary()), Of = TryParseOfSuffix() };
             if (MatchIdent("clan"))
             {
                 if (Current.Kind == PyTokKind.Slot && Current.Text == TargetSpec.SlotSelf)
                 {
                     Advance();
-                    return new HasClanExpr { IsSelfClan = true, Of = DefaultSubject };
+                    return new HasClanExpr { IsSelfClan = true, Of = TryParseOfSuffix() };
                 }
                 var clans = new List<SymbolId<ClanTag>> { _schema.Clan(TakeIdent()) };
                 while (Match(PyTokKind.Pipe)) clans.Add(_schema.Clan(TakeIdent()));
-                if (clans.Count == 1) return new HasClanExpr { Clan = clans[0], Of = DefaultSubject };
-                return new HasClanExpr { Clans = clans, Of = DefaultSubject };
+                var ofC = TryParseOfSuffix();
+                if (clans.Count == 1) return new HasClanExpr { Clan = clans[0], Of = ofC };
+                return new HasClanExpr { Clans = clans, Of = ofC };
             }
-            return new HasKeywordExpr { Keyword = _schema.Keyword(ReadMultiWordUntilBoundary()), Of = DefaultSubject };
+            return new HasKeywordExpr { Keyword = _schema.Keyword(ReadMultiWordUntilBoundary()), Of = TryParseOfSuffix() };
         }
 
         // in pack <id>
@@ -2030,7 +2054,7 @@ public sealed class AstCanonicalParser
                 if (_lex != null) _lex.TryGetCardName(nid, out nnm);
                 // Of 必须按上下文默认：漏设会让 named #N 的判定对象落到 null，
                 // 运行期 VmEval 走默认分支，能力级条件判错主体。
-                return new HasCardNameExpr { CardId = nid, CardName = nnm ?? "", Of = DefaultSubject };
+                return new HasCardNameExpr { CardId = nid, CardName = nnm ?? "", Of = TryParseOfSuffix() };
             }
 
             // named "卡名"（引号形式，纹章与历史数据用）

@@ -208,13 +208,15 @@ public static class AstCanonicalPrinter
         {
             if (c?.Amount is not NumExpr { Op: NumOp.Const } amt) continue;
             if (amt.Value != r.Value) continue;
-            string lbl = (c.Label ?? "").ToLowerInvariant().Replace("_", "");
+            string lbl = (c.Label ?? "").ToLowerInvariant().Replace("_", "").Replace(" ", "");
             // 代价标签 ↔ 计数器名 的对应关系（只列确定成立的几组）
             bool match =
                 (lbl == "combo" && ctrName == "combo") ||
-                (lbl == "rally" && (ctrName == "rally" || ctrName == "match_play_count")) ||
-                (lbl == "necromancy" && (ctrName == "shadow" || ctrName == "necromancy")) ||
-                (lbl == "earth_rite" && (ctrName == "earth_sigil" || ctrName == "earth_rite")) ||
+                // lbl 已去掉下划线，这里必须用 earthrite 比对。
+                // 写成 earth_rite 会永远匹配不上，土之秘术的条件去重形同虚设。
+                (lbl == "rally" && (ctrName == "rally" || ctrName == "match_play" || ctrName == "match_play_count")) ||
+                (lbl is "necromancy" or "necromance" && (ctrName == "shadow" || ctrName == "necromancy")) ||
+                (lbl == "earthrite" && (ctrName == "earth_sigil" || ctrName == "earth_rite")) ||
                 (lbl == "countdown" && ctrName == "countdown");
             if (match && (cmp.Op == CompareOp.Ge || cmp.Op == CompareOp.Eq)) return true;
         }
@@ -948,7 +950,7 @@ public static class AstCanonicalPrinter
             // （"both players have N max play points"）打印成完全相同的两半，
             // 验收时看不出它到底只判了一侧还是判了两侧。
             NumOp.Counter => "ctr:" + e.Counter.Name + CounterOwnerSuffix(e),
-            NumOp.Property => "prop:" + e.Stat + (e.Of != null ? "(" + PrintT(e.Of) + ")" : ""),
+            NumOp.Property => "prop:" + e.Stat + OfSuffix(e.Of),
             NumOp.Count => "count(" + PrintT(e.Of) + ")",
             // 必须打印 Stat，否则 sum(攻击) 与 sum(防御) 看起来完全一样。
             NumOp.Sum => "sum:" + e.Stat + "(" + PrintT(e.Of) + ")",
