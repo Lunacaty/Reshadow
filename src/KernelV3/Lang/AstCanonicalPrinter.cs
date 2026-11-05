@@ -24,6 +24,15 @@ public static class AstCanonicalPrinter
 {
     private static string Pad(int indent) => new string(' ', indent * 4);
 
+    /// <summary>
+    /// 是否正在打印 where 子句内部。
+    ///
+    /// where 里的 prop:Cost / is Evolved 默认主语是 $item（被筛的那张），
+    /// 而顶层 if 里默认是 $self（本卡）。两者打印时都隐藏括号，
+    /// 只在主语不是默认值时才印出来 —— 否则人类看到满屏的 ($item) 会被劝退。
+    /// </summary>
+    [ThreadStatic] private static bool _inWherePrint;
+
     /// <summary>打印整张卡（含子定义）。</summary>
     public static string PrintCard(Ast.CardDef card, bool withSubDefs = true)
     {
@@ -48,6 +57,9 @@ public static class AstCanonicalPrinter
             attrs.Add("life=" + card.BaseLife);
         }
         if (card.IsToken) attrs.Add("token");
+        // 稀有度不打印的话往返后归 0（青铜框），而卡面图一模一样，
+        // 只有组牌界面才会发现框色变了。
+        if (card.Rarity > 0) attrs.Add("rarity=" + card.Rarity);
 
         sb.Append("card ").Append(card.CardId).Append(" \"").Append(card.Name).Append("\" (")
           .Append(string.Join(", ", attrs)).Append("):");
@@ -83,6 +95,18 @@ public static class AstCanonicalPrinter
                 if (!string.IsNullOrEmpty(dm.TargetClan)) sb.Append(" clan=").Append(dm.TargetClan);
                 if (dm.StackPerCopy) sb.Append(" stack");
                 if (!string.IsNullOrEmpty(dm.ExclusiveGroup)) sb.Append(" group=").Append(dm.ExclusiveGroup);
+            }
+        }
+
+        // 固有个数计数器（纹章 / 信仰的初始层数）必须落盘，
+        // 否则往返后纹章从 3 层变 0 层。
+        if (card.InnateCounters != null && card.InnateCounters.Count > 0)
+        {
+            foreach (var kv in card.InnateCounters.OrderBy(k => k.Key.Name, StringComparer.Ordinal))
+            {
+                if (!kv.Key.IsValid || string.IsNullOrEmpty(kv.Key.Name)) continue;
+                sb.Append('\n').Append(Pad(1))
+                  .Append("innate_counter: ").Append(kv.Key.Name).Append(' ').Append(kv.Value);
             }
         }
 
@@ -134,6 +158,23 @@ public static class AstCanonicalPrinter
     private static void PrintAbility(AbilityDef a, StringBuilder sb, int indent)
     {
         if (a == null) return;
+
+        // 护符/纹章的「初始吟唱」本质只是一条 PassiveAura + Countdown 代价，
+        // 没有效果体。打成 "aura [countdown(3)]:\n    pass" 全是编译器内部味，
+        // 这里美化成单行声明 countdown(3)。
+        if (a.Trigger != null
+            && a.Trigger.Event == CoreEvent.PassiveAura
+            && a.Trigger.SubjectFilter == null
+            && (a.Body == null || a.Body.Count == 0)
+            && (a.Condition == null || a.Condition is ConstBoolExpr { Value: true })
+            && a.Costs is { Count: 1 }
+            && a.Costs[0].Kind == CostKind.Countdown)
+        {
+            sb.Append(Pad(indent)).Append("countdown(")
+              .Append(PrintN(a.Costs[0].Amount)).Append(')');
+            return;
+        }
+
         sb.Append(Pad(indent)).Append(FormatTriggerHeader(a)).Append(':');
         if (a.Body == null || a.Body.Count == 0)
         {
@@ -210,6 +251,34 @@ public static class AstCanonicalPrinter
             sb.Append(" if ").Append(PrintB(a.Condition));
 
         return sb.ToString();
+    }
+
+
+    /// <summary>
+    /// 打印 if / elif / else 链。
+    ///
+    /// 当 Else 恰好是单个 ConditionalNode 时，原样输出会是
+    ///   else:
+    ///       if ...:
+    /// 多档爆能一叠就是往右缩进的「箭头型反模式」。
+    /// 这里把它压平成同级的 elif，解析端再折回嵌套结构。
+    /// </summary>
+    private static void PrintIfChain(ConditionalNode cn, StringBuilder sb, int indent, bool isElif)
+    {
+        string p = Pad(indent);
+        sb.Append(p).Append(isElif ? "elif " : "if ").Append(PrintB(cn.Condition)).Append(':');
+        PrintBlockBody(cn.Then, sb, indent + 1);
+
+        if (cn.Else is { Count: 1 } && cn.Else[0] is ConditionalNode next && next.If == null)
+        {
+            sb.Append('\n');
+            PrintIfChain(next, sb, indent, isElif: true);
+        }
+        else if (cn.Else is { Count: > 0 })
+        {
+            sb.Append('\n').Append(p).Append("else:");
+            PrintBlockBody(cn.Else, sb, indent + 1);
+        }
     }
 
     private static void PrintBlockBody(IReadOnlyList<EffectNode> body, StringBuilder sb, int indent)
@@ -325,13 +394,7 @@ public static class AstCanonicalPrinter
                 break;
 
             case ConditionalNode cn:
-                sb.Append(p).Append("if ").Append(PrintB(cn.Condition)).Append(':');
-                PrintBlockBody(cn.Then, sb, indent + 1);
-                if (cn.Else is { Count: > 0 })
-                {
-                    sb.Append('\n').Append(p).Append("else:");
-                    PrintBlockBody(cn.Else, sb, indent + 1);
-                }
+                PrintIfChain(cn, sb, indent, isElif: false);
                 break;
 
             case LoopNode lp:
@@ -595,10 +658,61 @@ public static class AstCanonicalPrinter
     private static string OfSuffix(TargetSpec of)
     {
         if (of == null) return "";
+        // 隐藏「当前上下文的默认主语」：
+        //   where 内 -> $item（被筛的那张）；where 外 -> $self（本卡）。
+        // 人类因此既不用写 ($item) 也不用写 ($self)，语义由上下文唯一确定。
+        string defaultSlot = _inWherePrint ? TargetSpec.SlotItem : TargetSpec.SlotSelf;
+        if (of.SourceKind == TargetSourceKind.Slot && of.Slot == defaultSlot) return "";
         if (of.SourceKind == TargetSourceKind.Slot && of.Slot == TargetSpec.SlotItem) return "";
         return "(" + PrintT(of) + ")";
     }
 
+
+
+    /// <summary>
+    /// 从 Where 里提取可内联的卡种与 other 修饰词。
+    ///
+    /// 影之诗 90% 的目标都是「随从」或「其他随从」，写成
+    ///   self:board All where (other than itself and is Follower)
+    /// 又长又噪。这里把它们提权成
+    ///   self:board<Follower> other All
+    /// 剩下的条件若只有一条，连括号都省掉。
+    /// </summary>
+    private static BoolExpr ExtractInlineTargetModifiers(
+        BoolExpr where, bool allowKindLift, out CardKind? kind, out bool isOther)
+    {
+        kind = null;
+        isOther = false;
+        if (where == null || where is ConstBoolExpr) return null;
+
+        var items = where is AndExpr a ? a.Items.ToList() : new List<BoolExpr> { where };
+        var kept = new List<BoolExpr>();
+
+        foreach (var it in items)
+        {
+            if (allowKindLift && !kind.HasValue && it is HasKindExpr hk
+                && hk.Kind is CardKind.Follower or CardKind.Spell or CardKind.Amulet
+                && (hk.Of == null || hk.Of.SourceKind != TargetSourceKind.Zone))
+            {
+                kind = hk.Kind;
+                continue;
+            }
+            // 编译器会把 "other than itself" 具体化成 $self（而不是保留
+            // $excludeTriggerOrSelf 这个待定值），两种都要认。
+            if (!isOther && it is NotSameEntityExpr nse
+                && (nse.ExcludeSlot == TargetSpec.SlotExcludeTriggerOrSelf
+                    || nse.ExcludeSlot == TargetSpec.SlotSelf)
+                && (nse.Of == null || nse.Of.SourceKind != TargetSourceKind.Zone))
+            {
+                isOther = true;
+                continue;
+            }
+            kept.Add(it);
+        }
+
+        if (kept.Count == 0) return null;
+        return kept.Count == 1 ? kept[0] : new AndExpr(kept);
+    }
 
     private static string PrintT(TargetSpec t)
     {
@@ -612,6 +726,10 @@ public static class AstCanonicalPrinter
             if (t.Where != null && t.Where is not ConstBoolExpr) s.Append(" where " + PrintB(t.Where));
             return s.ToString();
         }
+
+        // 先尝试把 <Kind> 与 other 从 Where 里提权出来
+        var remWhere = ExtractInlineTargetModifiers(t.Where,
+            t.SourceKind == TargetSourceKind.Zone, out var inlineKind, out var inlineOther);
 
         var sb = new StringBuilder();
         switch (t.SourceKind)
@@ -635,8 +753,13 @@ public static class AstCanonicalPrinter
                 break;
             default:
                 sb.Append(t.Owner.ToString().ToLowerInvariant() + ":" + t.Zone.ToString().ToLowerInvariant());
+                // 卡种提权成尖括号泛型标签：self:board<Follower>
+                if (inlineKind.HasValue) sb.Append('<').Append(inlineKind.Value).Append('>');
                 break;
         }
+
+        // other 提权成修饰词，紧跟区域之后
+        if (inlineOther) sb.Append(" other");
 
         if (t.History != HistoryScope.None) sb.Append(" history=" + t.History);
         if (t.IncludeLeader) sb.Append(" +leader");
@@ -648,12 +771,22 @@ public static class AstCanonicalPrinter
         if (t.TopN > 0) sb.Append(" topN=" + t.TopN);
 
         // All 不需要数量；只有 Choose / Random / First 才印 (n)。
+        // 主战者只有 1 个，再跟一个 All 纯属噪音 —— 省略它（解析端默认 All）。
         if (t.Mode == SelectMode.All)
-            sb.Append(" All");
+        {
+            if (!(t.Zone == ZoneRef.Leader && t.Sort == SortKey.None && !t.IncludeLeader))
+                sb.Append(" All");
+        }
         else
             sb.Append(' ').Append(t.Mode).Append('(').Append(PrintN(t.Count ?? NumExpr.Const(1))).Append(')');
 
-        if (t.Where != null && t.Where is not ConstBoolExpr) sb.Append(" where " + PrintB(t.Where));
+        if (remWhere != null && remWhere is not ConstBoolExpr)
+        {
+            bool prev = _inWherePrint;
+            _inWherePrint = true;
+            try { sb.Append(" where " + PrintB(remWhere)); }
+            finally { _inWherePrint = prev; }
+        }
         return sb.ToString();
     }
 
@@ -758,8 +891,11 @@ public static class AstCanonicalPrinter
             // 而前者在触发时作用域里只有 $self，写成 $item 会恒为 false。
             HasStateExpr hs => "is " + hs.State + OfSuffix(hs.Of),
             HasKindExpr hk => "is " + hk.Kind + OfSuffix(hk.Of),
-            HasKeywordExpr hk => "has " + hk.Keyword.Name,
-            HasTraitExpr ht => "has trait " + ht.Trait.Name,
+            // Of 必须打出来：能力级条件判的是 $self，where 里判的是 $item。
+            // 不打它，「本卡是否有 ward」与「被筛的那张是否有 ward」打印完全一样，
+            // 而前者在触发时作用域里只有 $self，写成 $item 会恒为 false。
+            HasKeywordExpr hk => "has " + hk.Keyword.Name + OfSuffix(hk.Of),
+            HasTraitExpr ht => "has trait " + ht.Trait.Name + OfSuffix(ht.Of),
             HasPackExpr hp => "in pack " + hp.PackId,
             // CardId 与 CardName 都为空时，Of 是「参照槽位」——
             //   "Banish all enemy copies of it" 要印成 same name as $selected，

@@ -52,6 +52,23 @@ public sealed class AstCanonicalParser
             // PassiveAura 能力，而不是报「未知的触发头」。
             // @if 开头的行同样是「裸动作」形态（节点级前置条件），
             // 只判 Ident 会让它以 @ 掉进 ParseAbility，报「未知的触发头」。
+            // countdown(N) 单行声明：还原成 PassiveAura + Countdown 代价的能力。
+            if (Current.Kind == PyTokKind.Ident && Current.Text == "countdown" && PeekText(1) == "(")
+            {
+                Advance(); Advance();
+                var cdAmt = ParseNumExpr();
+                Expect(PyTokKind.RParen, "countdown( 缺少右括号");
+                SkipNewlines();
+                list.Add(new AbilityDef
+                {
+                    Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                    Condition = BoolExpr.True,
+                    Costs = new List<CostSpec> { new CostSpec { Kind = CostKind.Countdown, Amount = cdAmt, Label = "countdown" } },
+                    Body = new List<EffectNode>(),
+                });
+                continue;
+            }
+
             bool isBareAction = Current.Kind == PyTokKind.At
                              || (Current.Kind == PyTokKind.Ident && !IsTriggerHeaderWord(Current.Text));
             if (isBareAction)
@@ -134,6 +151,7 @@ public sealed class AstCanonicalParser
         }
         Expect(PyTokKind.Colon, "card 头缺少冒号");
 
+        int rarity = attrs.TryGetValue("rarity", out var rv) && int.TryParse(rv, out var rn) ? rn : 0;
         if (attrs.ContainsKey("Spell")) kind = CardKind.Spell;
         else if (attrs.ContainsKey("Amulet")) kind = CardKind.Amulet;
         else if (attrs.ContainsKey("Crest")) kind = CardKind.Crest;
@@ -151,6 +169,7 @@ public sealed class AstCanonicalParser
         Ast.CardDef crestDef = null, faithDef = null, accelDef = null, crystDef = null;
         bool fuseSet = false;
         var deckMods = new List<DeckBuildModifier>();
+        var innateCounters = new Dictionary<SymbolId<CounterTag>, int>();
         TargetSpec fuseFilter = null;
 
         SkipNewlines();
@@ -160,6 +179,17 @@ public sealed class AstCanonicalParser
             SkipNewlines();
             while (!IsAtEnd && Current.Kind != PyTokKind.Dedent)
             {
+                if (Current.Kind == PyTokKind.Ident && Current.Text == "innate_counter")
+                {
+                    Advance();
+                    Expect(PyTokKind.Colon, "innate_counter 后缺少冒号");
+                    string cName = TakeIdent();
+                    int cVal = TakeNumber();
+                    innateCounters[_schema.Counter(cName)] = cVal;
+                    SkipNewlines();
+                    continue;
+                }
+
                 if (Current.Kind == PyTokKind.Ident && Current.Text == "deck_mod")
                 {
                     Advance();
@@ -243,6 +273,23 @@ public sealed class AstCanonicalParser
                     SkipNewlines();
                     continue;
                 }
+                // countdown(N) 单行声明（护符的初始吟唱）。
+                if (Current.Kind == PyTokKind.Ident && Current.Text == "countdown" && PeekText(1) == "(")
+                {
+                    Advance(); Advance();
+                    var cdAmt = ParseNumExpr();
+                    Expect(PyTokKind.RParen, "countdown( 缺少右括号");
+                    abilities.Add(new AbilityDef
+                    {
+                        Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                        Condition = BoolExpr.True,
+                        Costs = new List<CostSpec> { new CostSpec { Kind = CostKind.Countdown, Amount = cdAmt, Label = "countdown" } },
+                        Body = new List<EffectNode>(),
+                    });
+                    SkipNewlines();
+                    continue;
+                }
+
                 int guardCard = _pos;
                 try
                 {
@@ -271,9 +318,10 @@ public sealed class AstCanonicalParser
             InnateKeywords = keywords,
             Abilities = abilities,
             HasFuse = fuseSet, FuseMaterialFilter = fuseFilter, DeckModifiers = deckMods,
+            InnateCounters = innateCounters,
             CrestDef = crestDef, FaithDef = faithDef,
             AccelerateDef = accelDef, CrystallizeDef = crystDef,
-            IsToken = attrs.ContainsKey("token"),
+            IsToken = attrs.ContainsKey("token"), Rarity = rarity,
         };
     }
     // ---------------------------------------------------------------- 能力
@@ -314,6 +362,22 @@ public sealed class AstCanonicalParser
             {
                 int g = _pos;
                 if (Current.Kind == PyTokKind.Ident && Current.Text == "pass") { Advance(); SkipNewlines(); continue; }
+                // 子卡段里的 countdown(N) 单行声明同样要还原。
+                if (Current.Kind == PyTokKind.Ident && Current.Text == "countdown" && PeekText(1) == "(")
+                {
+                    Advance(); Advance();
+                    var cdA = ParseNumExpr();
+                    Expect(PyTokKind.RParen, "countdown( 缺少右括号");
+                    body.Add(new AbilityDef
+                    {
+                        Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                        Condition = BoolExpr.True,
+                        Costs = new List<CostSpec> { new CostSpec { Kind = CostKind.Countdown, Amount = cdA, Label = "countdown" } },
+                        Body = new List<EffectNode>(),
+                    });
+                    SkipNewlines();
+                    continue;
+                }
                 try
                 {
                     var ab = ParseAbility();
@@ -550,12 +614,17 @@ public sealed class AstCanonicalParser
             case "restore": return ParseRestore(false);
             case "fully_restore": return ParseRestore(true);
             case "buff": return ParseStats(StatModOp.Add);
+            // debuff 与 buff 是同一个节点（Op=Add），只是人类更愿意用前者表达减益。
+            case "debuff": return ParseStats(StatModOp.Add);
             case "set_stats": return ParseStats(StatModOp.Set);
             case "swap_stats": return ParseSwapStats();
             case "grant_keyword": return ParseGrantKeyword();
             case "remove_keyword": return ParseRemoveKeyword();
             case "silence": return new ModifyKeywordNode { Target = ParseTarget(), Op = KeywordOp.SilenceAll };
             case "modify_cost": return ParseModifyCost(CostModOp.Add);
+            // reduce_cost / increase_cost：人类不必再记「减费要写负号」。
+            case "reduce_cost": return ParseDirectionalCost(-1);
+            case "increase_cost": return ParseDirectionalCost(+1);
             case "set_cost": return ParseModifyCost(CostModOp.Set);
             case "halve_cost": return ParseModifyCost(CostModOp.Halve);
             case "grant_ability": return ParseGrantAbility();
@@ -969,6 +1038,19 @@ public sealed class AstCanonicalParser
         return new ModifyKeywordNode { Target = tgt, Op = KeywordOp.Remove, Keyword = _schema.Keyword(kw) };
     }
 
+
+    /// <summary>reduce_cost / increase_cost：由方向决定符号，人类不必手写负号。</summary>
+    private ModifyCostNode ParseDirectionalCost(int sign)
+    {
+        var tgt = ParseTarget();
+        EatIdent("by");
+        var mag = ParseNumExpr();
+        NumExpr val = sign < 0
+            ? (mag != null && mag.Op == NumOp.Const ? NumExpr.Const(-mag.Value) : NumExpr.Sub(NumExpr.Const(0), mag))
+            : mag;
+        return new ModifyCostNode { Target = tgt, Op = CostModOp.Add, Value = val, Duration = TryDur() };
+    }
+
     private ModifyCostNode ParseModifyCost(CostModOp op)
     {
         var tgt = ParseTarget();
@@ -1008,7 +1090,14 @@ public sealed class AstCanonicalParser
         var thenBody = ParseIndentedBlock();
         IReadOnlyList<EffectNode> elseBody = Array.Empty<EffectNode>();
         SkipNewlines();
-        if (Current.Kind == PyTokKind.Ident && Current.Text == "else")
+        if (Current.Kind == PyTokKind.Ident && Current.Text == "elif")
+        {
+            // elif 折回嵌套 ConditionalNode —— 打印器把单节点 Else 打印成 elif，
+            // 这里必须原样还原，否则往返不守恒。
+            Advance();
+            elseBody = new List<EffectNode> { ParseIfBlock() };
+        }
+        else if (Current.Kind == PyTokKind.Ident && Current.Text == "else")
         {
             Advance();
             Expect(PyTokKind.Colon, "else 后缺少冒号");
@@ -1220,6 +1309,17 @@ public sealed class AstCanonicalParser
             {
                 Advance(); Advance();
                 spec = WithIncludeLeader(spec, true);
+                continue;
+            }
+            // `other` 是 NotSameEntityExpr 的提权写法（打印器把 where 里的
+            // "other than itself" 提成了区域后的修饰词）。
+            if (MatchIdent("other"))
+            {
+                spec = spec.WithWhere(new NotSameEntityExpr
+                {
+                    ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf,
+                    Of = TargetSpec.Item,
+                });
                 continue;
             }
             if (MatchIdent("distinct")) { spec = WithDistinct(spec, true); continue; }
@@ -1530,15 +1630,15 @@ public sealed class AstCanonicalParser
     private static NumExpr Arith(NumExpr l, ArithOp op, NumExpr r)
         => new NumExpr { Op = NumOp.Arith, Arith = op, Args = new[] { l, r } };
 
-    private static StatKey StatOf(string s) => s switch
+    private static StatKey StatOf(string s) => (s ?? "").Replace("_", "").ToLowerInvariant() switch
     {
-        "Attack" => StatKey.Attack,
-        "Life" => StatKey.Life,
-        "Cost" => StatKey.Cost,
-        "BaseAttack" => StatKey.BaseAttack,
-        "BaseLife" => StatKey.BaseLife,
-        "BaseCost" => StatKey.BaseCost,
-        "MaxLife" => StatKey.MaxLife,
+        "attack" => StatKey.Attack,
+        "life" => StatKey.Life,
+        "cost" => StatKey.Cost,
+        "baseattack" => StatKey.BaseAttack,
+        "baselife" => StatKey.BaseLife,
+        "basecost" => StatKey.BaseCost,
+        "maxlife" => StatKey.MaxLife,
         _ => StatKey.None,
     };
 
@@ -1712,6 +1812,11 @@ public sealed class AstCanonicalParser
             {
                 string w = Current.Text;
                 if (w == "and" || w == "or") break;
+                // 这些是后续子句的起始词，绝不属于词条名。
+                // 不在这里停，「has trait Mysteria by -1」会把 by 吞进名字，
+                // 于是 by 被消费两次（打印成 "by by -1"）。
+                if (parts.Count > 0 && (w == "by" || w == "to" || w == "from"
+                    || w == "into" || w == "where" || w == "with" || w == "on")) break;
                 bool hit = false;
                 foreach (var sw in stops) if (w == sw && parts.Count > 0) { hit = true; break; }
                 if (hit) break;
@@ -1764,15 +1869,27 @@ public sealed class AstCanonicalParser
 
 
     private static ZoneScope OwnerOf(string s)
-        => s == "Opponent" || s == "opponent" ? ZoneScope.Opponent
-         : s == "Any" || s == "any" ? ZoneScope.Any : ZoneScope.Self;
+    {
+        var k = (s ?? "").Replace("_", "").ToLowerInvariant();
+        // ally / enemy 是人类更习惯的写法，与 self / opponent 等价。
+        if (k == "opponent" || k == "opp" || k == "enemy") return ZoneScope.Opponent;
+        if (k == "any") return ZoneScope.Any;
+        return ZoneScope.Self;
+    }
 
     private static ActiveZoneScope ZoneOf(string s)
-        => s == "Hand" ? ActiveZoneScope.Hand : s == "Deck" ? ActiveZoneScope.Deck
-         : s == "ExArea" ? ActiveZoneScope.ExArea : ActiveZoneScope.Board;
+    {
+        var k = (s ?? "").Replace("_", "").ToLowerInvariant();
+        return k == "hand" ? ActiveZoneScope.Hand : k == "deck" ? ActiveZoneScope.Deck
+             : k == "exarea" ? ActiveZoneScope.ExArea : ActiveZoneScope.Board;
+    }
 
     private static TurnOwnerScope TurnOf(string s)
-        => s == "Self" ? TurnOwnerScope.Self : s == "Opponent" ? TurnOwnerScope.Opponent : TurnOwnerScope.Any;
+    {
+        var k = (s ?? "").Replace("_", "").ToLowerInvariant();
+        return k == "self" || k == "ally" ? TurnOwnerScope.Self
+             : k == "opponent" || k == "enemy" ? TurnOwnerScope.Opponent : TurnOwnerScope.Any;
+    }
 
     private static ZoneRef ZoneRefOf(string s) => (s ?? "").ToLowerInvariant() switch
     {

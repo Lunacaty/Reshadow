@@ -261,6 +261,10 @@ public sealed class DiyWorkspace
             AccelerateDef = def.AccelerateDef,
             CrystallizeDef = def.CrystallizeDef,
             IsToken = def.IsToken,
+            // rarity 与 innate counters 也必须带走：
+            // 漏了它们，导入导出一轮后稀有度归 0、纹章层数归 0。
+            Rarity = def.Rarity,
+            InnateCounters = def.InnateCounters,
             SourceText = dslText,
         };
         return def;
