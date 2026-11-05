@@ -364,6 +364,37 @@ public static partial class Regress
                   "顶层=" + (topState?.Of?.Slot ?? "null") + " where=" + (whereState?.Of?.Slot ?? "null"));
         }
 
+
+        // ================================================================
+        // pyast-11：中文卡面质量扫描。
+        //
+        // 163 号文档的 8 处 Bug 共同特征：卡面文本出错但不抛异常、
+        // 门禁不红，只有人眼逐张看才能发现。这里把它变成机器可查的断言。
+        // ================================================================
+        {
+            var zhPrinter = new ChineseCardPrinter();
+            var faceBad = new List<string>();
+            foreach (var card in catalog.AllCards.Values.OrderBy(x => x.CardId))
+            {
+                string face;
+                try { face = zhPrinter.PrintCard(card); }
+                catch (Exception ex) { faceBad.Add(card.CardId + " 抛异常：" + ex.Message); continue; }
+
+                if (face.Contains("《》")) faceBad.Add(card.CardId + " 空书名号");
+                // 英文内码外泄：CounterZh / KeywordZh 漏译时会直接印出 snake_case。
+                var leak = System.Text.RegularExpressions.Regex.Match(face, @"[a-z]+_[a-z_]+");
+                if (leak.Success) faceBad.Add(card.CardId + " 英文内码 " + leak.Value);
+                if (face.Contains("其他的其他") || face.Contains("所有所有"))
+                    faceBad.Add(card.CardId + " 重复修饰词");
+                // 区间未折叠：[X >= N and X <= N] 应印成「X为N」。
+                if (System.Text.RegularExpressions.Regex.IsMatch(face, @"≥(\d+)且.{0,12}≤\1"))
+                    faceBad.Add(card.CardId + " 区间未折叠");
+            }
+            Check("pyast-11 中文卡面质量：无空书名号 / 无英文内码外泄 / 无重复修饰词",
+                  faceBad.Count == 0,
+                  faceBad.Count == 0 ? "1021 张全部通过" : string.Join(" ;; ", faceBad.Take(5)));
+        }
+
         log.AppendLine();
         log.AppendLine("=== PyAST 门禁 " + pass + "/" + total + " ===");
         return log.ToString();

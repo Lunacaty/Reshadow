@@ -238,6 +238,13 @@ public sealed class Glossary
         g.Add("Destroyed", "已被破坏");
         g.Add("CurrentAttackHitLeader", "本次攻击目标为主战者");
 
+        // ---------- 内置封印标记 ----------
+        // 这两个是 GameSchema 里的内置计数器名，出现在卡面关键词栏时会直接印英文内码。
+        // 它们表示「入场曲/爆能强化被封印」，不是玩家可读的关键词，
+        // 卡面统一印成封印说明。
+        g.Add("suppress_fanfare", "入场曲被封印");
+        g.Add("suppress_enhance", "爆能强化被封印");
+
         return g;
     }
 }

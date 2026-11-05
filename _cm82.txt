@@ -1,0 +1,38 @@
+fix(163 复查): 8 项全部落实 + 补 Glossary 漏译 + 固化卡面质量门禁
+
+## 8 项逐条核对结果：全部落实
+  逐项做了深度断言（不是只看代码存在，而是精确字符串比对）：
+    1 IncludeLeader —— 断言输出恰好等于「敌方的主战者与全体敌方随从」，
+                      不再坠入量词/名词两步
+    2 chooseN 序号 + 动态数量 —— 断言「第1个」（不是第2个）、
+                                断言「随机X个」（不是随机1个）
+    3 NotExpr / HasCardNameExpr / OrExpr —— 断言「未进化的」「非X兵种的」
+    5 TermOfCompare Eq —— 断言「尚未进行攻击」且不含英文内码
+    6 HasClanExpr / HasPackExpr
+    7 区间折叠 —— 断言「为1」且不含「≥1」
+    8 空卡名兜底 —— 断言不含《》
+    4 SameNode / elif 链 —— 结构核对（ReferenceEquals 仅剩 PrintCardWithHighlight
+                              一处合法用法，自带文本兜底）
+  9/9 通过。
+
+## 复查中揪出的第 9 项（163 未提及的同类问题）
+  全卡池卡面质量扫描发现：《魂之继承者》卡面出现【suppress_fanfare】
+  【suppress_enhance】——两个内置封印标记没有中译。
+  这是 163 第 5 项「CounterZh 漏项」的同类问题，只是漏在 Glossary 而非 CounterZh。
+  已补：suppress_fanfare -> 入场曲被封印 / suppress_enhance -> 爆能强化被封印。
+  核对：GameSchema 共 25 个计数器，CounterZh 全覆盖；
+        Glossary 原本缺这 2 个关键词。
+
+## 固化 pyast-11：中文卡面质量门禁
+  163 号文档的 8 处 Bug 共同特征是「卡面文本出错但不抛异常、门禁不红」，
+  只有人眼逐张看才能发现。现在变成机器可查的断言：
+    · 空书名号《》
+    · 英文内码外泄（CounterZh / KeywordZh 漏译会印出 snake_case）
+    · 重复修饰词（其他的其他 / 所有所有）
+    · 区间未折叠（X≥N 且 X≤N）
+  1021 张全部通过。
+
+验证：PyAST 门禁 11/11，13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED
