@@ -331,7 +331,9 @@ public partial class DiyWorkshopView : Control
 
         AddEndpointTab(tabs, "① 表单向导端", DiyEndpointKind.Form);
         AddEndpointTab(tabs, "② Scratch 积木", DiyEndpointKind.Block);
-        AddEndpointTab(tabs, "③ AST 语法树端", DiyEndpointKind.Script);
+        // ③ 端在 204/206 号文档落地后换成了 PyAST DSL（规范 AST 语法），
+        // 与卡包 source_format: "py_ast" 共用同一份打印器与解析器。
+        AddEndpointTab(tabs, "③ AST 规范语法", DiyEndpointKind.Script);
         AddEndpointTab(tabs, "④ 官方英文", DiyEndpointKind.EnglishCnl);
 
         // 不再给 _endpointHost 套外层 ScrollContainer：
@@ -441,18 +443,19 @@ public partial class DiyWorkshopView : Control
     }
 
     /// <summary>
-    /// ③ AST 语法树端：直接编辑 CardDef 的 AST JSON。
+    /// ③ AST 规范语法端：直接编写 PyAST DSL 的**效果块**（纯能力列表，无卡头）。
     ///
-    /// 取代原来的 ReshadowScript 脚本端 —— 那套自定义语法是手写的文本版 AST，
-    /// 每加一个 EffectNode 字段都要同时改解析与打印两端，漏一个逗号就报错。
-    /// AST JSON 由 AstJsonCodec 跟随类型，加字段只在那里各补一行。
+    /// 204/206 号文档落地后，这一端从旧的 ReshadowScript 效果块换成了规范 AST 语法：
+    /// 打印用 AstCanonicalPrinter、解析用 AstCanonicalParser.ParseAbilities，
+    /// 与卡包 source_format: "py_ast" 共用同一份语法定义。
+    /// 模板按钮里的每一段都能被真实解析 —— 点进去直接编译即可通过。
     /// </summary>
     private void BuildScriptEndpoint()
     {
         var hint = new Label
         {
-            Text = "直接编写卡片的抽象语法树（AST JSON，支持 // 注释与尾随逗号）。" +
-                   "点击下方模板按钮可在光标处一键插入对应节点：",
+            Text = "直接编写卡片的规范 AST 效果块（Python 风格缩进，游戏术语）。" +
+                   "卡名/费用/身材沿用上方卡头，这里只写能力。点下方模板可一键插入：",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
         hint.AddThemeFontSizeOverride("font_size", 11);
@@ -464,35 +467,44 @@ public partial class DiyWorkshopView : Control
         tplBar.AddThemeConstantOverride("v_separation", 4);
         _endpointHost.AddChild(tplBar);
 
-        AddAstSnippetBtn(tplBar, "入场曲能力壳",
-            "Fanfare:\n  Deal 3 damage to opponent:board Choose(1) where is Follower\n");
+        AddAstSnippetBtn(tplBar, "入场曲",
+            "fanfare:\n    deal 3 damage to opponent:board Choose(1) where is Follower\n");
 
-        AddAstSnippetBtn(tplBar, "伤害 Deal",
-            "Deal 3 damage to opponent:board Choose(1) where is Follower");
+        AddAstSnippetBtn(tplBar, "谢幕曲",
+            "last_words:\n    draw 1\n");
 
-        AddAstSnippetBtn(tplBar, "抽牌 Draw",
-            "Draw 2");
+        AddAstSnippetBtn(tplBar, "进化",
+            "evolve:\n    buff $self +2/+2\n");
 
-        AddAstSnippetBtn(tplBar, "身材 ModifyStats",
-            "ModifyStats Add 2/2 to $self");
+        AddAstSnippetBtn(tplBar, "超进化",
+            "super_evolve:\n    destroy opponent:board All where is Follower\n");
 
-        AddAstSnippetBtn(tplBar, "关键词 Keyword",
-            "Keyword Grant ward to $self");
+        AddAstSnippetBtn(tplBar, "常驻光环",
+            "aura:\n    grant_keyword ward to $self\n");
 
-        AddAstSnippetBtn(tplBar, "伤害光环 DamageAura",
-            "DamageAura TakenCap All reduce 3 to $self");
+        AddAstSnippetBtn(tplBar, "抽牌",
+            "draw 2");
 
-        AddAstSnippetBtn(tplBar, "模式分支 Modes",
-            "Modes Choose(1):\n  (1):\n    Restore 4 to self:leader\n  (2):\n    Deal 4 damage to opponent:leader");
+        AddAstSnippetBtn(tplBar, "加身材",
+            "buff $self +2/+2");
 
-        AddAstSnippetBtn(tplBar, "选择目标 Select",
-            "Select $selected = opponent:board Choose(1) where is Follower");
+        AddAstSnippetBtn(tplBar, "授予关键词",
+            "grant_keyword ward to $self");
 
-        AddAstSnippetBtn(tplBar, "条件 If",
-            "If is Follower:\n  Draw 1\nElse:\n  Restore 2 to $self");
+        AddAstSnippetBtn(tplBar, "选择目标",
+            "select opponent:board Choose(1) where is Follower");
 
-        AddAstSnippetBtn(tplBar, "召唤 Spawn",
-            "Spawn 1 \"Fairy\" to Board");
+        AddAstSnippetBtn(tplBar, "条件分支",
+            "if ctr:pp_at_play >= 7:\n    draw 2\nelse:\n    draw 1");
+
+        AddAstSnippetBtn(tplBar, "模式选择",
+            "modes Choose(pick=1):\n    option 1:\n        restore 4 life to self:leader All\n    option 2:\n        draw 2");
+
+        AddAstSnippetBtn(tplBar, "召唤",
+            "summon 1 \"Fairy\"");
+
+        AddAstSnippetBtn(tplBar, "授予子能力",
+            "grant_ability to $self:\n    last_words:\n        draw 1");
 
         _astJsonEdit = new TextEdit
         {
@@ -799,7 +811,8 @@ public partial class DiyWorkshopView : Control
         switch (_active)
         {
             case DiyEndpointKind.Script:
-                if (_astJsonEdit != null) ok = _ctrl.CompileFromAstJson(_astJsonEdit.Text);
+                // ③ 端吃 PyAST DSL 的效果块（纯能力列表，无卡头）
+                if (_astJsonEdit != null) ok = _ctrl.CompileFromCanonicalAst(_astJsonEdit.Text);
                 break;
             case DiyEndpointKind.Form:
                 ok = ApplyFormEdits();

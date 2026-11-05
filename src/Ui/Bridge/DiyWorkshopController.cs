@@ -239,6 +239,78 @@ public sealed class DiyWorkshopController
         return true;
     }
 
+    /// <summary>
+    /// ③ AST 端：编辑 PyAST DSL 的**效果块**（无卡头）。
+    ///
+    /// 204/206 号文档落地后，这里从旧的 ReshadowScript 效果块换成了规范 AST 语法：
+    ///   · 打印：AstCanonicalPrinter（同一份语法也用于卡包 source_format: "py_ast"）
+    ///   · 解析：AstCanonicalParser.ParseAbilities（效果块 = 纯能力列表，无卡头）
+    /// 卡名 / 费用 / 身材沿用当前卡，效果块只改能力。
+    /// </summary>
+    public bool CompileFromCanonicalAst(string dsl)
+    {
+        LastErrors.Clear();
+        if (string.IsNullOrWhiteSpace(dsl))
+        {
+            LastStatusMessage = "AST 效果块为空";
+            return false;
+        }
+
+        var parser = new AstCanonicalParser(Workspace.Schema, Workspace.Lexicon);
+        List<AbilityDef> abilities = null;
+        try
+        {
+            abilities = parser.ParseAbilities(dsl);
+        }
+        catch (Exception ex)
+        {
+            LastErrors.Add("AST 解析失败：" + ex.Message);
+            LastStatusMessage = "AST 解析失败";
+            return false;
+        }
+
+        if (parser.Errors.Count > 0)
+        {
+            LastErrors.AddRange(parser.Errors);
+            LastStatusMessage = "AST 解析失败：" + parser.Errors[0];
+            return false;
+        }
+
+        var head = CurrentDef ?? new CardDef { Kind = CardKind.Follower, Name = "DIY" };
+        CurrentDef = new CardDef
+        {
+            CardId = head.CardId,
+            Name = head.Name,
+            NameChs = head.NameChs,
+            Kind = head.Kind,
+            BaseCost = head.BaseCost,
+            BaseAttack = head.BaseAttack,
+            BaseLife = head.BaseLife,
+            Clan = head.Clan,
+            Traits = head.Traits,
+            InnateKeywords = head.InnateKeywords,
+            DeckModifiers = head.DeckModifiers,
+            HasFuse = head.HasFuse,
+            FuseMaterialFilter = head.FuseMaterialFilter,
+            CrestDef = head.CrestDef,
+            FaithDef = head.FaithDef,
+            AccelerateDef = head.AccelerateDef,
+            CrystallizeDef = head.CrystallizeDef,
+            IsToken = head.IsToken,
+            Abilities = abilities,
+            SourceText = head.SourceText,
+        };
+
+        // 同步其余三端；同步会重算 AstJsonText，所以最后覆盖回用户手写的文本，
+        // 避免「刚敲的效果块被格式化结果顶掉」。
+        string userText = dsl;
+        SyncAllEndpointsFromCurrentDef();
+        AstJsonText = userText;
+        LastStatusMessage = "✔ 从【AST 端】编译成功（PyAST 效果块，卡头沿用原卡）";
+        OnCardUpdated?.Invoke();
+        return true;
+    }
+
     public bool CompileFromScript(string script)
     {
         LastErrors.Clear();
@@ -303,7 +375,7 @@ public sealed class DiyWorkshopController
         // ③ AST 端展示的是 ReshadowScript 的**效果块**（无卡头），不是 JSON：
         // 复用脚本编译器自带的符号绑定，天然过四端同构门禁，
         // 不再维护第四套 AST 表示。
-        AstJsonText = new ReshadowScriptCompiler(Workspace).PrintEffectOnly(CurrentDef);
+        AstJsonText = AstCanonicalPrinter.PrintAbilities(CurrentDef.Abilities ?? new List<AbilityDef>(), 0);
         AstJsonRaw = AstJsonCodec.Encode(CurrentDef);
 
         // ③ 表单端：超纲时标只读并保留原因，绝不静默丢效果

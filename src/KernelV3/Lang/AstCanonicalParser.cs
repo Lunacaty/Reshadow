@@ -46,6 +46,34 @@ public sealed class AstCanonicalParser
         while (!IsAtEnd && Current.Kind != PyTokKind.Dedent && Current.Kind != PyTokKind.Eof)
         {
             int guard = _pos;
+
+            // 效果块允许只写动作、不写触发头（DIY 编辑器的 ③ 端就是这种形态）。
+            // 判据：当前标识符不是触发头 —— 那就把后续语句整包成一条
+            // PassiveAura 能力，而不是报「未知的触发头」。
+            if (Current.Kind == PyTokKind.Ident && !IsTriggerHeaderWord(Current.Text))
+            {
+                var body = new List<EffectNode>();
+                while (!IsAtEnd && Current.Kind != PyTokKind.Dedent && Current.Kind != PyTokKind.Eof)
+                {
+                    int innerGuard = _pos;
+                    var node = ParseStatement();
+                    if (node != null) body.Add(node);
+                    SkipNewlines();
+                    if (_pos == innerGuard) { Error("效果块语句无进展，强制跳过"); _pos++; }
+                }
+                if (body.Count > 0)
+                {
+                    list.Add(new AbilityDef
+                    {
+                        Trigger = new TriggerSpec { Event = CoreEvent.OnPlay, IsFanfare = true },
+                        Condition = BoolExpr.True,
+                        Body = body,
+                    });
+                }
+                if (_pos == guard) { Error("解析无进展，强制跳过"); _pos++; }
+                continue;
+            }
+
             var ab = ParseAbility();
             if (ab != null) list.Add(ab);
             SkipNewlines();
@@ -53,6 +81,16 @@ public sealed class AstCanonicalParser
         }
         return list;
     }
+
+    /// <summary>该词是不是触发头（用于区分「能力」与「裸动作效果块」）。</summary>
+    private static bool IsTriggerHeaderWord(string w) => w is
+        "fanfare" or "on_play" or "last_words" or "on_destroy" or "evolve" or "on_evolve"
+        or "super_evolve" or "on_super_evolve" or "strike" or "clash" or "engage" or "aura"
+        or "turn_start" or "turn_end" or "on_enter" or "on_leave" or "on_summon" or "on_draw"
+        or "on_discard" or "on_damaged" or "on_healed" or "on_banish" or "on_fuse"
+        or "on_select_mode" or "on_earth_rite" or "on_deck_out" or "on_countdown_expire"
+        or "on_counter_change" or "on_spellboost" or "on_return_to_hand" or "on_add_to_hand"
+        or "on_transform" or "on_stats_modified" or "on_battle_start";
 
     /// <summary>解析整张卡。</summary>
     public Ast.CardDef ParseCard(string dslText)
