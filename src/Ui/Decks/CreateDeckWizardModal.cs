@@ -22,22 +22,29 @@ public partial class CreateDeckWizardModal : Control
     private readonly GameSessionStore _store;
     private int _step = 1;
     private string _poolId;
-    private string _clan = "Neutral";
+    // 默认不预选职业：列表里已经没有「中立」，预选它会让界面出现一个选不中的高亮。
+    private string _clan = "";
 
     private VBoxContainer _body;
     private Label _stepLabel;
     private Button _nextBtn;
     private LineEdit _nameEdit;
 
-    private static readonly string[] Clans =
-    {
-        "Forestcraft", "Swordcraft", "Runecraft", "Dragoncraft",
-        "Abysscraft", "Havencraft", "Portalcraft", "Neutral",
-    };
+    /// <summary>
+    /// 构造时**从卡池读**职业列表，不硬编码。
+    ///
+    /// 职业归属卡池（164 专题二），每个卡池开放哪些职业由它自己的配置决定；
+    /// 写死一张表会让自造卡池的自定义职业永远选不到。
+    /// </summary>
+    private readonly List<string> Clans;
 
     public CreateDeckWizardModal(GameSessionStore store)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
+
+        // 职业来自卡池配置；卡池没配就用卡包里声明过的职业。
+        // 「中立」是公共归属、不是主战者职业，选它做牌组没有意义 —— 过滤掉。
+        Clans = StoreClansFor(store);
     }
 
     public override void _Ready()
@@ -190,6 +197,48 @@ public partial class CreateDeckWizardModal : Control
         }
 
         if (!string.IsNullOrEmpty(_poolId)) _nextBtn.Disabled = false;
+    }
+
+
+    /// <summary>
+    /// 取出该卡池可选的职业。
+    ///
+    /// 来源优先级：卡池配置的 PoolClans -> 卡包里声明过的职业。
+    /// **过滤掉「中立」**：它是公共归属，不是主战者职业，
+    /// 选它建牌组没有意义（中立卡任何职业都能用）。对所有卡池一律生效。
+    /// </summary>
+    private static List<string> StoreClansFor(GameSessionStore store)
+    {
+        var list = new List<string>();
+        try
+        {
+            // 取第一个配了职业的卡池：卡组向导此时还没绑定具体卡池，
+            // 而所有卡池的职业集合在标准环境下是一致的。
+            foreach (var cfg in store.PoolConfigs.Values)
+            {
+                if (cfg.PoolClans is { Count: > 0 }) { list.AddRange(cfg.PoolClans); break; }
+            }
+        }
+        catch (Exception) { }
+
+        if (list.Count == 0)
+        {
+            try
+            {
+                foreach (var c in store.Catalog.Schema.Clans.All)
+                    if (!string.IsNullOrWhiteSpace(c.Name)) list.Add(c.Name);
+            }
+            catch (Exception) { }
+        }
+
+        // 「中立」不是主战者职业：无论哪个卡池、它在不在配置里，都不该出现在选择项里。
+        return list
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Where(c => !string.Equals(c, "Neutral", StringComparison.OrdinalIgnoreCase))
+            .Where(c => !string.Equals(c, "中立", StringComparison.Ordinal))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c, StringComparer.Ordinal)
+            .ToList();
     }
 
     private void RenderClanStep()
