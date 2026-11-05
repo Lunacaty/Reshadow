@@ -1827,7 +1827,10 @@ public partial class BattleScreenRoot : Control
     /// <summary>该屏幕坐标是否落在手牌区、场上随从或纹章槽上。</summary>
     private bool IsPointOnAnyCardOrUnit(Vector2 globalPos)
     {
-        if (_handRect.HasPoint(globalPos)) return true;
+        // 展开态要判是否真的命中了某张手牌：手牌少时托盘里大块是空白，
+        // 直接按矩形判会把「点托盘缝隙」也当成点中卡牌，弹窗就关不掉了。
+        if (_handExpanded ? HitTestHandCard(globalPos) != null : _handRect.HasPoint(globalPos))
+            return true;
 
         if (_boardAlly != null)
             foreach (var w in BoardUnitsOf(_boardAlly))
@@ -1868,7 +1871,14 @@ public partial class BattleScreenRoot : Control
     {
         // 豁免 1：正在选目标（此时点击是游戏输入，不是界面操作）
         if (_ctrl != null && _ctrl.IsWaitingForInput) return true;
-        // 豁免 2：左侧书页 / 左上角菜单
+        // 豁免 2a：书页统计弹窗正打开时，点它内部任何地方都不收起手牌。
+        // 只豁免 52x52 的按钮本身不够 —— 弹窗会盖住大半个屏幕。
+        if (_infoModal != null && IsInstanceValid(_infoModal) && _infoModal.Visible) return true;
+        // 豁免 2b：右侧指令栏（能量点+1 / 结束回合）。
+        // 后手玩家经常展开手牌算费用再点 +1，那一下不该把手牌缩回去。
+        if (_rightCol != null && IsInstanceValid(_rightCol)
+            && _rightCol.GetGlobalRect().HasPoint(globalPos)) return true;
+        // 豁免 2c：左侧书页 / 左上角菜单
         if (_pageBtn != null && IsInstanceValid(_pageBtn)
             && _pageBtn.GetGlobalRect().HasPoint(globalPos)) return true;
         if (_menuBtn != null && IsInstanceValid(_menuBtn)
@@ -1944,8 +1954,8 @@ public partial class BattleScreenRoot : Control
         // 主战者空白处都不会关，弹窗会一直挂在左上角挡住战场。
         // 规则：点在弹窗自身、手牌、场上单位/纹章之外 → 关闭。
         if (mb.Pressed && _actionPanel != null && _actionPanel.Visible
-            && !IsPointOnActionPanel(mb.Position)
-            && !IsPointOnAnyCardOrUnit(mb.Position))
+            && !IsPointOnActionPanel(mb.GlobalPosition)
+            && !IsPointOnAnyCardOrUnit(mb.GlobalPosition))
         {
             _actionPanel.HidePanel();
         }
@@ -1959,8 +1969,8 @@ public partial class BattleScreenRoot : Control
         //
         // 拖拽中不收起：手上的牌还举着，这时候收手牌会把它一起抹掉。
         if (mb.Pressed && _handExpanded && !_draggingPlay
-            && !_handRect.HasPoint(mb.Position)
-            && !IsHandCollapseExempt(mb.Position))
+            && !_handRect.HasPoint(mb.GlobalPosition)
+            && !IsHandCollapseExempt(mb.GlobalPosition))
         {
             _handExpanded = false;
             RebuildHand();
@@ -1977,7 +1987,7 @@ public partial class BattleScreenRoot : Control
         // 放在这里而不是给卡片加 GuiInput，是因为要覆盖
         // 「按在卡片间隙/留白上」的情况；同时卡片的 OnLeftClick
         // 在按下时也会触发拖拽，所以必须靠 _draggingPlay 做互斥。
-        if (mb.Pressed && !_handExpanded && !_draggingPlay && _handRect.HasPoint(mb.Position))
+        if (mb.Pressed && !_handExpanded && !_draggingPlay && _handRect.HasPoint(mb.GlobalPosition))
         {
             // 按下这一刻必须**先按当前（缩小态）布局**算出命中的是哪张牌。
             //
@@ -1985,7 +1995,7 @@ public partial class BattleScreenRoot : Control
             // 换成放大态之后，卡片控件已经是新的一批、位置也全变了，
             // 卡片自己的回调拿到的 bound 与玩家实际按下的那张对不上 ——
             // 表现就是「拖出来的不是我按的那张」。
-            _pressedCard = HitTestHandCard(mb.Position);
+            _pressedCard = HitTestHandCard(mb.GlobalPosition);
 
             _handExpanded = true;
             RebuildHand();
@@ -2139,11 +2149,20 @@ public partial class BattleScreenRoot : Control
         Boot(_store, _myDeck, _foeDeck);
     }
 
+    /// <summary>
+    /// 左侧书页统计弹窗。记下引用是为了让手牌收起判定能豁免它：
+    /// 弹窗打开时玩家点页签（1 日志 / 2 使用 / 3 破坏 / 4 计数）或关闭，
+    /// _Input 会先于弹窗内的按钮执行，把手牌收掉。
+    /// </summary>
+    private BattleInfoModal _infoModal;
+
     private void OpenInfoModal()
     {
-        var modal = new BattleInfoModal();
-        AddChild(modal);
-        modal.Setup(_ctrl);
+        if (_infoModal != null && IsInstanceValid(_infoModal)) return;
+        _infoModal = new BattleInfoModal();
+        AddChild(_infoModal);
+        _infoModal.Setup(_ctrl);
+        _infoModal.TreeExited += () => _infoModal = null;
     }
 
     // ---------------------------------------------------------------- 布局与截图辅助

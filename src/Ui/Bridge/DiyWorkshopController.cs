@@ -111,17 +111,20 @@ public sealed class DiyWorkshopController
         LastStatusMessage = "当前卡池：" + ActivePoolId;
     }
 
-    /// <summary>加载一张带构筑规则与入场曲的示例卡，让工坊一打开就有东西看。</summary>
+    /// <summary>
+    /// 加载一张带构筑规则与入场曲的示例卡，让工坊一打开就有东西看。
+    ///
+    /// 语法必须是 PyAST（缩进体 + 冒号头）。旧的花括号脚本语法已经下线，
+    /// 还留着它的话进工坊第一句就解析失败，CurrentDef 为 null，整个界面白屏。
+    /// </summary>
     public void LoadSampleCard()
     {
         string sample = string.Join("\n",
-            "card 950001 \"星界旅者\" (Follower, cost: 3, atk: 3, life: 4, clan: Swordcraft) {",
-            "    deck_mod size(+10)",
+            "card 950001 \"星界旅者\" (Follower, clan=Swordcraft, cost=3, atk=3, life=4):",
+            "    deck_mod: ModifyDeckSize 10 0",
             "    keywords: [ward, rush]",
-            "    on play {",
-            "        draw(1)",
-            "    }",
-            "}");
+            "    fanfare:",
+            "        draw 1");
         CompileFromScript(sample);
     }
 

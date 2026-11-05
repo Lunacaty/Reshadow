@@ -79,9 +79,18 @@ public partial class PackAndPoolManagerView : Control
         _header.AddThemeColorOverride("font_color", new Color("FEF08A"));
         row.AddChild(_header);
 
+        // 外包一层左右 16 的边距：不加的话右栏紧贴屏幕右缘，
+        // 最右侧的删除按钮会被窗口边缘切掉一半。
+        var bodyMargin = new MarginContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        bodyMargin.AddThemeConstantOverride("margin_left", 16);
+        bodyMargin.AddThemeConstantOverride("margin_right", 16);
+        bodyMargin.AddThemeConstantOverride("margin_top", 4);
+        bodyMargin.AddThemeConstantOverride("margin_bottom", 4);
+        root.AddChild(bodyMargin);
+
         var body = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         body.AddThemeConstantOverride("separation", 10);
-        root.AddChild(body);
+        bodyMargin.AddChild(body);
 
         // 左：卡包 + 卡
         // 左栏不能写死 560：加上右栏的固定宽度按钮，总最小宽会顶到 1360+，
@@ -268,10 +277,16 @@ public partial class PackAndPoolManagerView : Control
             {
                 PoolId = cfg0.PoolId, Name = cfg0.Name, Rules = cfg0.Rules,
                 EnabledPackIds = cfg0.EnabledPackIds, NamedDecks = list0,
+                // 职业与主战者计数器必须一起带上：
+                // 只重建具名牌组就丢掉这两项，等于点一次「新增具名牌组」
+                // 把当前卡池的职业与计数器全部抹空，而且没有任何提示。
+                PoolClans = cfg0.PoolClans,
+                LeaderCounters = cfg0.LeaderCounters,
             };
             _store.PoolConfigs[cfg0.PoolId] = cfg0;
             _store.SavePoolConfigFull(cfg0.PoolId, cfg0.Name, cfg0.EnabledPackIds,
-                                      cfg0.Rules, cfg0.NamedDecks, out string msg);
+                                      cfg0.Rules, cfg0.NamedDecks, out string msg,
+                                      cfg0.PoolClans, cfg0.LeaderCounters);
             _ruleStatus.Text = msg;
             RefreshNamedDecks();
         };
@@ -320,7 +335,7 @@ public partial class PackAndPoolManagerView : Control
         var addCtrBtn = new Button { Text = "+ 新增计数器", CustomMinimumSize = new Vector2(96, 26) };
         SvWbTheme.StyleButton(addCtrBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
         addCtrBtn.AddThemeFontSizeOverride("font_size", 11);
-        addCtrBtn.Pressed += OpenAddPoolCounterDialog;
+        addCtrBtn.Pressed += () => OpenAddPoolCounterDialog();
         ctrBar.AddChild(addCtrBtn);
         right.AddChild(ctrBar);
 
@@ -378,14 +393,20 @@ public partial class PackAndPoolManagerView : Control
         dlg.PopupCentered();
     }
 
-    /// <summary>新增卡池主战者计数器：填名称、范围、初值与回合生命周期。</summary>
-    private void OpenAddPoolCounterDialog()
+    /// <summary>
+    /// 新增 / 编辑卡池主战者计数器。
+    ///
+    /// existing 非空即为编辑：同一个弹窗回填已有值，
+    /// 免得玩家「改一个数值只能删掉重建」，中间那段配置就丢了。
+    /// </summary>
+    private void OpenAddPoolCounterDialog(KernelV3.Packs.PoolCounterDef existing = null)
     {
         if (string.IsNullOrEmpty(_selectedPoolId)) { _ruleStatus.Text = "请先选择一个卡池"; return; }
         if (!_store.PoolConfigs.TryGetValue(_selectedPoolId, out var cfg)) return;
 
-        var dlg = new AcceptDialog { Title = "新增主战者计数器" };
-        dlg.OkButtonText = "创建";
+        bool editing = existing != null;
+        var dlg = new AcceptDialog { Title = editing ? "编辑主战者计数器" : "新增主战者计数器" };
+        dlg.OkButtonText = editing ? "保存" : "创建";
 
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
         box.AddThemeConstantOverride("separation", 6);
@@ -396,8 +417,23 @@ public partial class PackAndPoolManagerView : Control
         var maxEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 99 };
         var initEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 0 };
         var lifePick = new OptionButton();
-        foreach (var lc in Enum.GetValues<KernelV3.Packs.CounterLifecycle>())
-            lifePick.AddItem(lc.ToString());
+        var lifecycles = Enum.GetValues<KernelV3.Packs.CounterLifecycle>();
+        // 下拉显示中文说明 + 内码：只显示内码玩家不知道该选哪个。
+        for (int li = 0; li < lifecycles.Length; li++)
+            lifePick.AddItem(LifecycleZh(lifecycles[li]) + " (" + lifecycles[li] + ")", li);
+
+        // 编辑模式回填。
+        // 编辑时 ID 不可改：改了等于换一个新计数器，旧的那个引用它的效果全部失效。
+        if (editing)
+        {
+            nameEdit.Editable = false;
+            nameEdit.Text = existing.Name ?? "";
+            showEdit.Text = existing.NameChs ?? "";
+            minEdit.Value = existing.Min;
+            maxEdit.Value = existing.Max;
+            initEdit.Value = existing.Initial;
+            lifePick.Select((int)existing.Lifecycle);
+        }
 
         box.AddChild(new Label { Text = "内部 ID" });
         box.AddChild(nameEdit);
@@ -472,6 +508,16 @@ public partial class PackAndPoolManagerView : Control
         }
     }
 
+
+    /// <summary>计数器生命周期 → 中文说明。枚举名直接显示玩家看不懂。</summary>
+    private static string LifecycleZh(KernelV3.Packs.CounterLifecycle lc) => lc switch
+    {
+        KernelV3.Packs.CounterLifecycle.ResetToMinOnTurnStart => "回合初清零",
+        KernelV3.Packs.CounterLifecycle.ResetToMinOnTurnEnd => "回合末清零",
+        KernelV3.Packs.CounterLifecycle.IncrementOnTurnStart => "回合初+1",
+        _ => "整局保留",
+    };
+
     /// <summary>刷新「主战者计数器」列表：内置的锁死只读，自定义的可删。</summary>
     private void RefreshPoolCounters()
     {
@@ -487,9 +533,11 @@ public partial class PackAndPoolManagerView : Control
         {
             var brow = new HBoxContainer();
             brow.AddThemeConstantOverride("separation", 6);
+            // 内置计数器也要显示中文名：「pp」这种内码玩家认不出是什么。
+            string bZh = _store.CardPrinter != null ? _store.CardPrinter.CounterZh(bName) : bName;
             var bname = new Label
             {
-                Text = "[锁] " + bName + "  [" + bMin + ".." + bMax + "]",
+                Text = "🔒 " + bZh + " (" + bName + ")  范围[" + bMin + ".." + bMax + "]  · 内置不可编辑",
                 SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 ClipText = true,
             };
@@ -503,19 +551,18 @@ public partial class PackAndPoolManagerView : Control
         {
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 6);
+            // 一行写全：中文名 (英文名) [范围, 初值] · 变化方式。
+            // 只显示中文名与内码 Lifecycle，玩家看不出范围与初值是多少。
+            string zhName = string.IsNullOrWhiteSpace(def.NameChs) ? def.Name : def.NameChs;
             var name = new Label
             {
-                Text = def.NameChs is { Length: > 0 } ? def.NameChs : def.Name,
+                Text = zhName + " (" + def.Name + ")  [" + def.Min + ".." + def.Max
+                       + ", 初值:" + def.Initial + "] · " + LifecycleZh(def.Lifecycle),
                 SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 ClipText = true,
             };
             name.AddThemeFontSizeOverride("font_size", 11);
             row.AddChild(name);
-
-            var life = new Label { Text = def.Lifecycle.ToString() };
-            life.AddThemeFontSizeOverride("font_size", 10);
-            life.AddThemeColorOverride("font_color", SvWbTheme.BorderSubtle);
-            row.AddChild(life);
 
             if (def.IsBuiltin)
             {
@@ -526,6 +573,14 @@ public partial class PackAndPoolManagerView : Control
             }
             else
             {
+                // 编辑：打开同一个弹窗，把已有值回填进去。
+                // 没有编辑入口时，改一个数值只能删掉重建，中间那段配置就丢了。
+                var edit = new Button { Text = "✏", CustomMinimumSize = new Vector2(28, 24) };
+                SvWbTheme.StyleButton(edit);
+                var ed = def;
+                edit.Pressed += () => OpenAddPoolCounterDialog(ed);
+                row.AddChild(edit);
+
                 var del = new Button { Text = "🗑", CustomMinimumSize = new Vector2(28, 24) };
                 SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
                 var d = def;

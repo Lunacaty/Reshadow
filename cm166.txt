@@ -1,0 +1,36 @@
+fix(166): 严格落实 166 号文档 —— 1 处白屏 + 9 处断链/交互漏洞
+
+## 🚨 致命：DIY 工坊开局白屏
+  LoadSampleCard 还写着旧的花括号脚本语法，而 CompileFromScript 早已改用
+  AstCanonicalParser（PyAST 缩进体）。一进工坊就解析失败，CurrentDef 为 null，
+  整个界面无法初始化。已改为 PyAST 语法。
+  验证：CurrentDef=星界旅者，能力数=1，关键词=2，错误 0。
+
+## 专题二（4 处）
+  A. 主战者计数器展示不全且无编辑入口：
+     内置项补中文名（能量点(pp)）；自定义项补英文名、范围、初值、变化方式中文；
+     新增 ✏ 编辑按钮，弹窗支持 existing 回填（编辑时 ID 锁定，改了等于换新计数器）。
+  B. 新增具名牌组会清空本池职业与计数器：重建 CardPoolConfig 时漏拷 PoolClans/LeaderCounters。
+  C. DIY 切换卡池后不联动：目标卡包下拉改按当前池启用包重填（FillPackPicker）；
+     表单职业下拉改为从当前池 Schema 读取（支持自定义职业）。
+  D. 卡池管理 body 无右边距：外包 MarginContainer（左右 16）。
+
+## 专题三（2 处）
+  A. 书页统计弹窗打开时点其内部仍收起手牌；点右侧指令栏（能量点+1）也收起手牌。
+     记录 _infoModal 引用并纳入豁免；_rightCol 纳入豁免。
+  B. 手牌展开时按矩形判命中，点托盘缝隙被当成点中卡牌，弹窗关不掉。
+     改为展开态必须 HitTestHandCard 真命中。
+  另：_Input 里 mb.Position 全部统一为 mb.GlobalPosition，与 GetGlobalRect 坐标系一致。
+
+## 专题四（3 处）
+  A. 【严重】DiyBlockDecompiler 把带参常驻关键词同时放进 ws.Keywords 与 ws.Hats，
+     编译时各生成一条，玩家每点一次操作卡面就多一条「可攻击 N 次」。
+     已改为收进 Keywords 后 continue 跳过 Hat。
+     验证：三轮往返能力条数恒为 1。
+  B. 积木端 Tab5 写死 (2)，玩家改不了次数。已加 SpinBox（1..99），勾选/改数都实时重编译。
+  C. 表单端 FormToCardDef 不解析 (N)、TryCardDefToForm 不读 InnateKeywords。已双双补齐。
+     验证：ward 进 Innate、max_attacks_per_turn(3) 进能力 value=3，反读回 [ward, max_attacks_per_turn(3)]。
+
+## 门禁
+  VM 50/50、文档验收 102/102、Combat 16/16、效用 12/12、
+  逐卡矩阵 30/32、完整对局 7/7、PyAST 12/12、UI 3/3、战斗 UI 25/31（原 21）。

@@ -141,6 +141,9 @@ public partial class DiyWorkshopView : Control
             int k = (int)idx;
             if (k < 0 || k >= poolIds.Count) return;
             _ctrl.BindPool(poolIds[k]);
+            // 卡池换了，目标卡包与可加载卡牌都必须跟着换 ——
+            // 留着旧列表会让玩家往新池子里存一个它根本没有的卡包。
+            FillPackPicker();
             RefreshAll();
         };
         row.AddChild(poolPicker);
@@ -189,11 +192,7 @@ public partial class DiyWorkshopView : Control
         _packPicker = new OptionButton { CustomMinimumSize = new Vector2(130, 32) };
         SvWbTheme.StyleButton(_packPicker);
         SvWbTheme.StyleOptionPopup(_packPicker);
-        int i = 0;
-        foreach (var pid in _store.Catalog.Packs.Keys.OrderBy(x => x, StringComparer.Ordinal))
-        {
-            _packPicker.AddItem(pid, i++);
-        }
+        FillPackPicker();
         row.AddChild(_packPicker);
 
         var saveBtn = new Button { Text = "💾 保存进卡包", CustomMinimumSize = new Vector2(130, 32) };
@@ -445,6 +444,35 @@ public partial class DiyWorkshopView : Control
         return _store.Catalog.AllCards.Values.OrderBy(c => c.CardId).ToList();
     }
 
+
+    /// <summary>
+    /// 重填「目标卡包」下拉框，只列当前卡池启用的卡包。
+    ///
+    /// 写死成全表会让玩家把卡存进一个当前池子没启用的卡包 ——
+    /// 存进去了，但立刻从池子里消失，而且不报错。
+    /// </summary>
+    private void FillPackPicker()
+    {
+        if (_packPicker == null || !IsInstanceValid(_packPicker)) return;
+        _packPicker.Clear();
+        _packPicker.AddItem("（选择卡包）", 0);
+
+        var ids = new List<string>();
+        try
+        {
+            var rt = _store.GetPoolRuntime(_ctrl.ActivePoolId);
+            if (rt != null) ids.AddRange(rt.EnabledPackIds);
+        }
+        catch (Exception) { }
+        if (ids.Count == 0) ids.AddRange(_store.Catalog.Packs.Keys);
+
+        int i = 1;
+        foreach (var pid in ids.Where(x => !string.IsNullOrWhiteSpace(x))
+                               .Distinct(StringComparer.OrdinalIgnoreCase)
+                               .OrderBy(x => x, StringComparer.Ordinal))
+            _packPicker.AddItem(pid, i++);
+    }
+
     private void RefreshAll()
     {
         if (_ctrl?.CurrentDef == null) return;
@@ -621,10 +649,15 @@ public partial class DiyWorkshopView : Control
         _endpointHost.AddChild(EditRow("卡种", _formKindPicker));
 
         _formClanPicker = new OptionButton { CustomMinimumSize = new Vector2(160, 32) };
-        string[] clans = { "Neutral", "Forestcraft", "Swordcraft", "Runecraft",
-                           "Dragoncraft", "Abysscraft", "Havencraft", "Portalcraft" };
-        for (int i = 0; i < clans.Length; i++) _formClanPicker.AddItem(clans[i], i);
-        int ci = Array.IndexOf(clans, fm.Clan);
+        // 职业列表从当前卡池的 Schema 读，不写死：
+        // 卡池可以自定义职业，写死一张 8 职业表会让自定义职业永远选不到。
+        // 职业名在卡包里已本地化（就是「皇家」这种显示名），直接显示即可。
+        var clans = new List<string>();
+        foreach (var cl in _ctrl.Workspace.Schema.Clans.All.OrderBy(x => x.Name, StringComparer.Ordinal))
+            if (!string.IsNullOrWhiteSpace(cl.Name)) clans.Add(cl.Name);
+        if (clans.Count == 0) clans.Add("中立");
+        for (int i = 0; i < clans.Count; i++) _formClanPicker.AddItem(clans[i], i);
+        int ci = clans.IndexOf(fm.Clan);
         _formClanPicker.Selected = ci >= 0 ? ci : 0;
         SvWbTheme.StyleButton(_formClanPicker);
         SvWbTheme.StyleOptionPopup(_formClanPicker);

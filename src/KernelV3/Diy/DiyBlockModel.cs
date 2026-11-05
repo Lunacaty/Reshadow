@@ -1378,11 +1378,11 @@ public sealed class DiyBlockDecompiler
             {
                 string pk = pmk.Keyword.Name + "(" + pv.Value + ")";
                 if (!ws.Keywords.Contains(pk)) ws.Keywords.Add(pk);
+                // 已收进 ws.Keywords，绝不能再进 ws.Hats：
+                // 两处各存一份会让编译时生成两条能力，玩家每点一次操作卡面就多一条。
+                continue;
             }
-        }
 
-        foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())
-        {
             var hat = Hat(ab);
             if (hat != null) ws.Hats.Add(hat);
         }

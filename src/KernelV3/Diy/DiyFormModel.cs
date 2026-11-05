@@ -145,12 +145,47 @@ public sealed class DiyFormCompiler
         // 关键词是卡牌定义属性，写进 InnateKeywords，不生成 PassiveAura 能力 ——
         // 与 EnglishCompiler 同口径（那边也不再把裸关键词编成能力）。
         // 生成能力会让它在 Abilities 里多存一份，卡面还会多出一条空的 aura: 段。
-        var innateKeywords = (form.Keywords ?? new List<string>())
-            .Where(k => !string.IsNullOrWhiteSpace(k))
-            .Select(k => _schema.Keyword(k))
-            .Where(k => k.IsValid)
-            .Distinct()
-            .ToList();
+        // 关键词分两种编码，与 EnglishCompiler / DiyBlockCompiler 同口径：
+        //   无参（Ward …）           -> CardDef.InnateKeywords
+        //   带参（max_attacks_per_turn(2)）-> PassiveAura + ModifyKeywordNode(Value=N)
+        // InnateKeywords 是 List<SymbolId>，存不下数值；一律塞进去等于把
+        // 「可攻击 2 次」降级成「可攻击 1 次」，而且卡面看不出区别。
+        var innateKeywords = new List<SymbolId<KeywordTag>>();
+        foreach (var rawKw in (form.Keywords ?? new List<string>()).Where(k => !string.IsNullOrWhiteSpace(k)))
+        {
+            string kwName = rawKw.Trim();
+            NumExpr kwVal = null;
+            int lp = kwName.IndexOf('(');
+            if (lp > 0 && kwName.EndsWith(")"))
+            {
+                if (int.TryParse(kwName.Substring(lp + 1, kwName.Length - lp - 2), out int n))
+                    kwVal = NumExpr.Const(n);
+                kwName = kwName.Substring(0, lp).Trim();
+            }
+
+            var kwSym = _schema.Keyword(kwName);
+            if (!kwSym.IsValid) continue;
+
+            if (kwVal == null)
+            {
+                if (!innateKeywords.Contains(kwSym)) innateKeywords.Add(kwSym);
+                continue;
+            }
+
+            abilities.Add(new AbilityDef
+            {
+                Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
+                Condition = BoolExpr.True,
+                Body = new List<EffectNode>
+                {
+                    new ModifyKeywordNode
+                    {
+                        Target = TargetSpec.Self, Op = KeywordOp.Grant,
+                        Keyword = kwSym, Value = kwVal,
+                    },
+                },
+            });
+        }
 
         // 初始吟唱：与官方卡同一编码（PassiveAura + Countdown 代价）
         if (form.Countdown > 0)
@@ -284,15 +319,25 @@ public sealed class DiyFormCompiler
                 .ToList(),
         };
 
+        // InnateKeywords 是卡牌定义属性，不在 Abilities 里。
+        // 不拷过来，一张只有常驻关键词的卡切到表单端会显示成「零关键词」，
+        // 玩家再存一次就把关键词全弄丢了 —— 而卡面中文看不出区别。
+        foreach (var ik in def.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+            if (ik.IsValid && !string.IsNullOrWhiteSpace(ik.Name) && !f.Keywords.Contains(ik.Name))
+                f.Keywords.Add(ik.Name);
+
         foreach (var ab in def.Abilities ?? Array.Empty<AbilityDef>())
         {
-            // 裸关键词 → 勾选项
+            // 关键词 → 勾选项。带参的要把 (N) 一起带上，否则读回后次数没了。
             if (ab?.Trigger?.Event == CoreEvent.PassiveAura
                 && (ab.Costs == null || ab.Costs.Count == 0)
                 && ab.Body != null && ab.Body.Count == 1
                 && ab.Body[0] is ModifyKeywordNode mk && mk.Op == KeywordOp.Grant)
             {
-                f.Keywords.Add(mk.Keyword.Name);
+                string kwEntry = mk.Value is NumExpr { Op: NumOp.Const } kv
+                    ? mk.Keyword.Name + "(" + kv.Value + ")"
+                    : mk.Keyword.Name;
+                if (!f.Keywords.Contains(kwEntry)) f.Keywords.Add(kwEntry);
                 continue;
             }
 

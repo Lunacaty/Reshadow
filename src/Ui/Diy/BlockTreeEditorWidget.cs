@@ -487,26 +487,55 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         foreach (var (key, zh) in DiyZh.Keywords)
         {
-            var cb = new CheckBox { Text = zh, ButtonPressed = _ws?.Keywords?.Any(x => x == key || x.StartsWith(key + "(")) == true };
+            bool isParam = IsParameterizedKw(key);
+            string matched = _ws?.Keywords?.FirstOrDefault(x => x == key || x.StartsWith(key + "("));
+            int initN = 2;
+            if (matched != null && matched.Contains('('))
+            {
+                string inner = matched.Substring(matched.IndexOf('(') + 1).TrimEnd(')');
+                if (int.TryParse(inner, out int parsedN)) initN = parsedN;
+            }
+
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 6);
+
+            var cb = new CheckBox { Text = zh, ButtonPressed = matched != null };
+            row.AddChild(cb);
+
+            // 带参关键词要露出次数输入框：写死 (2) 的话玩家改不了「攻击 3 次」。
+            SpinBox spin = null;
+            if (isParam)
+            {
+                spin = new SpinBox
+                {
+                    MinValue = 1, MaxValue = 99, Value = initN,
+                    Visible = matched != null,
+                    CustomMinimumSize = new Vector2(64, 0),
+                };
+                row.AddChild(spin);
+            }
+
             string captured = key;
-            cb.Toggled += on =>
+            void UpdateKw()
             {
                 if (_ws == null || _ctrl == null) return;
                 _ws.Keywords ??= new List<string>();
-                if (on)
+                _ws.Keywords.RemoveAll(x => x == captured || x.StartsWith(captured + "("));
+                if (cb.ButtonPressed)
                 {
-                    // 带参关键词必须带 (N)：只写裸名的话，编译端会把次数丢掉，
-                    // 卡面写「1回合可攻击N次」，实战仍只能攻击 1 次。
-                    string stored = IsParameterizedKw(captured) ? captured + "(2)" : captured;
-                    if (!_ws.Keywords.Any(x => x == stored || x.StartsWith(captured + "(")))
-                        _ws.Keywords.Add(stored);
+                    int n = spin != null ? (int)spin.Value : 2;
+                    _ws.Keywords.Add(isParam ? captured + "(" + n + ")" : captured);
                 }
-                else _ws.Keywords.RemoveAll(x => x == captured || x.StartsWith(captured + "("));
+                if (spin != null) spin.Visible = cb.ButtonPressed;
 
                 _ctrl.CompileFromBlocks(_ws);
                 _ws = _ctrl.BlockModel ?? _ws;
-            };
-            col.AddChild(cb);
+            }
+
+            cb.Toggled += _ => UpdateKw();
+            if (spin != null) spin.ValueChanged += _ => { if (cb.ButtonPressed) UpdateKw(); };
+
+            col.AddChild(row);
         }
 
         _canvasCol.AddChild(col);
