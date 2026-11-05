@@ -485,25 +485,25 @@ public static class RegressPacks
     /// </summary>
     private static (bool, string) GateDiscover()
     {
-        // 用真实卡包：core-wb（全 Token）+ testset-v2（可收藏）
+        // 用真实卡包：official-sv + testset-v2
         var root = CardPackLoader.ResolvePacksRoot();
         if (root == null) return (false, "找不到 data/packs");
         var cat = GlobalCatalog.LoadAll(root);
         if (cat.AllCards.Count == 0) return (false, "总表为空");
 
-        // 只启用 testset-v2：标准发现不该挑到 core-wb 的 Token
+        // 只启用 testset-v2：标准发现不该挑到 official-sv 的 Token
         var narrow = new CardPool
         {
             PoolId = "standard",
             Catalog = cat,
             EnabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "testset-v2" },
         };
-        // 全启用：混沌发现可以跨到 core-wb
+        // 全启用：混沌发现可以跨到 official-sv
         var wide = new CardPool
         {
             PoolId = "standard",
             Catalog = cat,
-            EnabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "core-wb", "testset-v2" },
+            EnabledPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "official-sv", "testset-v2" },
         };
 
         // ---- 标准发现 ----
@@ -1089,7 +1089,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
         var built = CardPoolBuilder.Build(new CardPoolConfig
         {
             PoolId = "all-clans",
-            EnabledPackIds = new List<string> { "core-wb", "testset-v2" },
+            EnabledPackIds = new List<string> { "official-sv", "testset-v2" },
             Rules = new MatchRules { MinDeckSize = 30, MaxDeckSize = 30, AllowCrossCraft = true },
         }, packs);
         if (!built.Ok) return (false, "建池失败：" + string.Join("|", built.Errors.Take(2)));
@@ -1452,7 +1452,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
         var built = CardPoolBuilder.Build(new CardPoolConfig
         {
             PoolId = "all-clans",
-            EnabledPackIds = new List<string> { "core-wb", "testset-v2" },
+            EnabledPackIds = new List<string> { "official-sv", "testset-v2" },
             Rules = new MatchRules { MinDeckSize = 30, MaxDeckSize = 30, AllowCrossCraft = true },
         }, packs);
         if (!built.Ok) return (false, "建池失败：" + string.Join("|", built.Errors.Take(2)));
@@ -1555,7 +1555,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
     ///
     /// 三件事各自都会独立出错：
     ///   · 积木端缺 bool_has_pack/bool_has_clan → 往返丢条件
-    ///   · tokenizer 把 core-wb 的 '-' 拆开 → 卡包名被截成 core
+    ///   · tokenizer 把 official-sv 的 '-' 拆开 → 卡包名被截成 official
     ///   · 中文用一个 string 存费用 → 下限被上限覆盖，「2~4」印成「不超过4」
     /// </summary>
     private static (bool, string) GateMultiDimFourEnds()
@@ -1567,7 +1567,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
         const string src = @"
 card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
     on play {
-        discover(target(ally, global_pool, follower, pack: core-wb, clan: Runecraft, trait: Mecha, min_cost: 2, max_cost: 4, count: 1), to: hand)
+        discover(target(ally, global_pool, follower, pack: official-sv, clan: Runecraft, trait: Mecha, min_cost: 2, max_cost: 4, count: 1), to: hand)
     }
 }
 ";
@@ -1580,7 +1580,7 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
 
         // ① 卡包 ID 完整（不被 '-' 截断）
         bool packOk = def0.Abilities[0].Body.OfType<SpawnCardNode>()
-            .Any(x => WalkAny(x.CopyFrom?.Where, e => e is HasPackExpr hp && hp.PackId == "core-wb"));
+            .Any(x => WalkAny(x.CopyFrom?.Where, e => e is HasPackExpr hp && hp.PackId == "official-sv"));
         // ② 职业条件存在
         bool clanOk = WalkAny(sp.CopyFrom?.Where, e => e is HasClanExpr);
         // ③ 费用上下限都存在
@@ -1596,7 +1596,7 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
 
         // ⑤ 中文渲染包含全部维度
         var cn = ws.Printer.PrintCard(def0);
-        bool cnPack = cn.Contains("core-wb");
+        bool cnPack = cn.Contains("official-sv");
         bool cnClan = cn.Contains("巫师") || cn.Contains("Runecraft");
         bool cnRange = cn.Contains("2~4");
 
@@ -1821,7 +1821,7 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
         const string src = @"
 card 943001 ""四端选卡"" (Follower, cost: 2, atk: 2, life: 2) {
     on play {
-        discover(target(ally, global_pool, follower, clan: self, min_cost: 2, max_cost: 4, pack: core-wb|testset-v2), offer: 4, pick: 2, to: hand)
+        discover(target(ally, global_pool, follower, clan: self, min_cost: 2, max_cost: 4, pack: official-sv|testset-v2), offer: 4, pick: 2, to: hand)
     }
 }
 ";

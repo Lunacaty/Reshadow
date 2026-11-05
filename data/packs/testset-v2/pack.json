@@ -4,30 +4,74 @@
   "author": "",
   "version": "1.0.0",
   "native_pool_id": "standard",
-  "dependencies": ["core-wb"],
-  "clans": [{ "name": "Neutral" }, { "name": "Forestcraft" }, { "name": "Swordcraft" }, { "name": "Runecraft" }, { "name": "Dragoncraft" }, { "name": "Abysscraft" }, { "name": "Havencraft" }, { "name": "Portalcraft" }],
-  "traits": [{ "name": "Artifact" }, { "name": "Departed" }, { "name": "Loot" }, { "name": "Officer" }, { "name": "Pixie" }],
+  "dependencies": [
+    "core-wb"
+  ],
+  "clans": [
+    {
+      "name": "Neutral"
+    },
+    {
+      "name": "Forestcraft"
+    },
+    {
+      "name": "Swordcraft"
+    },
+    {
+      "name": "Runecraft"
+    },
+    {
+      "name": "Dragoncraft"
+    },
+    {
+      "name": "Abysscraft"
+    },
+    {
+      "name": "Havencraft"
+    },
+    {
+      "name": "Portalcraft"
+    }
+  ],
+  "traits": [
+    {
+      "name": "Artifact"
+    },
+    {
+      "name": "Departed"
+    },
+    {
+      "name": "Loot"
+    },
+    {
+      "name": "Officer"
+    },
+    {
+      "name": "Pixie"
+    }
+  ],
   "keywords": [],
   "counters": [],
   "stackable_amulets": [],
   "named_decks": [],
-  "cards": [{
+  "cards": [
+    {
       "card_id": 81000000,
-      "name_eng": "Testset Indomitable Fighter",
-      "name_chs": "不屈的战士",
       "kind": 1,
       "is_token": false,
       "clan": "Swordcraft",
-      "traits": ["Officer"],
+      "traits": [
+        "Officer"
+      ],
       "cost": 2,
       "attack": 2,
       "life": 2,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: Draw a card.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Select an enemy follower on the field and deal it 2 damage.</ev>\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Deal X damage to all enemy followers. X is the number of cards in your hand.</sev>"
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000000 \"不屈的战士\" (Follower, clan=Swordcraft, cost=2, atk=2, life=2):\n    traits: [Officer]\n    fanfare:\n        draw 1\n    evolve:\n        select opponent:board<Follower> Choose(1)\n        deal 2 damage to $selected\n    super_evolve:\n        deal count(self:hand All) damage to opponent:board<Follower> All",
+      "name": "不屈的战士"
+    },
+    {
       "card_id": 81000001,
-      "name_eng": "Testset Detective's Lens",
-      "name_chs": "侦探的放大镜",
       "kind": 2,
       "is_token": false,
       "clan": "Havencraft",
@@ -35,12 +79,12 @@
       "cost": 2,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Fairy</color></i></b> to your hand.\n<hr><b><color=Keyword>Countdown</color> (2)</b>\n<hr><b><color=Keyword>Engage</color></b>: Destroy this card. Select an allied follower on the field and give it <color=Keyword>Rush</color>."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000001 \"侦探的放大镜\" (Amulet, clan=Havencraft, cost=2):\n    countdown(2)\n    engage [engage(0)]:\n        destroy $self\n        select self:board<Follower> Choose(1)\n        grant_keyword rush to $selected",
+      "name": "侦探的放大镜"
+    },
+    {
       "card_id": 81000002,
-      "name_eng": "Testset Bug Alert",
-      "name_chs": "漏洞警报",
       "kind": 3,
       "is_token": false,
       "clan": "Runecraft",
@@ -48,25 +92,27 @@
       "cost": 1,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "Destroy all enemy followers with 3 attack or less. Draw a card."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000002 \"漏洞警报\" (Spell, clan=Runecraft, cost=1):\n    on_play:\n        destroy opponent:board<Follower> All where prop:Attack <= 3\n        draw 1",
+      "name": "漏洞警报"
+    },
+    {
       "card_id": 81000003,
-      "name_eng": "Testset Amataz, Origin Blader",
-      "name_chs": "原初剑士·阿玛兹",
       "kind": 1,
       "is_token": false,
       "clan": "Forestcraft",
-      "traits": ["Pixie"],
+      "traits": [
+        "Pixie"
+      ],
       "cost": 3,
       "attack": 2,
       "life": 2,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: Give this follower +X/+X. X is the number of Pixie followers in your hand.\n<hr><b><color=Keyword>Ward</color></b>\n<hr><ev><b><color=Keyword>Evolve</color></b>: Do this X times: \"Deal 1 damage to a random enemy follower.\" X is the number of Pixie followers in your hand.</ev>"
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000003 \"原初剑士·阿玛兹\" (Follower, clan=Forestcraft, cost=3, atk=2, life=2):\n    traits: [Pixie]\n    keywords: [ward]\n    fanfare:\n        buff $self +count(self:hand<Follower> All where has trait Pixie)/+count(self:hand<Follower> All where has trait Pixie)\n    evolve:\n        repeat count(self:hand<Follower> All where has trait Pixie) times:\n            deal 1 damage to opponent:board<Follower> Random(1)",
+      "name": "原初剑士·阿玛兹"
+    },
+    {
       "card_id": 81000004,
-      "name_eng": "Testset Prostrating Coward",
-      "name_chs": "匍匐的懦夫",
       "kind": 1,
       "is_token": false,
       "clan": "Abysscraft",
@@ -74,13 +120,19 @@
       "cost": 5,
       "attack": 4,
       "life": 5,
-      "source_format": "eng_cnl",
-      "alt_modes": [{ "type_eng": "Crystallize", "cost": 2, "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Testset Prostrating Coward</color></i></b>." }],
-      "text": "When this follower enters the field, restore 2 defense to your leader.\n<hr><b><color=Keyword>Bane</color></b>\n<b><color=Keyword>Ward</color></b>"
-    },{
+      "source_format": "py_ast",
+      "alt_modes": [
+        {
+          "type_eng": "Crystallize",
+          "cost": 2,
+          "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Testset Prostrating Coward</color></i></b>."
+        }
+      ],
+      "text": "card 81000004 \"匍匐的懦夫\" (Follower, clan=Abysscraft, cost=5, atk=4, life=5):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"匍匐的懦夫\" (cost=2):\n        countdown(3)",
+      "name": "匍匐的懦夫"
+    },
+    {
       "card_id": 81000005,
-      "name_eng": "Testset Shoddy Plaything",
-      "name_chs": "粗劣的玩物",
       "kind": 1,
       "is_token": false,
       "clan": "Abysscraft",
@@ -88,27 +140,41 @@
       "cost": 6,
       "attack": 1,
       "life": 3,
-      "source_format": "eng_cnl",
-      "alt_modes": [{ "type_eng": "Accelerate", "cost": 2, "text_eng": "Summon a <b><i><color=Keyword>Testset Shoddy Plaything</color></i></b>." }],
-      "text": "<b><color=Keyword>Fanfare</color></b>: Draw 3 cards.\n<hr><b><color=Keyword>Ward</color></b>"
-    },{
+      "source_format": "py_ast",
+      "alt_modes": [
+        {
+          "type_eng": "Accelerate",
+          "cost": 2,
+          "text_eng": "Summon a <b><i><color=Keyword>Testset Shoddy Plaything</color></i></b>."
+        }
+      ],
+      "text": "card 81000005 \"粗劣的玩物\" (Follower, clan=Abysscraft, cost=6, atk=1, life=3):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"粗劣的玩物\" (cost=2):\n        pass",
+      "name": "粗劣的玩物"
+    },
+    {
       "card_id": 81000006,
-      "name_eng": "Testset Aria, Lady of the Woods",
-      "name_chs": "森林淑女·艾莉雅",
       "kind": 1,
       "is_token": false,
       "clan": "Forestcraft",
-      "traits": ["Pixie"],
+      "traits": [
+        "Pixie"
+      ],
       "cost": 6,
       "attack": 4,
       "life": 4,
-      "source_format": "eng_cnl",
-      "alt_modes": [{ "type_eng": "Crest", "cost": 0, "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>." }],
-      "text": "<b><color=Keyword>Fanfare</color></b>: Gain <b><i>Crest: Testset Aria, Lady of the Woods</i></b>.\n<hr><ev><b><color=Keyword>Evolve</color></b>: Summon 3 copies of <b><i><color=Keyword>Fairy</color></i></b>.</ev>"
-    },{
+      "source_format": "py_ast",
+      "alt_modes": [
+        {
+          "type_eng": "Crest",
+          "cost": 0,
+          "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>."
+        }
+      ],
+      "text": "card 81000006 \"森林淑女·艾莉雅\" (Follower, clan=Forestcraft, cost=6, atk=4, life=4):\n    traits: [Pixie]\n\n    crest \"森林淑女·艾莉雅\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait Pixie):\n            grant_keyword storm to $trigger",
+      "name": "森林淑女·艾莉雅"
+    },
+    {
       "card_id": 81000007,
-      "name_eng": "Testset Sham-Nacha, Heir to Entwining",
-      "name_chs": "缠绕的继承者·杉那查",
       "kind": 1,
       "is_token": false,
       "clan": "Forestcraft",
@@ -116,13 +182,19 @@
       "cost": 2,
       "attack": 2,
       "life": 2,
-      "source_format": "eng_cnl",
-      "alt_modes": [{ "type_eng": "Faith", "cost": 0, "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <color=Keyword>Mode</color><color=Keyword>s</color>, increase this faith's value by 1." }],
-      "text": "<b><color=Keyword>Fanfare</color></b>: Reduce your faith's value by 10 to give it \"Increase the number of Modes you can select by 1.\""
-    },{
+      "source_format": "py_ast",
+      "alt_modes": [
+        {
+          "type_eng": "Faith",
+          "cost": 0,
+          "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <color=Keyword>Mode</color><color=Keyword>s</color>, increase this faith's value by 1."
+        }
+      ],
+      "text": "card 81000007 \"缠绕的继承者·杉那查\" (Follower, clan=Forestcraft, cost=2, atk=2, life=2):\n    fanfare:\n        pay faith(10):\n            grant_counter_ability to faith:\n                aura:\n                    counter mode_count by 1\n\n    faith \"缠绕的继承者·杉那查\" (cost=0):\n        on_select_mode:\n            gain_faith 1\n        aura:\n            counter faith = 0",
+      "name": "缠绕的继承者·杉那查"
+    },
+    {
       "card_id": 81000010,
-      "name_eng": "Testset Witch's New Brew",
-      "name_chs": "魔女的新酿",
       "kind": 2,
       "is_token": false,
       "clan": "Runecraft",
@@ -130,12 +202,12 @@
       "cost": 3,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: If you're in <color=Keyword>Overflow</color>, draw 2 cards. Otherwise, draw a card."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000010 \"魔女的新酿\" (Amulet, clan=Runecraft, cost=3):\n    fanfare:\n        if overflow:\n            draw 2\n        else:\n            draw 1",
+      "name": "魔女的新酿"
+    },
+    {
       "card_id": 81000011,
-      "name_eng": "Testset Runeblade Conductor",
-      "name_chs": "符文刃指挥者",
       "kind": 1,
       "is_token": false,
       "clan": "Runecraft",
@@ -143,12 +215,12 @@
       "cost": 4,
       "attack": 3,
       "life": 3,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: Select an enemy follower on the field and deal it X damage. X is your <color=Keyword>Combo</color> count."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000011 \"符文刃指挥者\" (Follower, clan=Runecraft, cost=4, atk=3, life=3):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        deal ctr:combo damage to $selected",
+      "name": "符文刃指挥者"
+    },
+    {
       "card_id": 81000012,
-      "name_eng": "Testset Blaze Destroyer",
-      "name_chs": "烈焰破坏者",
       "kind": 1,
       "is_token": false,
       "clan": "Dragoncraft",
@@ -156,12 +228,12 @@
       "cost": 7,
       "attack": 6,
       "life": 6,
-      "source_format": "eng_cnl",
-      "text": "Activates in hand. <b><color=Keyword>On Spellboost</color></b>: Reduce the cost of this card by 1."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000012 \"烈焰破坏者\" (Follower, clan=Dragoncraft, cost=7, atk=6, life=6):\n    on_spellboost zone=Hand:\n        modify_cost $self by -1",
+      "name": "烈焰破坏者"
+    },
+    {
       "card_id": 81000013,
-      "name_eng": "Testset Godwood Staff",
-      "name_chs": "神木法杖",
       "kind": 2,
       "is_token": false,
       "clan": "Forestcraft",
@@ -169,12 +241,12 @@
       "cost": 2,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "At the end of your turn, <b><color=Keyword>Combo</color> (3)</b> - Draw a card.\n<hr><b><color=Keyword>Engage</color></b>: Destroy this card. Select another allied card on the field and give it <color=Keyword>Ward</color>."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000013 \"神木法杖\" (Amulet, clan=Forestcraft, cost=2):\n    turn_end turn=Self [combo(3)]:\n        draw 1\n    engage [engage(0)]:\n        destroy $self\n        select self:board other Choose(1)\n        grant_keyword ward to $selected",
+      "name": "神木法杖"
+    },
+    {
       "card_id": 81000014,
-      "name_eng": "Testset Edelweiss, Sagelight Ward",
-      "name_chs": "贤光守护·雪绒花",
       "kind": 1,
       "is_token": false,
       "clan": "Havencraft",
@@ -182,12 +254,12 @@
       "cost": 5,
       "attack": 3,
       "life": 4,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color> (2)</b> - Evolve this follower.\n<hr><ev>When this follower evolves, deal 4 damage to a random enemy follower.</ev>"
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000014 \"贤光守护·雪绒花\" (Follower, clan=Havencraft, cost=5, atk=3, life=4):\n    fanfare [earth_rite(2)]:\n        evolve $self\n    on_evolve on($self):\n        deal 4 damage to opponent:board<Follower> Random(1)",
+      "name": "贤光守护·雪绒花"
+    },
+    {
       "card_id": 81000015,
-      "name_eng": "Testset Reno, Luxwing Featherfolk",
-      "name_chs": "辉翼羽族·蕾诺",
       "kind": 1,
       "is_token": false,
       "clan": "Havencraft",
@@ -195,51 +267,57 @@
       "cost": 3,
       "attack": 2,
       "life": 2,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Clash</color></b>: Deal 1 damage to the enemy leader.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Give this follower \"Can attack 2 times per turn.\"</sev>"
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000015 \"辉翼羽族·蕾诺\" (Follower, clan=Havencraft, cost=3, atk=2, life=2):\n    clash:\n        deal 1 damage to opponent:leader\n    super_evolve:\n        grant_keyword max_attacks_per_turn(2) to $self",
+      "name": "辉翼羽族·蕾诺"
+    },
+    {
       "card_id": 81000020,
-      "name_eng": "Testset Ghost",
-      "name_chs": "幽灵",
       "kind": 1,
       "is_token": false,
       "clan": "Abysscraft",
-      "traits": ["Departed"],
+      "traits": [
+        "Departed"
+      ],
       "cost": 1,
       "attack": 1,
       "life": 1,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Storm</color></b>\n<hr>When this card leaves the field, banish it.\n<hr>At the end of your turn, banish this card."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000020 \"幽灵\" (Follower, clan=Abysscraft, cost=1, atk=1, life=1):\n    traits: [Departed]\n    keywords: [storm]\n    on_leave on($self):\n        banish $self\n    turn_end turn=Self:\n        banish $self",
+      "name": "幽灵"
+    },
+    {
       "card_id": 81000021,
-      "name_eng": "Testset Sinciro, Heir to Usurpation",
-      "name_chs": "篡夺的继承者·辛西罗",
       "kind": 1,
       "is_token": false,
       "clan": "Swordcraft",
-      "traits": ["Loot"],
+      "traits": [
+        "Loot"
+      ],
       "cost": 6,
       "attack": 5,
       "life": 5,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fuse</color></b>: Loot cards\n<hr><b><color=Keyword>Fanfare</color></b>: Deal X damage to all enemies. X is the number of differently named cards <color=Keyword>Fuse</color><color=Keyword>d</color> to this card.\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Replicate the effects of this card's <color=Keyword>Fanfare</color> ability.</sev>"
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000021 \"篡夺的继承者·辛西罗\" (Follower, clan=Swordcraft, cost=6, atk=5, life=5):\n    traits: [Loot]\n    fuse: any:board All where has trait Loot\n    fanfare:\n        deal ctr:fuse_kinds damage to opponent:board +leader All\n    super_evolve:\n        invoke_ability OnPlay on $self",
+      "name": "篡夺的继承者·辛西罗"
+    },
+    {
       "card_id": 81000022,
-      "name_eng": "Testset Striker Artifact",
-      "name_chs": "突击神器",
       "kind": 1,
       "is_token": false,
       "clan": "Portalcraft",
-      "traits": ["Artifact"],
+      "traits": [
+        "Artifact"
+      ],
       "cost": 3,
       "attack": 2,
       "life": 2,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fuse</color></b>: Artifact cards\n<hr>When you <color=Keyword>Fuse</color> to this card, transform it based on the total cost of the cards fused.\n1: <b><i><color=Keyword>Ominous Artifact α</color></i></b>\n2: <b><i><color=Keyword>Ominous Artifact β</color></i></b>\n3 or more: <b><i><color=Keyword>Ominous Artifact γ</color></i></b>\n<hr><b><color=Keyword>Rush</color></b>"
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000022 \"突击神器\" (Follower, clan=Portalcraft, cost=3, atk=2, life=2):\n    traits: [Artifact]\n    keywords: [rush]\n    fuse: any:board All where has trait Artifact\n    on_fuse zone=Hand on($self):\n        if (ctr:fuse_cost >= 1 and ctr:fuse_cost <= 1):\n            transform $self into \"Ominous Artifact α\"\n        elif (ctr:fuse_cost >= 2 and ctr:fuse_cost <= 2):\n            transform $self into \"Ominous Artifact β\"\n        elif ctr:fuse_cost >= 3:\n            transform $self into \"Ominous Artifact γ\"",
+      "name": "突击神器"
+    },
+    {
       "card_id": 81000023,
-      "name_eng": "Testset Slaus, Revolving Wheel of Fortune",
-      "name_chs": "旋转的命运之轮·斯劳斯",
       "kind": 1,
       "is_token": false,
       "clan": "Portalcraft",
@@ -247,12 +325,12 @@
       "cost": 5,
       "attack": 3,
       "life": 3,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Ambush</color></b>\n<hr>At the end of your turn, if this follower is evolved, give your opponent <b><i>Crest: Testset Slaus, Revolving Wheel of Fortune</i></b>."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000023 \"旋转的命运之轮·斯劳斯\" (Follower, clan=Portalcraft, cost=5, atk=3, life=3):\n    keywords: [ambush]\n    turn_end turn=Self if is Evolved:\n        gain_crest \"Testset Slaus , Revolving Wheel of Fortune\" [owner=Opponent]",
+      "name": "旋转的命运之轮·斯劳斯"
+    },
+    {
       "card_id": 81000024,
-      "name_eng": "Testset Sandalphon, Primarch Successor",
-      "name_chs": "原初继承者·圣导天",
       "kind": 1,
       "is_token": false,
       "clan": "Havencraft",
@@ -260,12 +338,12 @@
       "cost": 8,
       "attack": 5,
       "life": 5,
-      "source_format": "eng_cnl",
-      "text": "Activates in deck. At the start of your turn, if allied followers have evolved at least 6 times this match, <color=Keyword>Invoke</color> this card."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000024 \"原初继承者·圣导天\" (Follower, clan=Havencraft, cost=8, atk=5, life=5):\n    turn_start zone=Deck turn=Self if ctr:evolve_count >= 6:\n        invoke_self",
+      "name": "原初继承者·圣导天"
+    },
+    {
       "card_id": 81000025,
-      "name_eng": "Testset Obsessed Test Subject",
-      "name_chs": "执着的实验体",
       "kind": 1,
       "is_token": false,
       "clan": "Portalcraft",
@@ -273,12 +351,12 @@
       "cost": 3,
       "attack": 2,
       "life": 2,
-      "source_format": "eng_cnl",
-      "text": "When this follower enters the field, if at least 5 other allied copies of <b><i><color=Keyword>Testset Obsessed Test Subject</color></i></b> have entered the field this match, destroy all enemy followers."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000025 \"执着的实验体\" (Follower, clan=Portalcraft, cost=3, atk=2, life=2):\n    on_enter on($self) if count(self:board other All) >= 5:\n        destroy opponent:board<Follower> All",
+      "name": "执着的实验体"
+    },
+    {
       "card_id": 81000030,
-      "name_eng": "Testset Pascale's Dance",
-      "name_chs": "帕斯卡尔的舞蹈",
       "kind": 2,
       "is_token": false,
       "clan": "Runecraft",
@@ -286,12 +364,12 @@
       "cost": 3,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: <b><color=Keyword>Earth Rite</color> (10)</b> - Double the attack and defense of an allied follower."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000030 \"帕斯卡尔的舞蹈\" (Amulet, clan=Runecraft, cost=3):\n    fanfare [earth_rite(10)]:\n        set_stats self:board<Follower> Choose(1) to (prop:Attack * 2)/(prop:Life * 2)",
+      "name": "帕斯卡尔的舞蹈"
+    },
+    {
       "card_id": 81000031,
-      "name_eng": "Testset Mjerrabaine, Great Manifest",
-      "name_chs": "伟大显现·姆耶拉班",
       "kind": 1,
       "is_token": false,
       "clan": "Neutral",
@@ -299,12 +377,12 @@
       "cost": 8,
       "attack": 6,
       "life": 6,
-      "source_format": "eng_cnl",
-      "text": "When you gain this crest, replace your deck with a deck of 40 cards."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000031 \"伟大显现·姆耶拉班\" (Follower, clan=Neutral, cost=8, atk=6, life=6):\n    on_enter on($self):\n        replace_deck \"a deck of 40 cards\"",
+      "name": "伟大显现·姆耶拉班"
+    },
+    {
       "card_id": 81000032,
-      "name_eng": "Testset Octrice, Hollowness Manifest",
-      "name_chs": "虚无显现·奥克翠丝",
       "kind": 2,
       "is_token": false,
       "clan": "Swordcraft",
@@ -312,12 +390,12 @@
       "cost": 4,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Countdown</color> (8)</b>\n<hr>Whenever you play or <color=Keyword>Fuse</color> a Loot card, advance this crest's count by 1.\n<hr><b><color=Keyword>Last Words</color></b>: Add a <b><i><color=Keyword>Remnant of Hollowness</color></i></b> to your hand."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000032 \"虚无显现·奥克翠丝\" (Amulet, clan=Swordcraft, cost=4):\n    countdown(8)\n    on_play or=OnFuse on(any:board Choose(1) where has trait Loot):\n        advance_countdown $self by 1",
+      "name": "虚无显现·奥克翠丝"
+    },
+    {
       "card_id": 81000033,
-      "name_eng": "Testset Glittering Gold",
-      "name_chs": "璀璨黄金",
       "kind": 3,
       "is_token": false,
       "clan": "Neutral",
@@ -325,12 +403,12 @@
       "cost": 1,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "Select a Mode to activate.\n 1. Draw a card.\n 2. Deal 2 damage to the enemy leader.\n 3. Restore 2 defense to your leader."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000033 \"璀璨黄金\" (Spell, clan=Neutral, cost=1):\n    on_play:\n        modes Choose(pick=1):\n            option 1:\n                draw 1\n            option 2:\n                deal 2 damage to opponent:leader\n            option 3:\n                restore 2 life to self:leader",
+      "name": "璀璨黄金"
+    },
+    {
       "card_id": 81000034,
-      "name_eng": "Testset City of Babelon",
-      "name_chs": "巴别伦之城",
       "kind": 2,
       "is_token": false,
       "clan": "Neutral",
@@ -338,12 +416,12 @@
       "cost": 1,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Countdown</color> (1)</b>\n<hr>At the end of your turn, activate an ability in sequence from the following.\n 1. Deal 2 damage to a random enemy follower.\n 2. Draw a card.\n 3. Restore 2 defense to your leader."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000034 \"巴别伦之城\" (Amulet, clan=Neutral, cost=1):\n    countdown(1)\n    turn_end turn=Self:\n        modes Sequence(pick=1):\n            option 1:\n                deal 2 damage to opponent:board<Follower> Random(1)\n            option 2:\n                draw 1\n            option 3:\n                restore 2 life to self:leader",
+      "name": "巴别伦之城"
+    },
+    {
       "card_id": 81000035,
-      "name_eng": "Testset Shakdoh, Nightblossom",
-      "name_chs": "夜华·夏克多",
       "kind": 1,
       "is_token": false,
       "clan": "Forestcraft",
@@ -351,12 +429,12 @@
       "cost": 7,
       "attack": 5,
       "life": 5,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: Do this 2 times: \"Return your hand to deck. Draw X cards. X is the number of cards you returned. Then, if you have at least 4 cards with the same cost in your hand, deal 4 damage to all enemies.\"\n<hr><sev><b><color=Keyword>Super-Evolve</color></b>: Replicate the effects of this card's <color=Keyword>Fanfare</color> ability.</sev>"
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000035 \"夜华·夏克多\" (Follower, clan=Forestcraft, cost=7, atk=5, life=5):\n    fanfare:\n        repeat 2 times:\n            return_to_deck self:hand All\n            draw ctr:cards_returned_to_hand\n            if maxgroup(self:hand All) >= 4:\n                deal 4 damage to opponent:board +leader All\n    super_evolve:\n        invoke_ability OnPlay on $self",
+      "name": "夜华·夏克多"
+    },
+    {
       "card_id": 81000036,
-      "name_eng": "Testset Adventurers' Guild",
-      "name_chs": "冒险者公会",
       "kind": 2,
       "is_token": false,
       "clan": "Neutral",
@@ -364,12 +442,12 @@
       "cost": 2,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: Draw a follower.\n<hr><b><color=Keyword>Engage</color></b>: Destroy this card. Select an allied follower on the field and give it <color=Keyword>Rush</color>. Draw a card."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000036 \"冒险者公会\" (Amulet, clan=Neutral, cost=2):\n    fanfare:\n        tutor self:deck<Follower> Random(1)\n    engage [engage(0)]:\n        destroy $self\n        select self:board<Follower> Choose(1)\n        grant_keyword rush to $selected\n        draw 1",
+      "name": "冒险者公会"
+    },
+    {
       "card_id": 81000037,
-      "name_eng": "Testset Ancient Cannon",
-      "name_chs": "远古加农炮",
       "kind": 2,
       "is_token": false,
       "clan": "Portalcraft",
@@ -377,25 +455,27 @@
       "cost": 3,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fanfare</color></b>: Add a <b><i><color=Keyword>Testset Gear of Ambition</color></i></b> to your hand.\n<hr>Whenever you <color=Keyword>Fuse</color>, deal 2 damage to a random enemy follower."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000037 \"远古加农炮\" (Amulet, clan=Portalcraft, cost=3):\n    on_fuse:\n        deal 2 damage to opponent:board<Follower> Random(1)",
+      "name": "远古加农炮"
+    },
+    {
       "card_id": 81000038,
-      "name_eng": "Testset Gear of Ambition",
-      "name_chs": "野心的齿轮",
       "kind": 2,
       "is_token": false,
       "clan": "Portalcraft",
-      "traits": ["Artifact"],
+      "traits": [
+        "Artifact"
+      ],
       "cost": 1,
       "attack": 0,
       "life": 0,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Fuse</color></b>: Artifact amulets\n<hr>When you <color=Keyword>Fuse</color> to this card, transform it into a <b><i><color=Keyword>Testset Striker Artifact</color></i></b>.\n<hr>Can't be played."
-    },{
+      "source_format": "py_ast",
+      "text": "card 81000038 \"野心的齿轮\" (Amulet, clan=Portalcraft, cost=1):\n    traits: [Artifact]\n    keywords: [cannot_be_played]\n    fuse: any:board<Amulet> All where has trait Artifact",
+      "name": "野心的齿轮"
+    },
+    {
       "card_id": 81000039,
-      "name_eng": "Testset Yuna, Occult Hunter",
-      "name_chs": "秘术猎人·尤娜",
       "kind": 1,
       "is_token": false,
       "clan": "Abysscraft",
@@ -403,7 +483,9 @@
       "cost": 4,
       "attack": 3,
       "life": 5,
-      "source_format": "eng_cnl",
-      "text": "<b><color=Keyword>Ward</color></b>\n<hr><b><color=Keyword>Last Words</color></b>: Add a <b><i><color=Keyword>Testset Ghost</color></i></b> and <b><i><color=Keyword>Bat</color></i></b> to your hand."
-    }]
+      "source_format": "py_ast",
+      "text": "card 81000039 \"秘术猎人·尤娜\" (Follower, clan=Abysscraft, cost=4, atk=3, life=5):\n    keywords: [ward]",
+      "name": "秘术猎人·尤娜"
+    }
+  ]
 }

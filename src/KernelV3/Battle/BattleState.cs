@@ -349,18 +349,18 @@ public sealed class BattleState : IVmWorld
     {
         (MagicSedimentCardId, "Magic Sediment", CardKind.Amulet, 1, 0, 0, null, null),
         (ClueDefaultCardId, "Divine Evidence", CardKind.Amulet, 1, 0, 0, new[] { "Clue" }, null),
-        (90001110, "Fairy", CardKind.Follower, 1, 1, 1, new[] { "Pixie" }, null),
-        (90001120, "Bat", CardKind.Follower, 1, 1, 1, null, null),
-        (90001130, "Knight", CardKind.Follower, 1, 1, 1, new[] { "Officer" }, null),
+        (90011110, "Fairy", CardKind.Follower, 1, 1, 1, new[] { "Pixie" }, null),
+        (90051120, "Bat", CardKind.Follower, 1, 1, 1, null, null),
+        (90021110, "Knight", CardKind.Follower, 1, 1, 1, new[] { "Officer" }, null),
         (90031120, "Guardian Golem", CardKind.Follower, 2, 2, 2, new[] { "Golem" }, new[] { "ward" }),
-        (90005110, "Ominous Artifact \u03b1", CardKind.Follower, 1, 2, 1, new[] { "Artifact" }, null),
-        (90005120, "Ominous Artifact \u03b2", CardKind.Follower, 2, 3, 2, new[] { "Artifact" }, null),
-        (90005130, "Ominous Artifact \u03b3", CardKind.Follower, 3, 5, 3, new[] { "Artifact" }, null),
-        (90005140, "Remnant of Hollowness", CardKind.Spell, 1, 0, 0, new[] { "Loot" }, null),
+        (90073110, "Ominous Artifact \u03b1", CardKind.Follower, 1, 2, 1, new[] { "Artifact" }, null),
+        (90073120, "Ominous Artifact \u03b2", CardKind.Follower, 2, 3, 2, new[] { "Artifact" }, null),
+        (90073130, "Ominous Artifact \u03b3", CardKind.Follower, 3, 5, 3, new[] { "Artifact" }, null),
+        (90024310, "Remnant of Hollowness", CardKind.Spell, 1, 0, 0, new[] { "Loot" }, null),
         (90005150, "Kindled Blade", CardKind.Spell, 2, 0, 0, null, null),
-        (90005160, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null, null),
+        (90034310, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null, null),
         // Fortifier Artifact 不在测试集里，只是 Striker Artifact 分档表的另一档目标。
-        (90005190, "Fortifier Artifact", CardKind.Follower, 4, 3, 3, new[] { "Artifact" }, new[] { "ward" }),
+        (90072120, "Fortifier Artifact", CardKind.Follower, 4, 3, 3, new[] { "Artifact" }, new[] { "ward" }),
         (90004110, "Silent Rider", CardKind.Follower, 6, 8, 8, null, new[] { "storm" }),
         (90004120, "Servant of Cocytus", CardKind.Follower, 1, 13, 13, null, null),
         (90004130, "Demon of Purgatory", CardKind.Follower, 4, 9, 6, null, null),
@@ -378,9 +378,9 @@ public sealed class BattleState : IVmWorld
     {
         [90004130] = "<b><color=Keyword>Fanfare</color></b>: Select 2 enemy followers on the field and deal 6 damage to them and the enemy leader.",
         [90004310] = "Set the enemy leader's max defense to 1.",
-        [90005140] = "Deal 2 damage to the enemy leader.",
+        [90024310] = "Deal 2 damage to the enemy leader.",
         [90005150] = "Deal 2 damage to the enemy leader.",
-        [90005160] = "Select an enemy follower on the field and banish it.",
+        [90034310] = "Select an enemy follower on the field and banish it.",
     };
 
     public void RegisterBuiltinTokens(Lang.Lexicon lex = null)
@@ -422,7 +422,7 @@ public sealed class BattleState : IVmWorld
             });
         }
 
-        // 优先从 packs/core-wb/pack.json 加载（引擎零硬编码卡牌）。
+        // 从 packs/*/pack.json 加载衍生卡（引擎零硬编码卡牌）。
         // 加载不到时回落到 BuiltinTokenDefs —— 回落分支保证
         // 「把仓库拷到没有 data/packs 的地方」时测试仍然能跑。
         var tokens = LoadTokenEntriesFromPacks();

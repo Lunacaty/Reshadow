@@ -265,7 +265,7 @@ public sealed class VmEval
             case HasPackExpr hp:
             {
                 var t = hp.Of ?? TargetSpec.Self;
-                // PackId 允许用 '|' 分隔多个卡包（"core-wb|diy-mecha"）。
+                // PackId 允许用 '|' 分隔多个卡包（"official-sv|diy-mecha"）。
                 var allowed = (hp.PackId ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries);
                 return ResolveRef(t, scope).Any(r =>
                 {

@@ -1,7 +1,7 @@
 {
   "pool_id": "all-clans",
   "name": "全职业演示卡池",
-  "enabled_packs": ["core-wb", "testset-v2"],
+  "enabled_packs": ["official-sv", "testset-v2"],
   "rules": {
     "allow_cross_craft": true,
     "allow_tokens_in_constructed_deck": false,

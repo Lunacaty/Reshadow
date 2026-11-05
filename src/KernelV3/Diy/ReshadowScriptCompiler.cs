@@ -261,7 +261,7 @@ public sealed class ReshadowScriptCompiler
         };
     }
 
-    /// <summary>解析 pack 列表（core-wb|testset-v2），逐段拼回连字符 ID。</summary>
+    /// <summary>解析 pack 列表（official-sv|testset-v2），逐段拼回连字符 ID。</summary>
     private static string ReadDashedPackList(Cursor p)
     {
         var parts = new List<string> { ReadDashedId(p) };
@@ -274,7 +274,7 @@ public sealed class ReshadowScriptCompiler
     }
 
     /// <summary>
-    /// 读一个可能带连字符的标识符（core-wb / my-pack-2）。
+    /// 读一个可能带连字符的标识符（official-sv / my-pack-2）。
     /// tokenizer 把 '-' 当成独立 token，逐 token 拼接才能还原原样。
     /// </summary>
     private static string ReadDashedId(Cursor p)
@@ -1958,7 +1958,7 @@ public sealed class ReshadowScriptCompiler
                 // 卡包筛选：只从某个特定卡包发现（区别于 card_pool / global_pool 的范围）。
                 case "pack":
                     p.TryChar(':');
-                    // 卡包 ID 常带连字符（core-wb），且允许用 '|' 串联多个包。
+                    // 卡包 ID 常带连字符（official-sv），且允许用 '|' 串联多个包。
                     wheres.Add(new HasPackExpr { PackId = ReadDashedPackList(p), Of = TargetSpec.Item });
                     break;
 

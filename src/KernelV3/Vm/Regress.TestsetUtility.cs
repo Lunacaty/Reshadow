@@ -124,13 +124,13 @@ public static partial class Regress
         .Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier")
         .Traits("Pixie", "Artifact", "Loot", "Clue", "Golem", "Officer")
         // 卡名 → 卡号必须与 BattleState.BuiltinTokenDefs 一致。
-        // 「Ghost」曾被错绑到 90001130（那是 Knight）—— 效果想加 Ghost，
+        // 「Ghost」曾被错绑到 90021110（那是 Knight）—— 效果想加 Ghost，
         // 手里却出现一张白板骑士；81000020 才是测试集里的真 Ghost。
         // 同理 Striker / Gear / Shoddy 都是测试集真卡，不能另起 9000 号段。
-        .Cards(("Fairy", 90001110), ("Bat", 90001120), ("Testset Ghost", 81000020),
-               ("Kindled Blade", 90005150), ("Ominous Artifact \u03b1", 90005110),
-               ("Ominous Artifact \u03b2", 90005120), ("Ominous Artifact \u03b3", 90005130),
-               ("Testset Striker Artifact", 81000022), ("Remnant of Hollowness", 90005140),
+        .Cards(("Fairy", 90011110), ("Bat", 90051120), ("Testset Ghost", 81000020),
+               ("Kindled Blade", 90005150), ("Ominous Artifact \u03b1", 90073110),
+               ("Ominous Artifact \u03b2", 90073120), ("Ominous Artifact \u03b3", 90073130),
+               ("Testset Striker Artifact", 81000022), ("Remnant of Hollowness", 90024310),
                ("Testset Gear of Ambition", 81000038), ("Testset Shoddy Plaything", 81000005))
         .Build();
 
@@ -448,7 +448,7 @@ public static partial class Regress
         bool hasCrest = st.EnumerateZone(ZoneRef.CrestArea, 0).Any(e => e.Def?.Kind == CardKind.Crest);
 
         // 召唤 Pixie 应被纹章捕捉并获得 storm
-        var fairy = st.SpawnCard(90001110, ZoneRef.Board, 0);   // Fairy（Pixie 兵种）
+        var fairy = st.SpawnCard(90011110, ZoneRef.Board, 0);   // Fairy（Pixie 兵种）
         vm.StepUntilBlocked();
         bool gotStorm = fairy.Keywords.Contains(st.Schema.Keyword("storm"));
 

@@ -88,7 +88,7 @@ public sealed class DeckDefTable
     /// <summary>
     /// 内置具名牌组。
     ///
-    /// 这里是**回落表**，不是真相源 —— 真相在 data/packs/core-wb/pack.json 里。
+    /// 这里是**回落表**，不是真相源 —— 真相在 data/packs/*/pack.json 里。
     /// 保留它的理由：把仓库拷到没有 data/packs 的地方（或单文件跑测试）时，
     /// 「替换为启示录牌组」这类效果不至于因为查不到定义而抛异常。
     /// 两边的数据必须一致，改一处就要改另一处。
@@ -104,7 +104,7 @@ public sealed class DeckDefTable
             new DeckEntry(90004310, 3),   // Astaroth's Reckoning
         });
         t.Register("deck of 40 cards", Enumerable.Range(0, 40)
-            .Select(_ => new DeckEntry(90001110, 1))     // Fairy 占位
+            .Select(_ => new DeckEntry(90011110, 1))     // Fairy 占位
             .ToArray());
         return t;
     }

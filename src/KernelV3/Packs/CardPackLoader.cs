@@ -12,7 +12,7 @@ namespace ShadowverseFan.KernelV3.Packs;
 // 卡包加载器：把 packs/<pack_id>/pack.json 读成 CardPackDef
 //
 // 加载器只负责「读」，不做任何校验 —— 校验属于 CardPoolBuilder 的活。
-// 分开的理由：一个卡包单独看可能不完整（比如它引用了 core-wb 的 Token），
+// 分开的理由：一个卡包单独看可能不完整（比如它引用了另一包的 Token），
 // 只有在卡池层面才知道「这个引用是不是真的缺」。
 // ============================================================================
 public static class CardPackLoader
@@ -120,7 +120,10 @@ public static class CardPackLoader
                 {
                     LocalId = Str(c, "local_id"),
                     CardId = Int(c, "card_id", 0),
-                    NameEng = Str(c, "name_eng"),
+                    // 卡包是编译产物：卡包里的 name 就是显示名（已本地化）。
+                    // 老卡包可能还有 name_eng / name_chs 分列，按 name → name_chs → name_eng 回退，
+                    // 这样新旧数据都能读，不需要两套加载器。
+                    NameEng = PickName(c),
                     NameChs = Str(c, "name_chs"),
                     Kind = kindNum switch
                     {
@@ -193,6 +196,22 @@ public static class CardPackLoader
     }
 
     // ---- 小工具 ----
+
+    /// <summary>
+    /// 取卡名：name → name_chs → name_eng。
+    ///
+    /// 编译产物的卡包只有 name（已换成本地化卡名）；
+    /// 老格式分列 name_eng / name_chs，按中文优先回退即可，不必维护两套加载路径。
+    /// </summary>
+    private static string PickName(JsonElement c)
+    {
+        string n = Str(c, "name");
+        if (!string.IsNullOrWhiteSpace(n)) return n;
+        n = Str(c, "name_chs");
+        if (!string.IsNullOrWhiteSpace(n)) return n;
+        return Str(c, "name_eng");
+    }
+
     private static string Str(JsonElement e, string name)
         => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
            ? (v.GetString() ?? "") : "";

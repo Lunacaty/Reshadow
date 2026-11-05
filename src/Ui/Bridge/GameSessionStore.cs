@@ -695,8 +695,8 @@ public sealed class GameSessionStore
     {
         message = "";
         if (string.IsNullOrWhiteSpace(packId)) { message = "未选择卡包"; return false; }
-        if (string.Equals(packId, "core-wb", StringComparison.OrdinalIgnoreCase))
-        { message = "官方核心卡包 [core-wb] 不可删除"; return false; }
+        if (string.Equals(packId, "official-sv", StringComparison.OrdinalIgnoreCase))
+        { message = "官方卡包 [official-sv] 不可删除"; return false; }
 
         var packDir = Path.Combine(DataRoot, "packs", packId);
         if (Directory.Exists(packDir)) Directory.Delete(packDir, recursive: true);
@@ -744,7 +744,7 @@ public sealed class GameSessionStore
         {
             PoolId = poolId,
             Name = string.IsNullOrWhiteSpace(poolName) ? poolId : poolName.Trim(),
-            EnabledPackIds = enabledPacks ?? new List<string> { "core-wb" },
+            EnabledPackIds = enabledPacks ?? new List<string> { "official-sv" },
             Rules = rules ?? MatchRules.CreateStandard(),
             NamedDecks = namedDecks ?? new List<NamedDeckRawDef>(),
         };

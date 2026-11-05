@@ -550,9 +550,9 @@ public static partial class Regress
             tr.Evolve(0, c, false, vm);
             vm.StepUntilBlocked();
 
-            int fairies = st.EnumerateZone(ZoneRef.Board, 0).Count(x => x.Def?.CardId == 90001110);
+            int fairies = st.EnumerateZone(ZoneRef.Board, 0).Count(x => x.Def?.CardId == 90011110);
             int stormed = st.EnumerateZone(ZoneRef.Board, 0)
-                .Count(x => x.Def?.CardId == 90001110 && x.Keywords.Contains(st.Schema.Keyword("storm")));
+                .Count(x => x.Def?.CardId == 90011110 && x.Keywords.Contains(st.Schema.Keyword("storm")));
 
             bool pass = crest && fairies == 3 && stormed == 3 && st.UnresolvedSpawnCount == 0;
             ok &= pass;

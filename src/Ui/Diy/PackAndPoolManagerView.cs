@@ -567,7 +567,7 @@ public partial class PackAndPoolManagerView : Control
         _ruleList.AddChild(sep);
     }
 
-    /// <summary>新建卡池弹窗：填 ID 与显示名，其余用标准规则与 core-wb 起步。</summary>
+    /// <summary>新建卡池弹窗：填 ID 与显示名，其余用标准规则与 official-sv 起步。</summary>
     private void OpenNewPoolDialog()
     {
         var dlg = new AcceptDialog { Title = "新建卡池", Size = new Vector2I(440, 240) };
@@ -592,7 +592,7 @@ public partial class PackAndPoolManagerView : Control
 
         var hint = new Label
         {
-            Text = "新卡池默认启用 core-wb，规则用标准赛制。建好后可在右侧勾选更多卡包。",
+            Text = "新卡池默认启用 official-sv，规则用标准赛制。建好后可在右侧勾选更多卡包。",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
         hint.AddThemeFontSizeOverride("font_size", 11);
@@ -604,7 +604,7 @@ public partial class PackAndPoolManagerView : Control
             string pid = idEdit.Text?.Trim();
             if (string.IsNullOrEmpty(pid)) { _ruleStatus.Text = "卡池 ID 不能为空"; dlg.QueueFree(); return; }
             bool ok = _store.SavePoolConfigFull(pid, nameEdit.Text?.Trim(),
-                new List<string> { "core-wb" }, ShadowverseFan.KernelV3.Core.MatchRules.CreateStandard(),
+                new List<string> { "official-sv" }, ShadowverseFan.KernelV3.Core.MatchRules.CreateStandard(),
                 new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>(), out string msg);
             _ruleStatus.Text = msg;
             if (ok)

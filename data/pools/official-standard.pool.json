@@ -1,63 +1,63 @@
 {
- "pool_id": "standard",
- "name": "官方标准卡池",
- "enabled_packs": [
-  "core-wb",
-  "testset-v2"
- ],
- "rules": {
-  "leader_initial_life": 20,
-  "max_pp_cap": 10,
-  "pp_gain_per_turn": 1,
-  "starting_hand_size": 4,
-  "min_deck_size": 40,
-  "max_deck_size": 40,
-  "max_copies": 3
- },
- "named_decks": [
-  {
-   "deck_name": "Apocalypse Deck",
-   "deck_name_chs": "启示录牌组",
-   "entries": [
-    {
-     "card_name": "Silent Rider",
-     "copies": 2
-    },
-    {
-     "card_name": "Servant of Cocytus",
-     "copies": 2
-    },
-    {
-     "card_name": "Demon of Purgatory",
-     "copies": 3
-    },
-    {
-     "card_name": "Astaroth's Reckoning",
-     "copies": 3
-    }
-   ]
+  "pool_id": "standard",
+  "name": "官方标准卡池",
+  "enabled_packs": [
+    "official-sv",
+    "testset-v2"
+  ],
+  "rules": {
+    "leader_initial_life": 20,
+    "max_pp_cap": 10,
+    "pp_gain_per_turn": 1,
+    "starting_hand_size": 4,
+    "min_deck_size": 40,
+    "max_deck_size": 40,
+    "max_copies": 3
   },
-  {
-   "deck_name": "deck of 40 cards",
-   "deck_name_chs": "40张牌的牌组",
-   "entries": [
+  "named_decks": [
     {
-     "card_name": "Fairy",
-     "copies": 10
+      "deck_name": "Apocalypse Deck",
+      "deck_name_chs": "启示录牌组",
+      "entries": [
+        {
+          "card_name": "Silent Rider",
+          "copies": 2
+        },
+        {
+          "card_name": "Servant of Cocytus",
+          "copies": 2
+        },
+        {
+          "card_name": "Demon of Purgatory",
+          "copies": 3
+        },
+        {
+          "card_name": "Astaroth's Reckoning",
+          "copies": 3
+        }
+      ]
     },
     {
-     "card_name": "Bat",
-     "copies": 10
-    },
-    {
-     "card_name": "Knight",
-     "copies": 10
-    },
-    {
-     "card_name": "Guardian Golem",
-     "copies": 10
+      "deck_name": "deck of 40 cards",
+      "deck_name_chs": "40张牌的牌组",
+      "entries": [
+        {
+          "card_name": "Fairy",
+          "copies": 10
+        },
+        {
+          "card_name": "Bat",
+          "copies": 10
+        },
+        {
+          "card_name": "Knight",
+          "copies": 10
+        },
+        {
+          "card_name": "Guardian Golem",
+          "copies": 10
+        }
+      ]
     }
-   ]
-  }
- ]
+  ]
 }

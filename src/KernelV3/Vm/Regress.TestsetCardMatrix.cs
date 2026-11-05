@@ -307,11 +307,11 @@ _ = (sep, superAoE);
 
     private static (bool, string) MatrixAmataz(MatrixEnv e)
     {
-        // 手牌放 2 张 Pixie（Fairy 真卡 90001110 带 Pixie 兵种）+ 1 张非 Pixie。
+        // 手牌放 2 张 Pixie（Fairy 真卡 90011110 带 Pixie 兵种）+ 1 张非 Pixie。
         // X 数的是「手牌里的 Pixie 随从」，手牌空了 X 就是 0。
         e.Filler(2960, ZoneRef.Hand, life: 1);
-        e.Put(90001110, ZoneRef.Hand);
-        e.Put(90001110, ZoneRef.Hand);
+        e.Put(90011110, ZoneRef.Hand);
+        e.Put(90011110, ZoneRef.Hand);
         var c = e.Put(81000003, ZoneRef.Hand);
         e.Play(c);
         bool buffed = c.Attack == 4 && c.Life == 4;   // 2/2 + 2 张 Pixie = 4/4
@@ -386,7 +386,7 @@ _ = (sep, superAoE);
         e.Tr.Evolve(0, c, false, e.Vm);
         e.Vm.StepUntilBlocked();
         var fairies = e.St.EnumerateZone(ZoneRef.Board, 0)
-            .Where(x => x.Def?.CardId == 90001110).ToList();
+            .Where(x => x.Def?.CardId == 90011110).ToList();
         int stormed = fairies.Count(f => f.Keywords.Contains(e.St.Schema.Keyword("storm")));
         return (crest && fairies.Count == 3 && stormed == 3,
             "获得纹章=" + crest + " 进化召3妖精=" + (fairies.Count == 3) + " 全部获疾驰=" + (stormed == 3));
@@ -565,8 +565,8 @@ _ = (sep, superAoE);
         var baseCard = e.Put(81000021, ZoneRef.Hand);
         // 材料必须是 Loot 兵种的卡（Sinciro 的 Fuse: Loot cards）。
         // Remnant of Hollowness 就是标准 Loot 法术。
-        e.Put(90005140, ZoneRef.Hand);
-        e.Put(90005140, ZoneRef.Hand);
+        e.Put(90024310, ZoneRef.Hand);
+        e.Put(90024310, ZoneRef.Hand);
         e.Filler(2970, ZoneRef.Hand);
         // 材料要挑**不是主体自己**的 Loot 卡 —— Sinciro 本身也带 Loot 兵种，
         // 不加这层过滤就会把自己当成材料，CanFuseCards 返回「不能把主体当材料」。
@@ -724,8 +724,8 @@ _ = (sep, superAoE);
         var crest = e.Put(81000032, ZoneRef.Board);
         int cd0 = crest.Counters.TryGetValue(e.St.Schema.Counter("countdown"), out var v0) ? v0 : -1;
         // 打一张 Loot 卡推进吟唱
-        e.Put(90005140, ZoneRef.Hand);   // Remnant of Hollowness（Loot）
-        var loot = e.St.EnumerateZone(ZoneRef.Hand, 0).First(x => x.Def.CardId == 90005140);
+        e.Put(90024310, ZoneRef.Hand);   // Remnant of Hollowness（Loot）
+        var loot = e.St.EnumerateZone(ZoneRef.Hand, 0).First(x => x.Def.CardId == 90024310);
         e.Play(loot);
         int cd1 = crest.Counters.TryGetValue(e.St.Schema.Counter("countdown"), out var v1) ? v1 : -1;
         return (cd0 > 0 && cd1 == cd0 - 1, "吟唱 " + cd0 + "->" + cd1 + "（期望 -1）");
@@ -851,9 +851,9 @@ _ = (sep, superAoE);
         e.St.DestroyEntity(c);
         e.Vm.StepUntilBlocked();
         var hand = e.St.EnumerateZone(ZoneRef.Hand, 0).ToList();
-        // Ghost 是 81000020 真卡，Bat 是 90001120
+        // Ghost 是 81000020 真卡，Bat 是 90051120
         bool gotGhost = hand.Any(x => x.Def?.CardId == 81000020);
-        bool gotBat = hand.Any(x => x.Def?.CardId == 90001120);
+        bool gotBat = hand.Any(x => x.Def?.CardId == 90051120);
         return (ward && gotGhost && gotBat, "守护=" + ward + " 谢幕曲得Ghost真卡=" + gotGhost + " Bat=" + gotBat);
     }
 }
