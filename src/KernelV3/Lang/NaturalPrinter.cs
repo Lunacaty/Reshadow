@@ -325,14 +325,8 @@ public sealed class NaturalPrinter
         if (mk.Target.Slot != TargetSpec.SlotSelf) return false;
         if (mk.Value == null) return false;
 
-        string n = mk.Value.Op == NumOp.Const ? mk.Value.Value.ToString() : "X";
-        sentence = mk.Keyword.Name switch
-        {
-            "max_attacks_per_turn" => "Can attack " + n + " times per turn",
-            "damage_cap" => "Can't take more than " + n + " damage at a time",
-            "damage_taken_bonus" => "Takes " + n + " more damage",
-            _ => null,
-        };
+        // 与 ModKeyword（给予他人）共用同一份句子生成，避免两处漂移。
+        sentence = ParameterizedKeywordSentence(mk.Keyword.Name, mk.Value);
         return sentence != null;
     }
 
@@ -542,8 +536,40 @@ public sealed class NaturalPrinter
                + Space() + Word("by") + Space() + amtText + Duration(mc.Duration) + Period();
     }
 
+
+    /// <summary>
+    /// 带参关键词 -> 合法英文限制句。无参或未知关键词返回 null。
+    ///
+    /// 单一实现源：TryPrintParameterizedKeyword（裸词分支）与 ModKeyword（给予他人）
+    /// 必须产出同一句话，否则同一张卡从两条路径打印出来不等价。
+    /// </summary>
+    private static string ParameterizedKeywordSentence(string keyword, NumExpr value)
+    {
+        if (value == null) return null;
+        string n = value.Op == NumOp.Const ? value.Value.ToString() : "X";
+        return keyword switch
+        {
+            "max_attacks_per_turn" => "Can attack " + n + " times per turn",
+            "damage_cap" => "Can't take more than " + n + " damage at a time",
+            "damage_taken_bonus" => "Takes " + n + " more damage",
+            _ => null,
+        };
+    }
+
     private string ModKeyword(ModifyKeywordNode k)
     {
+        // 带参关键词要输出成引号句：
+        //   Give $self "Can attack 2 times per turn."
+        // 直接拼内码（Give $self max_attacks_per_turn 2.）不是合法英文，
+        // 切到英文端再编译会当场报错，而且次数语义也丢了。
+        if (k.Op == KeywordOp.Grant && k.Value != null)
+        {
+            string sentence = ParameterizedKeywordSentence(k.Keyword.Name, k.Value);
+            if (sentence != null)
+                return Word("Give") + Space() + PrintTarget(k.Target) + Space()
+                       + Quote(sentence) + Duration(k.Duration) + Period();
+        }
+
         var kw = Word(k.Keyword.Name);
         var val = k.Value != null ? Space() + PrintNum(k.Value) : "";
         return k.Op switch

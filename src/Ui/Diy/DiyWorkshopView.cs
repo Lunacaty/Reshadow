@@ -34,6 +34,8 @@ public partial class DiyWorkshopView : Control
     private BlockTreeEditorWidget _blockEditor;
     private TextEdit _astJsonEdit;
     private OptionButton _packPicker;
+    private OptionButton _loadPicker;
+    private List<ShadowverseFan.KernelV3.Ast.CardDef> _activePoolCardList = new();
     private Control _hover;
 
     // 表单端可编辑控件（每次切到表单页签重建）
@@ -144,27 +146,22 @@ public partial class DiyWorkshopView : Control
             // 卡池换了，目标卡包与可加载卡牌都必须跟着换 ——
             // 留着旧列表会让玩家往新池子里存一个它根本没有的卡包。
             FillPackPicker();
+            FillLoadPicker();
             RefreshAll();
         };
         row.AddChild(poolPicker);
 
         // 从当前卡池导入一张真卡，看它的四端投影。
-        var loadPicker = new OptionButton { CustomMinimumSize = new Vector2(180, 32) };
-        SvWbTheme.StyleButton(loadPicker);
-        SvWbTheme.StyleOptionPopup(loadPicker);
-        loadPicker.AddItem("📂 加载现有卡牌…", 0);
-        var allCards = CurrentPoolCards();
-        for (int ci = 0; ci < allCards.Count; ci++)
-        {
-            var cd = allCards[ci];
-            string nm = string.IsNullOrWhiteSpace(cd.NameChs) ? (cd.Name ?? "") : cd.NameChs;
-            loadPicker.AddItem(cd.CardId + " " + nm, ci + 1);
-        }
-        loadPicker.ItemSelected += idx =>
+        // 提升为成员：切换卡池后要能重填，否则列表还停在旧池子的卡上。
+        _loadPicker = new OptionButton { CustomMinimumSize = new Vector2(180, 32) };
+        SvWbTheme.StyleButton(_loadPicker);
+        SvWbTheme.StyleOptionPopup(_loadPicker);
+        FillLoadPicker();
+        _loadPicker.ItemSelected += idx =>
         {
             int k = (int)idx;
-            if (k <= 0 || k - 1 >= allCards.Count) return;
-            _ctrl.LoadExistingCard(allCards[k - 1]);
+            if (k <= 0 || k - 1 >= _activePoolCardList.Count) return;
+            _ctrl.LoadExistingCard(_activePoolCardList[k - 1]);
             // 换了一张卡：工作台必须按新模型重建。
             // RefreshEndpoint 现在会复用实例（保住选中态），所以这里先主动弃掉它。
             if (_blockEditor != null && IsInstanceValid(_blockEditor))
@@ -175,7 +172,7 @@ public partial class DiyWorkshopView : Control
             RefreshAll();
             if (_statusLabel != null) _statusLabel.Text = _ctrl.LastStatusMessage;
         };
-        row.AddChild(loadPicker);
+        row.AddChild(_loadPicker);
 
         var defineBtn = new Button { Text = "➕ 注册词条", CustomMinimumSize = new Vector2(120, 32) };
         SvWbTheme.StyleButton(defineBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
@@ -451,6 +448,28 @@ public partial class DiyWorkshopView : Control
     /// 写死成全表会让玩家把卡存进一个当前池子没启用的卡包 ——
     /// 存进去了，但立刻从池子里消失，而且不报错。
     /// </summary>
+
+    /// <summary>
+    /// 重填「加载现有卡牌」下拉框，只列当前卡池的卡。
+    ///
+    /// 切池后不重填的话，列表还停在旧池子的卡上：点进去会把一个
+    /// 当前池子根本没有的卡拉进工坊，之后怎么都编译不过。
+    /// </summary>
+    private void FillLoadPicker()
+    {
+        if (_loadPicker == null || !IsInstanceValid(_loadPicker)) return;
+        _loadPicker.Clear();
+        _loadPicker.AddItem("📂 加载现有卡牌…", 0);
+
+        _activePoolCardList = CurrentPoolCards();
+        for (int ci = 0; ci < _activePoolCardList.Count; ci++)
+        {
+            var cd = _activePoolCardList[ci];
+            string nm = string.IsNullOrWhiteSpace(cd.NameChs) ? (cd.Name ?? "") : cd.NameChs;
+            _loadPicker.AddItem(cd.CardId + " " + nm, ci + 1);
+        }
+    }
+
     private void FillPackPicker()
     {
         if (_packPicker == null || !IsInstanceValid(_packPicker)) return;
