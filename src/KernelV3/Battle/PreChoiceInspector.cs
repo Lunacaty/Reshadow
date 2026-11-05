@@ -126,7 +126,8 @@ public static class PreChoiceInspector
                 };
                 if (!trigMatch) continue;
 
-                if (!EvalCond(state, card, ab.Condition)) continue;
+                // 能力级条件也要用同一个作用域 —— 它可能引用 $selected / $chooseK。
+                if (!EvalCond(state, card, ab.Condition, scope)) continue;
 
                 var prompt = Walk(state, card, scope, ab.Body, answers, ref consumed);
                 if (prompt != null) return new Result { Prompt = prompt, Consumed = consumed };
@@ -157,7 +158,7 @@ public static class PreChoiceInspector
             {
                 case ConditionalNode cond:
                 {
-                    bool take = EvalCond(state, card, cond.Condition);
+                    bool take = EvalCond(state, card, cond.Condition, scope);
                     var branch = take ? cond.Then : cond.Else;
                     if (branch == null || branch.Count == 0) continue;
                     var sub = Walk(state, card, scope, branch, answers, ref consumed);
@@ -215,7 +216,7 @@ public static class PreChoiceInspector
                     if (spec == null || spec.Mode != SelectMode.Choose) continue;
                     if (spec.SourceKind == TargetSourceKind.Slot) continue;
 
-                    var ids = ResolveCands(state, card, spec);
+                    var ids = ResolveCands(state, card, spec, scope);
                     if (ids.Count == 0) continue;   // 无合法目标：运行时也直接跳过
 
                     // SelectTargetNode 的槽位在 OutSlot 上，不在 spec.Slot 上；
@@ -234,7 +235,9 @@ public static class PreChoiceInspector
                     if (consumed < answers.Count)
                     {
                         consumed++;
-                        BindAnswer(state, scope, slotName, answers[consumed - 1]);
+                        // append 跟着节点走：连选两次时第二次要追加到 $selected。
+                        bool appendSel = node is SelectTargetNode stnApp && stnApp.AppendToSlot;
+                        BindAnswer(state, scope, slotName, answers[consumed - 1], appendSel);
                         continue;
                     }
 
@@ -249,7 +252,7 @@ public static class PreChoiceInspector
 
     /// <summary>把玩家选好的实体 id 绑定进探针作用域，供后续条件求值使用。</summary>
     private static void BindAnswer(BattleState state, VmScope scope, string slot,
-                                   IReadOnlyList<int> picked)
+                                   IReadOnlyList<int> picked, bool append = false)
     {
         if (scope == null || picked == null || picked.Count == 0) return;
         var list = new List<EntityRef>();
@@ -275,7 +278,10 @@ public static class PreChoiceInspector
             //   预选阶段就必须已经知道它是第几次选择，
             //   否则预选与实跑会算出不同的目标集合。
             // BindSelection 内部同时维护 $selected（追加语义由 append 决定）。
-            scope.BindSelection(slot ?? TargetSpec.SlotSelected, list, append: false);
+            // append 必须跟着节点走：
+            //   "Select an allied and enemy follower" 连选两次，第二次要追加，
+            //   写死 false 会让 $selected 只剩最后一次的结果。
+            scope.BindSelection(slot ?? TargetSpec.SlotSelected, list, append);
         }
     }
 
@@ -350,10 +356,14 @@ public static class PreChoiceInspector
         _ => null,
     };
 
-    private static List<int> ResolveCands(BattleState state, RuntimeEntity card, TargetSpec spec)
+    private static List<int> ResolveCands(BattleState state, RuntimeEntity card, TargetSpec spec,
+                                          VmScope scope = null)
     {
         var eval = new VmEval(state);
-        var sc = ScopeOf(card);
+        // 必须沿用 Walk 传下来的作用域：
+        // 预选第 2 个目标时，spec.Where 里可能带着 "other than $choose1"，
+        // 每次都新建空作用域会让第 1 个已选目标不被排除出候选列表。
+        var sc = scope ?? ScopeOf(card);
 
         var ambush = state.Schema.Keyword("ambush");
         var aura = state.Schema.Keyword("aura");
@@ -377,10 +387,15 @@ public static class PreChoiceInspector
         return ids;
     }
 
-    private static bool EvalCond(BattleState state, RuntimeEntity card, BoolExpr cond)
+    private static bool EvalCond(BattleState state, RuntimeEntity card, BoolExpr cond,
+                                 VmScope scope = null)
     {
         if (cond == null) return true;
-        try { return new VmEval(state).EvalBool(cond, ScopeOf(card)); }
+        // 同样要沿用 Walk 的作用域：
+        //   "Select an allied follower or amulet. If you selected an allied amulet,
+        //    select an enemy follower ..."
+        // 在空作用域上查 $selected 恒为 false，分支内的第 2 个预选框根本弹不出来。
+        try { return new VmEval(state).EvalBool(cond, scope ?? ScopeOf(card)); }
         catch { return true; }
     }
 }
