@@ -127,6 +127,24 @@ public sealed class GameSessionStore
             // 记住原文件：official-standard.pool.json 里的 id 是 "standard"，
             // 按 id 拼文件名会在磁盘上造出第二个同 id 文件互相打架。
             PoolFilePaths[cfg.PoolId] = path;
+
+            // 卡池自定义的职业与计数器存在 .pool.json 里，不在 pack.json 里。
+            // 每次 Initialize 都要把它们同步进全局 Schema/Glossary ——
+            // 只靠「新建时注册一次」的话，下一次重载 Catalog 就重建了，
+            // 自定义职业从勾选栏里消失，引用它的效果也拿不到符号。
+            foreach (var cn in cfg.PoolClans ?? new List<string>())
+            {
+                if (string.IsNullOrWhiteSpace(cn)) continue;
+                Catalog.Schema.Clan(cn, cfg.PoolId);
+                Catalog.Lexicon.AddClan(cn);
+            }
+            foreach (var ctr in cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>())
+            {
+                if (ctr == null || string.IsNullOrWhiteSpace(ctr.Name)) continue;
+                Catalog.Schema.Counter(ctr.Name, cfg.PoolId);
+                Catalog.Schema.CounterLimits[ctr.Name] = (ctr.Min, ctr.Max);
+                if (!string.IsNullOrWhiteSpace(ctr.NameChs)) Catalog.Glossary.Add(ctr.Name, ctr.NameChs);
+            }
             var built = CardPoolBuilder.Build(cfg, Catalog.Packs);
             if (built.Ok)
             {

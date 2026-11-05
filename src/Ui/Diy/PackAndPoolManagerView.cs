@@ -491,17 +491,29 @@ public partial class PackAndPoolManagerView : Control
         if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var cfg)) return;
         var enabled = new HashSet<string>(cfg.PoolClans ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
 
-        foreach (var clan in _store.Catalog.Schema.Clans.All.OrderBy(x => x.Name, StringComparer.Ordinal))
+        // 来源合并：全局 Schema 里注册过的 + 本卡池自己配的。
+        // 只读 Schema 会在重载后丢掉自定义职业（它们存在 .pool.json，不在 pack.json）；
+        // 只读 PoolClans 则会把卡包声明但本池尚未勾选的标准职业藏起来。
+        var allClanNames = _store.Catalog.Schema.Clans.All.Select(x => x.Name)
+            .Concat(cfg.PoolClans ?? new List<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.Ordinal);
+
+        foreach (var cname in allClanNames)
         {
-            var cb = new CheckBox { Text = SvWbTheme.ClanDisplayZh(clan.Name), ButtonPressed = enabled.Contains(clan.Name) };
+            var cb = new CheckBox { Text = SvWbTheme.ClanDisplayZh(cname), ButtonPressed = enabled.Contains(cname) };
             cb.AddThemeFontSizeOverride("font_size", 11);
-            string cname = clan.Name;
+            string captured = cname;
             cb.Toggled += on =>
             {
-                var cur = new HashSet<string>(cfg.PoolClans ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
-                if (on) cur.Add(cname); else cur.Remove(cname);
-                _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds, cfg.Rules, cfg.NamedDecks,
-                                         out string m, cur.ToList(), cfg.LeaderCounters);
+                // 必须读**最新**配置：闭包里的 cfg 是建控件那一刻的快照，
+                // 连续勾两个职业时第二个会拿旧快照覆盖第一个，前者当场消失。
+                if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var latest)) return;
+                var cur = new HashSet<string>(latest.PoolClans ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+                if (on) cur.Add(captured); else cur.Remove(captured);
+                _store.SavePoolConfigFull(latest.PoolId, latest.Name, latest.EnabledPackIds, latest.Rules,
+                                         latest.NamedDecks, out string m, cur.ToList(), latest.LeaderCounters);
                 _ruleStatus.Text = m;
             };
             _poolClanList.AddChild(cb);
