@@ -243,27 +243,34 @@ public sealed class DiyWorkshopController
         return true;
     }
 
+    /// <summary>
+    /// ③ 端整卡编译：吃 PyAST 规范语法（含 card 头）。
+    ///
+    /// 旧 ReshadowScript 已下线 —— PyAST 是唯一的 AST 文本格式。
+    /// 存量卡包里的 reshadow_script 数据仍由 GlobalCatalog / CardPool 的
+    /// 兼容分支读取，但编辑端不再产出它。
+    /// </summary>
     public bool CompileFromScript(string script)
     {
         LastErrors.Clear();
         ScriptText = script ?? "";
 
-        var sc = new ReshadowScriptCompiler(Workspace);
-        var list = sc.Compile(ScriptText);
-        if (list.Count == 0 || sc.Errors.Count > 0)
+        var parser = new AstCanonicalParser(Workspace.Schema, Workspace.Lexicon);
+        CardDef def = null;
+        try { def = parser.ParseCard(ScriptText); }
+        catch (Exception ex) { LastErrors.Add("PyAST 解析失败：" + ex.Message); }
+
+        if (def == null || parser.Errors.Count > 0)
         {
-            LastErrors.AddRange(sc.Errors);
-            if (LastErrors.Count == 0) LastErrors.Add("脚本中未找到有效的 card 声明");
-            LastStatusMessage = "脚本编译失败：" + string.Join("；", LastErrors);
+            LastErrors.AddRange(parser.Errors);
+            if (LastErrors.Count == 0) LastErrors.Add("PyAST 中没有 card 声明");
+            LastStatusMessage = "编译失败：" + string.Join("；", LastErrors);
             return false;
         }
 
-        // 脚本端的卡名写进了 Name（ReshadowScriptCompiler 把引号里的字符串
-        // 直接当卡名用），所以中文名要从 Name 取，而不是 NameChs ——
-        // 取 NameChs 会得到一个空串，卡面立刻变英文。
-        CurrentDef = PreserveChineseName(list[0], list[0].Name);
+        CurrentDef = PreserveChineseName(def, def.Name);
         SyncAllEndpointsFromCurrentDef();
-        LastStatusMessage = "✔ 从【ReshadowScript 脚本端】编译成功，已同步至其余三端";
+        LastStatusMessage = "✔ 从【AST 规范语法】编译成功，已同步至其余三端";
         OnCardUpdated?.Invoke();
         return true;
     }
@@ -374,29 +381,28 @@ public sealed class DiyWorkshopController
         diff = "";
         if (CurrentDef == null) { diff = "当前无卡牌定义"; return false; }
 
-        // ① 脚本端往返
-        var sc = new ReshadowScriptCompiler(Workspace);
-        string printed = sc.Print(CurrentDef);
-        var recompiled = sc.Compile(printed).FirstOrDefault();
-        if (recompiled == null) { diff = "脚本重编译失败"; return false; }
+        // PyAST 往返：打印 → 解析 → 结构判等。
+        // 这是唯一的 AST 文本格式，旧 ReshadowScript / ast_json 已全部下线。
+        string printed = AstCanonicalPrinter.PrintCard(CurrentDef);
+        var parser = new AstCanonicalParser(Workspace.Schema, Workspace.Lexicon);
+        CardDef recompiled = parser.ParseCard(printed);
+        if (recompiled == null || parser.Errors.Count > 0)
+        {
+            diff = "PyAST 重解析失败：" + (parser.Errors.FirstOrDefault() ?? "null");
+            return false;
+        }
         if (!DiyWorkspace.StructurallyEqual(CurrentDef, recompiled, out diff))
         {
-            diff = "脚本端：" + diff;
+            diff = "PyAST 端：" + diff;
             return false;
         }
-
-        // ② AST 端往返（126 轮补齐）：
-        // 只验脚本端等于放任 AST 编解码悄悄丢字段 —— 玩家在语法树端点一次编译，
-        // 构筑规则或某个孔位就没了，而且没有任何报错。
-        string json = AstJsonCodec.Encode(CurrentDef);
-        var fromAst = AstJsonCodec.Decode(json, Workspace.Schema, Workspace.Lexicon);
-        if (fromAst == null) { diff = "AST 端解码失败"; return false; }
-        if (!DiyWorkspace.StructurallyEqual(CurrentDef, fromAst, out diff))
+        // 二次打印必须字节级一致（证明是自给自足的双向序列化）。
+        string again = AstCanonicalPrinter.PrintCard(recompiled);
+        if (again != printed)
         {
-            diff = "AST 端：" + diff;
+            diff = "PyAST 二次打印不一致";
             return false;
         }
-
         return true;
     }
 

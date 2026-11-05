@@ -192,52 +192,9 @@ public sealed class GlobalCatalog
         }
 
         // 脚本格式的卡不能丢给 EnglishCompiler —— 当场会编译报错。
-        // 与 CardPool.CompileCard 同构：卡包可声明 source_format: "ast_json"。
         // 必须复用本总表的 Schema —— SymbolId 只按 Id 判等，
         // 新造一套会让 storm 解析成 Id=1，而本仓的 ward 才是 0/storm 是 1 的对应关系只在本 Schema 成立。
-        if (string.Equals(c.SourceFormat, "ast_json", StringComparison.OrdinalIgnoreCase))
-        {
-            CardDef astDef;
-            try
-            {
-                astDef = Diy.AstJsonCodec.Decode(c.Text, Schema, Lexicon);
-            }
-            catch (Exception ex)
-            {
-                Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》AST JSON 解析失败：" + ex.Message);
-                return null;
-            }
-
-            if (astDef == null)
-            {
-                Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》AST JSON 为空");
-                return null;
-            }
-
-            var mergedMods3 = (astDef.DeckModifiers != null && astDef.DeckModifiers.Count > 0)
-                ? astDef.DeckModifiers
-                : (c.DeckModifiers ?? new List<DeckBuildModifier>());
-            var mergedKws3 = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k))
-                .Concat(astDef.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
-                .Distinct().ToList();
-
-            return new CardDef
-            {
-                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = astDef.Kind,
-                BaseCost = c.Cost > 0 ? c.Cost : astDef.BaseCost,
-                BaseAttack = c.Attack > 0 ? c.Attack : astDef.BaseAttack,
-                BaseLife = c.Life > 0 ? c.Life : astDef.BaseLife,
-                Abilities = astDef.Abilities,
-                Traits = traits.Count > 0 ? traits : astDef.Traits,
-                Clan = clan.IsValid ? clan : astDef.Clan,
-                InnateKeywords = mergedKws3,
-                DeckModifiers = mergedMods3,
-                HasFuse = astDef.HasFuse, FuseMaterialFilter = astDef.FuseMaterialFilter,
-                CrestDef = astDef.CrestDef, FaithDef = astDef.FaithDef,
-                AccelerateDef = astDef.AccelerateDef, CrystallizeDef = astDef.CrystallizeDef,
-                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
-            };
-        }
+        
         // ---- source_format: "py_ast"（204 号文档第五节第 2 步）
         // 复用本总表的 Schema / Lexicon：SymbolId 只按 Id 判等，
         // 新造一套会让同一张卡里的 trait / keyword 与本仓串号。
@@ -259,7 +216,7 @@ public sealed class GlobalCatalog
                 return null;
             }
 
-            // 卡包声明优先：卡号 / 名 / 费 / 攻 / 命 以外层为准，与 ast_json 分支同口径。
+            // 卡包声明优先：卡号 / 名 / 费 / 攻 / 命 以外层为准。
             return new CardDef
             {
                 CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = pyDef.Kind,
@@ -280,56 +237,7 @@ public sealed class GlobalCatalog
             };
         }
 
-        if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
-        {
-            // 与 CardPool.CompileCard 保持完全一致：
-            // 复用本总表的 Schema / Lexicon / Glossary，绝不新造一套 ——
-            // DiyWorkspace.Create 会生成本地 Schema，SymbolId 与本仓串号，
-            // 且空 Lexicon 认不出其他卡名，summon("Fairy") 会解析成 0。
-            var probe = new Battle.BattleState(Schema, 0, Schema.Rules);
-            var ctx = Lang.CompileContext.For(probe);
-            foreach (var kv in _cardsByName)
-                if (kv.Value != null) ctx.Lexicon.AddCard(kv.Key, kv.Value.CardId);
-            ctx.Lexicon.Build();
-
-            var ws = Diy.DiyWorkspace.For(ctx, Glossary);
-            var sc = new Diy.ReshadowScriptCompiler(ws);
-            var made = sc.Compile(c.Text);
-            if (made.Count == 0)
-            {
-                foreach (var e in sc.Errors)
-                    Notices.Add("卡 " + c.CardId + "《" + c.NameEng + "》脚本编译失败：" + e);
-                return null;
-            }
-            var sd = made[0];
-
-            // 合并而不是 ??：sd.DeckModifiers 是空列表（非 null）时，
-            // ?? 左边永远非空，JSON 上写的 deck_modifiers 会被整个吞掉。
-            var mergedMods = (sd.DeckModifiers != null && sd.DeckModifiers.Count > 0)
-                ? sd.DeckModifiers
-                : (c.DeckModifiers ?? new List<DeckBuildModifier>());
-            var mergedKws = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k))
-                .Concat(sd.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
-                .Distinct().ToList();
-
-            return new CardDef
-            {
-                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = sd.Kind,
-                BaseCost = c.Cost > 0 ? c.Cost : sd.BaseCost,
-                BaseAttack = c.Attack > 0 ? c.Attack : sd.BaseAttack,
-                BaseLife = c.Life > 0 ? c.Life : sd.BaseLife,
-                Abilities = sd.Abilities,
-                Traits = traits.Count > 0 ? traits : sd.Traits,
-                Clan = clan.IsValid ? clan : sd.Clan,
-                InnateKeywords = mergedKws,
-                DeckModifiers = mergedMods,
-                // 这六个字段漏拷会让「脚本写的纹章/融合/激奏卡」变成白板。
-                HasFuse = sd.HasFuse, FuseMaterialFilter = sd.FuseMaterialFilter,
-                CrestDef = sd.CrestDef, FaithDef = sd.FaithDef,
-                AccelerateDef = sd.AccelerateDef, CrystallizeDef = sd.CrystallizeDef,
-                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
-            };
-        }
+        
 
         var alts = c.AltModes.Select(a => (a.TypeEng, a.Cost, a.TextEng)).ToArray();
         var r = comp.Compile(c.Text, alts, c.NameEng, c.CardId);
@@ -349,7 +257,12 @@ public sealed class GlobalCatalog
                 DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
             BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
             Abilities = r.Abilities, Traits = traits, Clan = clan,
-            InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k)).ToList(),
+            // 卡包 JSON 的 keywords 与卡面原文解析出的裸关键词必须合并，
+            // 与 CardPool.CompileCard 同口径：只取前者会让原文有关键词、
+            // JSON 没写 keywords 的卡失去能力。
+            InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k))
+                .Concat(r.InnateKeywords)
+                .Distinct().ToList(),
             HasFuse = r.HasFuse, FuseMaterialFilter = r.FuseMaterialFilter,
             CrestDef = r.CrestDef, FaithDef = r.FaithDef,
             AccelerateDef = r.AccelerateDef, CrystallizeDef = r.CrystallizeDef,

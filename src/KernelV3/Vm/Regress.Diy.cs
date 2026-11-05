@@ -197,31 +197,36 @@ public static partial class Regress
 
         if (bad.Count > 0) return (false, string.Join(" | ", bad.Take(3)) + "（共 " + bad.Count + " 张）");
 
-        // ---- 脚本往返：与积木同样必须 30/30 ----
-        // 只验积木不验脚本，等于默许另一条路静默丢数据。
-        var comp = new ReshadowScriptCompiler(ws);
+        // ---- PyAST 往返：与积木同样必须 30/30 ----
+        // 只验积木不验 PyAST，等于默许另一条路静默丢数据。
         int sok = 0;
         var sbad = new List<string>();
         foreach (var c in cards)
         {
-            var printed = comp.Print(c.Def);
-            var perrs = comp.Errors.ToList();
-            if (perrs.Count > 0) { sbad.Add(c.CardId + " 导出失败：" + perrs[0]); continue; }
-
-            var back = comp.Compile(printed);
-            if (back.Count == 0) { sbad.Add(c.CardId + " 重新解析失败：" + comp.Errors.FirstOrDefault()); continue; }
-
+            string printed = AstCanonicalPrinter.PrintCard(c.Def);
+            var parser = new AstCanonicalParser(ws.Schema, ws.Lexicon);
+            var back = parser.ParseCard(printed);
+            if (back == null || parser.Errors.Count > 0)
+            {
+                sbad.Add(c.CardId + " 重新解析失败：" + (parser.Errors.FirstOrDefault() ?? "null"));
+                continue;
+            }
             string sd = "";
-            if (!DiyWorkspace.StructurallyEqual(c.Def, back[0], out sd))
+            if (!DiyWorkspace.StructurallyEqual(c.Def, back, out sd))
             {
                 sbad.Add(c.CardId + " 不等价：" + sd.Replace("\n", " "));
                 continue;
             }
+            if (AstCanonicalPrinter.PrintCard(back) != printed)
+            {
+                sbad.Add(c.CardId + " 二次打印不一致");
+                continue;
+            }
             sok++;
         }
-        if (sbad.Count > 0) return (false, "脚本往返 " + sok + "/30：" + string.Join(" | ", sbad.Take(3)));
+        if (sbad.Count > 0) return (false, "PyAST 往返 " + sok + "/30：" + string.Join(" | ", sbad.Take(3)));
 
-        return (true, "积木 " + ok + "/30、脚本 " + sok + "/30 双向无损（含融合/子卡/CardId 判等）");
+        return (true, "积木 " + ok + "/30、PyAST " + sok + "/30 双向无损（含融合/子卡/CardId 判等）");
     }
     // ---------------------------------------------------------------- 门禁 3
 
@@ -273,23 +278,19 @@ public static partial class Regress
             made.Add(("CNL", def, errs != null && errs.Count > 0 ? errs[0] : null));
         }
 
-        // ② ReshadowScript
+        // ② PyAST（唯一的 AST 文本格式）
         {
-            var script = "card " + id + " \"" + nameChs + "\" (Follower, cost: 3, atk: 2, life: 3, clan: Swordcraft, traits: [Mecha]) {\n"
-                       + "    keywords: [ward]\n"
-                       + "    on play {\n"
-                       + "        gain_counter(sword_intent, 2)\n"
-                       + "        select $selected = target(enemy, board, follower, count: 1)\n"
-                       + "        damage($selected, counter(sword_intent))\n"
-                       + "    }\n"
-                       + "}\n";
-            var comp = new ReshadowScriptCompiler(ws);
-            var list = comp.Compile(script);
-            made.Add(("Script",
-                list.FirstOrDefault(),
-                comp.Errors.Count > 0 ? comp.Errors[0] : null));
+            var dsl = "card " + id + " \"" + nameChs + "\" (Follower, clan=Swordcraft, cost=3, atk=2, life=3):\n"
+                    + "    traits: [Mecha]\n"
+                    + "    keywords: [ward]\n"
+                    + "    fanfare:\n"
+                    + "        counter sword_intent by 2\n"
+                    + "        select opponent:board Choose(1) where is Follower\n"
+                    + "        deal ctr:sword_intent damage to $selected\n";
+            var parser = new AstCanonicalParser(ws.Schema, ws.Lexicon);
+            var def = parser.ParseCard(dsl);
+            made.Add(("PyAST", def, parser.Errors.Count > 0 ? parser.Errors[0] : null));
         }
-
         // ③ Scratch 积木
         {
             var doc = new CardBlockWorkspace
@@ -393,11 +394,11 @@ public static partial class Regress
         {
             string en = AstCanonicalPrinter.PrintAbilities(def.Abilities);
             string zh = ws.Printer.PrintCard(def);
-            if (en != en0) bad.Add(way + " 的英文 AST 与 CNL 不同：\n    " + en + "\n    vs " + en0);
+            if (en != en0) bad.Add(way + " 的 PyAST 与 CNL 不同：\n    " + en.Replace("\n", " | ") + "\n    vs " + en0.Replace("\n", " | "));
             if (zh != zh0) bad.Add(way + " 的中文卡面与 CNL 不同：\n    " + zh.Replace("\n", " / ") + "\n    vs " + zh0.Replace("\n", " / "));
         }
 
-        if (bad.Count > 0) return (false, string.Join(" | ", bad.Take(2)));
+        if (bad.Count > 0) return (false, string.Join(" || ", bad.Take(2)).Replace("\n", " ⏎ "));
 
         // ---- 表单自身闭环：表单造出的卡必须能被表单读回去 ----
         // 只验「四端产出相同」不够：那四条路各造一次就完了。

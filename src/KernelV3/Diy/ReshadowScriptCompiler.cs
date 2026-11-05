@@ -553,8 +553,8 @@ public sealed class ReshadowScriptCompiler
                 fuseFilter = ParseTargetOrExpr(p);
                 continue;
             }
-            if (head == "crest") { p.Next(); crest = ParseSubBlock(p, CardKind.Crest, nameChs, 0, traits); continue; }
-            if (head == "faith") { p.Next(); faith = ParseSubBlock(p, CardKind.Faith, nameChs, 0, traits); continue; }
+            if (head == "crest") { p.Next(); int cid = ParseParenIntOrZero(p); crest = ParseSubBlock(p, CardKind.Crest, nameChs, 0, traits, cid); continue; }
+            if (head == "faith") { p.Next(); int fid = ParseParenIntOrZero(p); faith = ParseSubBlock(p, CardKind.Faith, nameChs, 0, traits, fid); continue; }
             if (head == "accelerate") { p.Next(); int c = ParseParenInt(p); accel = ParseSubBlock(p, CardKind.Spell, nameChs, c, traits); continue; }
             if (head == "crystallize" || head == "crystallise") { p.Next(); int c = ParseParenInt(p); cryst = ParseSubBlock(p, CardKind.Amulet, nameChs, c, traits); continue; }
             if (head == "deck_mod") { var dm = ParseDeckMod(p); if (dm != null) deckMods.Add(dm); continue; }
@@ -748,7 +748,21 @@ public sealed class ReshadowScriptCompiler
         return v;
     }
 
-    private CardDef ParseSubBlock(Cursor p, CardKind kind, string name, int cost, List<string> traits)
+
+    /// <summary>可选的 (卡号)：crest(81000006) { … }。没有括号返回 0。</summary>
+    private int ParseParenIntOrZero(Cursor p)
+    {
+        if (!p.TryChar('(')) return 0;
+        int v = 0;
+        while (!p.AtEnd && char.IsDigit(p.PeekChar()))
+        {
+            v = v * 10 + (p.PeekChar() - '0');
+            p.NextChar();
+        }
+        p.TryChar(')');
+        return v;
+    }
+    private CardDef ParseSubBlock(Cursor p, CardKind kind, string name, int cost, List<string> traits, int artId = 0)
     {
         var abilities = new List<AbilityDef>();
         if (!p.TryChar('{')) return null;
@@ -761,7 +775,7 @@ public sealed class ReshadowScriptCompiler
         }
         return new CardDef
         {
-            CardId = 0, Name = name, Kind = kind, BaseCost = cost,
+            CardId = 0, ArtCardId = artId, Name = name, Kind = kind, BaseCost = cost,
             Abilities = abilities,
             Traits = traits.Select(t => _schema.Trait(t)).ToList(),
         };
@@ -1015,7 +1029,10 @@ public sealed class ReshadowScriptCompiler
         if (p.TryChar('{')) body = ParseBlockBody(p);
         // MaxIterations 是防死循环的硬上限：次数是常量就用常量，
         // 是表达式（「手牌 Pixie 数」）时取一个安全上限，避免 DIY 出无限循环。
-        int cap = countExpr.Op == NumOp.Const ? Math.Max(1, countExpr.Value) : 30;
+        // MaxIterations 只是防死循环的硬上限，默认 30，不能拿循环次数当上限。
+        // 拿 Count 当上限会让「repeat 2 times」被打成「repeat 2 times (max=2)」，
+        // 与原 AST 的默认值不等价。
+        int cap = 30;
         return new LoopNode
         {
             Kind = LoopKind.Times,
@@ -1271,9 +1288,12 @@ public sealed class ReshadowScriptCompiler
         string name = p.TryString() ?? p.Next();
         p.TryChar(',');
         var n = ParseNumExpr(p);
+        // 可选第三参是卡号；没有就退回按名反查。
+        int id = 0;
+        if (p.TryChar(',')) id = ParseParenIntOrZero(p);
         return new SpawnCardNode
         {
-            CardId = CardIdOf(name), CardName = name, Count = n, ToZone = ZoneRef.Board,
+            CardId = id > 0 ? id : CardIdOf(name), CardName = name, Count = n, ToZone = ZoneRef.Board,
         };
     }
 
@@ -2360,7 +2380,7 @@ public sealed class ReshadowScriptCompiler
         }
         if (card.CrestDef != null)
         {
-            sb.Append("    crest {\n");
+            sb.Append("    crest" + (card.CrestDef.ArtCardId > 0 ? "(" + card.CrestDef.ArtCardId + ")" : "") + " {\n");
             foreach (var ab in card.CrestDef.Abilities)
             {
                 // 不能跳过 PassiveAura：子卡的常驻项正是它 ——
@@ -2374,7 +2394,7 @@ public sealed class ReshadowScriptCompiler
         }
         if (card.FaithDef != null)
         {
-            sb.Append("    faith {\n");
+            sb.Append("    faith" + (card.FaithDef.ArtCardId > 0 ? "(" + card.FaithDef.ArtCardId + ")" : "") + " {\n");
             foreach (var ab in card.FaithDef.Abilities)
             {
                 // 不能跳过 PassiveAura：子卡的常驻项正是它 ——
@@ -2643,7 +2663,11 @@ public sealed class ReshadowScriptCompiler
                     return ind + "crest_gain(\"" + sp.CardName + "\"" + ownerArg + ")\n";
                 }
                 string fn = sp.ToZone == ZoneRef.Hand ? "add_hand" : "summon";
-                return ind + fn + "(\"" + sp.CardName + "\", " + PrintNumExpr(sp.Count) + ")\n";
+                // 卡号必须写出来：只写卡名时，解析端靠 Lexicon 反查，
+                // 词典里没有这张卡（例如测试环境没登记 Fairy）就会退化成 CardId=0，
+                // 卡面在原 AST 里是 #90011110、往返后变成「Fairy」，两边不等价。
+                string idArg = sp.CardId > 0 ? ", " + sp.CardId : "";
+                return ind + fn + "(\"" + sp.CardName + "\", " + PrintNumExpr(sp.Count) + idArg + ")\n";
             }
 
             case EvolveNode e:

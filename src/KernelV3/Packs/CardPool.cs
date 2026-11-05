@@ -464,63 +464,10 @@ public static class CardPoolBuilder
             };
         }
 
-        // 卡包可以声明 source_format: "reshadow_script"，
-        // 让 DIY 作者用脚本语言（含 deck_mod / discover）写卡。
-        // 不分支的话这类卡会无脑丢给 EnglishCompiler，当场编译报错。
-        // 卡包也可以声明 source_format: "ast_json"：
-        // DIY 作者的 AST 语法树文本（与 AstJsonCodec.Encode 同一格式）。
-        // 与脚本端共用同一套 Schema —— 否则 storm 会被解析成 ward（SymbolId 只按 Id 判等）。
-        if (string.Equals(c.SourceFormat, "ast_json", StringComparison.OrdinalIgnoreCase))
-        {
-            Ast.CardDef astDef;
-            try
-            {
-                astDef = Diy.AstJsonCodec.Decode(c.Text, schema, sharedLex);
-            }
-            catch (Exception ex)
-            {
-                errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》AST JSON 解析失败：" + ex.Message);
-                return null;
-            }
-
-            if (astDef == null)
-            {
-                errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》AST JSON 为空");
-                return null;
-            }
-
-            var mergedMods2 = (astDef.DeckModifiers != null && astDef.DeckModifiers.Count > 0)
-                ? astDef.DeckModifiers
-                : (c.DeckModifiers ?? new List<DeckBuildModifier>());
-            var mergedKws2 = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k))
-                .Concat(astDef.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
-                .Distinct().ToList();
-
-            return new CardDef
-            {
-                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = astDef.Kind,
-                BaseCost = c.Cost > 0 ? c.Cost : astDef.BaseCost,
-                BaseAttack = astDef.BaseAttack,
-                BaseLife = astDef.BaseLife,
-                Clan = string.IsNullOrEmpty(c.Clan) ? astDef.Clan : schema.Clan(c.Clan),
-                Traits = (astDef.Traits ?? Array.Empty<SymbolId<TraitTag>>()).ToList(),
-                Abilities = astDef.Abilities ?? Array.Empty<AbilityDef>(),
-                InnateKeywords = mergedKws2,
-                DeckModifiers = mergedMods2,
-                HasFuse = astDef.HasFuse,
-                FuseMaterialFilter = astDef.FuseMaterialFilter,
-                AccelerateDef = astDef.AccelerateDef,
-                CrystallizeDef = astDef.CrystallizeDef,
-                CrestDef = astDef.CrestDef,
-                FaithDef = astDef.FaithDef,
-                // 这四项缺一不可：PackId 为空会让 EnumerateCollectibleCards
-                // 按 EnabledPackIds 过滤时把这张卡整个丢掉，构筑台里根本找不到。
-                PackId = pack.PackId,
-                IsToken = c.IsToken,
-                Rarity = c.Rarity,
-                SourceText = c.Text,
-            };
-        }
+        // source_format: "py_ast" 是唯一的 AST 文本格式。
+        // 旧 reshadow_script / ast_json 已下线：本程序从未对外发布，
+        // 不存在需要兼容的存量卡包。
+        
         // 卡包也可以声明 source_format: "py_ast"（204/206 号文档后的规范 AST 语法）。
         // 与 GlobalCatalog 的同名分支保持完全一致 —— 两处口径不同会让
         // 「总表能读、卡池读不出」这种最难查的错位。
@@ -573,63 +520,7 @@ public static class CardPoolBuilder
             };
         }
 
-        if (string.Equals(c.SourceFormat, "reshadow_script", StringComparison.OrdinalIgnoreCase))
-        {
-            // 必须**复用当前卡池的 schema 与 lexicon**。
-            // DiyWorkspace.Create 会新造一套 GameSchema —— 脚本里拿到的兵种/计数器
-            // SymbolId.Id 与本卡池对不上，summon("Fairy") 也会因为空 lexicon
-            // 解析成 CardId=0，召唤出空壳。
-            // CompileContext.For 接管一个已存在的 BattleState，它自己的 Schema
-            // 就是唯一真相源 —— 这样脚本里定义的兵种/计数器与卡池共用同一套 SymbolId。
-            var probeState = new Battle.BattleState(schema, 0, rules ?? MatchRules.CreateStandard());
-            probeState.Pool = new CardPool
-            {
-                PoolId = "script", Catalog = new GlobalCatalog(), BaseRules = MatchRules.CreateStandard(),
-            };
-            var ctx = Lang.CompileContext.For(probeState);
-            // 把 Pass 1 已预注册的卡名同步进脚本词法表，
-            // 否则脚本里 summon("Fairy") 会解析成 CardId=0。
-            if (sharedNames != null)
-                foreach (var kv in sharedNames) ctx.Lexicon.AddCard(kv.Key, kv.Value.cardId);
-            ctx.Lexicon.Build();
-            var ws = Diy.DiyWorkspace.For(ctx, sharedGlossary);
-            var sc = new Diy.ReshadowScriptCompiler(ws);
-            var made = sc.Compile(c.Text);
-            if (made.Count == 0)
-            {
-                foreach (var e in sc.Errors)
-                    errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》脚本编译失败：" + e);
-                return null;
-            }
-            var d = made[0];
-
-            // 合并而不是 ?? —— d.DeckModifiers 可能是空列表（非 null），
-            // 用 ?? 会把 JSON 上的 c.DeckModifiers 整个丢掉。
-            var mergedMods = (d.DeckModifiers != null && d.DeckModifiers.Count > 0)
-                ? d.DeckModifiers
-                : (c.DeckModifiers ?? new List<DeckBuildModifier>());
-            var mergedKws = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k))
-                .Concat(d.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
-                .Distinct().ToList();
-
-            return new CardDef
-            {
-                CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = d.Kind,
-                BaseCost = c.Cost > 0 ? c.Cost : d.BaseCost,
-                BaseAttack = c.Attack > 0 ? c.Attack : d.BaseAttack,
-                BaseLife = c.Life > 0 ? c.Life : d.BaseLife,
-                Abilities = d.Abilities,
-                Traits = traits.Count > 0 ? traits : d.Traits,
-                Clan = clan.IsValid ? clan : d.Clan,
-                InnateKeywords = mergedKws,
-                DeckModifiers = mergedMods,
-                // 这几个字段也必须拷：漏了会让「脚本写的纹章/融合/激奏卡」变成白板。
-                HasFuse = d.HasFuse, FuseMaterialFilter = d.FuseMaterialFilter,
-                CrestDef = d.CrestDef, FaithDef = d.FaithDef,
-                AccelerateDef = d.AccelerateDef, CrystallizeDef = d.CrystallizeDef,
-                PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
-            };
-        }
+        
 
         var alts = c.AltModes.Select(a => (a.TypeEng, a.Cost, a.TextEng)).ToArray();
         var result = comp.Compile(c.Text, alts, c.NameEng, c.CardId);
@@ -643,7 +534,12 @@ public static class CardPoolBuilder
             BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
             Abilities = result.Abilities,
             Traits = traits, Clan = clan,
-            InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k)).ToList(),
+            // 卡包 JSON 的 keywords 与卡面原文解析出的裸关键词必须合并：
+            // 前者是卡包声明，后者是编译器从文本里读出来的（Ward / Rush …）。
+            // 只取前者会让 17 张「JSON 没写 keywords 但原文有关键词」的卡失去能力。
+            InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k))
+                .Concat(result.InnateKeywords)
+                .Distinct().ToList(),
             HasFuse = result.HasFuse, FuseMaterialFilter = result.FuseMaterialFilter,
             CrestDef = result.CrestDef, FaithDef = result.FaithDef,
             AccelerateDef = result.AccelerateDef, CrystallizeDef = result.CrystallizeDef,

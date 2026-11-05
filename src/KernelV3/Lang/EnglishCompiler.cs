@@ -52,6 +52,16 @@ public sealed class EnglishCompiler
     public sealed class Result
     {
         public List<AbilityDef> Abilities { get; } = new();
+
+        /// <summary>
+        /// 卡面句首的裸关键词（Ward / Rush / Storm …）。
+        /// 它们是**卡牌定义属性**，不是可求值效果：创建实体时一次性写进
+        /// Entity.Keywords 即可，不需要走能力管线。
+        /// 早先把它们编成 PassiveAura + ModifyKeywordNode，导致同一张卡在
+        /// InnateKeywords 与 Abilities 里各存一份，卡面还会多出一条空的 aura: 段。
+        /// </summary>
+        public List<Core.SymbolId<Core.KeywordTag>> InnateKeywords { get; } = new();
+
         public List<string> Errors { get; } = new();
         public bool Ok => Errors.Count == 0;
 
@@ -220,7 +230,7 @@ public sealed class EnglishCompiler
             if (segment.Trim().Length == 0) continue;
             try
             {
-                var abs = CompileSegment(segment, zone);
+                var abs = CompileSegment(segment, zone, r.InnateKeywords);
                 buffer.AddRange(abs);
             }
             catch (LangException ex)
@@ -600,7 +610,8 @@ public sealed class EnglishCompiler
         return RefersToOpposing(n.Then) || RefersToOpposing(n.Else);
     }
 
-    private List<AbilityDef> CompileSegment(string segment, SectionZone zone = SectionZone.Normal)
+    private List<AbilityDef> CompileSegment(string segment, SectionZone zone = SectionZone.Normal,
+                                            List<Core.SymbolId<Core.KeywordTag>> innateSink = null)
     {
         var result = new List<AbilityDef>();
         var tokens = _tokenizer.Tokenize(segment);
@@ -960,21 +971,12 @@ public sealed class EnglishCompiler
                 if (c.Peek(1).Kind == TokKind.Comma || c.Peek(1).IsWord("and")) break;
                 var kwText = c.Current.Text;
                 c.Advance();
-                result.Add(new AbilityDef
-                {
-                    Trigger = new TriggerSpec { Event = CoreEvent.PassiveAura },
-                    Condition = BoolExpr.True,
-                    Costs = Array.Empty<CostSpec>(),
-                    Body = new List<EffectNode>
-                    {
-                        new ModifyKeywordNode
-                        {
-                            Target = TargetSpec.Self,
-                            Op = KeywordOp.Grant,
-                            Keyword = _lex.Keyword(kwText),
-                        },
-                    },
-                });
+                // 裸关键词是卡牌定义属性，写进 InnateKeywords，不生成能力。
+                // 生成 PassiveAura 会让它在 Abilities 里再存一份，
+                // 卡面还会多出一条空的 aura: 段（同一个 ward 记两遍）。
+                var kwSym = _lex.Keyword(kwText);
+                if (kwSym.IsValid && innateSink != null && !innateSink.Contains(kwSym))
+                    innateSink.Add(kwSym);
             }
             if (c.IsAtEnd) continue;
 
