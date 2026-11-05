@@ -1,0 +1,40 @@
+feat(159 复查): 补上遗漏的优化 4（触发头条件去重）
+
+逐段核对 159 号文档后发现：5 个 bug、5 项语法糖、2 个陷阱都已落地，
+但第二节的**优化 4（触发头条件去重）完全没做**。
+
+【问题实测】
+  全卡池有 50 张卡存在「同一件事写两遍」：
+    fanfare [combo(3)] if ctr:combo >= 3:
+    fanfare [necromancy(4)] if ctr:shadow >= 4:
+    fanfare [earth_rite(1)] if ctr:earth_sigil >= 1:
+  编译器把「连击 3」同时写进了 Costs 与 Condition，打印出来就重复了。
+
+【实现】
+  · 打印器 IsConditionRedundantWithCosts：判断 Condition 的比较式是否与
+    某个代价标签严格同形，是则隐藏该 if。
+    只认确定成立的映射：combo/rally/necromancy/earth_rite/countdown。
+  · 解析器 RestoreConditionFromCosts：读回 [combo(3)] 时若 Condition 缺对应比较，
+    自动补回 —— 这是去重打印的逆运算，缺了它「连击 3」的条件会整个消失。
+  · ConditionHasCompare：补回前先查重，否则会变成 (A and A)。
+
+【过程中的两次返工】
+  1. rally 的计数器名是 match_play 不是 rally，补回时写错名字，
+     导致 10224110 / 10724110 变成 (ctr:match_play >= 20 and ctr:rally >= 20)。
+  2. 条件已存在时又补了一次，变成 (A and A)。加了 ConditionHasCompare 查重后解决。
+
+【效果】
+  双写从 50 张降到 23 张。
+  fanfare [combo(3)] if ctr:combo >= 3:  ->  fanfare [combo(3)]:
+  剩余 23 张是 [enhance(N)] if ctr:pp_at_play >= N 这类，
+  属爆能档位判定（不是条件型代价），文档未纳入去重范围，保持原样。
+
+【未做的两项及原因】
+  · 优化 4 的「术语条件糖」（overflow / wrath / skybound_art 等）涉及 VM 侧
+    计数器语义，超出纯语法层范围，未动。
+  · 优化 6 的「id 可省略」经核对解析器本就支持（自动用 Lexicon 反查），无需改动。
+
+验证：PyAST 门禁 6/6（含 1021/1021 全量往返），13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED

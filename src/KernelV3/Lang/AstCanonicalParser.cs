@@ -400,13 +400,85 @@ public sealed class AstCanonicalParser
         }
     }
 
+
+    /// <summary>
+    /// 若 Costs 里有条件型代价（combo / rally / necromancy / earth_rite / countdown），
+    /// 而 Condition 里没有对应的比较，就把条件补回去。
+    ///
+    /// 这是 IsConditionRedundantWithCosts 的逆运算：打印时省略了重复条件，
+    /// 解析时必须还��，否则「连击 3」这类卡的触发条件会整个消失。
+    /// </summary>
+
+    /// <summary>该比较式是否已经在条件里出现过（避免重复补回）。</summary>
+    private static bool ConditionHasCompare(BoolExpr cond, string counterName, int value)
+    {
+        if (cond == null) return false;
+        if (cond is AndExpr a)
+        {
+            foreach (var it in a.Items)
+                if (ConditionHasCompare(it, counterName, value)) return true;
+            return false;
+        }
+        if (cond is OrExpr o)
+        {
+            foreach (var it in o.Items)
+                if (ConditionHasCompare(it, counterName, value)) return true;
+            return false;
+        }
+        if (cond is CompareExpr cmp
+            && cmp.Left is NumExpr { Op: NumOp.Counter } l
+            && cmp.Right is NumExpr { Op: NumOp.Const } r)
+        {
+            return (l.Counter.Name ?? "") == counterName && r.Value == value;
+        }
+        return false;
+    }
+
+    private BoolExpr RestoreConditionFromCosts(BoolExpr cond, List<CostSpec> costs)
+    {
+        if (costs == null || costs.Count == 0) return cond;
+        var extra = new List<BoolExpr>();
+        foreach (var c in costs)
+        {
+            if (c?.Amount is not NumExpr { Op: NumOp.Const } amt) continue;
+            string lbl = (c.Label ?? "").ToLowerInvariant().Replace("_", "");
+            string ctrName = lbl switch
+            {
+                "combo" => "combo",
+                // rally 的实际计数器名是 match_play（见卡的 Condition：ctr:match_play >= N）
+                "rally" => "match_play",
+                "necromancy" => "shadow",
+                "earth_rite" => "earth_sigil",
+                "countdown" => "countdown",
+                _ => null,
+            };
+            if (ctrName == null) continue;
+            // 已经存在同形比较就不再加，否则会变成 (A and A)。
+            if (ConditionHasCompare(cond, ctrName, amt.Value)) continue;
+            extra.Add(new CompareExpr
+            {
+                Left = NumExpr.Ctr(_schema.Counter(ctrName)),
+                Op = CompareOp.Ge,
+                Right = NumExpr.Const(amt.Value),
+            });
+        }
+        if (extra.Count == 0) return cond;
+        if (cond == null || cond is ConstBoolExpr { Value: true })
+            return extra.Count == 1 ? extra[0] : new AndExpr(extra);
+        var all = new List<BoolExpr> { cond };
+        all.AddRange(extra);
+        return new AndExpr(all);
+    }
+
     private AbilityDef ParseAbility()
     {
         var trig = ParseTriggerHeader(out var costs, out var cond);
         Expect(PyTokKind.Colon, "能力头末尾缺少冒号");
         SkipNewlines();
         var body = ParseIndentedBlock();
-        return new AbilityDef { Trigger = trig, Costs = costs, Condition = cond ?? BoolExpr.True, Body = body };
+        // 打印时把与代价重复的条件省略了，这里必须补回。
+        var finalCond = RestoreConditionFromCosts(cond, costs);
+        return new AbilityDef { Trigger = trig, Costs = costs, Condition = finalCond ?? BoolExpr.True, Body = body };
     }
 
     private TriggerSpec ParseTriggerHeader(out List<CostSpec> costs, out BoolExpr cond)

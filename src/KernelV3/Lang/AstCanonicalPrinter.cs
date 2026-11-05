@@ -189,6 +189,38 @@ public static class AstCanonicalPrinter
     }
 
     /// <summary>触发头格式化：区分真 fanfare 与普通 on_play，内联代价与条件。</summary>
+
+    /// <summary>
+    /// 触发头里的条件是否与某个代价标签重复。
+    ///
+    /// 编译器会把「连击 3」同时写进 Costs（[combo(3)]）和 Condition
+    /// （ctr:combo >= 3），打印出来就是同一件事在一行里写了两遍。
+    /// 这里判断能否安全隐藏那个 if —— 只认严格同形的比较式。
+    /// </summary>
+    private static bool IsConditionRedundantWithCosts(BoolExpr cond, IReadOnlyList<CostSpec> costs)
+    {
+        if (cond is not CompareExpr cmp || costs == null || costs.Count == 0) return false;
+        if (cmp.Left is not NumExpr { Op: NumOp.Counter } l) return false;
+        if (cmp.Right is not NumExpr { Op: NumOp.Const } r) return false;
+
+        string ctrName = l.Counter.Name ?? "";
+        foreach (var c in costs)
+        {
+            if (c?.Amount is not NumExpr { Op: NumOp.Const } amt) continue;
+            if (amt.Value != r.Value) continue;
+            string lbl = (c.Label ?? "").ToLowerInvariant().Replace("_", "");
+            // 代价标签 ↔ 计数器名 的对应关系（只列确定成立的几组）
+            bool match =
+                (lbl == "combo" && ctrName == "combo") ||
+                (lbl == "rally" && (ctrName == "rally" || ctrName == "match_play_count")) ||
+                (lbl == "necromancy" && (ctrName == "shadow" || ctrName == "necromancy")) ||
+                (lbl == "earth_rite" && (ctrName == "earth_sigil" || ctrName == "earth_rite")) ||
+                (lbl == "countdown" && ctrName == "countdown");
+            if (match && (cmp.Op == CompareOp.Ge || cmp.Op == CompareOp.Eq)) return true;
+        }
+        return false;
+    }
+
     private static string FormatTriggerHeader(AbilityDef a)
     {
         var t = a.Trigger ?? new TriggerSpec();
@@ -247,7 +279,11 @@ public static class AstCanonicalPrinter
             sb.Append(" [").Append(string.Join(", ", costs)).Append(']');
         }
 
-        if (a.Condition != null && a.Condition is not ConstBoolExpr { Value: true })
+        // 与代价标签重复的条件不打印：编译器把「连击 3」同时写进了 Costs 和 Condition，
+        // 同一件事在同一行写两遍（[combo(3)] if ctr:combo >= 3）纯属噪音。
+        // 解析端读到 [combo(3)] 时会自动补回条件，所以省略是安全的。
+        if (a.Condition != null && a.Condition is not ConstBoolExpr { Value: true }
+            && !IsConditionRedundantWithCosts(a.Condition, a.Costs))
             sb.Append(" if ").Append(PrintB(a.Condition));
 
         return sb.ToString();
