@@ -221,6 +221,29 @@ public sealed class Tokenizer
             }
 
             // 数字（含 "1. " 这类选项序号 → OptionMark）
+            // 卡号引用：#12345678。
+            //
+            // 这是 DIY 引用卡牌的**唯一**写法 —— 名字在不同卡池里会重名，
+            // 卡号才是稳定的。产出成 CardName token，与按名匹配走同一条下游路径。
+            if (c == '#' )
+            {
+                int j2 = i + 1;
+                while (j2 < text.Length && char.IsDigit(text[j2])) j2++;
+                if (j2 > i + 1 && int.TryParse(text.Substring(i + 1, j2 - i - 1), out int cid2))
+                {
+                    _lex.TryGetCardName(cid2, out var refName);
+                    tokens.Add(new Token
+                    {
+                        Kind = TokKind.CardName,
+                        Text = refName ?? ("#" + cid2),
+                        CardId = cid2,
+                        Pos = i,
+                    });
+                    i = j2;
+                    continue;
+                }
+            }
+
             if (char.IsDigit(c))
             {
                 int j = i;
