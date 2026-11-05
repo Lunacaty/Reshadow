@@ -374,6 +374,7 @@ public partial class PackAndPoolManagerView : Control
             RefreshPoolClans();
         };
         AddChild(dlg);
+        dlg.Canceled += () => dlg.QueueFree();
         dlg.PopupCentered();
     }
 
@@ -441,6 +442,7 @@ public partial class PackAndPoolManagerView : Control
             RefreshPoolCounters();
         };
         AddChild(dlg);
+        dlg.Canceled += () => dlg.QueueFree();
         dlg.PopupCentered();
     }
 

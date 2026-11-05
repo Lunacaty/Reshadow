@@ -411,6 +411,11 @@ public sealed class Tokenizer
     /// <summary>英文数词 → 数值（1..10）；非数词返回 0。</summary>
     private static int EnglishNumber(string w) => w.ToLowerInvariant() switch
     {
+        // 频率副词当数字："Can attack twice per turn" 里的 twice 必须读成 2，
+        // 否则整句退化成「攻击 1 次」，而卡面看起来完全正常。
+        "once" => 1,
+        "twice" => 2,
+        "thrice" => 3,
         "one" => 1,
         "two" => 2,
         "three" => 3,

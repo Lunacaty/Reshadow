@@ -603,7 +603,11 @@ public sealed class ActionParser
                 // 旧实现落进兜底分支变成 cannot_attack，会让这张卡仍可以打出。
                 else if (j.Contains("be played"))
                     kw = "cannot_be_played";
-                else if (j.Contains("attack") && j.Contains("time"))
+                // "Can attack 2 times per turn" 与 "Can attack twice per turn" 是同一件事。
+                // 后者里 twice 已被词法层读成数字，words 里拿不到 "time"，
+                // 只按 time 判会让这句整条被静默丢弃。
+                else if (j.Contains("attack")
+                         && (j.Contains("time") || j.Contains("once") || j.Contains("twice") || j.Contains("thrice")))
                 {
                     kw = "max_attacks_per_turn";
                     // 有表达式就用表达式（X / Y / count(...)），否则退到常数。

@@ -346,6 +346,10 @@ public sealed class NaturalPrinter
         if (mk.Op != KeywordOp.Grant) return false;
         if (mk.Target == null || mk.Target.SourceKind != TargetSourceKind.Slot) return false;
         if (mk.Target.Slot != TargetSpec.SlotSelf) return false;
+        // 带参关键词不是裸词：max_attacks_per_turn(2) 必须渲染成
+        // "Can attack 2 times per turn."，当裸词输出会丢掉次数 N，
+        // 而且内码不是合法英文句，切到英文端再编译当场报错。
+        if (mk.Value != null) return false;
         keyword = mk.Keyword.Name;
         return true;
     }

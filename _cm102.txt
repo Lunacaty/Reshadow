@@ -1,0 +1,28 @@
+fix(165): 复查补漏 —— 3 处文档明确要求但上一轮漏做的修改
+
+## ① NaturalPrinter.IsBareKeywordAbility 缺 mk.Value 守卫
+  上一轮只调换了拦截顺序（带参先判），但文档明确要求裸词判定本身
+  也要排除带参关键词。顺序修好只是「目前这条路径不会走到」，
+  守卫才是「任何路径都不会误判成裸词」。已补 if (mk.Value != null) return false。
+
+## ② Tokenizer 没支持 once / twice / thrice（续·专题四第⑤条）
+  "Can attack twice per turn" 里的 twice 读不成 2，整句退化成 1 次。
+  已在 EnglishNumber 里补上三个频率副词。
+
+## ③ twice 支持了但句子仍被丢弃
+  修完 ② 后新暴露：Can 分支只按 j.Contains("time") 认「攻击次数」，
+  而 twice 已被词法层吃成数字，words 里拿不到 time，
+  整句被判「原文非空但产出 0 条能力」而静默丢弃。
+  已改为同时认 time / once / twice / thrice。
+
+## ④ 两个新增弹窗缺 Canceled 清理
+  取消后 AcceptDialog 节点留在树上，反复开关会累积。
+  已给 OpenAddPoolClanDialog / OpenAddPoolCounterDialog 补 dlg.Canceled。
+
+## 验证
+  Can attack twice per turn.    -> max_attacks_per_turn=2
+  Can attack 2 times per turn.  -> max_attacks_per_turn=2
+  两种写法结果一致。
+  PyAST keywords: [ward, max_attacks_per_turn(2)]
+    -> Innate=[ward]，能力 value=2，英文端输出 "Can attack 2 times per turn."
+  全量门禁无新增失败。
