@@ -3786,6 +3786,13 @@ public sealed class ActionParser
         };
     }
 
+    /// <summary>
+    /// 供 AstCanonicalParser 复用的数值解析入口。
+    /// 复用内部同一套实现，避免两套解析逻辑漂移。
+    /// </summary>
+    public static NumExpr NumExprForDsl(TokenCursor cur, Lexicon lex)
+        => new ActionParser(lex, null, new TargetParser(lex)).ParseNumExpr(cur);
+
     private NumExpr ParseNumExpr(TokenCursor cur)
     {
         if (cur.Current.Kind == TokKind.Number)
