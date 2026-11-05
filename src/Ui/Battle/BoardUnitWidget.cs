@@ -70,6 +70,13 @@ public partial class BoardUnitWidget : Control
 
     private bool _selected;
     private bool _canAttack;
+
+    /// <summary>左键已按下但尚未松开。用于区分「轻点查看」与「拖拽攻击」。</summary>
+    private bool _pointerDown;
+    /// <summary>按下时的全局坐标，松手时比较位移量。</summary>
+    private Vector2 _pressGlobalPos;
+    /// <summary>超过这个位移量才算拖拽，否则算轻点。8px 是常见触控阈值。</summary>
+    private const float DragThreshold = 8f;
     /// <summary>能否攻击敌方主战者。false 表示只能攻击随从（画橙圈）。</summary>
     private bool _canAttackLeader;
 
@@ -1160,21 +1167,37 @@ public partial class BoardUnitWidget : Control
             {
                 if (mb.Pressed)
                 {
-                    // 先判断这次点击是否被「选择目标」消费。
-                    // 消费了就不能再进入拖拽攻击 —— 那是两件互斥的事。
-                    bool consumedByChoice = OnClicked?.Invoke(Entity) == true;
-                    if (!consumedByChoice && _canAttack)
+                    // 挂起选目标时当场消费点击 —— 这是唯一需要在按下瞬间响应的情形。
+                    if (CurrentController?.IsWaitingForInput == true
+                        && OnClicked?.Invoke(Entity) == true)
                     {
-                        _dragging = true;
-                        OnDragAttackStarted?.Invoke(Entity, mb.GlobalPosition);
+                        AcceptEvent();
+                        return;
                     }
-                }
-                else if (_dragging)
-                {
+
+                    // 其余情况**按下不弹窗**：玩家可能只是按住随从准备拖拽攻击，
+                    // 按下瞬间就弹详情窗会挡住整个战场。
+                    // 改为只记起点，等松手时按位移量决定是「轻点查看」还是「拖拽攻击」。
+                    _pointerDown = true;
                     _dragging = false;
-                    OnDragAttackReleased?.Invoke(Entity, mb.GlobalPosition);
+                    _pressGlobalPos = mb.GlobalPosition;
+                    AcceptEvent();
                 }
-                AcceptEvent();
+                else if (_pointerDown)
+                {
+                    _pointerDown = false;
+                    if (_dragging)
+                    {
+                        _dragging = false;
+                        OnDragAttackReleased?.Invoke(Entity, mb.GlobalPosition);
+                    }
+                    else
+                    {
+                        // 位移没超过阈值 = 轻点查看，此时才打开左上角详情弹窗。
+                        OnClicked?.Invoke(Entity);
+                    }
+                    AcceptEvent();
+                }
             }
             else if (mb.ButtonIndex == MouseButton.Right && mb.Pressed)
             {
@@ -1182,9 +1205,19 @@ public partial class BoardUnitWidget : Control
                 AcceptEvent();
             }
         }
-        else if (@event is InputEventMouseMotion mm && _dragging)
+        else if (@event is InputEventMouseMotion mm)
         {
-            OnDragAttackMoved?.Invoke(Entity, mm.GlobalPosition);
+            if (_dragging)
+            {
+                OnDragAttackMoved?.Invoke(Entity, mm.GlobalPosition);
+            }
+            else if (_pointerDown && _canAttack
+                     && mm.GlobalPosition.DistanceTo(_pressGlobalPos) >= DragThreshold)
+            {
+                // 位移超过阈值才升级成拖拽攻击 —— 这一步之后松手不会再弹详情窗。
+                _dragging = true;
+                OnDragAttackStarted?.Invoke(Entity, mm.GlobalPosition);
+            }
         }
     }
 }

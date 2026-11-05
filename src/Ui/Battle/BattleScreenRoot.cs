@@ -140,7 +140,6 @@ public partial class BattleScreenRoot : Control
         RefreshOverlays();
     }
 
-
     /// <summary>
     /// 客机模式启动：本地 State 只作只读镜像，所有操作上行给权威端。
     ///
@@ -172,7 +171,6 @@ public partial class BattleScreenRoot : Control
             _remoteClient.Failed += msg => System.Console.WriteLine("[联机] " + msg);
         }
     }
-
 
     /// <summary>房主端权威服务（客机模式为 null）。</summary>
     private ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost _authHost;
@@ -217,7 +215,6 @@ public partial class BattleScreenRoot : Control
     private void RemoteEngage(int entityId) { if (_remoteClient != null) _ = _remoteClient.EngageAmulet(entityId); }
     private void RemoteEndTurn() { if (_remoteClient != null) _ = _remoteClient.EndTurn(); }
     private void RemoteSubmitChoice(int choiceId, int[] selected) { if (_remoteClient != null) _ = _remoteClient.SubmitChoice(choiceId, selected); }
-
 
     /// <summary>最近一帧远端快照。网络线程只写它，主线程取走消费。</summary>
     private ShadowverseFan.KernelV3.Net.NetStateSnapshot _latestRemoteSnap;
@@ -732,6 +729,9 @@ public partial class BattleScreenRoot : Control
             w.OnDragAttackStarted += (ent, pos) =>
             {
                 if (IsInputBlocked) return;
+                // 发起攻击时绝不保留详情弹窗：它会挡住瞄准线，
+                // 而且玩家此刻的注意力在攻击目标上。
+                _actionPanel?.HidePanel();
                 _anims.SetAiming(ent.EntityId);
                 _attacker = ent;
                 _field.IsDraggingAttack = true;
@@ -1503,7 +1503,6 @@ public partial class BattleScreenRoot : Control
         f.Setup(amount, center, heal);
     }
 
-
     /// <summary>
     /// 拖拽攻击时刷新所有敌方单位的目标态。
     ///
@@ -1817,6 +1816,55 @@ public partial class BattleScreenRoot : Control
 
     // ---------------------------------------------------------------- 输入
 
+    /// <summary>该屏幕坐标是否落在左上角详情弹窗（含二级历史弹窗）内。</summary>
+    private bool IsPointOnActionPanel(Vector2 globalPos)
+        => _actionPanel != null && _actionPanel.Visible
+           && _actionPanel.GetGlobalRect().HasPoint(globalPos);
+
+    /// <summary>该屏幕坐标是否落在手牌区、场上随从或纹章槽上。</summary>
+    private bool IsPointOnAnyCardOrUnit(Vector2 globalPos)
+    {
+        if (_handRect.HasPoint(globalPos)) return true;
+
+        if (_boardAlly != null)
+            foreach (var w in BoardUnitsOf(_boardAlly))
+                if (IsInstanceValid(w) && w.GetGlobalRect().HasPoint(globalPos)) return true;
+        if (_boardFoe != null)
+            foreach (var w in BoardUnitsOf(_boardFoe))
+                if (IsInstanceValid(w) && w.GetGlobalRect().HasPoint(globalPos)) return true;
+
+        // 纹章槽：不在随从控件里，按圆形命中区判。
+        var sz = GetEffectiveViewportSize();
+        foreach (var c in BattlefieldCanvas.GetAllyCrestCenters(sz)
+                         .Concat(BattlefieldCanvas.GetEnemyCrestCenters(sz)))
+            if (globalPos.DistanceTo(c) <= 22f) return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// 手牌收起豁免：命中任一情况说明玩家不是「点空地」，手牌保持展开。
+    ///
+    /// 没有这个白名单时，点书页、点菜单、选目标、点随从都会被无差别
+    /// 收起手牌 —— 玩家只是在操作界面，手牌却一直往下缩。
+    /// </summary>
+    private bool IsHandCollapseExempt(Vector2 globalPos)
+    {
+        // 豁免 1：正在选目标（此时点击是游戏输入，不是界面操作）
+        if (_ctrl != null && _ctrl.IsWaitingForInput) return true;
+        // 豁免 2：左侧书页 / 左上角菜单
+        if (_pageBtn != null && IsInstanceValid(_pageBtn)
+            && _pageBtn.GetGlobalRect().HasPoint(globalPos)) return true;
+        if (_menuBtn != null && IsInstanceValid(_menuBtn)
+            && _menuBtn.GetGlobalRect().HasPoint(globalPos)) return true;
+        // 豁免 3：正在拖拽攻击，或点在场上单位/纹章/手牌上
+        if (_attacker != null) return true;
+        if (IsPointOnAnyCardOrUnit(globalPos)) return true;
+        // 豁免 4：点在左上角详情弹窗内部
+        if (IsPointOnActionPanel(globalPos)) return true;
+        return false;
+    }
+
     public override void _Input(InputEvent @event)
     {
         if (@event is InputEventMouseMotion mm && _draggingPlay && _draggingCard != null)
@@ -1871,17 +1919,32 @@ public partial class BattleScreenRoot : Control
             }
         }
 
+
         if (@event is not InputEventMouseButton mb || mb.ButtonIndex != MouseButton.Left) return;
 
-        // ---- 手牌展开态：点在**手牌区之外**任意位置即收起 ----
+        // ---- 左上角详情弹窗消隐 ----
         //
-        // 原来这条逻辑挂在 _field.GuiInput 上，只有点战场背景才生效；
-        // 点顶部菜单栏、右侧栏、左上角面板按钮都不会收起，玩家得
-        // 专门找一块空地戳一下才行。收到这里按矩形判定，
-        // 「手牌区以外」就一律回到常态，符合直觉。
+        // 之前 HidePanel 只绑在 _field.GuiInput 上，点顶栏、右侧能量柱、
+        // 主战者空白处都不会关，弹窗会一直挂在左上角挡住战场。
+        // 规则：点在弹窗自身、手牌、场上单位/纹章之外 → 关闭。
+        if (mb.Pressed && _actionPanel != null && _actionPanel.Visible
+            && !IsPointOnActionPanel(mb.Position)
+            && !IsPointOnAnyCardOrUnit(mb.Position))
+        {
+            _actionPanel.HidePanel();
+        }
+
+        // ---- 手牌展开态：只有点到**真正的空白**才收起 ----
+        //
+        // 原来只要不在手牌区就收起。但 _Input 的优先级高于所有子控件的
+        // _GuiInput，点书页、点菜单、选目标、点随从全被它无差别拦截了 ——
+        // 玩家只是在操作界面，手牌却一直往下缩。
+        // 现在走白名单：命中任一豁免就不收起。
         //
         // 拖拽中不收起：手上的牌还举着，这时候收手牌会把它一起抹掉。
-        if (mb.Pressed && _handExpanded && !_draggingPlay && !_handRect.HasPoint(mb.Position))
+        if (mb.Pressed && _handExpanded && !_draggingPlay
+            && !_handRect.HasPoint(mb.Position)
+            && !IsHandCollapseExempt(mb.Position))
         {
             _handExpanded = false;
             RebuildHand();
