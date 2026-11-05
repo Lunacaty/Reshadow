@@ -32,6 +32,14 @@ public sealed class BattleState : IVmWorld
     public GameSchema Schema { get; }
     public Random Rng { get; }
 
+    /// <summary>
+    /// 卡池级主战者计数器定义（含回合生命周期）。
+    /// 由 CardPoolRuntime 在创建 BattleState 时注入；
+    /// TurnRunner.StartTurn 按 Lifecycle 驱动它们。
+    /// </summary>
+    public IReadOnlyList<ShadowverseFan.KernelV3.Packs.PoolCounterDef> PoolCounterDefs { get; set; }
+        = Array.Empty<ShadowverseFan.KernelV3.Packs.PoolCounterDef>();
+
     private readonly Dictionary<int, CardDef> _cardPool = new();
     private readonly List<RuntimeEntity> _all = new();
     // 第三个字段是期限：授予能力也支持「直到回合结束」，

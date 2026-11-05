@@ -21,6 +21,39 @@ namespace ShadowverseFan.KernelV3.Packs;
 // ============================================================================
 
 /// <summary>卡池配置单。</summary>
+/// <summary>
+/// 卡池级自定义计数器的生命周期 —— 决定它在回合边界怎么变。
+///
+/// 没有这个定义，DIY 造出的「每回合自动 +1」计数器只能靠能力节点硬写，
+/// 而能力节点跑在卡上，主战者级计数器在开局前没有任何载体。
+/// </summary>
+public enum CounterLifecycle
+{
+    /// <summary>整局保留（墓场、信仰这类累计值）。</summary>
+    PersistMatch = 0,
+    /// <summary>己方回合开始时归最小值（连击这类每回合重算的）。</summary>
+    ResetToMinOnTurnStart,
+    /// <summary>己方回合结束时归最小值。</summary>
+    ResetToMinOnTurnEnd,
+    /// <summary>己方回合开始时自动 +1。</summary>
+    IncrementOnTurnStart,
+}
+
+/// <summary>卡池级主战者计数器定义。内置的那批在 UI 上锁死只读。</summary>
+public sealed class PoolCounterDef
+{
+    /// <summary>英文内部 ID（脚本与 AST 里用的名字）。</summary>
+    public string Name { get; init; } = "";
+    /// <summary>中文显示名（卡面与 UI 用）。</summary>
+    public string NameChs { get; init; } = "";
+    public int Min { get; init; }
+    public int Max { get; init; } = 99;
+    public int Initial { get; init; }
+    public CounterLifecycle Lifecycle { get; init; } = CounterLifecycle.PersistMatch;
+    /// <summary>内置计数器（pp / ep / sep 等）由引擎维护，UI 只读。</summary>
+    public bool IsBuiltin { get; init; }
+}
+
 public sealed class CardPoolConfig
 {
     public string PoolId { get; init; } = "standard";
@@ -36,12 +69,28 @@ public sealed class CardPoolConfig
     /// 放在 pack.json 里会让卡包与跨包卡强耦合，卡池配置器也管不到它。
     /// </summary>
     public List<NamedDeckRawDef> NamedDecks { get; init; } = new();
+
+    /// <summary>
+    /// 本卡池开放的职业（英文内部名）。空表示不限。
+    /// 职业归属**卡池**而非卡包：同一批卡在不同赛制里开放的职业可以不同。
+    /// </summary>
+    public List<string> PoolClans { get; init; } = new();
+
+    /// <summary>本卡池的主战者计数器（赛制级资源，跨卡包共享）。</summary>
+    public List<PoolCounterDef> LeaderCounters { get; init; } = new();
 }
 
 /// <summary>编译并校验通过后的卡池运行时环境。</summary>
 public sealed class CardPoolRuntime
 {
     public string PoolId { get; init; } = "";
+
+    /// <summary>本卡池开放职业。空表示不限。</summary>
+    public List<string> PoolClans { get; init; } = new();
+
+    /// <summary>本卡池的主战者计数器定义（含生命周期）。</summary>
+    public List<PoolCounterDef> LeaderCounters { get; init; } = new();
+
     public MatchRules Rules { get; init; } = MatchRules.CreateStandard();
     public GameSchema Schema { get; init; }
     public Lexicon Lexicon { get; init; }
@@ -94,7 +143,12 @@ public sealed class CardPoolRuntime
     /// <summary>用本卡池的完整环境建一个全新对局状态。</summary>
     public BattleState CreateBattleState(int seed = 0)
     {
-        var state = new BattleState(Schema, seed, Rules);
+        var state = new BattleState(Schema, seed, Rules)
+        {
+            // 卡池级主战者计数器随环境一起注入：
+            // TurnRunner.StartTurn 按 Lifecycle 在回合边界驱动它们。
+            PoolCounterDefs = LeaderCounters ?? new List<PoolCounterDef>(),
+        };
 
         // 必须把卡池视图挂上去。
         // 不挂的话 state.Pool == null，EnumerateDiscoverPool 恒返回空集合 ——
@@ -355,6 +409,8 @@ public static class CardPoolBuilder
         var pool = new CardPoolRuntime
         {
             PoolId = config.PoolId,
+            PoolClans = config.PoolClans ?? new List<string>(),
+            LeaderCounters = config.LeaderCounters ?? new List<PoolCounterDef>(),
             Rules = config.Rules,
             Schema = schema,
             Lexicon = lexicon,

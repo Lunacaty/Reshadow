@@ -35,6 +35,38 @@ public sealed class TurnRunner
     /// 这意味着回合初效果造成的加手牌发生在抽牌之前，
     /// 手牌 8 张时回合初先加 1 张变 9，随后的抽牌会爆掉。
     /// </summary>
+
+    /// <summary>
+    /// 驱动卡池级主战者计数器的回合生命周期。
+    ///
+    /// 这些计数器属于**赛制**而非某张卡：连击每回合归零、某些自定义资源
+    /// 每回合自动 +1 —— 在能力节点里写不出来，因为那时候还没有实体承载它们。
+    /// </summary>
+    private void DrivePoolCounters(int playerId)
+    {
+        var defs = _state.PoolCounterDefs;
+        if (defs == null || defs.Count == 0) return;
+
+        foreach (var def in defs)
+        {
+            if (def == null || string.IsNullOrWhiteSpace(def.Name)) continue;
+            var key = _state.Schema.Counter(def.Name);
+            if (!key.IsValid) continue;
+
+            switch (def.Lifecycle)
+            {
+                case ShadowverseFan.KernelV3.Packs.CounterLifecycle.ResetToMinOnTurnStart:
+                    _state.WriteCounter(playerId, key, def.Min);
+                    break;
+                case ShadowverseFan.KernelV3.Packs.CounterLifecycle.IncrementOnTurnStart:
+                    _state.WriteCounter(playerId, key, _state.ReadCounter(playerId, key) + 1);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
     public void StartTurn(int playerId, CardVm vm)
     {
         if (playerId is not (0 or 1))
@@ -46,6 +78,11 @@ public sealed class TurnRunner
 
         // 回合数推进后立刻判一次解锁：解锁前该玩家的 EP/SEP 恒为 0。
         _state.CheckAndUnlockEvolution(playerId);
+
+        // 卡池级主战者计数器的回合生命周期（164 专题二）。
+        // 放在 EP/SEP 解锁之后：解锁本身会写 ep/sep，
+        // 先跑计数器再解锁会把刚重置的值覆盖掉。
+        DrivePoolCounters(playerId);
 
         vm?.CurrentTurnOwner = playerId;
         vm?.ResetTriggerCounts();

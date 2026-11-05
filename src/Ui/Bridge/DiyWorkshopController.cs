@@ -44,12 +44,51 @@ public sealed class DiyWorkshopController
 
     public event Action OnCardUpdated;
 
+    /// <summary>
+    /// 工坊当前绑定的卡池。工坊不是「无环境」的造卡器 ——
+    /// 卡池里定义的自定义职业、主战者计数器、卡名对照，
+    /// 造卡时必须拿得到，否则造出来的卡在自己的卡池里编译不过。
+    /// </summary>
+    public string ActivePoolId { get; private set; } = "standard";
+
     public DiyWorkshopController(GameSessionStore store)
     {
         Store = store ?? throw new ArgumentNullException(nameof(store));
         Store.Initialize();
 
-        Workspace = DiyWorkspace.Create(7, Store.Catalog.Glossary);
+        BindPool(ActivePoolId, loadSample: true);
+    }
+
+    /// <summary>
+    /// 切换工坊绑定的卡池并把符号表/词法表重建到该卡池的环境上。
+    ///
+    /// 只用 DiyWorkspace.Create 的话会新造一套 GameSchema ——
+    /// 卡池里的自定义职业/计数器 SymbolId 跟本体对不上，卡造出来在自己的池子里跑不起来。
+    /// </summary>
+    public void BindPool(string poolId, bool loadSample = false)
+    {
+        ActivePoolId = string.IsNullOrWhiteSpace(poolId) ? "standard" : poolId;
+
+        CompileContext ctx = null;
+        Glossary glossary = Store.Catalog.Glossary;
+        try
+        {
+            var rt = Store.GetPoolRuntime(ActivePoolId);
+            if (rt != null)
+            {
+                ctx = CompileContext.For(rt.CreateBattleState(seed: 7));
+                if (rt.Glossary != null) glossary = rt.Glossary;
+            }
+        }
+        catch (Exception)
+        {
+            // 卡池没配好时退回默认环境：工坊不该因为池子坏了就打不开。
+            ctx = null;
+        }
+
+        Workspace = ctx != null
+            ? DiyWorkspace.For(ctx, glossary)
+            : DiyWorkspace.Create(7, glossary);
 
         // 把总表已注册的卡名灌进词法表，
         // 否则编辑现有卡时它连自己的卡名都认不出。
@@ -59,7 +98,8 @@ public sealed class DiyWorkshopController
         }
         Workspace.Lexicon.Build();
 
-        LoadSampleCard();
+        if (loadSample) LoadSampleCard();
+        LastStatusMessage = "当前卡池：" + ActivePoolId;
     }
 
     /// <summary>加载一张带构筑规则与入场曲的示例卡，让工坊一打开就有东西看。</summary>

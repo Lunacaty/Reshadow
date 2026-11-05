@@ -80,7 +80,15 @@ public partial class PackAndPoolManagerView : Control
         root.AddChild(body);
 
         // 左：卡包 + 卡
-        var left = new VBoxContainer { CustomMinimumSize = new Vector2(560, 0) };
+        // 左栏不能写死 560：加上右栏的固定宽度按钮，总最小宽会顶到 1360+，
+        // 在 1280 窗口下右侧按钮与状态标签直接被挤出屏幕外。
+        // 改为按比例伸缩，窗口窄时两栏一起收。
+        var left = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(360, 0),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsStretchRatio = 0.9f,
+        };
         left.AddThemeConstantOverride("separation", 6);
         body.AddChild(left);
 
@@ -137,20 +145,27 @@ public partial class PackAndPoolManagerView : Control
         cardScroll.AddChild(_cardList);
 
         // 右：卡池规则
-        var right = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var right = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(420, 0),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsStretchRatio = 1.3f,
+        };
         right.AddThemeConstantOverride("separation", 6);
         body.AddChild(right);
 
-        var ruleBar = new HBoxContainer();
-        ruleBar.AddThemeConstantOverride("separation", 10);
+        // 用 HFlowContainer 而不是 HBoxContainer：标题 + 卡池下拉 + 三个按钮 +
+        // 状态标签的总最小宽度会超过 1360px，HBox 不换行，窗口一窄就溢出。
+        // HFlow 会自动折到第二行。
+        var ruleBar = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        ruleBar.AddThemeConstantOverride("h_separation", 8);
+        ruleBar.AddThemeConstantOverride("v_separation", 6);
         right.AddChild(ruleBar);
 
         var ruleTitle = new Label { Text = "赛制卡池规则（MatchRules 全字段）" };
         ruleTitle.AddThemeFontSizeOverride("font_size", 14);
         ruleTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentPurple);
         ruleBar.AddChild(ruleTitle);
-
-        ruleBar.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
         // 卡池切换：允许自由选择要查看/编辑哪个赛制卡池，
         // 而不是写死只让第一个可编辑、其余只读跳过。
@@ -194,7 +209,15 @@ public partial class PackAndPoolManagerView : Control
         _saveRulesBtn.Pressed += OnSaveRules;
         ruleBar.AddChild(_saveRulesBtn);
 
-        _ruleStatus = new Label { Text = "" };
+        // 状态标签会写「✔ 已保存：xxx」这类长句，不裁剪就会把整行撑宽，
+        // HFlowContainer 折行后仍然溢出。
+        _ruleStatus = new Label
+        {
+            Text = "",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            ClipText = true,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+        };
         _ruleStatus.AddThemeFontSizeOverride("font_size", 11);
         _ruleStatus.AddThemeColorOverride("font_color", SvWbTheme.StatusValid);
         ruleBar.AddChild(_ruleStatus);

@@ -1,0 +1,34 @@
+feat(164 专题二): 卡池级职业与主战者计数器 + DIY 绑定卡池 + 卡池管理右端溢出
+
+## ① 卡池级数据模型
+  CounterLifecycle 枚举：
+    PersistMatch            整局保留（墓场、信仰）
+    ResetToMinOnTurnStart   己方回合开始归最小值（连击）
+    ResetToMinOnTurnEnd     己方回合结束归最小值
+    IncrementOnTurnStart    己方回合开始 +1
+  PoolCounterDef：Name / NameChs / Min / Max / Initial / Lifecycle / IsBuiltin
+  CardPoolConfig 新增 PoolClans + LeaderCounters —— 归属**卡池**而不是卡包：
+  赛制规则与全局资源属于环境，同一批卡在不同卡池里开放的职业可以不同。
+  CardPoolRuntime 与 BattleState 都带上定义，CardPoolRuntime.CreateBattleState 注入。
+
+## ② 回合生命周期驱动
+  TurnRunner.StartTurn 在 EP/SEP 解锁之后调 DrivePoolCounters：
+  顺序不能反 —— 先跑计数器再解锁会把刚重置的值覆盖掉。
+  实测：my_charge(Increment) 3 -> 4，my_tempo(ResetToMin) 9 -> 0。
+
+## ③ DIY 工坊绑定卡池
+  新增 ActivePoolId 与 BindPool(poolId)：
+  从 Store.GetPoolRuntime 派生 CompileContext，用 DiyWorkspace.For(ctx, glossary) 建工作区。
+  不能再用 DiyWorkspace.Create —— 它会新造一套 GameSchema，
+  卡池里的自定义职业/计数器 SymbolId 跟本体对不上，卡造出来在自己的池子里跑不起来。
+  卡池没配好时退回默认环境，工坊不该因为池子坏了就打不开。
+
+## ④ 卡池管理右端溢出
+  左栏 560 硬编码 -> 360 最小宽 + ExpandFill + StretchRatio 0.9，右栏 1.3。
+  ruleBar 从 HBoxContainer 换成 HFlowContainer（h/v_separation 8/6），标题 + 下拉框
+  + 三个按钮 + 状态标签总宽超 1360px 时自动折行。
+  _ruleStatus 加 ClipText + TrimEllipsis，长句不再撑宽整行。
+  去掉 HFlow 里无意义的 ExpandFill 占位 Control。
+
+验证：VM 50/50、文档验收 102/102、Combat 16/16、效用 12/12、
+逐卡矩阵 32/32、完整对局 7/7、PyAST 12/12、UI 3/3，无新增失败。
