@@ -251,8 +251,12 @@ public sealed class ChineseCardPrinter
             sb.Append("若").Append(PrintBool(cond)).Append('，');
 
         var body = PrintNodes(ab.Body);
-        if (string.IsNullOrEmpty(body)) return sb.ToString().TrimEnd();
-        sb.Append(body);
+        int cap = ab.Trigger?.MaxTriggersPerTurn ?? 0;
+        string capTxt = cap > 0
+            ? (cap == 1 ? "（1回合中限1次）" : "（1回合中可触发" + cap + "次）")
+            : "";
+        if (string.IsNullOrEmpty(body)) return (sb.ToString() + capTxt).TrimEnd();
+        sb.Append(body).Append(capTxt);
         return sb.ToString().TrimEnd();
     }
 
@@ -325,6 +329,29 @@ public sealed class ChineseCardPrinter
         return Redundant(cond) ? BoolExpr.True : cond;
     }
     private string TriggerHeader(TriggerSpec trig, CardKind kind = CardKind.Follower, bool followerStrike = false)
+    {
+        if (trig == null) return "";
+        return DecorateTrigger(trig, TriggerHeaderCore(trig, kind, followerStrike));
+    }
+
+    /// <summary>
+    /// 触发头装饰：回合限定与每回合触发上限。
+    ///
+    /// 必须独立于 TriggerHeaderCore —— 后者有多条提前 return 的分支
+    /// （旁观型、玩家行为型），在末尾追加逻辑会漏掉它们。
+    /// </summary>
+    private static string DecorateTrigger(TriggerSpec trig, string head)
+    {
+        if (string.IsNullOrEmpty(head)) return head;
+        if (trig.DuringTurn != TurnOwnerScope.Any
+            && trig.Event is not (CoreEvent.TurnStart or CoreEvent.TurnEnd)
+            && !head.Contains("回合中"))
+        {
+            head = (trig.DuringTurn == TurnOwnerScope.Self ? "我方回合中，" : "敌方回合中，") + head;
+        }
+        return head;
+    }
+    private string TriggerHeaderCore(TriggerSpec trig, CardKind kind, bool followerStrike)
     {
         if (trig == null) return "";
 
@@ -414,6 +441,16 @@ public sealed class ChineseCardPrinter
         // 并列事件："play or Fuse" 两个都要写
         if (trig.SecondaryEvent != null)
             head = head.Replace("】", "或" + EventNameZh(trig.SecondaryEvent.Value) + "】");
+
+        // 【进化时】与「当本随从进化时」是两种东西：
+        //   ManualEvolveOnly=true  -> 只有真花 EP 进化才触发，写作【进化时】
+        //   ManualEvolveOnly=false -> 能力效果自动进化也触发，写作「当…进化时，」
+        if (trig.Event is CoreEvent.OnEvolve or CoreEvent.OnSuperEvolve && !trig.ManualEvolveOnly)
+        {
+            string evVerb = trig.Event == CoreEvent.OnEvolve ? "进化" : "超进化";
+            return "当本随从" + evVerb + "时，";
+        }
+
 
         return head;
     }
@@ -571,6 +608,12 @@ public sealed class ChineseCardPrinter
                     // 爆能强化已在正文以【爆能强化】N；独立成句，触发头里再印一遍
                     // 「【5点能量点】」就是同一件事写两遍。
                     if ((c.Label ?? "").ToLowerInvariant() == "enhance") break;
+                    // 启动能力：卡面写作【消耗N点能量点】。0 费启动不印多余的代价栏。
+                    if ((c.Label ?? "").ToLowerInvariant() == "engage")
+                    {
+                        if (amt != "0") parts.Add("消耗" + amt + "点能量点");
+                        break;
+                    }
                     parts.Add(amt + "点能量点");
                     break;
                 case CostKind.Necromance: parts.Add("唤灵" + amt); break;
@@ -1000,6 +1043,12 @@ public sealed class ChineseCardPrinter
         string name = c.Counter.Name;
         string tgt = c.Target != null ? PrintTarget(c.Target) : "";
 
+        // 「counter pp = ctr:max_pp」就是完全回复能量点，卡面有专门写法。
+        if (c.Op == CounterOp.Set && name == "pp"
+            && c.Delta is NumExpr { Op: NumOp.Counter } dctr
+            && (dctr.Counter.Name ?? "") == "max_pp")
+            return "完全回复" + OwnerZh(c.Owner) + "的能量点。";
+
         switch (name)
         {
             case "countdown":
@@ -1133,6 +1182,16 @@ public sealed class ChineseCardPrinter
         // 必须按表达式打印：PickCount 可能是动态的
         // （「发动 Y 个，Y 为此卡费用」），写死 EvalConst 会印成 1。
         string pick = b.PickCount != null ? PrintNum(b.PickCount) : "1";
+        // GrantTarget 非空表示「把这几条能力授予某个目标」，而不是自己发动。
+        if (b.GrantTarget != null)
+        {
+            string g = PrintTarget(b.GrantTarget);
+            string intro = b.Kind == ModeDispatchKind.Random
+                ? "给予" + g + "以下能力中随机" + pick + "个："
+                : "给予" + g + "以下能力：";
+            return intro + PrintBranchOptions(b);
+        }
+
         string head = b.Kind switch
         {
             ModeDispatchKind.Choose => "选择" + pick + "个【模式】发动：",
@@ -1142,7 +1201,13 @@ public sealed class ChineseCardPrinter
             ModeDispatchKind.SequenceUnused => "从以下尚未发动过的能力中按顺序发动：",
             _ => "发动以下能力：",
         };
-        var sb = new StringBuilder(head);
+        return head + PrintBranchOptions(b);
+    }
+
+    /// <summary>逐条打印模式选项（①②③…），由 PrintBranch 与 GrantTarget 分支共用。</summary>
+    private string PrintBranchOptions(BranchModeNode b)
+    {
+        var sb = new StringBuilder();
         for (int i = 0; i < b.Options.Count; i++)
         {
             sb.Append('\n').Append(CircledNumber(i + 1)).Append(' ')
@@ -1166,6 +1231,20 @@ public sealed class ChineseCardPrinter
     /// 中文定语链：**[排除词] [归属与区域] [随机/不同名] [属性条件] [兵种/职业] [核心名词]**。
     /// 英文把定语堆在名词后面，中文必须全部前置 —— 这是最大的差别。
     /// </summary>
+
+    /// <summary>在 Where 里找排除词，含 AndExpr 嵌套的情况。</summary>
+    private static NotSameEntityExpr FindExclusion(BoolExpr where)
+    {
+        if (where == null) return null;
+        if (where is NotSameEntityExpr nse) return nse;
+        if (where is AndExpr a)
+            foreach (var it in a.Items)
+            {
+                var f = FindExclusion(it);
+                if (f != null) return f;
+            }
+        return null;
+    }
     public string PrintTarget(TargetSpec t)
     {
         if (t == null) return "目标";
@@ -1256,8 +1335,15 @@ public sealed class ChineseCardPrinter
 
         // ② 排除词。只在这里打一次 —— CollectWhere 里遇到 NotSameEntityExpr
         // 也会打，两者叠加就成了「其他的1个其他的」。
-        bool excluded = t.Where is NotSameEntityExpr;
-        if (excluded) sb.Append("其他的");
+        // Where 常是 AndExpr(排除, 其他条件)，只判顶层会漏掉排除词。
+        var exclusion = FindExclusion(t.Where);
+        if (exclusion != null)
+        {
+            if (exclusion.ExcludeSlot == TargetSpec.SlotOpposing) sb.Append("除交战目标以外的");
+            else if (TargetSpec.TryParseChooseSlotIndex(exclusion.ExcludeSlot, out var cni))
+                sb.Append("除第").Append(cni + 1).Append("个所选目标以外的");
+            else sb.Append("其他的");
+        }
 
         // ③ 选法 + 数量
         int cnt = t.Count != null ? EvalConst(t.Count, 1) : 1;
@@ -1270,6 +1356,8 @@ public sealed class ChineseCardPrinter
         }
 
         // ④ 排序与去重
+        // TopN：排序后只取前 N 个。不印的话「前3张」会退化成「所有」。
+        if (t.TopN > 0) sb.Append("前").Append(t.TopN).Append("个");
         if (t.DistinctByName || t.History == HistoryScope.FusedToSelf) sb.Append("不同名的");
         if (t.DuplicatesOnly) sb.Append("重复的");
         if (t.Sort != SortKey.None)
@@ -1289,7 +1377,7 @@ public sealed class ChineseCardPrinter
         }
 
         // ⑤ 属性条件（把后置定语提到名词前）
-        string where = PrintTargetWhere(t.Where, t, skipExclusion: excluded);
+        string where = PrintTargetWhere(t.Where, t, skipExclusion: exclusion != null);
         if (where.Length > 0) sb.Append(where);
 
         // ⑥ 核心名词由 Where 的卡种决定（随从 / 法术 / 护符），最后由它收尾。
@@ -1490,7 +1578,27 @@ public sealed class ChineseCardPrinter
             case HasKeywordExpr hkw: return "拥有【" + KeywordZh(hkw.Keyword.Name) + "】";
             case HasStateExpr hs: return StateZh(hs.State);
             case NotSameEntityExpr: return "不是同一个目标";
-            case DeckRuleExpr dr: return "牌组满足规则";
+
+            case DeckRuleExpr dr:
+            {
+                string who = OwnerZh(dr.Owner);
+                return dr.Rule switch
+                {
+                    DeckRule.NoDuplicates => who + "牌组中没有重复的卡牌",
+                    DeckRule.EvenCostOnly => who + "牌组中只有偶数费用的卡牌",
+                    DeckRule.OddCostOnly => who + "牌组中只有奇数费用的卡牌",
+                    _ => who + "牌组满足构筑规则",
+                };
+            }
+
+            case HasCardNameExpr hcn:
+                // CardId 与 CardName 都空时 Of 是参照槽位，表示「与它同名」。
+                if (hcn.CardId == 0 && string.IsNullOrEmpty(hcn.CardName) && hcn.Of != null)
+                    return "与" + PrintTarget(hcn.Of) + "同名";
+                return "卡名为《" + CardZh(hcn.CardName) + "》";
+
+            case IsPreviousExpr: return "已选择目标";
+
             default: return "";
         }
     }
@@ -1535,6 +1643,25 @@ public sealed class ChineseCardPrinter
             }
             case NumOp.Cond:
                 return "（若" + PrintBool(e.Cond) + "则" + PrintNum(e.Then) + "，否则" + PrintNum(e.Else) + "）";
+
+            case NumOp.SplitOf:
+                // 把一个计数器随机拆成 N 份后取第 idx 份。
+                return "（将【" + CounterZh(e.Counter.Name ?? "") + "】随机拆分后的第" + (e.Value + 1) + "份数值）";
+
+            case NumOp.Extreme:
+            {
+                string tag = e.TakeMax ? "较大值" : "较小值";
+                var list = (e.Args ?? Array.Empty<NumExpr>()).Select(PrintNum).ToList();
+                return "（" + tag + "（" + string.Join("、", list) + "））";
+            }
+
+            case NumOp.Clamp:
+            {
+                var a = e.Args ?? Array.Empty<NumExpr>();
+                if (a.Count < 3) return a.Count > 0 ? PrintNum(a[0]) : "0";
+                return PrintNum(a[0]) + "（范围" + PrintNum(a[1]) + "~" + PrintNum(a[2]) + "）";
+            }
+
             default: return "0";
         }
     }
