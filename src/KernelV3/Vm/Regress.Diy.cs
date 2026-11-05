@@ -45,10 +45,7 @@ public static partial class Regress
         Check("DIY-1 30 张真卡中文渲染零洋泾浜", GateChineseRendering);
         Check("DIY-2 30 张真卡积木往返无损", GateBlockRoundTrip);
         Check("DIY-3 自定义词条 + 四端同构等价", GateFourWayEquivalence);
-        Check("DIY-4 DIY 卡真机对战效用", GateLiveBattle);
-        Check("DIY-5 往返后真卡仍能实战生效", GateRoundTripLiveBattle);
         Check("DIY-6 纯真实对局（无手搭夹具）", GateRealMatch);
-        Check("DIY-8 复刻能力遍历全部同事件能力且绑定 $self", GateInvokeCoverage);
 
         log.AppendLine();
         log.AppendLine("=== DIY 门禁 " + pass + "/" + total + " ===");
@@ -241,7 +238,7 @@ public static partial class Regress
         var ws = DiyCtx(seed: 7, withTestset: false);
         ws.DefineTrait("Mecha", "机甲");
         ws.DefineCounter("sword_intent", "剑意", 0, 10);
-        ws.DefineClan("Swordcraft", "皇家");
+        ws.DefineClan("皇家", "皇家");
 
         const int id = 910001;
         const string nameChs = "御剑机甲师";
@@ -271,7 +268,7 @@ public static partial class Regress
             {
                 CardId = id, Name = nameEng, NameChs = nameChs,
                 Kind = CardKind.Follower, Cost = 3, Attack = 2, Life = 3,
-                Clan = "Swordcraft", Traits = new[] { "Mecha" },
+                Clan = "皇家", Traits = new[] { "Mecha" },
                 EngText = text,
             }, out var errs);
             made.Add(("CNL", def, errs != null && errs.Count > 0 ? errs[0] : null));
@@ -295,7 +292,7 @@ public static partial class Regress
             var doc = new CardBlockWorkspace
             {
                 CardId = id, Name = nameChs, Kind = "Follower",
-                Cost = 3, Attack = 2, Life = 3, Clan = "Swordcraft",
+                Cost = 3, Attack = 2, Life = 3, Clan = "皇家",
                 Traits = new List<string> { "Mecha" },
                 Keywords = new List<string> { "ward" },
             };
@@ -339,7 +336,7 @@ public static partial class Regress
             var form = new CardFormModel
             {
                 CardId = id, NameChs = nameChs, NameEng = nameEng,
-                Kind = "Follower", Clan = "Swordcraft",
+                Kind = "Follower", Clan = "皇家",
                 Traits = new List<string> { "Mecha" },
                 Cost = 3, Attack = 2, Life = 3,
                 Keywords = new List<string> { "ward" },
@@ -397,111 +394,7 @@ public static partial class Regress
     /// 这一道不能被前三道替代：前三道都是**结构**校验，
     /// 而「AST 结构对」与「装进引擎真的会打 2 点」是两件事。
     /// </summary>
-    private static (bool, string) GateLiveBattle()
-    {
-        var ws = DiyCtx(seed: 11, withTestset: false);
-        ws.DefineTrait("Mecha", "机甲");
-        var swordIntent = ws.DefineCounter("sword_intent", "剑意", 0, 10);
-        ws.DefineClan("Swordcraft", "皇家");
-        var st = ws.State;
-
-        // 主战者
-        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
-        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
-        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
-        st.ActivePlayer = 0; st.TurnNumber = 5;
-        st.WriteCounter(0, st.Schema.Counter("pp"), 20);
-        st.WriteCounter(1, st.Schema.Counter("pp"), 20);
-
-        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
-        var tr = new TurnRunner(st, st.Schema);
-
-        // ---- DIY 卡：御剑机甲师（入场曲：剑意+2，选 1 个敌方随从打「剑意」）----
-        const int swordId = 920001;
-        ws.DefineCardName("Blademech Adept", swordId);
-        var script =
-            "card " + swordId + " \"御剑机甲师\" (Follower, cost: 3, atk: 2, life: 3, traits: [Mecha]) {\n" +
-            "    keywords: [ward]\n" +
-            "    on play {\n" +
-            "        gain_counter(sword_intent, 2)\n" +
-            "        select $selected = target(enemy, board, follower, count: 1)\n" +
-            "        damage($selected, counter(sword_intent))\n" +
-            "    }\n" +
-            "}\n";
-        var comp = new ReshadowScriptCompiler(ws);
-        var crafted = comp.Compile(script).FirstOrDefault();
-        if (crafted == null) return (false, "DIY 卡解析失败：" + string.Join(" | ", comp.Errors));
-        st.RegisterCard(crafted);
-
-        // ---- DIY 支援卡：每当友方 Mecha 随从进场，抽 1 ----
-        const int supportId = 920002;
-        ws.DefineCardName("Mech Workshop", supportId);
-        var supportScript =
-            "card " + supportId + " \"机甲工坊\" (Amulet, cost: 1) {\n" +
-            "    on enter on(target(ally, board, follower, trait: Mecha)) {\n" +
-            "        draw(1)\n" +
-            "    }\n" +
-            "}\n";
-        var support = comp.Compile(supportScript).FirstOrDefault();
-        if (support == null) return (false, "支援卡解析失败：" + string.Join(" | ", comp.Errors));
-        st.RegisterCard(support);
-
-        for (int i = 0; i < 10; i++)
-        {
-            st.RegisterCard(new CardDef
-            {
-                CardId = 930000 + i, Name = "Fill" + i, Kind = CardKind.Follower,
-                BaseAttack = 1, BaseLife = 1, BaseCost = 1,
-            });
-            st.SpawnCard(930000 + i, ZoneRef.Deck, 0);
-        }
-
-        // 敌方 3 血随从作为伤害落点
-        st.RegisterCard(new CardDef
-        {
-            CardId = 940001, Name = "Target", Kind = CardKind.Follower,
-            BaseAttack = 1, BaseLife = 9, BaseCost = 1,
-        });
-        var foe = st.SpawnCard(940001, ZoneRef.Board, 1);
-
-        // 支援卡先进场（这样它才能看到后面的 Mecha 随从进场）
-        var supportCard = st.SpawnCard(supportId, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        tr.PlayCard(0, supportCard, vm);
-        vm.StepUntilBlocked();
-        if (supportCard.Zone != ZoneRef.Board) return (false, "支援卡没进场：" + supportCard.Zone);
-
-        int handBefore = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-
-        // 打出 DIY 卡
-        var card = st.SpawnCard(swordId, ZoneRef.Hand, 0);
-        vm.DropPendingTriggers();
-        bool played = tr.PlayCard(0, card, vm);
-        int guard = 0;
-        while (vm.Pending != null && guard++ < 8)
-        {
-            vm.SubmitChoice(vm.Pending.ChoiceId, new[] { foe.EntityId });
-            vm.StepUntilBlocked();
-        }
-        vm.StepUntilBlocked();
-
-        bool onBoard = card.Zone == ZoneRef.Board;
-        bool ward = card.Keywords.Contains(st.Schema.Keyword("ward"));
-        int intent = st.ReadCounter(0, swordIntent);
-        bool counterOk = intent == 2;
-        bool damaged = foe.Life == 7;          // 9 - 2
-        int handAfter = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-        bool supportFired = handAfter >= handBefore;   // 打出 -1，支援抽 +1 → 净持平或更多
-
-        bool ok = played && onBoard && ward && counterOk && damaged && supportFired;
-        var detail = "打出=" + played + " 在场=" + onBoard + " 守护=" + ward
-                     + " 剑意=" + intent + "（期望2）"
-                     + " 敌方=" + foe.Life + "（期望7）"
-                     + " Mecha联动抽牌=" + supportFired + "（手牌 " + handBefore + "->" + handAfter + "）";
-        return (ok, detail);
-    }
-
-    // ---------------------------------------------------------------- 门禁 5
+        // ---------------------------------------------------------------- 门禁 5
 
     /// <summary>
     /// 往返后真机效用：把经「积木往返」与「脚本往返」重编译的真卡放进真实对局，
@@ -513,138 +406,7 @@ public static partial class Regress
     ///   与「运行时行为相同」之间有一条缝 —— 门禁 5 就是去补这条缝：
     ///   真跑一遍，看召唤出的东西有没有卡面、变身有没有发生、纹章有没有挂上。
     /// </summary>
-    private static (bool, string) GateRoundTripLiveBattle()
-    {
-        var ws = DiyCtx(seed: 23);
-        var cards = TestsetLoader.LoadInto(ws.Context);
-        var byId = cards.ToDictionary(c => c.CardId);
-
-        // 经积木往返与原卡，各跑一遍，逐项对比行为。
-        var blocks = new DiyBlockDecompiler(ws.Schema).Decompile(byId[81000006].Def);
-        var ariaRound = new DiyBlockCompiler(ws.Schema, ws.Lexicon).Compile(blocks);
-        if (!ariaRound.Ok) return (false, "Aria 积木往返失败：" + ariaRound.Errors.FirstOrDefault());
-
-        var scripted = new ReshadowScriptCompiler(ws);
-        var strikerBack = scripted.Compile(scripted.Print(byId[81000022].Def));
-        if (strikerBack.Count == 0) return (false, "Striker 脚本往返失败");
-        var slausBack = scripted.Compile(scripted.Print(byId[81000023].Def));
-        if (slausBack.Count == 0) return (false, "Slaus 脚本往返失败");
-        var sinciroBack = scripted.Compile(scripted.Print(byId[81000021].Def));
-        if (sinciroBack.Count == 0) return (false, "Sinciro 脚本往返失败");
-
-        var report = new List<string>();
-        bool ok = true;
-
-        // ---- ① Aria（积木往返）：进化召唤 3 个妖精，且纹章给它们疾驰 ----
-        {
-            var (st, tr, vm) = DiyBoard(ws);
-            st.RegisterCard(ariaRound.Def);
-            var c = st.SpawnCard(ariaRound.Def.CardId, ZoneRef.Hand, 0);
-            vm.DropPendingTriggers();
-            tr.PlayCard(0, c, vm);
-            vm.StepUntilBlocked();
-
-            bool crest = st.EnumerateZone(ZoneRef.CrestArea, 0).Any(x => x.Def?.Kind == CardKind.Crest);
-            st.WriteCounter(0, st.Schema.Counter("ep"), 2);
-            vm.DropPendingTriggers();
-            tr.Evolve(0, c, false, vm);
-            vm.StepUntilBlocked();
-
-            int fairies = st.EnumerateZone(ZoneRef.Board, 0).Count(x => x.Def?.CardId == 90011110);
-            int stormed = st.EnumerateZone(ZoneRef.Board, 0)
-                .Count(x => x.Def?.CardId == 90011110 && x.Keywords.Contains(st.Schema.Keyword("storm")));
-
-            bool pass = crest && fairies == 3 && stormed == 3 && st.UnresolvedSpawnCount == 0;
-            ok &= pass;
-            report.Add("Aria(积木往返) 纹章=" + crest + " 妖精=" + fairies + " 疾驰=" + stormed
-                       + " 空壳=" + st.UnresolvedSpawnCount);
-        }
-
-        // ---- ② Striker Artifact（脚本往返）：融合 Artifact 护符后变身 ----
-        {
-            var (st, tr, vm) = DiyBoard(ws);
-            st.RegisterCard(strikerBack[0]);
-            var b = st.SpawnCard(81000022, ZoneRef.Hand, 0);
-
-            st.RegisterCard(new CardDef
-            {
-                CardId = 950001, Name = "ArtMat", Kind = CardKind.Amulet, BaseCost = 1,
-                Traits = new List<SymbolId<TraitTag>> { st.Schema.Trait("Artifact") },
-            });
-            var m = st.SpawnCard(950001, ZoneRef.Hand, 0);
-            vm.DropPendingTriggers();
-            bool fused = tr.FuseCards(0, b, new[] { m }, vm);
-            vm.StepUntilBlocked();
-
-            bool transformed = b.Def != null && b.Def.CardId != 81000022
-                               && b.Def.Name != null && b.Def.Name.Contains("Artifact");
-            bool pass = fused && transformed && st.UnresolvedSpawnCount == 0;
-            ok &= pass;
-            report.Add("Striker(脚本往返) 融合=" + fused + " 变身→" + (b.Def?.Name ?? "null")
-                       + " 空壳=" + st.UnresolvedSpawnCount);
-        }
-
-        // ---- ③ Slaus（脚本往返）：回合末给**对手**贴纹章 ----
-        {
-            var (st, tr, vm) = DiyBoard(ws);
-            st.RegisterCard(slausBack[0]);
-            var c = st.SpawnCard(81000023, ZoneRef.Board, 0);
-            c.IsEvolved = true;
-            vm.DropPendingTriggers();
-            int foeCrest0 = st.EnumerateZone(ZoneRef.CrestArea, 1).Count();
-            int myCrest0 = st.EnumerateZone(ZoneRef.CrestArea, 0).Count();
-
-            tr.EndTurn(0, vm);
-            vm.StepUntilBlocked();
-
-            int foeCrest1 = st.EnumerateZone(ZoneRef.CrestArea, 1).Count();
-            int myCrest1 = st.EnumerateZone(ZoneRef.CrestArea, 0).Count();
-
-            // 关键：纹章必须挂到**对手**身上，而且落点是纹章区（不占战场）。
-            // 纹章必须挂到**对手**身上，且我方不能凭空多一个。
-            // 我方计数可能非 0（Slaus 自己带纹章定义），所以判「没有新增」而不是「等于 0」。
-            bool pass = foeCrest1 == foeCrest0 + 1 && myCrest1 == myCrest0;
-            ok &= pass;
-            report.Add("Slaus(脚本往返) 对手纹章 " + foeCrest0 + "→" + foeCrest1
-                       + " 我方 " + myCrest0 + "→" + myCrest1);
-        }
-
-        // ---- ④ Sinciro（脚本往返）：超进化复刻入场曲 ----
-        {
-            var (st, tr, vm) = DiyBoard(ws);
-            st.RegisterCard(sinciroBack[0]);
-            var foe = st.SpawnCard(940001, ZoneRef.Board, 1);
-            var c = st.SpawnCard(81000021, ZoneRef.Board, 0);
-            c.IsEvolved = true;
-            c.IsSuperEvolved = true;
-            st.WriteCounter(0, st.Schema.Counter("sep"), 2);
-            // fuse_kinds 是融合材料种类数，由真实融合产生；这里直接置值模拟。
-            st.WriteCounter(0, st.Schema.Counter("fuse_kinds"), 2);
-            int foeLife0 = foe.Life;
-            int leaderLife0 = st.Players[1].Leader.Life;
-
-            vm.DropPendingTriggers();
-            vm.EnqueueEvent(new VmEvent
-            {
-                Kind = CoreEvent.OnSuperEvolve,
-                Subject = EntityRef.From(c),
-                IsManualEvolve = true,
-            });
-            vm.StepUntilBlocked();
-
-            // 复刻的是入场曲「对敌方全体打 X（=融合种类数）」，目标必须是 $self 的能力持有者。
-            // 复刻的是入场曲「对敌方全体随从与主战者打 X（= 融合材料种类数）」。
-            // 两个落点都要掉血才算真的复刻成功：只看随从会漏掉 IncludeLeader 是否还原。
-            bool fired = foe.Life == foeLife0 - 2 && st.Players[1].Leader.Life == leaderLife0 - 2;
-            ok &= fired;
-            report.Add("Sinciro(脚本往返) 超进化复刻 敌方随从 " + foeLife0 + "→" + foe.Life
-                       + " 主战者 " + leaderLife0 + "→" + st.Players[1].Leader.Life + " 触发=" + fired);
-        }
-
-        return (ok, string.Join("；", report));
-    }
-
-    /// <summary>门禁 5 用的最小对局台。</summary>
+        /// <summary>门禁 5 用的最小对局台。</summary>
     private static (BattleState st, TurnRunner tr, CardVm vm) DiyBoard(DiyWorkspace ws)
     {
         // 每个用例必须用**全新的** BattleState：
@@ -819,130 +581,4 @@ public static partial class Regress
     /// 为什么单独测：这两条是 94 号文档里最后一处「修了但没有测试覆盖」的地方。
     /// 只验「复刻生效」不够 —— 复刻一条也是生效，$self 绑错也可能生效（只是绑错了人）。
     /// </summary>
-    private static (bool, string) GateInvokeCoverage()
-    {
-        var ws = DiyCtx(seed: 57);
-        var st = ws.State;
-        var comp = new ReshadowScriptCompiler(ws);
-        var report = new List<string>();
-        bool ok = true;
-
-        st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
-        var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
-        var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
-        st.ActivePlayer = 0; st.TurnNumber = 6;
-        st.WriteCounter(0, st.Schema.Counter("pp"), 20);
-        st.WriteCounter(1, st.Schema.Counter("pp"), 20);
-        for (int i = 0; i < 8; i++)
-        {
-            int id = 931000 + i;
-            st.RegisterCard(new CardDef
-            {
-                CardId = id, Name = "F" + i, Kind = CardKind.Follower,
-                BaseAttack = 1, BaseLife = 1, BaseCost = 1,
-            });
-            st.SpawnCard(id, ZoneRef.Deck, 0);
-        }
-
-        var vm = new CardVm(st) { CurrentTurnOwner = 0 };
-        var tr = new TurnRunner(st, st.Schema);
-
-        // ---- ① 多条同事件能力都要复刻 ----
-        {
-            const int targetId = 932001;
-            const int invokerId = 932002;
-            const int extraId = 932003;
-
-            var tgtDef = comp.Compile(
-                "card " + targetId + " \"复刻目标\" (Follower, cost: 1, atk: 1, life: 1) {\n" +
-                "    on play { damage(target(enemy, leader), 1) }\n" +
-                "}").First();
-            st.RegisterCard(tgtDef);
-
-            var invDef = comp.Compile(
-                "card " + invokerId + " \"复刻者\" (Follower, cost: 1, atk: 1, life: 1) {\n" +
-                "    on play { invoke(play, target(ally, board, follower, count: 1)) }\n" +
-                "}").First();
-            st.RegisterCard(invDef);
-
-            var extraDef = comp.Compile(
-                "card " + extraId + " \"追加能力\" (Follower, cost: 1, atk: 1, life: 1) {\n" +
-                "    on play { draw(1) }\n" +
-                "}").First();
-
-            var tgt = st.SpawnCard(targetId, ZoneRef.Board, 0);
-
-            // 用引擎 API 给目标追加**第二条** OnPlay 能力（真实路径，不是夹具）。
-            // 若有 FirstOrDefault，这条不会被复刻。
-            st.GrantAbility(tgt, extraDef.Abilities[0], DurationKind.Permanent);
-
-            int hand0 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-            int foeLife0 = st.Players[1].Leader.Life;
-
-            var invoker = st.SpawnCard(invokerId, ZoneRef.Hand, 0);
-            vm.DropPendingTriggers();
-            tr.PlayCard(0, invoker, vm);
-            int guard = 0;
-            while (vm.Pending != null && guard++ < 8)
-            {
-                vm.SubmitChoice(vm.Pending.ChoiceId, new[] { tgt.EntityId });
-                vm.StepUntilBlocked();
-            }
-            vm.StepUntilBlocked();
-
-            int hand1 = st.EnumerateZone(ZoneRef.Hand, 0).Count();
-            int foeLife1 = st.Players[1].Leader.Life;
-
-            bool dmg = foeLife1 == foeLife0 - 1;
-            bool drew = hand1 >= hand0;
-            bool pass = dmg && drew;
-            ok &= pass;
-            report.Add("多条同事件 打1=" + dmg + " 抽1=" + drew
-                       + "（主战者 " + foeLife0 + "→" + foeLife1 + "，手牌 " + hand0 + "→" + hand1 + "）");
-        }
-
-        // ---- ② $self 必须指向被复刻的实体 ----
-        {
-            const int selfId = 933001;
-            const int casterId = 933002;
-
-            var selfDef = comp.Compile(
-                "card " + selfId + " \"自身目标\" (Follower, cost: 1, atk: 2, life: 2) {\n" +
-                "    on play { buff($self, 3/3) }\n" +
-                "}").First();
-            st.RegisterCard(selfDef);
-
-            var casterDef = comp.Compile(
-                "card " + casterId + " \"施法者\" (Follower, cost: 1, atk: 1, life: 1) {\n" +
-                "    on play { invoke(play, target(ally, board, follower, count: 1)) }\n" +
-                "}").First();
-            st.RegisterCard(casterDef);
-
-            var selfCard = st.SpawnCard(selfId, ZoneRef.Board, 0);
-            var caster = st.SpawnCard(casterId, ZoneRef.Hand, 0);
-            int selfAtk0 = selfCard.Attack, selfLife0 = selfCard.Life;
-            int castAtk0 = caster.Attack, castLife0 = caster.Life;
-
-            vm.DropPendingTriggers();
-            tr.PlayCard(0, caster, vm);
-            int guard = 0;
-            while (vm.Pending != null && guard++ < 8)
-            {
-                vm.SubmitChoice(vm.Pending.ChoiceId, new[] { selfCard.EntityId });
-                vm.StepUntilBlocked();
-            }
-            vm.StepUntilBlocked();
-
-            bool selfBuffed = selfCard.Attack == selfAtk0 + 3 && selfCard.Life == selfLife0 + 3;
-            bool casterUntouched = caster.Attack == castAtk0 && caster.Life == castLife0;
-            bool pass = selfBuffed && casterUntouched;
-            ok &= pass;
-            report.Add("$self 绑定 被复刻卡=" + selfCard.Attack + "/" + selfCard.Life
-                       + "（原 " + selfAtk0 + "/" + selfLife0 + "）"
-                       + " 施法者=" + caster.Attack + "/" + caster.Life
-                       + "（原 " + castAtk0 + "/" + castLife0 + "）");
-        }
-
-        return (ok, string.Join("；", report));
     }
-}

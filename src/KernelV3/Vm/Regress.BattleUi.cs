@@ -97,7 +97,7 @@ public static class RegressBattleUi
         var byClan = cards.Where(c => c.Clan.IsValid)
                           .GroupBy(c => c.Clan.Name)
                           .OrderByDescending(g => g.Count()).ToList();
-        string leader = byClan.Count > 0 ? byClan[0].Key : "Neutral";
+        string leader = byClan.Count > 0 ? byClan[0].Key : "中立";
 
         var list = new List<(int, int)>();
         int total = 0;
@@ -1225,7 +1225,7 @@ public static class RegressBattleUi
     {
         var store = NewStore();
         var deck = store.SavedDecks.FirstOrDefault()
-                   ?? store.CreateDeck("all-clans", "Forestcraft", "清空测试");
+                   ?? store.CreateDeck("all-clans", "精灵", "清空测试");
         var vm = new DeckEditorViewModel(store, deck);
 
         // 先塞满

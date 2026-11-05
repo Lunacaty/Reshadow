@@ -23,19 +23,19 @@
       "deck_name_chs": "启示录牌组",
       "entries": [
         {
-          "card_name": "Silent Rider",
+          "card_name": "沉默的魔将",
           "copies": 2
         },
         {
-          "card_name": "Servant of Cocytus",
+          "card_name": "深渊之主的仆从",
           "copies": 2
         },
         {
-          "card_name": "Demon of Purgatory",
+          "card_name": "边狱的邪祟",
           "copies": 3
         },
         {
-          "card_name": "Astaroth's Reckoning",
+          "card_name": "阿斯塔罗特的宣判",
           "copies": 3
         }
       ]
@@ -45,19 +45,19 @@
       "deck_name_chs": "40张牌的牌组",
       "entries": [
         {
-          "card_name": "Fairy",
+          "card_name": "妖精",
           "copies": 10
         },
         {
-          "card_name": "Bat",
+          "card_name": "蝙蝠",
           "copies": 10
         },
         {
-          "card_name": "Knight",
+          "card_name": "骑士",
           "copies": 10
         },
         {
-          "card_name": "Guardian Golem",
+          "card_name": "守护者巨像",
           "copies": 10
         }
       ]

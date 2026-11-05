@@ -56,13 +56,13 @@ public static class RegressDeckUi
     private static (bool, string) CasePersistRoundTrip()
     {
         var store = NewStore();
-        var deck = store.CreateDeck("standard", "Swordcraft", "往返测试");
+        var deck = store.CreateDeck("standard", "皇家", "往返测试");
         var pool = store.GetPoolView("standard");
         var first = pool.EnumerateCollectibleCards().FirstOrDefault();
         if (first == null) return (false, "卡池无卡");
 
         deck.Cards.Add((first.CardId, 2));
-        deck.ChosenExtraClans.Add("Runecraft");
+        deck.ChosenExtraClans.Add("巫师");
         store.SaveDeck(deck);
 
         var store2 = NewStore();
@@ -75,7 +75,7 @@ public static class RegressDeckUi
                   && back.Cards.Count == deck.Cards.Count
                   && back.Cards[0].cardId == first.CardId
                   && back.Cards[0].count == 2
-                  && back.ChosenExtraClans.Contains("Runecraft");
+                  && back.ChosenExtraClans.Contains("巫师");
 
         store2.DeleteDeck(deck.DeckId);
 
@@ -91,8 +91,8 @@ public static class RegressDeckUi
             PackId = "uipack", NativePoolId = "uipool",
             Clans = new List<SymbolRawEntry>
             {
-                new SymbolRawEntry { Name = "Swordcraft" },
-                new SymbolRawEntry { Name = "Runecraft" },
+                new SymbolRawEntry { Name = "皇家" },
+                new SymbolRawEntry { Name = "巫师" },
             },
             Cards = new List<CardRawEntry>
             {
@@ -114,7 +114,7 @@ public static class RegressDeckUi
         {
             CardId = expanderId, Name = "Expander", NameChs = "扩容者",
             Kind = CardKind.Follower, BaseCost = 3, BaseAttack = 3, BaseLife = 4,
-            PackId = "uipack", Clan = view.Catalog.Schema.Clan("Swordcraft"),
+            PackId = "uipack", Clan = view.Catalog.Schema.Clan("皇家"),
             DeckModifiers = new List<DeckBuildModifier>
             {
                 new DeckBuildModifier { Kind = DeckModKind.ModifyDeckSize, Value = 20,
@@ -127,7 +127,7 @@ public static class RegressDeckUi
         var deck = new ConstructedDeck
         {
             DeckId = "uitest2", Name = "规则联动", PoolId = "uipool",
-            LeaderClan = "Swordcraft",
+            LeaderClan = "皇家",
         };
 
         var vm = new DeckEditorViewModel(store, deck);
@@ -150,8 +150,8 @@ public static class RegressDeckUi
         bool expanded = afterMax == 60;
         bool slotOk = slots == 1;
 
-        vm.ToggleChosenExtraClan("Runecraft");
-        bool clanOk = vm.CurrentProfile.AllowedClans.Contains("Runecraft");
+        vm.ToggleChosenExtraClan("巫师");
+        bool clanOk = vm.CurrentProfile.AllowedClans.Contains("巫师");
 
         bool ok = expanded && slotOk && clanOk;
         return (ok, "扩容 " + baseMax + "→" + afterMax + " 副职业槽=" + slots
@@ -162,7 +162,7 @@ public static class RegressDeckUi
     private static (bool, string) CaseFilterAndCurve()
     {
         var store = NewStore();
-        var deck = store.CreateDeck("standard", "Neutral", "筛选测试");
+        var deck = store.CreateDeck("standard", "中立", "筛选测试");
         var vm = new DeckEditorViewModel(store, deck);
 
         vm.ActiveClanFilter = "ALL";

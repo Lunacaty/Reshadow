@@ -1777,7 +1777,7 @@ public sealed class DiyBlockDecompiler
             EnumB = t.History == HistoryScope.None ? null : t.History.ToString(),
             CardNameA = t.CardName,
             // 排序与去重是筛选语义的一部分：「基础费用最高的 1 个」与「任意 1 个」
-            // 出天差地别，而 AstEnglishPrinter 不打印它们时会被静默丢掉。
+            // 出天差地别，而打印器不输出它们时会被静默丢掉。
             EnumC = t.Sort == SortKey.None ? null : t.Sort.ToString(),
             FlagD = t.SortDescending,
             FlagE = t.DistinctByName,

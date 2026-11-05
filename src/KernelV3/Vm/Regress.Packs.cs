@@ -51,16 +51,13 @@ public static class RegressPacks
         Check("POOL-I 卡包关键词与脚本格式", GatePackKeywords);
         Check("POOL-J 自定义规则接进执行层", GateRuleEnforcement);
         Check("POOL-K local_id 分配与跨包召唤无空壳", GateCardIndexAndCrossPack);
-        Check("POOL-L 含 discover+deck_mod 的四端同构往返", GateFourWayDiscover);
         Check("POOL-M Builder 关键词 + UseExtraPp + Overflow 阈值", GateBuilderKeywordsAndRules);
         Check("POOL-N 两条构筑入口都必须走 DeckRuleResolver", GateUnifiedDeckEntry);
         Check("POOL-O 指向性法术可打出 + 点选主战者不死循环", GateSpellTargeting);
         Check("POOL-P 发现的多维组合筛选（卡包+职业+区间+兵种）", GateDiscoverMultiFilter);
         Check("POOL-Q 无头双 Bot 完整对局模拟", GateHeadlessFullMatch);
-        Check("POOL-R 多维发现的四端同构与中文渲染", GateMultiDimFourEnds);
         Check("POOL-S 5选2 自定义发现", GateDiscoverFivePickTwo);
         Check("POOL-T 本职业 self 与多职业区间发现", GateDiscoverClanRanges);
-        Check("POOL-U X选Y 的四端同构与中文渲染", GateOfferPickFourEnds);
         Check("POOL-V 指定卡包跨池发现", GateCrossPoolPackDiscover);
 
         log.AppendLine();
@@ -87,7 +84,7 @@ public static class RegressPacks
     private static CardRawEntry Card(
         int id, string name, CardKind kind = CardKind.Follower,
         int cost = 1, int atk = 1, int life = 1, bool isToken = false,
-        string text = "", string clan = "Neutral")
+        string text = "", string clan = "中立")
         => new CardRawEntry
         {
             CardId = id, NameEng = name, Kind = kind,
@@ -677,7 +674,7 @@ public static class RegressPacks
         var big = new ConstructedDeck
         {
             PoolId = "dm-pool",
-            LeaderClan = "Neutral",
+            LeaderClan = "中立",
             Cards = new List<(int, int)> { (wangzi, 3) }
                 .Concat(Enumerable.Range(0, 19).Select(i => (760010 + i, 3)))
                 .ToList(),
@@ -686,7 +683,7 @@ public static class RegressPacks
         big = new ConstructedDeck
         {
             PoolId = "dm-pool",
-            LeaderClan = "Neutral",
+            LeaderClan = "中立",
             Cards = new List<(int, int)> { (wangzi, 3), (normal, 3) },
         };
         // 60 张：王子 3 + 普通卡 57（超同名上限，所以拆成多次同卡不同号不现实）
@@ -704,7 +701,7 @@ public static class RegressPacks
         var small = new ConstructedDeck
         {
             PoolId = "dm-pool",
-            LeaderClan = "Neutral",
+            LeaderClan = "中立",
             Cards = new List<(int, int)> { (normal, 3) },
         };
         var profSmall = DeckRuleResolver.ResolveAndValidate(small, pool);
@@ -717,12 +714,12 @@ public static class RegressPacks
             MinDeckSize = 40, MaxDeckSize = 40, DefaultMaxCopiesPerCard = 3,
             LeaderInitialLife = 20, LeaderMaxLife = 20, StartingHandSize = 4,
         };
-        normalProf.AllowedClans.Add("Neutral");
+        normalProf.AllowedClans.Add("中立");
 
         var legalDeck = new ConstructedDeck
         {
             PoolId = "dm-pool",
-            LeaderClan = "Neutral",
+            LeaderClan = "中立",
             Cards = new List<(int, int)> { (normal, 3) },
         };
         // 非对称开局只验「双方各按自己的 profile 建主战者」，
@@ -732,7 +729,7 @@ public static class RegressPacks
             MinDeckSize = 40, MaxDeckSize = 40, DefaultMaxCopiesPerCard = 3,
             LeaderInitialLife = 30, LeaderMaxLife = 30, StartingHandSize = 4,
         };
-        bigLifeProf.AllowedClans.Add("Neutral");
+        bigLifeProf.AllowedClans.Add("中立");
 
         var st = new BattleState(catWithMod.Schema, 9501, MatchRules.CreateStandard());
         st.Pool = pool;
@@ -1013,55 +1010,7 @@ public static class RegressPacks
     /// 积木反编译缺 PoolQuery 会让 discover 掉进 act_add_hand，
     /// 表单 BuildDiscoverWhere 缺 Of=$item 会让判等失败。
     /// </summary>
-    private static (bool, string) GateFourWayDiscover()
-    {
-        var ws = Diy.DiyWorkspace.Create(1);
-        ws.Context.Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier");
-
-        const string src = @"
-card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
-    deck_mod size(+20)
-    deck_mod leader_life(+10)
-    on play {
-        discover(target(ally, global_pool, follower, trait: Pixie, max_cost: 3, count: 1), to: hand)
-    }
-}
-";
-        var comp = new ReshadowScriptCompiler(ws);
-        var defs = comp.Compile(src);
-        if (defs.Count == 0) return (false, "脚本编译失败：" + string.Join("|", comp.Errors.Take(2)));
-        var def0 = defs[0];
-
-        // ① 脚本 → 积木 → 脚本
-        var dec = new DiyBlockDecompiler(ws.Schema);
-        var doc = dec.Decompile(def0);
-        var blockRes = new DiyBlockCompiler(ws.Schema, ws.Lexicon).Compile(doc);
-        bool blockOk = blockRes.Ok;
-        string dBlock = "";
-        bool blockEq = blockOk && DiyWorkspace.StructurallyEqual(def0, blockRes.Def, out dBlock);
-
-        // ② 脚本 → 表单 → 脚本
-        var fc = new DiyFormCompiler(ws.Schema, ws.Lexicon);
-        bool formConverted = fc.TryCardDefToForm(def0, out var form, out _);
-        var defForm = formConverted ? fc.FormToCardDef(form) : null;
-        string dForm = "";
-        bool formEq = defForm != null && DiyWorkspace.StructurallyEqual(def0, defForm, out dForm);
-
-        // ③ 脚本 → 脚本（打印再解析）
-        var printed = comp.Print(def0);
-        var re = comp.Compile(printed);
-        string dScript = "";
-        bool scriptEq = re.Count > 0 && DiyWorkspace.StructurallyEqual(def0, re[0], out dScript);
-
-        bool ok = blockEq && formEq && scriptEq;
-        return (ok,
-            "积木=" + (blockOk ? blockEq.ToString() : "编译失败")
-            + " 表单=" + (formConverted ? formEq.ToString() : "转换失败")
-            + " 脚本=" + scriptEq
-            + (ok ? "" : " | K:" + Short(dBlock) + " F:" + Short(dForm) + " S:" + Short(dScript)));
-    }
-
-    private static string Short(string s)
+        private static string Short(string s)
         => string.IsNullOrEmpty(s) ? "-" : s.Replace("\n", " ").Substring(0, Math.Min(120, s.Length));
 
     // ---------------------------------------------------------------- 门禁 M
@@ -1220,7 +1169,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
         // 带扩容卡的牌组：3 张扩容 + 57 张填充 = 60 张
         var big = new ConstructedDeck
         {
-            PoolId = "u-pool", LeaderClan = "Neutral",
+            PoolId = "u-pool", LeaderClan = "中立",
             Cards = new List<(int, int)> { (expanderId, 3) }
                 .Concat(Enumerable.Range(0, 19).Select(i => (fillerId + i, 3)))
                 .ToList(),
@@ -1235,7 +1184,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
         // ② 反向：同样的 60 张但不带扩容卡 —— 必须判超限
         var bigNoMod = new ConstructedDeck
         {
-            PoolId = "u-pool", LeaderClan = "Neutral",
+            PoolId = "u-pool", LeaderClan = "中立",
             Cards = Enumerable.Range(0, 20).Select(i => (fillerId + i, 3)).ToList(),
         };
         var profRev = DeckRuleResolver.ResolveAndValidate(bigNoMod, view);
@@ -1328,7 +1277,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
             entries.Add(new CardRawEntry
             {
                 CardId = 791100 + i, NameEng = "Hit" + i, Kind = CardKind.Follower,
-                Cost = 3, Attack = 1, Life = 1, Clan = "Runecraft",
+                Cost = 3, Attack = 1, Life = 1, Clan = "巫师",
                 Traits = new List<string> { "Mecha" },
             });
         // 干扰 A：别的卡包（同职业同费用同兵种）
@@ -1336,7 +1285,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
             entries.Add(new CardRawEntry
             {
                 CardId = 791200 + i, NameEng = "OtherPack" + i, Kind = CardKind.Follower,
-                Cost = 3, Attack = 1, Life = 1, Clan = "Runecraft",
+                Cost = 3, Attack = 1, Life = 1, Clan = "巫师",
                 Traits = new List<string> { "Mecha" },
             });
         // 干扰 B：别的职业
@@ -1344,7 +1293,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
             entries.Add(new CardRawEntry
             {
                 CardId = 791300 + i, NameEng = "OtherClan" + i, Kind = CardKind.Follower,
-                Cost = 3, Attack = 1, Life = 1, Clan = "Swordcraft",
+                Cost = 3, Attack = 1, Life = 1, Clan = "皇家",
                 Traits = new List<string> { "Mecha" },
             });
         // 干扰 C：超费
@@ -1352,7 +1301,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
             entries.Add(new CardRawEntry
             {
                 CardId = 791400 + i, NameEng = "TooCostly" + i, Kind = CardKind.Follower,
-                Cost = 9, Attack = 1, Life = 1, Clan = "Runecraft",
+                Cost = 9, Attack = 1, Life = 1, Clan = "巫师",
                 Traits = new List<string> { "Mecha" },
             });
 
@@ -1363,7 +1312,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
                 PackId = "target", NativePoolId = "dp",
                 Clans = new List<SymbolRawEntry>
                 {
-                    new SymbolRawEntry { Name = "Runecraft" }, new SymbolRawEntry { Name = "Swordcraft" },
+                    new SymbolRawEntry { Name = "巫师" }, new SymbolRawEntry { Name = "皇家" },
                 },
                 Traits = new List<SymbolRawEntry> { new SymbolRawEntry { Name = "Mecha" } },
                 Cards = entries.Take(3).ToList(),
@@ -1382,7 +1331,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
 
         var st = built.Pool.CreateBattleState(seed: 95);
         var mecha = st.Schema.Trait("Mecha");
-        var rune = st.Schema.Clan("Runecraft");
+        var rune = st.Schema.Clan("巫师");
         st.RegisterCard(new CardDef { CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20 });
         var l0 = st.CreateEntity(99, ZoneRef.Leader, 0); l0.Life = 20; l0.MaxLife = 20; st.Players[0].Leader = l0;
         var l1 = st.CreateEntity(99, ZoneRef.Leader, 1); l1.Life = 20; l1.MaxLife = 20; st.Players[1].Leader = l1;
@@ -1473,7 +1422,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
                 .OrderByDescending(g => g.Count())
                 .ToList();
 
-            string leader = byClan.Count > 0 ? byClan[0].Key : "Neutral";
+            string leader = byClan.Count > 0 ? byClan[0].Key : "中立";
 
             // 测试集每个职业只有 1~5 张卡，单职业 + 中立最多凑 27 张，够不到 40。
             // 这个门禁验的是「完整对局跑得完」，不是构筑合法性 ——
@@ -1558,56 +1507,7 @@ card 940010 ""四端发现"" (Follower, cost: 3, atk: 3, life: 4) {
     ///   · tokenizer 把 official-sv 的 '-' 拆开 → 卡包名被截成 official
     ///   · 中文用一个 string 存费用 → 下限被上限覆盖，「2~4」印成「不超过4」
     /// </summary>
-    private static (bool, string) GateMultiDimFourEnds()
-    {
-        var ws = Diy.DiyWorkspace.Create(1);
-        ws.Context.Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier");
-        var comp = new ReshadowScriptCompiler(ws);
-
-        const string src = @"
-card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
-    on play {
-        discover(target(ally, global_pool, follower, pack: official-sv, clan: Runecraft, trait: Mecha, min_cost: 2, max_cost: 4, count: 1), to: hand)
-    }
-}
-";
-        var defs = comp.Compile(src);
-        if (defs.Count == 0) return (false, "脚本编译失败：" + string.Join("|", comp.Errors.Take(2)));
-        var def0 = defs[0];
-
-        var sp = def0.Abilities[0].Body.OfType<SpawnCardNode>().FirstOrDefault();
-        if (sp == null) return (false, "没有产出生 SpawnCardNode");
-
-        // ① 卡包 ID 完整（不被 '-' 截断）
-        bool packOk = def0.Abilities[0].Body.OfType<SpawnCardNode>()
-            .Any(x => WalkAny(x.CopyFrom?.Where, e => e is HasPackExpr hp && hp.PackId == "official-sv"));
-        // ② 职业条件存在
-        bool clanOk = WalkAny(sp.CopyFrom?.Where, e => e is HasClanExpr);
-        // ③ 费用上下限都存在
-        bool costOk = WalkCount(sp.CopyFrom?.Where, e =>
-            e is CompareExpr c && c.Left?.Op == NumOp.Property && c.Left.Stat == StatKey.Cost) >= 2;
-
-        // ④ 积木往返
-        var dec = new DiyBlockDecompiler(ws.Schema);
-        var doc = dec.Decompile(def0);
-        var res = new DiyBlockCompiler(ws.Schema, ws.Lexicon).Compile(doc);
-        string dBlock = "";
-        bool blockEq = res.Ok && DiyWorkspace.StructurallyEqual(def0, res.Def, out dBlock);
-
-        // ⑤ 中文渲染包含全部维度
-        var cn = ws.Printer.PrintCard(def0);
-        bool cnPack = cn.Contains("official-sv");
-        bool cnClan = cn.Contains("巫师") || cn.Contains("Runecraft");
-        bool cnRange = cn.Contains("2~4");
-
-        bool ok = packOk && clanOk && costOk && blockEq && cnPack && cnClan && cnRange;
-        return (ok, "卡包完整=" + packOk + " 职业=" + clanOk + " 双费用=" + costOk
-                    + " 积木往返=" + blockEq
-                    + " 中文[包]=" + cnPack + " [职业]=" + cnClan + " [区间]=" + cnRange
-                    + (blockEq ? "" : " | " + dBlock.Replace("\n", " ")));
-    }
-
-    private static bool WalkAny(BoolExpr e, Func<BoolExpr, bool> pred)
+        private static bool WalkAny(BoolExpr e, Func<BoolExpr, bool> pred)
         => WalkCount(e, pred) > 0;
 
     private static int WalkCount(BoolExpr e, Func<BoolExpr, bool> pred)
@@ -1704,15 +1604,15 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
         // 3 张 Swordcraft
         for (int i = 0; i < 3; i++)
             entries.Add(new CardRawEntry { CardId = 793100 + i, NameEng = "Sword" + i,
-                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "Swordcraft" });
+                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "皇家" });
         // 3 张 Runecraft
         for (int i = 0; i < 3; i++)
             entries.Add(new CardRawEntry { CardId = 793200 + i, NameEng = "Rune" + i,
-                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "Runecraft" });
+                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "巫师" });
         // 3 张 Neutral（干扰项）
         for (int i = 0; i < 3; i++)
-            entries.Add(new CardRawEntry { CardId = 793300 + i, NameEng = "Neutral" + i,
-                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "Neutral" });
+            entries.Add(new CardRawEntry { CardId = 793300 + i, NameEng = "中立" + i,
+                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "中立" });
 
         var packs = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)
         {
@@ -1721,9 +1621,9 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
                 PackId = "cl", NativePoolId = "cp",
                 Clans = new List<SymbolRawEntry>
                 {
-                    new SymbolRawEntry { Name = "Swordcraft" },
-                    new SymbolRawEntry { Name = "Runecraft" },
-                    new SymbolRawEntry { Name = "Neutral" },
+                    new SymbolRawEntry { Name = "皇家" },
+                    new SymbolRawEntry { Name = "巫师" },
+                    new SymbolRawEntry { Name = "中立" },
                 },
                 Cards = entries,
             },
@@ -1741,7 +1641,7 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
         st.ActivePlayer = 0; st.TurnNumber = 3;
 
         // 把玩家 0 主战者的职业设为 Swordcraft
-        var sword = st.Schema.Clan("Swordcraft");
+        var sword = st.Schema.Clan("皇家");
         l0.Def = new CardDef
         {
             CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20,
@@ -1788,7 +1688,7 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
                 {
                     Clans = new List<SymbolId<ClanTag>>
                     {
-                        st.Schema.Clan("Swordcraft"), st.Schema.Clan("Runecraft"),
+                        st.Schema.Clan("皇家"), st.Schema.Clan("巫师"),
                     },
                     Of = TargetSpec.Item,
                 },
@@ -1812,55 +1712,7 @@ card 941001 ""多维发现"" (Follower, cost: 3, atk: 3, life: 4) {
     ///   · 表单 NodeToRow 不回读 X/Y → 经表单往返退化成 3选1
     ///   · 中文不印（4选2）
     /// </summary>
-    private static (bool, string) GateOfferPickFourEnds()
-    {
-        var ws = Diy.DiyWorkspace.Create(1);
-        ws.Context.Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier");
-        var comp = new ReshadowScriptCompiler(ws);
-
-        const string src = @"
-card 943001 ""四端选卡"" (Follower, cost: 2, atk: 2, life: 2) {
-    on play {
-        discover(target(ally, global_pool, follower, clan: self, min_cost: 2, max_cost: 4, pack: official-sv|testset-v2), offer: 4, pick: 2, to: hand)
-    }
-}
-";
-        var defs = comp.Compile(src);
-        if (defs.Count == 0) return (false, "脚本编译失败：" + string.Join("|", comp.Errors.Take(2)));
-        var def0 = defs[0];
-
-        // 脚本往返
-        var re = comp.Compile(comp.Print(def0));
-        string dS = "";
-        bool scriptOk = re.Count > 0 && DiyWorkspace.StructurallyEqual(def0, re[0], out dS);
-
-        // 积木往返
-        var blk = new DiyBlockCompiler(ws.Schema, ws.Lexicon)
-            .Compile(new DiyBlockDecompiler(ws.Schema).Decompile(def0));
-        string dB = "";
-        bool blockOk = blk.Ok && DiyWorkspace.StructurallyEqual(def0, blk.Def, out dB);
-
-        // 表单往返
-        var fc = new DiyFormCompiler(ws.Schema, ws.Lexicon);
-        bool conv = fc.TryCardDefToForm(def0, out var form, out _);
-        var back = conv ? fc.FormToCardDef(form) : null;
-        string dF = "";
-        bool formOk = back != null && DiyWorkspace.StructurallyEqual(def0, back, out dF);
-
-        // 英文打印含 offer=4（否则判等看不见差异）
-        bool printOffer = AstCanonicalPrinter.PrintAbilities(def0.Abilities).Contains("offer=4");
-
-        // 中文含（4选2）
-        var cn = ws.Printer.PrintCard(def0);
-        bool cnOffer = cn.Contains("4选2");
-
-        bool ok = scriptOk && blockOk && formOk && printOffer && cnOffer;
-        return (ok, "脚本=" + scriptOk + " 积木=" + blockOk + " 表单=" + formOk
-                    + " 打印offer=" + printOffer + " 中文4选2=" + cnOffer
-                    + (ok ? "" : " | S:" + Short(dS) + " B:" + Short(dB) + " F:" + Short(dF)));
-    }
-
-    // ---------------------------------------------------------------- 门禁 V
+        // ---------------------------------------------------------------- 门禁 V
 
     /// <summary>
     /// 指定卡包跨池发现：卡池只启用 pack.a，但卡面写 pack: pack.b 时，

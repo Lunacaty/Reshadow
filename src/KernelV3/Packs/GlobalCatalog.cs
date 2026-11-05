@@ -18,6 +18,11 @@ namespace ShadowverseFan.KernelV3.Packs;
 // ============================================================================
 
 /// <summary>全量宇宙总表：启动时一次性加载 packs/ 下的全部卡包。</summary>
+/// <summary>一次编译失败的记录（卡包 / 卡号 / 卡名 / 阶段 / 详情）。</summary>
+public readonly record struct CardAuditIssue(
+    string PackId, int CardId, string NameEng, string NameChs,
+    string Stage, string Detail);
+
 public sealed class GlobalCatalog
 {
     public GameSchema Schema { get; } = GameSchema.CreateDefault();

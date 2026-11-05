@@ -1,435 +1,435 @@
 {
- "pool_id": "official",
- "name": "官方全卡池",
- "enabled_packs": [
-  "official-sv"
- ],
- "rules": {
-  "leader_initial_life": 20,
-  "max_pp_cap": 10,
-  "pp_gain_per_turn": 1,
-  "starting_hand_size": 4,
-  "min_deck_size": 40,
-  "max_deck_size": 40,
-  "max_copies": 3
- },
- "named_decks": [
-  {
-   "deck_name": "Apocalypse Deck",
-   "deck_name_chs": "启示录牌组",
-   "entries": [
-    {
-     "card_id": 90004110,
-     "card_name": "Silent Rider",
-     "copies": 3
-    },
-    {
-     "card_id": 90004120,
-     "card_name": "Servant of Cocytus",
-     "copies": 3
-    },
-    {
-     "card_id": 90004130,
-     "card_name": "Demon of Purgatory",
-     "copies": 3
-    },
-    {
-     "card_id": 90004310,
-     "card_name": "Astaroth's Reckoning",
-     "copies": 1
-    }
-   ]
+  "pool_id": "official",
+  "name": "官方全卡池",
+  "enabled_packs": [
+    "official-sv"
+  ],
+  "rules": {
+    "leader_initial_life": 20,
+    "max_pp_cap": 10,
+    "pp_gain_per_turn": 1,
+    "starting_hand_size": 4,
+    "min_deck_size": 40,
+    "max_deck_size": 40,
+    "max_copies": 3
   },
-  {
-   "deck_name": "Mjerrabaine Deck",
-   "deck_name_chs": "麦哲佩恩牌组",
-   "entries": [
-    {
-     "card_id": 10301110,
-     "card_name": "Apostle of Voracity",
-     "copies": 1
-    },
-    {
-     "card_id": 10301310,
-     "card_name": "Greatness Ascended",
-     "copies": 1
-    },
-    {
-     "card_id": 10302110,
-     "card_name": "Inspirational One",
-     "copies": 1
-    },
-    {
-     "card_id": 10303110,
-     "card_name": "Dogged One",
-     "copies": 1
-    },
-    {
-     "card_id": 10303210,
-     "card_name": "Tablet of Tribulations",
-     "copies": 1
-    },
-    {
-     "card_id": 10304110,
-     "card_name": "Mjerrabaine, Great Manifest",
-     "copies": 1
-    },
-    {
-     "card_id": 10304120,
-     "card_name": "Gilnelise, Voracity Manifest",
-     "copies": 1
-    },
-    {
-     "card_id": 10311110,
-     "card_name": "Devotee of Unkilling",
-     "copies": 1
-    },
-    {
-     "card_id": 10311120,
-     "card_name": "Bearer of the Fairy Blade",
-     "copies": 1
-    },
-    {
-     "card_id": 10311310,
-     "card_name": "Bestial Swipe",
-     "copies": 1
-    },
-    {
-     "card_id": 10312110,
-     "card_name": "Supplicant of Unkilling",
-     "copies": 1
-    },
-    {
-     "card_id": 10312120,
-     "card_name": "Greatwood Warrior",
-     "copies": 1
-    },
-    {
-     "card_id": 10312210,
-     "card_name": "Hamlet of Unkilling",
-     "copies": 1
-    },
-    {
-     "card_id": 10313110,
-     "card_name": "Congregant of Unkilling",
-     "copies": 1
-    },
-    {
-     "card_id": 10313310,
-     "card_name": "Eradicating Arrow",
-     "copies": 1
-    },
-    {
-     "card_id": 10314110,
-     "card_name": "Krulle, Heir to Unkilling",
-     "copies": 1
-    },
-    {
-     "card_id": 10314120,
-     "card_name": "Izudia, Annihilation Manifest",
-     "copies": 1
-    },
-    {
-     "card_id": 10321110,
-     "card_name": "Devotee of Usurpation",
-     "copies": 1
-    },
-    {
-     "card_id": 10321120,
-     "card_name": "Comrade of the Swordmaster",
-     "copies": 1
-    },
-    {
-     "card_id": 10321310,
-     "card_name": "Shield Bash",
-     "copies": 1
-    },
-    {
-     "card_id": 10322110,
-     "card_name": "Supplicant of Usurpation",
-     "copies": 1
-    },
-    {
-     "card_id": 10322120,
-     "card_name": "Peppy Scout",
-     "copies": 1
-    },
-    {
-     "card_id": 10322210,
-     "card_name": "Lair of Usurpation",
-     "copies": 1
-    },
-    {
-     "card_id": 10323110,
-     "card_name": "Congregant of Usurpation",
-     "copies": 1
-    },
-    {
-     "card_id": 10323310,
-     "card_name": "Returning Slash",
-     "copies": 1
-    },
-    {
-     "card_id": 10324110,
-     "card_name": "Sinciro, Heir to Usurpation",
-     "copies": 1
-    },
-    {
-     "card_id": 10324120,
-     "card_name": "Octrice, Hollowness Manifest",
-     "copies": 1
-    },
-    {
-     "card_id": 10331110,
-     "card_name": "Devotee of Truth",
-     "copies": 1
-    },
-    {
-     "card_id": 10331120,
-     "card_name": "Ascetic of Wuxing",
-     "copies": 1
-    },
-    {
-     "card_id": 10331310,
-     "card_name": "Crystal Gazing",
-     "copies": 1
-    },
-    {
-     "card_id": 10332110,
-     "card_name": "Supplicant of Truth",
-     "copies": 1
-    },
-    {
-     "card_id": 10332210,
-     "card_name": "Institute of Truth",
-     "copies": 1
-    },
-    {
-     "card_id": 10332310,
-     "card_name": "Risky Amalgamation",
-     "copies": 1
-    },
-    {
-     "card_id": 10333110,
-     "card_name": "Congregant of Truth",
-     "copies": 1
-    },
-    {
-     "card_id": 10333310,
-     "card_name": "Illusory Conjuration",
-     "copies": 1
-    },
-    {
-     "card_id": 10334110,
-     "card_name": "Velharia, Heir to Truth",
-     "copies": 1
-    },
-    {
-     "card_id": 10334120,
-     "card_name": "Raio, Elimination Manifest",
-     "copies": 1
-    },
-    {
-     "card_id": 10341110,
-     "card_name": "Devotee of Disdain",
-     "copies": 1
-    },
-    {
-     "card_id": 10341120,
-     "card_name": "Snowstorm Dragonewt",
-     "copies": 1
-    },
-    {
-     "card_id": 10341310,
-     "card_name": "Raging Lightning",
-     "copies": 1
-    },
-    {
-     "card_id": 10342110,
-     "card_name": "Supplicant of Disdain",
-     "copies": 1
-    },
-    {
-     "card_id": 10342120,
-     "card_name": "Ocean Rider",
-     "copies": 1
-    },
-    {
-     "card_id": 10342210,
-     "card_name": "Nation of Disdain",
-     "copies": 1
-    },
-    {
-     "card_id": 10343110,
-     "card_name": "Congregant of Disdain",
-     "copies": 1
-    },
-    {
-     "card_id": 10343310,
-     "card_name": "Ferocious Flame",
-     "copies": 1
-    },
-    {
-     "card_id": 10344110,
-     "card_name": "Azurifrit, Heir to Disdain",
-     "copies": 1
-    },
-    {
-     "card_id": 10344120,
-     "card_name": "Galmieux, Ardor Manifest",
-     "copies": 1
-    },
-    {
-     "card_id": 10351110,
-     "card_name": "Devotee of Entwining",
-     "copies": 1
-    },
-    {
-     "card_id": 10351120,
-     "card_name": "Ephemeral Demon Princess",
-     "copies": 1
-    },
-    {
-     "card_id": 10351310,
-     "card_name": "March of the Brutes",
-     "copies": 1
-    },
-    {
-     "card_id": 10352110,
-     "card_name": "Supplicant of Entwining",
-     "copies": 1
-    },
-    {
-     "card_id": 10352120,
-     "card_name": "Spirited Gravekeeper",
-     "copies": 1
-    },
-    {
-     "card_id": 10352210,
-     "card_name": "Castle of Entwining",
-     "copies": 1
-    },
-    {
-     "card_id": 10353110,
-     "card_name": "Congregant of Entwining",
-     "copies": 1
-    },
-    {
-     "card_id": 10353310,
-     "card_name": "Screaming and Loathing",
-     "copies": 1
-    },
-    {
-     "card_id": 10354110,
-     "card_name": "Sham-Nacha, Heir to Entwining",
-     "copies": 1
-    },
-    {
-     "card_id": 10354120,
-     "card_name": "Rulenye & Valnareik",
-     "copies": 1
-    },
-    {
-     "card_id": 10361110,
-     "card_name": "Devotee of Repose",
-     "copies": 1
-    },
-    {
-     "card_id": 10361120,
-     "card_name": "Knight of the Holy Order",
-     "copies": 1
-    },
-    {
-     "card_id": 10361310,
-     "card_name": "Blinding Faith",
-     "copies": 1
-    },
-    {
-     "card_id": 10362110,
-     "card_name": "Supplicant of Repose",
-     "copies": 1
-    },
-    {
-     "card_id": 10362210,
-     "card_name": "Temple of Repose",
-     "copies": 1
-    },
-    {
-     "card_id": 10362220,
-     "card_name": "Winged Lion Statue",
-     "copies": 1
-    },
-    {
-     "card_id": 10363110,
-     "card_name": "Congregant of Repose",
-     "copies": 1
-    },
-    {
-     "card_id": 10363210,
-     "card_name": "Shining Disenchantment",
-     "copies": 1
-    },
-    {
-     "card_id": 10364110,
-     "card_name": "Himeka, Heir to Repose",
-     "copies": 1
-    },
-    {
-     "card_id": 10364120,
-     "card_name": "Marwynn, Despair Manifest",
-     "copies": 1
-    },
-    {
-     "card_id": 10371110,
-     "card_name": "Devotee of Destruction",
-     "copies": 1
-    },
-    {
-     "card_id": 10371120,
-     "card_name": "Supersonic Fighter",
-     "copies": 1
-    },
-    {
-     "card_id": 10371310,
-     "card_name": "Wired Assault",
-     "copies": 1
-    },
-    {
-     "card_id": 10372110,
-     "card_name": "Supplicant of Destruction",
-     "copies": 1
-    },
-    {
-     "card_id": 10372120,
-     "card_name": "Field Scientist",
-     "copies": 1
-    },
-    {
-     "card_id": 10372210,
-     "card_name": "Wasteland of Destruction",
-     "copies": 1
-    },
-    {
-     "card_id": 10373110,
-     "card_name": "Congregant of Destruction",
-     "copies": 1
-    },
-    {
-     "card_id": 10373310,
-     "card_name": "Devastating Soprano",
-     "copies": 1
-    },
-    {
-     "card_id": 10374110,
-     "card_name": "Axia, Heir to Destruction",
-     "copies": 1
-    },
-    {
-     "card_id": 10374120,
-     "card_name": "Lishenna, Melody Manifest",
-     "copies": 1
+  "named_decks": [
+    {
+      "deck_name": "Apocalypse Deck",
+      "deck_name_chs": "启示录牌组",
+      "entries": [
+        {
+          "card_id": 90004110,
+          "card_name": "沉默的魔将",
+          "copies": 3
+        },
+        {
+          "card_id": 90004120,
+          "card_name": "深渊之主的仆从",
+          "copies": 3
+        },
+        {
+          "card_id": 90004130,
+          "card_name": "边狱的邪祟",
+          "copies": 3
+        },
+        {
+          "card_id": 90004310,
+          "card_name": "阿斯塔罗特的宣判",
+          "copies": 1
+        }
+      ]
+    },
+    {
+      "deck_name": "Mjerrabaine Deck",
+      "deck_name_chs": "麦哲佩恩牌组",
+      "entries": [
+        {
+          "card_id": 10301110,
+          "card_name": "涸绝的使徒",
+          "copies": 1
+        },
+        {
+          "card_id": 10301310,
+          "card_name": "至高的凌驾",
+          "copies": 1
+        },
+        {
+          "card_id": 10302110,
+          "card_name": "抗拒叹息之人",
+          "copies": 1
+        },
+        {
+          "card_id": 10303110,
+          "card_name": "充满勇气之人",
+          "copies": 1
+        },
+        {
+          "card_id": 10303210,
+          "card_name": "试炼的石板",
+          "copies": 1
+        },
+        {
+          "card_id": 10304110,
+          "card_name": "绝大的显现·麦哲佩恩",
+          "copies": 1
+        },
+        {
+          "card_id": 10304120,
+          "card_name": "涸绝的显现·吉尔内莉莎",
+          "copies": 1
+        },
+        {
+          "card_id": 10311110,
+          "card_name": "不弑的肯定者",
+          "copies": 1
+        },
+        {
+          "card_id": 10311120,
+          "card_name": "妖精剑的后继者",
+          "copies": 1
+        },
+        {
+          "card_id": 10311310,
+          "card_name": "野性的猛袭",
+          "copies": 1
+        },
+        {
+          "card_id": 10312110,
+          "card_name": "不弑的祈祷者",
+          "copies": 1
+        },
+        {
+          "card_id": 10312120,
+          "card_name": "树海的战士",
+          "copies": 1
+        },
+        {
+          "card_id": 10312210,
+          "card_name": "不弑之乡",
+          "copies": 1
+        },
+        {
+          "card_id": 10313110,
+          "card_name": "不弑的团结者",
+          "copies": 1
+        },
+        {
+          "card_id": 10313310,
+          "card_name": "驱逐的死矢",
+          "copies": 1
+        },
+        {
+          "card_id": 10314110,
+          "card_name": "不弑的继承者·库露露",
+          "copies": 1
+        },
+        {
+          "card_id": 10314120,
+          "card_name": "绝命的显现·艾斯迪亚",
+          "copies": 1
+        },
+        {
+          "card_id": 10321110,
+          "card_name": "篡夺的肯定者",
+          "copies": 1
+        },
+        {
+          "card_id": 10321120,
+          "card_name": "剑圣的同胞",
+          "copies": 1
+        },
+        {
+          "card_id": 10321310,
+          "card_name": "护盾强袭",
+          "copies": 1
+        },
+        {
+          "card_id": 10322110,
+          "card_name": "篡夺的祈祷者",
+          "copies": 1
+        },
+        {
+          "card_id": 10322120,
+          "card_name": "活泼的斥候",
+          "copies": 1
+        },
+        {
+          "card_id": 10322210,
+          "card_name": "篡夺的据点",
+          "copies": 1
+        },
+        {
+          "card_id": 10323110,
+          "card_name": "篡夺的团结者",
+          "copies": 1
+        },
+        {
+          "card_id": 10323310,
+          "card_name": "奉还的剑闪",
+          "copies": 1
+        },
+        {
+          "card_id": 10324110,
+          "card_name": "篡夺的继承者·辛瑟莱兹",
+          "copies": 1
+        },
+        {
+          "card_id": 10324120,
+          "card_name": "空绝的显现·奥克托丽丝",
+          "copies": 1
+        },
+        {
+          "card_id": 10331110,
+          "card_name": "真理的肯定者",
+          "copies": 1
+        },
+        {
+          "card_id": 10331120,
+          "card_name": "五行修行者",
+          "copies": 1
+        },
+        {
+          "card_id": 10331310,
+          "card_name": "水晶的指引",
+          "copies": 1
+        },
+        {
+          "card_id": 10332110,
+          "card_name": "真理的祈祷者",
+          "copies": 1
+        },
+        {
+          "card_id": 10332210,
+          "card_name": "真理的研究设施",
+          "copies": 1
+        },
+        {
+          "card_id": 10332310,
+          "card_name": "双重创造",
+          "copies": 1
+        },
+        {
+          "card_id": 10333110,
+          "card_name": "真理的团结者",
+          "copies": 1
+        },
+        {
+          "card_id": 10333310,
+          "card_name": "虚假的术式",
+          "copies": 1
+        },
+        {
+          "card_id": 10334110,
+          "card_name": "真理的继承者·蓓哈丽雅",
+          "copies": 1
+        },
+        {
+          "card_id": 10334120,
+          "card_name": "绝尽的显现·莱奥",
+          "copies": 1
+        },
+        {
+          "card_id": 10341110,
+          "card_name": "侮蔑的肯定者",
+          "copies": 1
+        },
+        {
+          "card_id": 10341120,
+          "card_name": "风雪龙人",
+          "copies": 1
+        },
+        {
+          "card_id": 10341310,
+          "card_name": "雷霆之怒",
+          "copies": 1
+        },
+        {
+          "card_id": 10342110,
+          "card_name": "侮蔑的祈祷者",
+          "copies": 1
+        },
+        {
+          "card_id": 10342120,
+          "card_name": "海洋骑手",
+          "copies": 1
+        },
+        {
+          "card_id": 10342210,
+          "card_name": "侮蔑之国",
+          "copies": 1
+        },
+        {
+          "card_id": 10343110,
+          "card_name": "侮蔑的团结者",
+          "copies": 1
+        },
+        {
+          "card_id": 10343310,
+          "card_name": "威猛炽焰",
+          "copies": 1
+        },
+        {
+          "card_id": 10344110,
+          "card_name": "侮蔑的继承者·安吉拉弗利特",
+          "copies": 1
+        },
+        {
+          "card_id": 10344120,
+          "card_name": "烈绝的显现·嘉尔缪",
+          "copies": 1
+        },
+        {
+          "card_id": 10351110,
+          "card_name": "混融的肯定者",
+          "copies": 1
+        },
+        {
+          "card_id": 10351120,
+          "card_name": "泡沫鬼姬",
+          "copies": 1
+        },
+        {
+          "card_id": 10351310,
+          "card_name": "前进的暴虐",
+          "copies": 1
+        },
+        {
+          "card_id": 10352110,
+          "card_name": "混融的祈祷者",
+          "copies": 1
+        },
+        {
+          "card_id": 10352120,
+          "card_name": "新来的守墓人",
+          "copies": 1
+        },
+        {
+          "card_id": 10352210,
+          "card_name": "混融之城",
+          "copies": 1
+        },
+        {
+          "card_id": 10353110,
+          "card_name": "混融的团结者",
+          "copies": 1
+        },
+        {
+          "card_id": 10353310,
+          "card_name": "叫唤与憎恶",
+          "copies": 1
+        },
+        {
+          "card_id": 10354110,
+          "card_name": "混融的继承者·莎木·纳克雅",
+          "copies": 1
+        },
+        {
+          "card_id": 10354120,
+          "card_name": "绝叫与爱绝的显现·鲁鲁纳伊&巴娜蕾卡",
+          "copies": 1
+        },
+        {
+          "card_id": 10361110,
+          "card_name": "安息的肯定者",
+          "copies": 1
+        },
+        {
+          "card_id": 10361120,
+          "card_name": "圣骑士团员",
+          "copies": 1
+        },
+        {
+          "card_id": 10361310,
+          "card_name": "圣辉闪烁",
+          "copies": 1
+        },
+        {
+          "card_id": 10362110,
+          "card_name": "安息的祈祷者",
+          "copies": 1
+        },
+        {
+          "card_id": 10362210,
+          "card_name": "安息的神殿",
+          "copies": 1
+        },
+        {
+          "card_id": 10362220,
+          "card_name": "羽翼狮子像",
+          "copies": 1
+        },
+        {
+          "card_id": 10363110,
+          "card_name": "安息的团结者",
+          "copies": 1
+        },
+        {
+          "card_id": 10363210,
+          "card_name": "闪耀的失意",
+          "copies": 1
+        },
+        {
+          "card_id": 10364110,
+          "card_name": "安息的继承者·妃花",
+          "copies": 1
+        },
+        {
+          "card_id": 10364120,
+          "card_name": "绝望的显现·玛温",
+          "copies": 1
+        },
+        {
+          "card_id": 10371110,
+          "card_name": "破坏的肯定者",
+          "copies": 1
+        },
+        {
+          "card_id": 10371120,
+          "card_name": "音速飞行兵",
+          "copies": 1
+        },
+        {
+          "card_id": 10371310,
+          "card_name": "丝线突袭",
+          "copies": 1
+        },
+        {
+          "card_id": 10372110,
+          "card_name": "破坏的祈祷者",
+          "copies": 1
+        },
+        {
+          "card_id": 10372120,
+          "card_name": "现场工程师",
+          "copies": 1
+        },
+        {
+          "card_id": 10372210,
+          "card_name": "破坏的荒野",
+          "copies": 1
+        },
+        {
+          "card_id": 10373110,
+          "card_name": "破坏的团结者",
+          "copies": 1
+        },
+        {
+          "card_id": 10373310,
+          "card_name": "歼灭的歌声",
+          "copies": 1
+        },
+        {
+          "card_id": 10374110,
+          "card_name": "破坏的继承者·阿克西娅",
+          "copies": 1
+        },
+        {
+          "card_id": 10374120,
+          "card_name": "奏绝的显现·莉洁纳",
+          "copies": 1
+        }
+      ]
     }
-   ]
-  }
- ]
+  ]
 }

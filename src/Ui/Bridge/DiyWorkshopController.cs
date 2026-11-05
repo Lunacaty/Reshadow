@@ -33,8 +33,6 @@ public sealed class DiyWorkshopController
     /// <summary>当前卡片的 AST JSON 文本（第三端改为直接编辑语法树）。</summary>
     public string AstJsonText { get; set; } = "";
 
-    /// <summary>规范 AST 文本背后的原始 JSON（供 AST JSON 端点/序列化使用）。</summary>
-    public string AstJsonRaw { get; set; } = "";
     public DiyWorkspace.CnlCardSpec CnlSpec { get; set; }
 
     public bool FormIsReadOnly { get; private set; }
@@ -366,7 +364,6 @@ public sealed class DiyWorkshopController
         // 复用脚本编译器自带的符号绑定，天然过四端同构门禁，
         // 不再维护第四套 AST 表示。
         AstJsonText = AstCanonicalPrinter.PrintAbilities(CurrentDef.Abilities ?? new List<AbilityDef>(), 0);
-        AstJsonRaw = AstJsonCodec.Encode(CurrentDef);
 
         // ③ 表单端：超纲时标只读并保留原因，绝不静默丢效果
         var fc = new DiyFormCompiler(Workspace.Schema, Workspace.Lexicon);

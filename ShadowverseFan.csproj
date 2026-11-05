@@ -8,7 +8,5 @@
 
   <!-- V3 重写期：旧版 KernelV2 整体归档，不参与编译 -->
   <ItemGroup>
-    <Compile Remove="src/_v2_archive/**/*.cs" />
-    <None Remove="src/_v2_archive/**/*" />
   </ItemGroup>
 </Project>

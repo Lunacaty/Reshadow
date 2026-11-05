@@ -49,21 +49,13 @@ public static class SvWbTheme
         _             => new Color("94A3B8"),
     };
 
-    /// <summary>职业英文名 → 官方简中名。</summary>
-    public static string ClanDisplayZh(string clanName) => (clanName ?? "").ToLowerInvariant() switch
-    {
-        "forestcraft" => "精灵",
-        "swordcraft"  => "皇家",
-        "runecraft"   => "巫师",
-        "dragoncraft" => "龙族",
-        "abysscraft"  => "梦魇",
-        "shadowcraft" => "死灵",
-        "bloodcraft"  => "吸血鬼",
-        "havencraft"  => "主教",
-        "portalcraft" => "超越者",
-        "neutral"     => "中立",
-        _             => string.IsNullOrWhiteSpace(clanName) ? "中立" : clanName,
-    };
+    /// <summary>
+    /// 职业名的显示形式。
+    ///
+    /// 职业名在程序外就已本地化（卡包 clan 字段存的就是「皇家」），
+    /// 这里原样返回 —— 代码里不出现任何职业中英对照表。
+    /// </summary>
+    public static string ClanDisplayZh(string clanName) => clanName ?? "";
 
     /// <summary>创建标准磨砂暗色面板 StyleBox。</summary>
     public static StyleBoxFlat MakePanelBox(

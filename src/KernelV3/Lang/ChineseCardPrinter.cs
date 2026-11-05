@@ -1994,21 +1994,13 @@ public sealed class ChineseCardPrinter
         _ => "双方",
     };
 
-    private string ClanZh(string en) => en switch
-    {
-        "Forestcraft" => "精灵",
-        "Swordcraft" => "皇家",
-        "Runecraft" => "巫师",
-        "Dragoncraft" => "龙族",
-        "Shadowcraft" => "死灵",
-        "Bloodcraft" => "吸血鬼",
-        "Havencraft" => "主教",
-        "Portalcraft" => "复仇者",
-        // Shadowverse: Worlds Beyond 把死灵与吸血鬼合并为 Abysscraft（深渊）。
-        "Abysscraft" => "深渊",
-        "Neutral" => "中立",
-        _ => _glossary.ToChinese(en),
-    };
+    /// <summary>
+    /// 职业名直接显示。
+    ///
+    /// 职业名在程序外就已本地化（卡包里存的就是「皇家」），
+    /// 这里不做任何翻译 —— 代码里不出现任何职业中英对照表。
+    /// </summary>
+    private static string ClanZh(string clan) => clan ?? "";
 
     /// <summary>
     /// 卡名中文化。

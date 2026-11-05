@@ -263,25 +263,15 @@ public sealed class DeckEditorViewModel
          : (!string.IsNullOrWhiteSpace(d.Name) ? d.Name : $"#{d.CardId}");
 }
 
-/// <summary>
-/// 职业英文名 → 简中名。
+/// 职业名的显示形式。
 ///
-/// 独立一份而不是直接用 SvWbTheme.ClanDisplayZh：
+/// 职业名在程序外就已本地化，这里原样返回。
+/// 独立一个类而不是直接用 SvWbTheme.ClanDisplayZh：
 /// 后者所在的 Theme 命名空间引用了 Godot，
 /// 而本文件必须保持零 Godot 依赖才能被无头测试工程引用。
 /// </summary>
 public static class SvWbClanName
 {
-    public static string Of(string clanName) => (clanName ?? "").ToLowerInvariant() switch
-    {
-        "forestcraft" => "精灵",
-        "swordcraft"  => "皇家",
-        "runecraft"   => "巫师",
-        "dragoncraft" => "龙族",
-        "abysscraft" or "shadowcraft" or "bloodcraft" => "梦魇",
-        "havencraft"  => "主教",
-        "portalcraft" => "超越者",
-        "neutral"     => "中立",
-        _             => string.IsNullOrWhiteSpace(clanName) ? "中立" : clanName,
-    };
+    public static string Of(string clanName) => clanName ?? "";
 }
+
