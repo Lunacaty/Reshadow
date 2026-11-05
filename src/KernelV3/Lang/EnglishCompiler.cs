@@ -1527,7 +1527,43 @@ public sealed class EnglishCompiler
         // 「上一段是 OnEvolve」从而不清槽位。
         // 整张卡的复位在 CompileCore 入口处做（那才是正确的生命周期起点）。
 
+        // 无参关键词提升：Target=self / Grant / 无 Value 的 ModifyKeywordNode
+        // 本质就是**卡牌定义属性**，与裸词 Ward 同构。
+        //   Can't be played.  -> InnateKeywords=[cannot_be_played]
+        //   Can attack 2 times. -> 带 Value，留在能力里（InnateKeywords 存不下数值）
+        // 不提升会让「Ward」与「Can't be played」明明同类却编码不同。
+        PromoteParameterlessKeywords(result, innateSink);
+
         return result;
+    }
+
+    /// <summary>
+    /// 把无参的「给自身授予关键词」节点提升成卡牌定义属性。
+    ///
+    /// 只认 Target=self、Op=Grant、Value 为空这三个条件同时成立的节点 ——
+    /// 带 Value 的（max_attacks_per_turn(2) / damage_cap(5)）必须留在能力里，
+    /// 因为 InnateKeywords 是 List&lt;SymbolId&gt;，存不下数值。
+    /// 带时限或条件的也不提升：它们是可求值效果，不是定义属性。
+    /// </summary>
+    private static void PromoteParameterlessKeywords(List<AbilityDef> abilities,
+                                                     List<Core.SymbolId<Core.KeywordTag>> sink)
+    {
+        if (abilities == null || sink == null) return;
+        for (int i = abilities.Count - 1; i >= 0; i--)
+        {
+            var ab = abilities[i];
+            if (ab?.Trigger?.Event != CoreEvent.PassiveAura) continue;
+            if (ab.Costs != null && ab.Costs.Count > 0) continue;
+            if (ab.Condition is not null and not ConstBoolExpr) continue;
+            if (ab.Body == null || ab.Body.Count != 1) continue;
+            if (ab.Body[0] is not ModifyKeywordNode { Op: KeywordOp.Grant } mk) continue;
+            if (mk.Value != null) continue;
+            if (mk.Target == null || mk.Target.SourceKind != TargetSourceKind.Slot
+                || mk.Target.Slot != TargetSpec.SlotSelf) continue;
+            if (!mk.Keyword.IsValid) continue;
+            if (!sink.Contains(mk.Keyword)) sink.Add(mk.Keyword);
+            abilities.RemoveAt(i);   // 整条能力移除：关键词已提升为定义属性
+        }
     }
 
 

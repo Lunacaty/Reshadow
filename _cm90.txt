@@ -1,0 +1,31 @@
+refactor(168): 关键词编码按「有无参数」统一分层（方案 A）
+
+## 之前的问题
+  Ward                   -> InnateKeywords      （裸词）
+  Can't be played.       -> PassiveAura 能力    （动词短语）
+  两者结构完全相同（无参数、Target=self、Grant），却编码不同 ——
+  纯粹是「词表内 vs 词表外」的历史遗留，不是设计需要。
+
+## 新规则
+  无参关键词 -> CardDef.InnateKeywords
+    Ward / Storm / Rush / Can't be played. / Can't attack.
+  有参关键词 -> 能力节点（InnateKeywords 是 List<SymbolId>，存不下数值）
+    Can attack 2 times.   -> max_attacks_per_turn, Value=2
+    Can't take more than 5 damage. -> damage_cap, Value=5
+
+## 实现
+  CompileSegment 返回前调用 PromoteParameterlessKeywords：
+  把 Target=self / Op=Grant / Value 为空 / 无代价 / 无条件 / Body 仅一项 的
+  PassiveAura 能力提升为 InnateKeywords 并整条移除。
+  带 Value、带时限、带条件的一律保留为能力。
+
+## 验证
+  [Ward]                  kws=[ward]              abil=[]
+  [Can't be played.]      kws=[cannot_be_played]  abil=[]
+  [Can't attack.]         kws=[cannot_attack]     abil=[]
+  [Can attack 2 times.]   kws=[]                  abil=[max_attacks_per_turn(2)]
+
+  门禁无新增失败：VM 50/50、文档验收 102/102、Combat 16/16、效用 12/12、
+  逐卡矩阵 32/32、完整对局 7/7、PyAST 11/11、UI 3/3。
+
+卡数=1021  CompileFailures=0
