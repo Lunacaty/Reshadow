@@ -1172,9 +1172,25 @@ public sealed class ChineseCardPrinter
 
         string then = PrintNodes(c.Then);
         string els = PrintNodes(c.Else);
-        string head = "若" + PrintBool(c.Condition) + "，";
-        if (string.IsNullOrEmpty(els)) return head + then;
-        return head + then + "否则，" + els;
+        string cond = PrintBool(c.Condition);
+
+        if (string.IsNullOrEmpty(els)) return "若" + cond + "，" + then;
+
+        // 影之诗的行文习惯是「先写默认情况，再写特殊条件下的变化」，
+        // 而不是「若 X 则 A，否则 B」。按累加 / 替代两种关系分别措辞：
+        //   累加型：Then 以 Else 为前缀 -> <Else>若<cond>，则额外<Then 新增部分>
+        //   替代型：两者互斥           -> <Else>若<cond>，则改为<Then>
+        int skip = 0;
+        for (int i = 0; i < c.Else.Count && i < c.Then.Count; i++)
+        {
+            if (ReferenceEquals(c.Then[i], c.Else[i])) { skip++; continue; }
+            break;
+        }
+        bool isPrefix = skip == c.Else.Count && c.Then.Count > skip;
+
+        if (isPrefix)
+            return els + "若" + cond + "，则额外" + PrintNodes(c.Then.Skip(skip).ToList());
+        return els + "若" + cond + "，则改为" + then;
     }
 
     private string PrintBranch(BranchModeNode b)
