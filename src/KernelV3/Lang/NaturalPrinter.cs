@@ -1320,7 +1320,7 @@ public sealed class NaturalPrinter
             "SuperEvolved" => "super-evolved",
             "Evolved" => "evolved",
             "AttackedThisTurn" => "attacked this turn",
-            "AttackedLeaderLastTurn" => "attacked the enemy leader last turn",
+            "CurrentAttackHitLeader" => "is attacking the enemy leader",
             "HasLastWords" => "Last Words",
             "HasOnSpellboost" => "On Spellboost",
             "cannot_attack" => "Can't attack followers or leaders",

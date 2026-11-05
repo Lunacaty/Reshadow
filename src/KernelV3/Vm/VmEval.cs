@@ -418,7 +418,7 @@ public sealed class VmEval
         // CombatResolver 在发起 OnAttack **之前**就写定这个字段，
         // 因此它是「攻击目标是不是随从」在触发阶段唯一可读的判据；
         // 缺了它，「Whenever X attacks a follower」只能退化成恒假谓词。
-        UnitState.AttackedLeaderLastTurn => e.AttackedLeaderLastTurn,
+        UnitState.CurrentAttackHitLeader => e.CurrentAttackHitLeader,
 
         // 「whose cost has been changed」/「with Fuse」/「with Last Words」/
         // 「with On Spellboost」—— 这四种谓词 TargetParser 都会产出，
@@ -704,7 +704,7 @@ public sealed class VmEval
                 // $trigger 同理回退到 Trigger。
                 // 它此前**从未被写进槽位表**：CardVm 只设了 scope.Trigger 这个属性，
                 // 而槽位解析读的是 Registers —— 于是任何以 $trigger 表达的条件
-                // （"not is AttackedLeaderLastTurn" / "prop:Life($trigger) > 0"）
+                // （"not is CurrentAttackHitLeader" / "prop:Life($trigger) > 0"）
                 // 都在空池上求值，恒为 false，触发器下的 "give it ..." 也一律空转。
                 if (pool.Count == 0 && t.Slot == TargetSpec.SlotTrigger && scope.Trigger != null)
                     pool.Add(scope.Trigger.Value);

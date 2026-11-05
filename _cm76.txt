@@ -1,0 +1,42 @@
+fix(162): 字段改名 CurrentAttackHitLeader + 触发头改回【攻击时】+ 爆能分档
+
+【你的两点意见都已落实】
+
+## 1. 字段名确实错了，已改名
+  RuntimeEntity.AttackedLeaderLastTurn 的真实语义是「本次攻击打的是主战者」
+  （CombatResolver:136 赋值为 defender.Zone == ZoneRef.Leader），
+  与「上回合攻击过主战者」是两件事 —— 后者由 ally_attacked_leader_last_turn
+  计数器承担（TurnRunner:73）。
+
+  原文案也跟着错了三处，一并修正：
+    Glossary.cs            「上回合攻击过主战者」 -> 「本次攻击目标为主战者」
+    NaturalPrinter.cs      「attacked the enemy leader last turn」-> 「is attacking the enemy leader」
+    ChineseCardPrinter.cs  同上
+  字段重命名为 CurrentAttackHitLeader（涉及 11 个文件、26 处）。
+
+## 2. 触发头改回【攻击时】
+  162 号文档要求改成【随从攻击时】，但那不是官方简中写法。
+  按你的要求统一回【攻击时】，「攻击随从」由条件子句表达：
+    【攻击时】若攻击随从，破坏交战的敌方随从。
+  不再把这个条件静默剥掉 —— 剥掉玩家就不知道效果有前提。
+
+## 3. 爆能分档：累加 vs 替换
+  判据从「字符串前缀」改成「节点引用前缀」——
+  PrintNodes 的拼接边界不可靠，字符串比较会把剑王的 8 档误判成「改为」。
+
+  剑王（累加）：基础 + 7档「额外」+ 8档「额外」
+  瓦路兹（累加）：基础 + 6档「额外」
+  黄金骑士（替换）：8档「改为」
+  天剑深渊（替换）：1档「改为」
+
+【已知未完成】
+  天剑深渊的基础效果「选择…造成1点伤害」没有印出来。
+  结构是 [SelectTarget, Conditional{Then:[Deal3], Else:[Deal1]}]，
+  Select 在树外两档共用。PrintEnhanceWithPrefix 已接收 prefix 并做 Skip，
+  但基础档文本仍未出现在输出里，原因未定位。
+  这是 162 号文档支柱一第 2 项的一部分，尚未完成。
+
+验证：13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED

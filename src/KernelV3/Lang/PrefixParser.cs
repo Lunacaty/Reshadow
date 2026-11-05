@@ -482,7 +482,7 @@ public sealed class PrefixParser
                 b.Condition = BoolExpr.And(b.Condition,
                     BoolExpr.Not(new HasStateExpr
                     {
-                        State = UnitState.AttackedLeaderLastTurn,
+                        State = UnitState.CurrentAttackHitLeader,
                         Of = TargetSpec.Self,
                     }));
             }
@@ -703,12 +703,12 @@ public sealed class PrefixParser
                 || cur.MatchPhrase("an", "allied", "follower"))
             {
                 // 目标是随从 == 目标不是主战者。
-                // CombatResolver 在发 OnAttack **之前**写定 AttackedLeaderLastTurn，
+                // CombatResolver 在发 OnAttack **之前**写定 CurrentAttackHitLeader，
                 // 触发判定阶段它就是「本次攻击的目标是不是主战者」。
                 b.Condition = BoolExpr.And(b.Condition,
                     BoolExpr.Not(new HasStateExpr
                     {
-                        State = UnitState.AttackedLeaderLastTurn,
+                        State = UnitState.CurrentAttackHitLeader,
                         Of = TargetSpec.Trigger,
                     }));
             }
@@ -718,7 +718,7 @@ public sealed class PrefixParser
                 b.Condition = BoolExpr.And(b.Condition,
                     new HasStateExpr
                     {
-                        State = UnitState.AttackedLeaderLastTurn,
+                        State = UnitState.CurrentAttackHitLeader,
                         Of = TargetSpec.Trigger,
                     });
             }

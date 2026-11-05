@@ -2338,7 +2338,7 @@ public sealed class BattleState : IVmWorld
         e.IsSilenced = false;
         e.AttacksThisTurn = 0;
         e.AttackedThisTurn = false;
-        e.AttackedLeaderLastTurn = false;
+        e.CurrentAttackHitLeader = false;
 
         // 变身清空一切已获得的授予能力与「谢幕曲已移除」标记（76-c 第 5 章）。
         // 只清 Keywords 不清 _granted，会让授予的 Ward 在变身之后依然生效。

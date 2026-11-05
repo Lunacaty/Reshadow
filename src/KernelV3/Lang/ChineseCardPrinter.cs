@@ -232,10 +232,9 @@ public sealed class ChineseCardPrinter
         var cond = StripEvolveDomain(ab.Condition, ab.Trigger, out string domainPrefix);
         if (!string.IsNullOrEmpty(domainPrefix)) sb.Append(domainPrefix);
 
-        // 【随从攻击时】：OnAttack 且条件里有「非（上回合攻击过主战者）」时，
-        // 这是编译器为「随从攻击时」这个专用触发头打的标记，不是真的条件。
-        // 不剥离就会印成「【攻击时】若非（上回合攻击过主战者），给予…」——
-        // 玩家会以为每个攻击时效果都被加了前提。
+        // OnAttack 条件里的「非（攻击目标为主战者）」即「攻击随从」。
+        // 卡面写作【攻击时】若攻击随从，…，所以要作为条件正常印出来，
+        // 而不是当成噪音剥掉 —— 剥掉会让玩家不知道这个效果有前提。
         bool isFollowerStrike = StripFollowerStrikeDomain(ref cond);
 
         // 与 Costs 同源的条件必须剥离：编译器把「连击3」「唤灵6」「爆能5」
@@ -261,20 +260,20 @@ public sealed class ChineseCardPrinter
 
 
     /// <summary>
-    /// 识别 OnAttack 条件里的 NotExpr(HasStateExpr{AttackedLeaderLastTurn})。
+    /// 识别 OnAttack 条件里的 NotExpr(HasStateExpr{CurrentAttackHitLeader})。
     ///
     /// 该字段的真实语义是「本次攻击目标为主战者」（见 CombatResolver：
-    ///   attacker.AttackedLeaderLastTurn = defender.Zone == ZoneRef.Leader），
+    ///   attacker.CurrentAttackHitLeader = defender.Zone == ZoneRef.Leader），
     /// 所以 Not(...) 表示「攻击的是随从，不是主战者」。
     ///
     /// 返回 true 表示这是「随从攻击时」这个专用触发头，调用方改用【随从攻击时】文案，
     /// 且该条件本身已被消费、不必再印。
-    /// 只认这一种精确形态 —— 其他涉及 AttackedLeaderLastTurn 的写法是真实效果。
+    /// 只认这一种精确形态 —— 其他涉及 CurrentAttackHitLeader 的写法是真实效果。
     /// </summary>
     private static bool StripFollowerStrikeDomain(ref BoolExpr cond)
     {
         bool Matches(BoolExpr e) =>
-            e is NotExpr { Inner: HasStateExpr { State: UnitState.AttackedLeaderLastTurn } };
+            e is NotExpr { Inner: HasStateExpr { State: UnitState.CurrentAttackHitLeader } };
 
         if (cond == null) return false;
         if (Matches(cond)) return true;
@@ -380,7 +379,9 @@ public sealed class ChineseCardPrinter
             CoreEvent.OnEvolve => "【进化时】",
             CoreEvent.OnSuperEvolve => "【超进化时】",
             // 随从攻击时是专用触发头，与普通「攻击时」不是一回事。
-            CoreEvent.OnAttack => followerStrike ? "【随从攻击时】" : "【攻击时】",
+            // 卡面统一写作【攻击时】。「攻击随从」由条件子句表达，
+            // 不另立触发头 —— 官方简中卡面没有【随从攻击时】这种写法。
+            CoreEvent.OnAttack => "【攻击时】",
             CoreEvent.OnClash => "【交战时】",
             CoreEvent.OnDamaged => "【受到伤害时】",
             CoreEvent.OnHealed => "【回复时】",
@@ -590,11 +591,24 @@ public sealed class ChineseCardPrinter
         if (nodes == null || nodes.Count == 0) return "";
         // 「选择 X，然后对它做 Y」要连成一句：中文里「选择…。对…」读起来像两件事。
         var parts = new List<string>();
+        // 爆能分档树前面可能有公共前置节点（如 select），
+        // 它属于「基础效果」，要并入前缀比较，否则基础档会整段消失。
+        var prefixNodes = new List<EffectNode>();
         for (int i = 0; i < nodes.Count; i++)
         {
-            var s = PrintNode(nodes[i]);
+            var cur = nodes[i];
+            if (cur is ConditionalNode cn0x && IsEnhanceTree(cn0x))
+            {
+                // 前置节点已经进 parts 了，爆能树自己不再重复印它们，
+                // 但要用它们参与「基础档」的构成与前缀比较。
+                parts.Add(PrintEnhanceWithPrefix(cn0x, prefixNodes, emitPrefix: false));
+                prefixNodes.Clear();
+                continue;
+            }
+            var s = PrintNode(cur);
             if (string.IsNullOrEmpty(s)) continue;
             parts.Add(s);
+            if (cur is SelectTargetNode) prefixNodes.Add(cur);
         }
         return string.Join("", parts);
     }
@@ -940,71 +954,6 @@ public sealed class ChineseCardPrinter
         => Diy.ReanimateHelper.TryExtractCostCap(sp, out var cap) ? PrintNum(cap) : "N";
 
 
-    /// <summary>
-    /// 识别爆能强化分档树并渲染成卡面写法。
-    ///
-    /// 编译器把爆能编成 if (ctr:pp_at_play >= N) Then else Else，
-    /// 逐层嵌套。卡面习惯是先写基础效果，再用【爆能强化】N；标出各档的追加/改变。
-    /// 返回 null 表示不是爆能树，交给普通条件渲染。
-    /// </summary>
-    private string TryPrintEnhanceTier(ConditionalNode c)
-    {
-        if (c.Condition is not CompareExpr cmp || cmp.Op != CompareOp.Ge) return null;
-        if (cmp.Left is not NumExpr { Op: NumOp.Counter } l) return null;
-        if ((l.Counter.Name ?? "") != "pp_at_play") return null;
-        if (cmp.Right is not NumExpr { Op: NumOp.Const } r) return null;
-
-        // 收集从低到高的整条阶梯。
-        var tiers = new List<(int n, IReadOnlyList<EffectNode> body)>();
-        var baseBody = new List<EffectNode>();
-        ConditionalNode cur = c;
-        while (true)
-        {
-            if (cur.Condition is not CompareExpr cc || cc.Op != CompareOp.Ge) return null;
-            if (cc.Left is not NumExpr { Op: NumOp.Counter } ll || (ll.Counter.Name ?? "") != "pp_at_play") return null;
-            if (cc.Right is not NumExpr { Op: NumOp.Const } rr) return null;
-            tiers.Add((rr.Value, cur.Then));
-            if (cur.Else is { Count: 1 } && cur.Else[0] is ConditionalNode next) { cur = next; continue; }
-            if (cur.Else != null) baseBody.AddRange(cur.Else);
-            break;
-        }
-        if (tiers.Count == 0) return null;
-
-        var sb = new StringBuilder();
-        string baseText = PrintNodes(baseBody);
-        if (!string.IsNullOrEmpty(baseText)) sb.Append(baseText);
-
-        // 逐档对比「上一档」，但判据是**结构**而不是字符串前缀：
-        // PrintNodes 的拼接边界（句号 / 换行）不可靠，字符串 StartsWith 会误判成「改为」。
-        // 累加型 = 当前档的节点序列以「上一档」为前缀。
-        var prevNodes = baseBody.ToList();
-        foreach (var (n, body) in tiers.OrderBy(t => t.n))
-        {
-            var tierNodes = body?.ToList() ?? new List<EffectNode>();
-            string tierText = PrintNodes(tierNodes);
-            if (string.IsNullOrEmpty(tierText)) continue;
-            if (sb.Length > 0) sb.Append('\n');
-            sb.Append("【爆能强化】").Append(n).Append("；");
-
-            bool isPrefix = prevNodes.Count > 0 && tierNodes.Count >= prevNodes.Count;
-            if (isPrefix)
-            {
-                for (int i = 0; i < prevNodes.Count; i++)
-                {
-                    if (!ReferenceEquals(tierNodes[i], prevNodes[i])) { isPrefix = false; break; }
-                }
-            }
-
-            if (isPrefix)
-                sb.Append("额外").Append(PrintNodes(tierNodes.Skip(prevNodes.Count).ToList()));
-            else if (prevNodes.Count > 0)
-                sb.Append("改为").Append(tierText);
-            else sb.Append(tierText);
-
-            prevNodes = tierNodes;
-        }
-        return sb.ToString();
-    }
     private string PrintMove(MoveZoneNode mv)
     {
         string tgt = PrintTarget(mv.Target);
@@ -1075,6 +1024,71 @@ public sealed class ChineseCardPrinter
         }
     }
 
+
+    /// <summary>该条件节点是否是爆能强化分档树的顶层（ctr:pp_at_play >= N）。</summary>
+    private static bool IsEnhanceTree(ConditionalNode c)
+        => c.Condition is CompareExpr { Op: CompareOp.Ge, Left: NumExpr { Op: NumOp.Counter } l }
+           && (l.Counter.Name ?? "") == "pp_at_play";
+
+    /// <summary>
+    /// 带前置节点的爆能树渲染。
+    ///
+    /// 影之诗的爆能卡常见布局是「select X / if pp>=N: <用X做事甲> else: <用X做事乙>」，
+    /// select 在树外、两档共用。基准档必须把 select 也算进去，
+    /// 否则「基础效果」为空，替换型会丢掉默认分支。
+    /// </summary>
+    private string PrintEnhanceWithPrefix(ConditionalNode c, List<EffectNode> prefix, bool emitPrefix = true)
+    {
+        var tiers = new List<(int n, IReadOnlyList<EffectNode> body)>();
+        var baseBody = new List<EffectNode>(prefix);
+        var cur = c;
+        while (true)
+        {
+            if (!IsEnhanceTree(cur as ConditionalNode)) return PrintConditional(c);
+            var cmp = (CompareExpr)cur.Condition;
+            if (cmp.Right is not NumExpr { Op: NumOp.Const } rr) return PrintConditional(c);
+            tiers.Add((rr.Value, cur.Then));
+            if (cur.Else is { Count: 1 } && cur.Else[0] is ConditionalNode next) { cur = next; continue; }
+            if (cur.Else != null) baseBody.AddRange(cur.Else);
+            break;
+        }
+        if (tiers.Count == 0) return PrintConditional(c);
+
+        var sb = new StringBuilder();
+        // emitPrefix=false：prefix 的文本已由调用方印过，这里只补「基础档独有的部分」，
+        // 但仍参与后面的前缀比较，否则替换型会丢掉默认分支。
+        int pre = emitPrefix ? 0 : prefix.Count;
+        string baseTail = pre > 0 ? PrintNodes(baseBody.Skip(pre).ToList()) : PrintNodes(baseBody);
+        if (!string.IsNullOrEmpty(baseTail)) sb.Append(baseTail);
+
+        var prevNodes = baseBody.ToList();
+        foreach (var (n, body) in tiers.OrderBy(t => t.n))
+        {
+            var tierNodes = body?.ToList() ?? new List<EffectNode>();
+            string tierText = PrintNodes(tierNodes);
+            if (string.IsNullOrEmpty(tierText)) continue;
+            if (sb.Length > 0) sb.Append('\n');
+            sb.Append("【爆能强化】").Append(n).Append("；");
+
+            int skip = 0;
+            for (int i = 0; i < prevNodes.Count && i < tierNodes.Count; i++)
+            {
+                if (ReferenceEquals(tierNodes[i], prevNodes[i])) { skip++; continue; }
+                break;
+            }
+            bool isPrefix = prevNodes.Count > 0 && skip == prevNodes.Count && tierNodes.Count > skip;
+
+            if (isPrefix)
+                sb.Append("额外").Append(PrintNodes(tierNodes.Skip(skip).ToList()));
+            else if (prevNodes.Count > 0)
+                sb.Append("改为").Append(tierText);
+            else sb.Append(tierText);
+
+            prevNodes = tierNodes;
+        }
+        return sb.ToString();
+    }
+
     private string PrintConditional(ConditionalNode c)
     {
         // PayThenDo：「扣 N 资源 → 做某事」编译成 if(ctr>=N) then 扣减 + 动作。
@@ -1096,10 +1110,6 @@ public sealed class ChineseCardPrinter
             return "消费" + amt + unit + "，" + PrintNodes(rest);
         }
 
-        // 爆能强化分档树：if ctr:pp_at_play >= N ... 是 EnhanceWeaver 的产物，
-        // 卡面写法是尾随的【爆能强化】N；而不是正文里的「若打出时能量点值≥N」。
-        string enhance = TryPrintEnhanceTier(c);
-        if (enhance != null) return enhance;
 
         string then = PrintNodes(c.Then);
         string els = PrintNodes(c.Else);
@@ -1352,9 +1362,9 @@ public sealed class ChineseCardPrinter
                 {
                     UnitState.Damaged => "已受伤的",
                     // 字段名有误导性：CombatResolver 里写的是
-                    //   attacker.AttackedLeaderLastTurn = defender.Zone == ZoneRef.Leader;
+                    //   attacker.CurrentAttackHitLeader = defender.Zone == ZoneRef.Leader;
                     // 即「这一击打的是主战者」，不是「上回合攻击过」。
-                    UnitState.AttackedLeaderLastTurn => "攻击目标为主战者",
+                    UnitState.CurrentAttackHitLeader => "攻击目标为主战者",
                     UnitState.Evolved => "已进化的",
                     UnitState.SuperEvolved => "已超进化的",
                     // 缺这一条时，《古旧天剑》的「爆能强化的卡牌」会印成光秃秃的「卡牌」。
@@ -1437,7 +1447,7 @@ public sealed class ChineseCardPrinter
             }
             case NotExpr n:
                 // 「非（攻击目标为主战者）」→「攻击随从」，这是卡面写法。
-                if (n.Inner is HasStateExpr { State: UnitState.AttackedLeaderLastTurn })
+                if (n.Inner is HasStateExpr { State: UnitState.CurrentAttackHitLeader })
                     return "攻击随从";
                 return "非（" + PrintBool(n.Inner) + "）";
 
@@ -1876,7 +1886,7 @@ public sealed class ChineseCardPrinter
     /// 单位状态的中文名。
     ///
     /// 缺映射时以前走 `hs.State.ToString()`，直接把枚举名印到卡面上
-    /// （玩家看到的是 AttackedLeaderLastTurn 这种内部标识）。
+    /// （玩家看到的是 CurrentAttackHitLeader 这种内部标识）。
     /// 未收录的一律给「未知状态」而不是原样输出。
     /// </summary>
     public string StateZh(UnitState st) => st switch
@@ -1893,7 +1903,7 @@ public sealed class ChineseCardPrinter
         UnitState.HasLastWords => "带有谢幕曲",
         UnitState.HasOnSpellboost => "带有魔力增幅",
         UnitState.Destroyed => "已破坏",
-        UnitState.AttackedLeaderLastTurn => "上回合攻击过主战者",
+        UnitState.CurrentAttackHitLeader => "攻击目标为主战者",
         UnitState.Enhanced => "已【爆能强化】",
         _ => "未知状态",
     };

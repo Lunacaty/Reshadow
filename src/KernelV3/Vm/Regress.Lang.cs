@@ -163,7 +163,7 @@ public static partial class Regress
             // CombatResolver 在发 OnAttack 之前就在**攻击者**身上写定该字段，
             // 而 OnAttack 的 Subject 也是攻击者 —— 条件读的是 $trigger，
             // 所以这里必须把 Trigger 绑到攻击者，绑到防御方就永远读到 false。
-            self.AttackedLeaderLastTurn = leaderTarget;
+            self.CurrentAttackHitLeader = leaderTarget;
             var sc = new VmScope
             {
                 Owner = ZoneScope.Self,

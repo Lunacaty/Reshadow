@@ -186,7 +186,7 @@ public enum UnitState
     HasLastWords,
     HasOnSpellboost,
     Destroyed,
-    AttackedLeaderLastTurn,
+    CurrentAttackHitLeader,
 
     /// <summary>本卡本次是以【爆能强化】打出的（Enhance 档位高于本体费用）。</summary>
     Enhanced,

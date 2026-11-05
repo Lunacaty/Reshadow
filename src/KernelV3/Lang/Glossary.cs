@@ -236,7 +236,7 @@ public sealed class Glossary
         g.Add("HasLastWords", "拥有谢幕曲");
         g.Add("HasOnSpellboost", "拥有魔力增幅");
         g.Add("Destroyed", "已被破坏");
-        g.Add("AttackedLeaderLastTurn", "上回合攻击过主战者");
+        g.Add("CurrentAttackHitLeader", "本次攻击目标为主战者");
 
         return g;
     }

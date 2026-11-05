@@ -890,7 +890,7 @@ public static class ConditionCompiler
         // 旧实现返回 HasStateExpr(UnitState.None)，VmEval.MatchState 对 None 一律
         // 返回 false —— 条件恒假，等于「这张卡的 Strike 效果永远不生效」。
         // 这里改用 CombatResolver 在发 OnAttack 之前就已写定的
-        // AttackedLeaderLastTurn：它为真表示本次攻击打的是主战者，
+        // CurrentAttackHitLeader：它为真表示本次攻击打的是主战者，
         // 所以「目标是随从」= 对它取反。
         if (c.MatchWord("attacking"))
         {
@@ -901,7 +901,7 @@ public static class ConditionCompiler
             c.AdvanceToClauseBoundary();
             var onLeader = new HasStateExpr
             {
-                State = UnitState.AttackedLeaderLastTurn,
+                State = UnitState.CurrentAttackHitLeader,
                 Of = TargetSpec.Trigger,
             };
             return isFollower ? BoolExpr.Not(onLeader) : onLeader;

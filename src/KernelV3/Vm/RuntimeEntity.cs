@@ -162,7 +162,7 @@ public sealed class RuntimeEntity
     public int AttacksThisTurn { get; set; }
 
     /// <summary>上一次攻击是否打的是主战者（部分卡牌以此为条件）。</summary>
-    public bool AttackedLeaderLastTurn { get; set; }
+    public bool CurrentAttackHitLeader { get; set; }
 
     /// <summary>本卡本次是以【爆能强化】打出的。用于 "Whenever you play an Enhanced card" 这类条件。</summary>
     public bool PlayedWithEnhance { get; set; }
