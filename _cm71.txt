@@ -1,0 +1,39 @@
+fix(160 复查): 补上 HasCardNameExpr 与 named 解析的 3 处遗漏
+
+逐段核对 160 号文档后发现上一轮仍有 3 处没改彻底，本轮补齐。
+
+【1. HasCardNameExpr 仍会打出 named #0（160 第 1 项）】
+  上一轮只把 summon/transform 换成 FormatCardRef，漏了这个分支：
+  仍写着 "named #" + hcn.CardId，且缺 OfSuffix。
+  已改为三条分支分清：
+    ① CardId==0 且 CardName 为空、Of 指向槽位 -> same name as <槽位>
+    ② 有卡号 -> named #12345
+    ③ 只有卡名 -> named "名字" 兜底，绝不打 #0
+  并补上 OfSuffix(hcn.Of)：能力级条件判 $self，where 里判 $item。
+
+【2. named #N 漏设 Of = DefaultSubject（文档明确指出）】
+  漏设会让判定对象落到 null，运行期 VmEval 走默认分支、判错主体。已补。
+
+【3. named "卡名" 引号形式根本没被识别】
+  引号卡名落进了逐词收集循环（'"' 不是 Ident），导致 7 张纹章卡的
+  条件解析失败。已加 String 分支单独处理。
+
+【顺带移除两处按名反查 Id】
+  named 的引号分支与裸名分支原都有 _lex.TryGetCardId，
+  但打印端只在 CardId==0 时才打引号卡名，反查会让重打印变成 #N，
+  两边不对称、往返不守恒。已移除（与 ParseCardRef 同一口径）。
+
+【本轮额外做的语义验证（往返门禁抓不到的部分）】
+  160 号文档的核心批评是「打印端改了、解析端漏改」，而这类错误
+  在往返测试里表现为「两边错得一致」，文本相等但语义已错。
+  因此补了一项独立检查：遍历 1021 张卡，解析后逐个断言
+    · 顶层(能力级)条件的主语不得是 $item（应为 $self）
+    · where 内条件的主语不得是 $self（应为 $item）
+  结果：顶层误判 0 处，where 误判 0 处。
+  pay 语法实际生效 11 处（上一轮被屏蔽成 0 处，形同虚设）。
+  全库 gain_crest #0 = 0 处，id= 前缀 = 0 处。
+
+验证：PyAST 门禁 6/6（含 1021/1021 全量往返），13 个门禁全绿。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED

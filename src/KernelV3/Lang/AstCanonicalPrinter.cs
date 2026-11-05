@@ -1070,9 +1070,14 @@ public static class AstCanonicalPrinter
             // 这时打 same name as ...；否则是「按卡号指定名字」。
             // 注意：CardName 非空但 CardId 为 0 的历史数据也要走 same name 分支，
             // 否则会打成裸的 "named"，解析端根本读不出它指谁。
-            HasCardNameExpr hcn => (hcn.CardId == 0 && hcn.Of != null)
+            // 三条分支必须分清：
+            //   ① CardId==0 且 CardName 为空、Of 指向槽位 -> 「与被选那张同名」
+            //   ② 有卡号 -> named #12345
+            //   ③ 只有卡名（旧数据 / 纹章）-> named "名字" 兜底，绝不打 #0
+            // 且必须带 OfSuffix：能力级条件判 $self，where 里判 $item。
+            HasCardNameExpr hcn => (hcn.CardId == 0 && string.IsNullOrEmpty(hcn.CardName) && hcn.Of != null)
                 ? "same name as " + PrintT(hcn.Of)
-                : "named #" + hcn.CardId,
+                : "named " + FormatCardRef(hcn.CardId, hcn.CardName) + OfSuffix(hcn.Of),
             HasClanExpr hc => hc.IsSelfClan
                 ? "has clan $self"
                 : (hc.Clans != null && hc.Clans.Count > 0

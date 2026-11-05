@@ -2028,10 +2028,20 @@ public sealed class AstCanonicalParser
                 int nid = TakeNumber();
                 string nnm = "";
                 if (_lex != null) _lex.TryGetCardName(nid, out nnm);
-                return new HasCardNameExpr { CardId = nid, CardName = nnm ?? "" };
+                // Of 必须按上下文默认：漏设会让 named #N 的判定对象落到 null，
+                // 运行期 VmEval 走默认分支，能力级条件判错主体。
+                return new HasCardNameExpr { CardId = nid, CardName = nnm ?? "", Of = DefaultSubject };
             }
 
-            // 旧语法：named "卡名"（历史存档兼容）
+            // named "卡名"（引号形式，纹章与历史数据用）
+            if (Current.Kind == PyTokKind.String)
+            {
+                // 不按名字反查 Id：打印端只在 CardId==0 时才打引号卡名，
+                // 反查会让重打印变成 #N，两边不对称。
+                return new HasCardNameExpr { CardId = 0, CardName = TakeString(), Of = DefaultSubject };
+            }
+
+            // 裸卡名（逐词收集，兼容更早的写法）
             var nameParts2 = new List<string>();
             while (!IsAtEnd)
             {
@@ -2046,7 +2056,7 @@ public sealed class AstCanonicalParser
             }
             string cname = string.Join(" ", nameParts2);
             int cid = 0;
-            if (_lex != null) _lex.TryGetCardId(cname, out cid);
+            // 同上：不按名字反查 Id。
             return new HasCardNameExpr { CardId = cid, CardName = cname, Of = DefaultSubject };
         }
 
