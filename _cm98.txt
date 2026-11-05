@@ -1,0 +1,21 @@
+feat(164 专题二): 补齐遗漏 —— 回合结束计数器 + 卡池职业/计数器编辑面板
+
+## 逐段核对 164 号文档时发现的缺口
+
+### ① ResetToMinOnTurnEnd 从未被驱动
+  枚举里定义了，但 TurnRunner 只在 StartTurn 驱动计数器的
+  ResetToMinOnTurnStart / IncrementOnTurnStart，回合结束那条是死枚举。
+  新增 DrivePoolCountersOnTurnEnd，在 EndTurn 的能力结算**之前**跑：
+  这些是赛制级资源，不该被本回合最后一条能力影响。
+
+### ② 卡池管理右侧缺「本卡池职业」「主战者计数器」面板
+  文档 2.3 明确要求新增这两个编辑区，之前只做了布局溢出修复。
+  新增 RefreshPoolClans / RefreshPoolCounters：
+    · 职业用复选框，改动直接落盘到 pool 配置的 PoolClans
+    · 计数器列表按 Lifecycle 显示变化方式；内置的锁死只读（🔒），
+      自定义的可删
+  SavePoolConfigFull 增加 poolClans / leaderCounters 两个可选参数：
+  不传就沿用已有值，只改规则的调用方不会把它们抹掉。
+
+验证：编译 0 错误；VM 50/50、文档验收 102/102、Combat 16/16、
+效用 12/12、完整对局 7/7、PyAST 12/12、UI 3/3，无新增失败。

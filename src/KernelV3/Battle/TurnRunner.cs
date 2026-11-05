@@ -238,10 +238,37 @@ public sealed class TurnRunner
     /// 清理阶段必须放在所有触发之后 ——
     /// “直到回合结束”的效果在回合结束时仍然要生效。
     /// </summary>
+
+    /// <summary>
+    /// 回合结束时的卡池级计数器生命周期。
+    ///
+    /// 目前只有 ResetToMinOnTurnEnd 一种（连击类的镜像场景）。
+    /// 与 StartTurn 的驱动分开写：两边触发时机和顺序都不同，
+    /// 合在一起会让「回合开始归零」和「回合结束归零」互相覆盖。
+    /// </summary>
+    private void DrivePoolCountersOnTurnEnd(int playerId)
+    {
+        var defs = _state.PoolCounterDefs;
+        if (defs == null || defs.Count == 0) return;
+
+        foreach (var def in defs)
+        {
+            if (def == null || string.IsNullOrWhiteSpace(def.Name)) continue;
+            if (def.Lifecycle != ShadowverseFan.KernelV3.Packs.CounterLifecycle.ResetToMinOnTurnEnd) continue;
+            var key = _state.Schema.Counter(def.Name);
+            if (!key.IsValid) continue;
+            _state.WriteCounter(playerId, key, def.Min);
+        }
+    }
+
     public void EndTurn(int playerId, CardVm vm)
     {
         if (playerId != _state.ActivePlayer)
             throw new InvalidOperationException("只能结束当前回合玩家的回合");
+
+        // 卡池级计数器的「回合结束」生命周期（164 专题二）。
+        // 放在能力结算之前：这些是赛制级资源，不该被本回合最后一条能力影响。
+        DrivePoolCountersOnTurnEnd(playerId);
 
         // ── 第 1〜6 步：三类“回合结束时”能力（自己纹章 / 自己战场 / 对手纹章 / 对手战场）──
         // 实现上统一由 TurnEnd 事件驱动，VM 会按触发器的 DuringTurn 限定逐个对号入座。

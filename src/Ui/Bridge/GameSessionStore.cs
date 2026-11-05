@@ -733,7 +733,8 @@ public sealed class GameSessionStore
     /// <summary>整体保存一个卡池（名称 / 启用卡包 / 规则 / 具名牌组）。</summary>
     public bool SavePoolConfigFull(
         string poolId, string poolName, List<string> enabledPacks,
-        MatchRules rules, List<NamedDeckRawDef> namedDecks, out string message)
+        MatchRules rules, List<NamedDeckRawDef> namedDecks, out string message,
+        List<string> poolClans = null, List<ShadowverseFan.KernelV3.Packs.PoolCounterDef> leaderCounters = null)
     {
         message = "";
         if (string.IsNullOrWhiteSpace(poolId)) { message = "卡池 ID 不能为空"; return false; }
@@ -747,6 +748,10 @@ public sealed class GameSessionStore
             EnabledPackIds = enabledPacks ?? new List<string> { "official-sv" },
             Rules = rules ?? MatchRules.CreateStandard(),
             NamedDecks = namedDecks ?? new List<NamedDeckRawDef>(),
+            // 职业与主战者计数器归属卡池（164 专题二）。
+            // 不传就沿用已有值：只改规则的调用方不该把它们抹掉。
+            PoolClans = poolClans ?? (PoolConfigs.TryGetValue(poolId, out var prev) ? prev.PoolClans : new List<string>()),
+            LeaderCounters = leaderCounters ?? (PoolConfigs.TryGetValue(poolId, out var prev2) ? prev2.LeaderCounters : new List<ShadowverseFan.KernelV3.Packs.PoolCounterDef>()),
         };
         PoolConfigs[poolId] = updated;
         return SavePoolRules(poolId, updated.Rules, out message);

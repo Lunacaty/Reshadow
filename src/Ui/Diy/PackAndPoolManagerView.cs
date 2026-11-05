@@ -29,6 +29,8 @@ public partial class PackAndPoolManagerView : Control
     private VBoxContainer _cardList;
     private VBoxContainer _ruleList;
     private VBoxContainer _namedDeckList;
+    private HFlowContainer _poolClanList;
+    private VBoxContainer _poolCounterList;
     private Label _header;
     private readonly Dictionary<string, Control> _ruleEdits = new();
     private Button _saveRulesBtn;
@@ -45,6 +47,8 @@ public partial class PackAndPoolManagerView : Control
         RefreshPacks();
         RefreshRules();
         RefreshNamedDecks();
+        RefreshPoolClans();
+        RefreshPoolCounters();
     }
 
     private void BuildUi()
@@ -180,6 +184,8 @@ public partial class PackAndPoolManagerView : Control
             _selectedPoolId = keys[k];
             RefreshRules();
             RefreshNamedDecks();
+            RefreshPoolClans();
+            RefreshPoolCounters();
         };
         ruleBar.AddChild(_poolPicker);
 
@@ -201,6 +207,8 @@ public partial class PackAndPoolManagerView : Control
             BuildPoolPicker();
             RefreshRules();
             RefreshNamedDecks();
+            RefreshPoolClans();
+            RefreshPoolCounters();
         };
         ruleBar.AddChild(delPoolBtn);
 
@@ -277,6 +285,121 @@ public partial class PackAndPoolManagerView : Control
         SvWbTheme.StyleScroll(ndScroll);
         ndScroll.AddChild(_namedDeckList);
         right.AddChild(ndScroll);
+
+        // ---- 本卡池职业（164 专题二） ----
+        //
+        // 职业归属卡池而非卡包：同一批卡在不同赛制里开放的职业可以不同。
+        // 这里只做展示与勾选，真正生效在 CardPool 构建时读 PoolClans。
+        var clanBar = new HBoxContainer();
+        clanBar.AddThemeConstantOverride("separation", 6);
+        var clanTitle = new Label { Text = "本卡池职业", SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        clanTitle.AddThemeFontSizeOverride("font_size", 13);
+        clanTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentPurple);
+        clanBar.AddChild(clanTitle);
+        right.AddChild(clanBar);
+
+        _poolClanList = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _poolClanList.AddThemeConstantOverride("h_separation", 8);
+        _poolClanList.AddThemeConstantOverride("v_separation", 4);
+        right.AddChild(_poolClanList);
+
+        // ---- 主战者计数器（164 专题二） ----
+        //
+        // 赛制级资源，跨卡包共享。内置的那批由引擎维护，UI 只读锁死。
+        var ctrBar = new HBoxContainer();
+        ctrBar.AddThemeConstantOverride("separation", 6);
+        var ctrTitle = new Label { Text = "主战者计数器", SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        ctrTitle.AddThemeFontSizeOverride("font_size", 13);
+        ctrTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentPurple);
+        ctrBar.AddChild(ctrTitle);
+        right.AddChild(ctrBar);
+
+        _poolCounterList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _poolCounterList.AddThemeConstantOverride("separation", 2);
+        var ctrScroll = new ScrollContainer { CustomMinimumSize = new Vector2(0, 90) };
+        ctrScroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+        SvWbTheme.StyleScroll(ctrScroll);
+        ctrScroll.AddChild(_poolCounterList);
+        right.AddChild(ctrScroll);
+    }
+
+    /// <summary>刷新「本卡池职业」勾选区（随卡池下拉切换）。</summary>
+    private void RefreshPoolClans()
+    {
+        if (_poolClanList == null) return;
+        foreach (var c in _poolClanList.GetChildren()) { _poolClanList.RemoveChild(c); c.QueueFree(); }
+
+        if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var cfg)) return;
+        var enabled = new HashSet<string>(cfg.PoolClans ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var clan in _store.Catalog.Schema.Clans.All.OrderBy(x => x.Name, StringComparer.Ordinal))
+        {
+            var cb = new CheckBox { Text = SvWbTheme.ClanDisplayZh(clan.Name), ButtonPressed = enabled.Contains(clan.Name) };
+            cb.AddThemeFontSizeOverride("font_size", 11);
+            string cname = clan.Name;
+            cb.Toggled += on =>
+            {
+                var cur = new HashSet<string>(cfg.PoolClans ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+                if (on) cur.Add(cname); else cur.Remove(cname);
+                _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds, cfg.Rules, cfg.NamedDecks,
+                                         out string m, cur.ToList(), cfg.LeaderCounters);
+                _ruleStatus.Text = m;
+            };
+            _poolClanList.AddChild(cb);
+        }
+    }
+
+    /// <summary>刷新「主战者计数器」列表：内置的锁死只读，自定义的可删。</summary>
+    private void RefreshPoolCounters()
+    {
+        if (_poolCounterList == null) return;
+        foreach (var c in _poolCounterList.GetChildren()) { _poolCounterList.RemoveChild(c); c.QueueFree(); }
+
+        if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var cfg)) return;
+
+        foreach (var def in cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>())
+        {
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 6);
+            var name = new Label
+            {
+                Text = def.NameChs is { Length: > 0 } ? def.NameChs : def.Name,
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                ClipText = true,
+            };
+            name.AddThemeFontSizeOverride("font_size", 11);
+            row.AddChild(name);
+
+            var life = new Label { Text = def.Lifecycle.ToString() };
+            life.AddThemeFontSizeOverride("font_size", 10);
+            life.AddThemeColorOverride("font_color", SvWbTheme.BorderSubtle);
+            row.AddChild(life);
+
+            if (def.IsBuiltin)
+            {
+                // 内置计数器由引擎维护（pp / ep / sep …），改它会直接打断对局。
+                var lockLbl = new Label { Text = "🔒" };
+                lockLbl.AddThemeFontSizeOverride("font_size", 11);
+                row.AddChild(lockLbl);
+            }
+            else
+            {
+                var del = new Button { Text = "🗑", CustomMinimumSize = new Vector2(28, 24) };
+                SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
+                var d = def;
+                del.Pressed += () =>
+                {
+                    var rest = (cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>())
+                        .Where(x => !ReferenceEquals(x, d) && x.Name != d.Name).ToList();
+                    _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds, cfg.Rules, cfg.NamedDecks,
+                                             out string m, cfg.PoolClans, rest);
+                    _ruleStatus.Text = m;
+                    RefreshPoolCounters();
+                };
+                row.AddChild(del);
+            }
+            _poolCounterList.AddChild(row);
+        }
     }
 
     /// <summary>刷新具名牌组列表（随卡池下拉切换）。</summary>
@@ -924,5 +1047,7 @@ public partial class PackAndPoolManagerView : Control
 
         RefreshRules();
         RefreshNamedDecks();
+        RefreshPoolClans();
+        RefreshPoolCounters();
     }
 }
