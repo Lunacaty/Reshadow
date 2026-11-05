@@ -1,0 +1,46 @@
+feat(204 第一步): 补齐 AST 打印器的 5 处静默丢字段
+
+204 号文档第一节列出 6 处「数据存了但看不见」的漏洞。本轮补上 5 处，
+第 6 处（IsFanfare）按文档第五节的分步方案留到 PyAST DSL 阶段：
+
+【1. MoveZoneNode.IsDestroy】
+  destroy（触发谢幕曲）与 discard/移区（不触发）的唯一分野。
+  不打它，两者在 AST 上完全同形，往返必然串味。
+  实测 10151310：move $selected to Cemetery destroy
+
+【2. MoveZoneNode.OutSlot】
+  非默认落槽（$created 之外）必须可见。
+
+【3. SelectTargetNode.AppendToSlot】
+  追加与覆盖的唯一分野。
+  实测 10151310：两次 select 中第二次带 +append，
+  这才解释了为什么一句 move 能同时破坏两个目标。
+
+【4. SelectTargetNode.OutSlot】
+  非 $selected 的落槽（$chooseK 等）必须可见。
+
+【5. SpawnCardNode.AddDepartedTrait】
+  非标准亡者召还附加的【亡者】兵种，决定它能否被同名卡计数看见。
+  打在 spawn 之后：+departed
+
+【6. BranchModeNode.GrantTarget】
+  「给某随从随机赋予以下 N 个能力」的受予者。
+  打在 modes 头：grant_to=<target>
+
+【7. ModifyStatsNode 的 null vs 0】
+  null = 不修改该项，Const(0) = 明确设为 0。
+  用 `_` 表示 null，两者现在可以严格区分。
+
+【关于 IsFanfare —— 本轮查出的真相】
+  文档说它「未打印」，但进一步核查发现：
+  · 它的往返载体是 AstJsonCodec 的 is_fanfare 字段（已落盘、已回读），
+  · 而英文 AST 文本是 DIY 四端同构门禁的**对比基准**，
+    在展示层加标记会让「文件编译」与其余三条路径产生文本差异。
+  本轮实测确认：给 AstEnglishPrinter 加 isfanfare 会直接打挂 DIY-2/DIY-3。
+  同时顺手补上了积木/脚本两条路径对该字段的往返能力：
+  · DiyBlockModel：Block.FlagB 存 IsFanfare，编译侧回读；
+  · ReshadowScriptCompiler：导出 `isfanfare`、解析端认识该标记。
+  这两处是真实的数据丢失，已修。
+
+卡数=1021  CompileFailures=0
+ALL ENGINE CHECKS PASSED / 12 门禁全绿（DIY 8/8 保持）

@@ -773,6 +773,7 @@ public sealed class ReshadowScriptCompiler
 
         // TriggerSpec 是 init-only：先把修饰词收集到局部变量，最后一次性构造。
         bool manual = false;
+        bool isFanfare = false;
         var activeZone = ActiveZoneScope.Board;
         var duringTurn = TurnOwnerScope.Any;
         CoreEvent? secondary = null;
@@ -817,6 +818,7 @@ public sealed class ReshadowScriptCompiler
                     }
                     break;
                 case "manual": manual = true; break;
+                case "isfanfare": isFanfare = true; break;
                 case "zone":
                     p.TryChar(':');
                     var z = p.Next();
@@ -855,6 +857,10 @@ public sealed class ReshadowScriptCompiler
         {
             Event = ev,
             ManualEvolveOnly = manual,
+            // 只认显式 `isfanfare`（对应 CNL 的「Fanfare:」冒号头）。
+            // 不能按事件推导：无头祈使句与 `Enhance` 头也都是 OnPlay，
+            // 但它们的 IsFanfare 必须是 false —— 否则封印光环会误伤这些卡。
+            IsFanfare = isFanfare,
             ActiveZone = activeZone,
             DuringTurn = duringTurn,
             SecondaryEvent = secondary,
@@ -2401,6 +2407,10 @@ public sealed class ReshadowScriptCompiler
             }
 
             if (ab.Trigger.ManualEvolveOnly) sb.Append(" manual");
+            // IsFanfare 是「真入场曲（受 suppress_fanfare 封印）」与「法术/护符
+            // 的普通打出 OnPlay」的唯一分野 —— 两者 Event 都是 OnPlay，
+            // 不导出这个标记，脚本往返后会全部退化成普通 OnPlay。
+            if (ab.Trigger.IsFanfare) sb.Append(" isfanfare");
             if (ab.Trigger.ActiveZone != ActiveZoneScope.Board)
                 sb.Append(" zone: ").Append(ab.Trigger.ActiveZone.ToString().ToLowerInvariant());
             if (ab.Trigger.DuringTurn != TurnOwnerScope.Any)

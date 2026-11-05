@@ -495,6 +495,9 @@ public sealed class DiyBlockCompiler
             Event = ev,
             SubjectFilter = subject,
             ManualEvolveOnly = hat.FlagA,
+            // 与反编译侧的 FlagB 成对：漏了这条，往返就把 IsFanfare 抹平成 false。
+            // hat_self_event 上的 OnPlay 就是入场曲（与 CNL 的「Fanfare:」对齐）。
+            IsFanfare = hat.FlagB,
             // 并列事件（打出**或融合**）与每回合次数上限都是运行期判定依据：
             // 丢了 SecondaryEvent，Octrice 在融合时不再推进吟唱；
             // 丢了 MaxTriggersPerTurn，「每回合一次」会变成每次触发。
@@ -1409,6 +1412,11 @@ public sealed class DiyBlockDecompiler
             Opcode = opcode,
             Text = ab.Trigger.Event.ToString(),
             FlagA = ab.Trigger.ManualEvolveOnly,
+            // IsFanfare 是「真入场曲（受 suppress_fanfare 封印）」与
+            // 「法术/护符的普通打出 OnPlay」的唯一分野，两者 Event 都是 OnPlay。
+            // 不落盘的话，积木往返后所有真入场曲都会退化成普通 OnPlay，
+            // 而卡面中文一模一样，只有对上封印光环时才看得出差别。
+            FlagB = ab.Trigger.IsFanfare,
             EnumB = ab.Trigger.SecondaryEvent?.ToString(),
             IntA = ab.Trigger.MaxTriggersPerTurn,
             ActiveZone = ab.Trigger.ActiveZone == ActiveZoneScope.Board ? null : ab.Trigger.ActiveZone.ToString(),

@@ -82,6 +82,18 @@ public static class AstEnglishPrinter
                 sb.Append(" turn=" + a.Trigger.DuringTurn);
             if (a.Trigger.MaxTriggersPerTurn > 0)
                 sb.Append(" max=" + a.Trigger.MaxTriggersPerTurn);
+            // IsFanfare 区分「真正的入场曲（受 suppress_fanfare 封印）」
+            // 与「法术/护符的普通打出 OnPlay」——两者的 TriggerWord 都是 fanfare。
+            //
+            // 这是本轮唯一**不在打印器里**补的字段：
+            // 打印器是 DIY 四端同构门禁的对比基准（DiyWorkspace.PrintNormalized），
+            // 在这里加任何标记，都会让「文件编译」与「积木重编译」两条路径的
+            // 文本产生差异 —— 除非积木编解码本身也把这个字段带上。
+            // 这里**不打印** IsFanfare：
+            // 它是 AstJsonCodec 的既有职责（is_fanfare 字段已落盘并回读），
+            // 而英文 AST 文本是 DIY 四端同构门禁的对比基准，
+            // 在展示层加标记只会让「文件编译」与其余三条路径产生文本差异。
+            // 积木侧现已能往返该字段（Block.FlagB），需要审计请查 AST JSON。
             if (a.Trigger.SubjectFilter != null)
                 sb.Append(" on(" + PrintTarget(a.Trigger.SubjectFilter) + ")");
             if (a.Trigger.SecondaryFilter != null)
@@ -149,6 +161,13 @@ public static class AstEnglishPrinter
         {
             case SelectTargetNode s:
                 sb.Append("select " + PrintTarget(s.Target));
+                // OutSlot 非默认时必须打：连选两次写 $chooseK 的差异全靠它。
+                if (!string.IsNullOrEmpty(s.OutSlot) && s.OutSlot != TargetSpec.SlotSelected)
+                    sb.Append(" -> " + s.OutSlot);
+                // AppendToSlot 是「追加到 $selected」与「覆盖」的唯一分野：
+                // 「Select an allied and enemy follower and destroy them」
+                // 两次 select 必须追加，否则 them 只剩最后一次的目标。
+                if (s.AppendToSlot) sb.Append(" +append");
                 break;
             case DealDamageNode d:
                 sb.Append("deal " + PrintNum(d.Amount) + " damage to " + PrintTarget(d.Target));
@@ -169,9 +188,12 @@ public static class AstEnglishPrinter
                     //   "+X/+X" 会打成 "count(...)/count(...)"，看上去和真除法一模一样，
                     //   审计时必然误判成算错（本会话已经栽过一次）。
                     //   真除法在 PrintNum 里本身带空格（"A / B"），再加上括号就彻底分得开。
-                    string atk = PrintNum(m.Attack), life = PrintNum(m.Life);
-                    if (NeedsParen(m.Attack)) atk = "(" + atk + ")";
-                    if (NeedsParen(m.Life)) life = "(" + life + ")";
+                    // null = 不修改该项，Const(0) = 明确设为 0。
+                    // 两者在 AST 上是不同对象，不区分就无法 100% 逆向还原。
+                    string atk = m.Attack == null ? "_" : PrintNum(m.Attack);
+                    string life = m.Life == null ? "_" : PrintNum(m.Life);
+                    if (m.Attack != null && NeedsParen(m.Attack)) atk = "(" + atk + ")";
+                    if (m.Life != null && NeedsParen(m.Life)) life = "(" + life + ")";
                     sb.Append("modifystats " + m.Op + " " + atk + "/" + life + " to " + PrintTarget(m.Target));
                 }
                 // Duration 必须打出来：「直到回合结束」与「永久」在 AST 上只差这一个字段，
@@ -229,7 +251,12 @@ public static class AstEnglishPrinter
                 if (sp.IsCrest)
                     sb.Append("gain crest " + what);
                 else
+                {
                     sb.Append("spawn " + PrintNum(sp.Count) + " " + what + " to " + sp.ToZone);
+                    // 非标准亡者召还会给召唤体附加【亡者】兵种，
+                    // 这个字段决定它能否被「同名卡计数」类效果看见。
+                    if (sp.AddDepartedTrait) sb.Append(" +departed");
+                }
 
                 // ToOwner 必须打出来：Slaus 的「给**对手**贴纹章」与「给自己贴」
                 // 在 AST 上只差这一个字段，不打它就会把前者判成后者。
@@ -239,6 +266,12 @@ public static class AstEnglishPrinter
                 break;
             case MoveZoneNode mv:
                 sb.Append("move " + PrintTarget(mv.Target) + " to " + mv.ToZone);
+                // IsDestroy 是「破坏（触发谢幕曲）」与「舍弃/移区（不触发）」的唯一分野。
+                // 不打它，destroy 与 discard 在 AST 上完全同形，往返必然串味。
+                if (mv.IsDestroy) sb.Append(" destroy");
+                // 非默认的落槽必须可见（$created 是默认值，其余都是显式指定）。
+                if (!string.IsNullOrEmpty(mv.OutSlot) && mv.OutSlot != TargetSpec.SlotCreated)
+                    sb.Append(" -> " + mv.OutSlot);
                 break;
             case TransformNode tr:
                 sb.Append("transform " + PrintTarget(tr.Target) + " into "
@@ -268,6 +301,9 @@ public static class AstEnglishPrinter
                 break;
             case BranchModeNode bm:
                 sb.Append("modes " + bm.Kind + " pick " + PrintNum(bm.PickCount) + " of");
+                // GrantTarget 是「把随机选中的能力授予谁」的受予者；
+                // 不打它，奖励型模式在 AST 上看不出受益对象。
+                if (bm.GrantTarget != null) sb.Append(" grant_to=" + PrintTarget(bm.GrantTarget));
                 for (int i = 0; i < bm.Options.Count; i++)
                     sb.Append(" (" + (i + 1) + ") " + string.Join(" ", bm.Options[i].Select(PrintNode)));
                 break;
