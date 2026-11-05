@@ -1,0 +1,17 @@
+feat(164 追加): 攻击高亮分档 —— 能打脸画绿圈，只能打随从画橙圈
+
+## 原来两档不分
+  随从能攻击时一律画绿圈。但「有守护挡路」「cannot_attack_leaders」
+  「突进/进化当回合不能打脸」这几种情况下，玩家看着绿圈点下去才被拒。
+
+## 改法
+  BoardUnitWidget.Setup 增加 canAttackLeader 参数，
+  绿圈（0.20,0.83,0.60）= 可打随从也可打脸，
+  橙圈（0.95,0.60,0.15）= 只能攻击随从。
+
+  判断不另写逻辑，直接问游戏规则本身：
+    _ctrl.Runner.Combat.CanAttack(e, 敌方主战者, out _)
+  CombatResolver 已经把守护挡路 / cannot_attack_leaders / 召唤失调 /
+  次数上限全部算进去了。界面另写一套只会跟规则漂移。
+
+验证：编译通过；UI 与战斗 UI 门禁无新增失败。

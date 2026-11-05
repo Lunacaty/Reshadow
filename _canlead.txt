@@ -1,0 +1,17 @@
+
+    /// <summary>
+    /// 这个随从现在能否攻击**敌方主战者**。
+    ///
+    /// 与 CanAttackWith 的区别：后者只问「能不能攻击任意目标」。
+    /// 界面需要区分「只能打随从」（有守护挡路等）与「能打随从也能打脸」，
+    /// 两者都用绿圈会让玩家误以为可以直接糊脸。
+    /// </summary>
+    public bool CanAttackLeaderWith(RuntimeEntity unit)
+    {
+        if (unit == null) return false;
+        if (!IsMyTurn || IsWaitingForInput) return false;
+        return GetLegalActionsCached().Any(a =>
+            a.Kind == PlayerActionKind.Attack
+            && a.Subject?.EntityId == unit.EntityId
+            && a.Target != null && a.Target.Zone == Core.ZoneRef.Leader);
+    }

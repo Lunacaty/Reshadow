@@ -688,7 +688,14 @@ public partial class BattleScreenRoot : Control
             bool canAtk = playerId == 0 && _ctrl.CanAttackWith(e);
             bool selected = _actionPanel.BoundEntity != null
                             && _actionPanel.BoundEntity.EntityId == e.EntityId;
-            w.Setup(e, selected, canAtk);
+            // 能否打脸直接问游戏规则本身 —— CanAttack 已经把守护挡路、
+            // cannot_attack_leaders、突进/进化当回合限制都算进去了，
+            // 界面另写一套判断只会跟规则漂移。
+            bool canAtkLeader = canAtk
+                                && _ctrl?.Runner?.Combat != null
+                                && _ctrl.State?.Players[1].Leader != null
+                                && _ctrl.Runner.Combat.CanAttack(e, _ctrl.State.Players[1].Leader, out _);
+            w.Setup(e, selected, canAtk, canAtkLeader);
 
             if (movedSlot)
             {

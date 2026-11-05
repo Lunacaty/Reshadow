@@ -70,6 +70,8 @@ public partial class BoardUnitWidget : Control
 
     private bool _selected;
     private bool _canAttack;
+    /// <summary>能否攻击敌方主战者。false 表示只能攻击随从（画橙圈）。</summary>
+    private bool _canAttackLeader;
 
     /// <summary>
     /// 候选态：当前有一处挂起选择正在等玩家点它。
@@ -121,11 +123,12 @@ public partial class BoardUnitWidget : Control
         QueueRedraw();
     }
 
-    public void Setup(RuntimeEntity e, bool selected, bool canAttack)
+    public void Setup(RuntimeEntity e, bool selected, bool canAttack, bool canAttackLeader = true)
     {
         Entity = e ?? throw new ArgumentNullException(nameof(e));
         _selected = selected;
         _canAttack = canAttack;
+        _canAttackLeader = canAttackLeader;
         _badge = UnitAbilityBadgeResolver.Resolve(e.Def);
 
         CustomMinimumSize = new Vector2(W, H);
@@ -405,9 +408,18 @@ public partial class BoardUnitWidget : Control
 
         if (_selected) DrawRect(new Rect2(-3, -3, W + 6, H + 6), SvWbTheme.AccentCyan, false, 2.5f);
 
-        // 可攻击光环：绿圈（还原原版「这个随从能动了」的提示）
+        // 可攻击光环分两档：
+        //   绿圈 = 能攻击随从，也能打主战者
+        //   橙圈 = 只能攻击随从（对方有守护挡路、或自己带 cannot_attack_leaders、
+        //          或突进/进化当回合）
+        // 两者都画绿圈会让玩家误以为可以直接糊脸，点下去才被拒。
         if (_canAttack && !_selected)
-            DrawRect(new Rect2(-2, -2, W + 4, H + 4), new Color(0.20f, 0.83f, 0.60f, 0.85f), false, 2.5f);
+        {
+            var ring = _canAttackLeader
+                ? new Color(0.20f, 0.83f, 0.60f, 0.85f)   // 绿
+                : new Color(0.95f, 0.60f, 0.15f, 0.90f);  // 橙
+            DrawRect(new Rect2(-2, -2, W + 4, H + 4), ring, false, 2.5f);
+        }
 
         // ---- 关键词与光环贴图 ----
         //
