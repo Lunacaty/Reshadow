@@ -823,13 +823,42 @@ public sealed class AstCanonicalParser
         };
     }
 
+
+    /// <summary>
+    /// 读取一个卡引用：统一只写卡号（新语法禁止写卡名）。
+    ///
+    /// 为什么不再支持卡名：卡名可能含 where / is / and 这类词法关键字，
+    /// 加引号就要处理转义与「引号名 + 可选 #id + @owner:zone + 量词 + where」
+    /// 的全组合，裸写直接崩词法器。卡号唯一，由 DIY 编辑器自动填。
+    ///
+    /// 兼容旧写法 id=NNN（历史存档里存在）。
+    /// </summary>
+    private int ParseCardRef(out string name)
+    {
+        name = "";
+        int id = 0;
+
+        // 新写法：summon 1 #12345678
+        if (Current.Kind == PyTokKind.Hash) { Advance(); id = TakeNumber(); }
+        // 旧写法：summon 1 "Name" id=12345678
+        else if (Current.Kind == PyTokKind.String)
+        {
+            name = TakeString();
+            if (Current.Kind == PyTokKind.Ident && Current.Text == "id")
+            { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
+            if (id <= 0 && _lex != null) _lex.TryGetCardId(name, out id);
+        }
+        else if (Current.Kind == PyTokKind.Ident && Current.Text == "id")
+        { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
+
+        // 名字一律由卡号反查：打印端只写卡号，名字若来自原文会导致重打印不一致。
+        if (id > 0 && _lex != null && _lex.TryGetCardName(id, out var nm)) name = nm;
+        return id;
+    }
+
     private SpawnCardNode ParseGainCrest()
     {
-        string name = Current.Kind == PyTokKind.String ? TakeString() : TakeIdent();
-        int id = 0;
-        if (Current.Kind == PyTokKind.Ident && Current.Text == "id") { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
-        // 纹章不补 id：打印器只在 CardId>0 时才打 id=，
-        // 这里若自动反查，重新打印会多出一个 id=，往返就对不上。
+        var id = ParseCardRef(out var name);
         var crestOwner = ZoneScope.Self;
         if (Current.Kind == PyTokKind.LBracket)
         {
@@ -881,10 +910,7 @@ public sealed class AstCanonicalParser
     private SpawnCardNode ParseNamedSpawn(ZoneRef toZone)
     {
         var count = ParseNumExpr();
-        string name = Current.Kind == PyTokKind.String ? TakeString() : TakeIdent();
-        int id = 0;
-        if (Current.Kind == PyTokKind.Ident && Current.Text == "id") { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
-        if (id <= 0 && _lex != null && _lex.TryGetCardId(name, out int r1)) id = r1;
+        var id = ParseCardRef(out var name);
         var spawnOwner = ZoneScope.Self;
         if (Current.Kind == PyTokKind.LBracket)
         {
@@ -942,10 +968,7 @@ public sealed class AstCanonicalParser
     private SpawnCardNode ParseRawSpawn()
     {
         var count = ParseNumExpr();
-        string name = Current.Kind == PyTokKind.String ? TakeString() : TakeIdent();
-        int id = 0;
-        if (Current.Kind == PyTokKind.Ident && Current.Text == "id") { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
-        if (id <= 0 && _lex != null && _lex.TryGetCardId(name, out int r2)) id = r2;
+        var id = ParseCardRef(out var name);
         var toZone = ZoneRef.Board;
         if (Current.Kind == PyTokKind.Ident && Current.Text == "to") { Advance(); toZone = ZoneRefOf(TakeIdent()); }
         return new SpawnCardNode { SourceKind = CardSourceKind.CardId, CardId = id, CardName = name, ToZone = toZone, Count = count, OutSlot = TryOutSlot(TargetSpec.SlotCreated) };
@@ -1250,10 +1273,7 @@ public sealed class AstCanonicalParser
             Advance(); EatIdent("of");
             return new TransformNode { Target = tgt, CopySource = ParseTarget() };
         }
-        string name = Current.Kind == PyTokKind.String ? TakeString() : TakeIdent();
-        int id = 0;
-        if (Current.Kind == PyTokKind.Ident && Current.Text == "id") { Advance(); Match(PyTokKind.Assign); id = TakeNumber(); }
-        if (id <= 0 && _lex != null && _lex.TryGetCardId(name, out int r3)) id = r3;
+        var id = ParseCardRef(out var name);
         return new TransformNode { Target = tgt, IntoCardId = id, IntoCardName = name };
     }
 
@@ -1826,7 +1846,17 @@ public sealed class AstCanonicalParser
             return new HasCardNameExpr { Of = ParseTarget() };
         if (MatchIdent("named"))
         {
-            // 卡名可能带逗号与撇号（Belial, Archangel of Cunning / Dragon's Vale Elder）
+            // 新语法：named #12345 —— 只写卡号，名字由反查补回。
+            if (Current.Kind == PyTokKind.Hash)
+            {
+                Advance();
+                int nid = TakeNumber();
+                string nnm = "";
+                if (_lex != null) _lex.TryGetCardName(nid, out nnm);
+                return new HasCardNameExpr { CardId = nid, CardName = nnm ?? "" };
+            }
+
+            // 旧语法：named "卡名"（历史存档兼容）
             var nameParts2 = new List<string>();
             while (!IsAtEnd)
             {

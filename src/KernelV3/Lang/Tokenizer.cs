@@ -53,6 +53,7 @@ public sealed class Lexicon
 
     /// <summary>所有卡名按长度降序，用于最长前缀匹配。</summary>
     private readonly List<string> _namesByLength = new();
+    private readonly Dictionary<int, string> _cardNamesById = new();
 
     public int CardNameCount => _cardNames.Count;
 
@@ -68,7 +69,15 @@ public sealed class Lexicon
         var key = name.Trim();
         _cardNames[key] = cardId;
         _cardIds[cardId.ToString()] = cardId;
+        // 反向表：PyAST 只写卡号，解析时要靠它把名字补回去。
+        // CardName 参与运行期按名过滤（CardVm.RemoveByFilter），补不回来会让
+        // "deal 2 damage to card:#123@self:board" 变成「对任意卡生效」。
+        if (cardId > 0) _cardNamesById[cardId] = key;
     }
+
+    /// <summary>按卡号反查卡名（PyAST 只写卡号时用于补回 CardName）。</summary>
+    public bool TryGetCardName(int cardId, out string name)
+        => _cardNamesById.TryGetValue(cardId, out name);
 
     public void AddKeyword(string kw) { if (!string.IsNullOrWhiteSpace(kw)) _keywords.Add(kw.Trim()); }
     public void AddTrait(string tr) { if (!string.IsNullOrWhiteSpace(tr)) _traits.Add(tr.Trim()); }

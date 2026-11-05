@@ -476,7 +476,7 @@ public static class AstCanonicalPrinter
                 if (tr.CopySource != null)
                     sb.Append("copy of ").Append(PrintT(tr.CopySource));
                 else
-                    sb.Append('"').Append(tr.IntoCardName).Append("\" id=").Append(tr.IntoCardId);
+                    sb.Append("id=").Append(tr.IntoCardId);
                 break;
 
             case InvokeAbilityNode ia:
@@ -592,8 +592,7 @@ public static class AstCanonicalPrinter
 
         // 2. 获得纹章
         if (sp.IsCrest)
-            return "gain_crest \"" + sp.CardName + "\""
-                 + (sp.CardId > 0 ? " id=" + sp.CardId : "") + ownerSuffix + slotSuffix;
+            return "gain_crest #" + sp.CardId + ownerSuffix + slotSuffix;
 
         // 3. 发现 / 混沌发现 / 池随机生成
         if (sp.SourceKind == CardSourceKind.PoolQuery && sp.CopyFrom != null)
@@ -626,11 +625,11 @@ public static class AstCanonicalPrinter
         string idTag = sp.CardId > 0 ? " id=" + sp.CardId : "";
         string depTag = sp.AddDepartedTrait ? " +departed" : "";
         if (sp.ToZone == ZoneRef.Board)
-            return "summon " + PrintN(sp.Count) + " \"" + sp.CardName + "\"" + idTag + ownerSuffix + depTag + slotSuffix;
+            return "summon " + PrintN(sp.Count) + idTag + ownerSuffix + depTag + slotSuffix;
         if (sp.ToZone == ZoneRef.Hand)
-            return "add_to_hand " + PrintN(sp.Count) + " \"" + sp.CardName + "\"" + idTag + ownerSuffix + depTag + slotSuffix;
+            return "add_to_hand " + PrintN(sp.Count) + idTag + ownerSuffix + depTag + slotSuffix;
 
-        return "spawn " + PrintN(sp.Count) + " \"" + sp.CardName + "\"" + idTag
+        return "spawn " + PrintN(sp.Count) + idTag
              + " to " + sp.ToZone + ownerSuffix + depTag + slotSuffix;
     }
 
@@ -781,10 +780,10 @@ public static class AstCanonicalPrinter
                 // 只打卡名会让 Obsessed Test Subject 的「同名卡 5 张」变成「任意随从 5 张」。
                 // 卡名必须加引号：名字里可能含 where / is / and 这类词法关键字
                 // （"Where Is My Mind"），裸写会把词法器搞崩。
-                if (string.IsNullOrEmpty(t.CardName))
-                    sb.Append("card:#" + t.CardId);
-                else
-                    sb.Append("card:" + t.CardName + "#" + t.CardId);
+                // 具名卡统一只写卡号：card:#12345678@self:board
+                // 卡名可能含 where / is / and 这类词法关键字，加引号又牵出转义与
+                // 可选 #id 的组合问题；卡号唯一且由 DIY 编辑器自动填，人类不必手写。
+                sb.Append("card:#" + t.CardId);
                 sb.Append("@" + t.Owner.ToString().ToLowerInvariant()
                           + ":" + t.Zone.ToString().ToLowerInvariant());
                 // history 由下面的统一出口打印一次即可。
@@ -964,10 +963,13 @@ public static class AstCanonicalPrinter
             // CardId 与 CardName 都为空时，Of 是「参照槽位」——
             //   "Banish all enemy copies of it" 要印成 same name as $selected，
             //   而不是空洞的 "named "。
-            HasCardNameExpr hcn => (hcn.CardId == 0 && string.IsNullOrEmpty(hcn.CardName) && hcn.Of != null)
+            // CardId 为 0 但 Of 指向某槽位 = 「同名卡」判定（同一张卡的副本），
+            // 这时打 same name as ...；否则是「按卡号指定名字」。
+            // 注意：CardName 非空但 CardId 为 0 的历史数据也要走 same name 分支，
+            // 否则会打成裸的 "named"，解析端根本读不出它指谁。
+            HasCardNameExpr hcn => (hcn.CardId == 0 && hcn.Of != null)
                 ? "same name as " + PrintT(hcn.Of)
-                : "named "
-                + (string.IsNullOrEmpty(hcn.CardName) ? hcn.CardId.ToString() : hcn.CardName),
+                : "named #" + hcn.CardId,
             HasClanExpr hc => hc.IsSelfClan
                 ? "has clan $self"
                 : (hc.Clans != null && hc.Clans.Count > 0
