@@ -779,9 +779,13 @@ public static class AstCanonicalPrinter
                 // 卡名与卡号都要打：CardId==0 时运行期会退化成「任意卡」
                 // （VmEval 的历史池分支写的是 `t.CardId == 0 || …`），
                 // 只打卡名会让 Obsessed Test Subject 的「同名卡 5 张」变成「任意随从 5 张」。
-                sb.Append("card:" + (string.IsNullOrEmpty(t.CardName) ? t.CardId.ToString() : t.CardName)
-                          + "#" + t.CardId
-                          + "@" + t.Owner.ToString().ToLowerInvariant()
+                // 卡名必须加引号：名字里可能含 where / is / and 这类词法关键字
+                // （"Where Is My Mind"），裸写会把词法器搞崩。
+                if (string.IsNullOrEmpty(t.CardName))
+                    sb.Append("card:#" + t.CardId);
+                else
+                    sb.Append("card:" + t.CardName + "#" + t.CardId);
+                sb.Append("@" + t.Owner.ToString().ToLowerInvariant()
                           + ":" + t.Zone.ToString().ToLowerInvariant());
                 // history 由下面的统一出口打印一次即可。
                 // 这里再打一次会变成 "history=EnteredThisMatch history=EnteredThisMatch"，
@@ -915,13 +919,37 @@ public static class AstCanonicalPrinter
     };
 
 
+
+    /// <summary>
+    /// 把「计数器比较」翻译成游戏术语。
+    ///
+    /// 人类不该被要求记住 Overflow 是 ctr:max_pp >= 7、
+    /// 奥义是 ctr:skybound_gauge >= 10 这种编译器内部约定。
+    /// 只在阈值精确匹配时才翻译，其余情况原样保留 —— 名词化不能改变语义。
+    /// </summary>
+    private static string TermForCompare(CompareExpr cmp)
+    {
+        if (cmp.Left is not NumExpr { Op: NumOp.Counter } l) return null;
+        if (cmp.Right is not NumExpr { Op: NumOp.Const } r) return null;
+        if (cmp.Op != CompareOp.Ge) return null;
+        string n = l.Counter.Name ?? "";
+        return (n, r.Value) switch
+        {
+            ("max_pp", 7) => "overflow",
+            ("wrath", 7) => "wrath",
+            ("skybound_gauge", 10) => "skybound_art",
+            ("skybound_gauge", 15) => "super_skybound_art",
+            _ => null,
+        };
+    }
+
     private static string PrintB(BoolExpr e)
     {
         if (e == null) return "null";
         return e switch
         {
             ConstBoolExpr c => c.Value ? "true" : "false",
-            CompareExpr cmp => PrintN(cmp.Left) + " " + CmpWord(cmp.Op) + " " + PrintN(cmp.Right),
+            CompareExpr cmp => TermForCompare(cmp) ?? (PrintN(cmp.Left) + " " + CmpWord(cmp.Op) + " " + PrintN(cmp.Right)),
             // Of 必须打出来：能力级条件判的是 $self，where 里判的是 $item。
             // 不打它，「本卡是否已进化」与「被筛的那张是否已进化」打印完全一样，
             // 而前者在触发时作用域里只有 $self，写成 $item 会恒为 false。

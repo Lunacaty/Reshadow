@@ -1313,6 +1313,7 @@ public sealed class AstCanonicalParser
         if (Current.Kind == PyTokKind.Ident && Current.Text == "card" && PeekText(1) == ":")
         {
             Advance(); Advance();
+
             var nameParts = new List<string>();
             while (!IsAtEnd && Current.Kind != PyTokKind.Hash && Current.Kind != PyTokKind.At
                    && Current.Kind != PyTokKind.Newline && Current.Kind != PyTokKind.Dedent)
@@ -1754,10 +1755,33 @@ public sealed class AstCanonicalParser
         => k == PyTokKind.Assign || k == PyTokKind.Eq || k == PyTokKind.Ne
         || k == PyTokKind.Ge || k == PyTokKind.Le || k == PyTokKind.Gt || k == PyTokKind.Lt;
 
+
+    /// <summary>术语 -> 固定阈值计数器比较（与 TermForCompare 互为逆运算）。</summary>
+    private BoolExpr TermToCompare(string word)
+    {
+        var k = (word ?? "").Replace("_", "").ToLowerInvariant();
+        return k switch
+        {
+            "overflow" => new CompareExpr { Left = NumExpr.Ctr(_schema.Counter("max_pp")), Op = CompareOp.Ge, Right = NumExpr.Const(7) },
+            "wrath" => new CompareExpr { Left = NumExpr.Ctr(_schema.Counter("wrath")), Op = CompareOp.Ge, Right = NumExpr.Const(7) },
+            "skyboundart" => new CompareExpr { Left = NumExpr.Ctr(_schema.Counter("skybound_gauge")), Op = CompareOp.Ge, Right = NumExpr.Const(10) },
+            "superskyboundart" => new CompareExpr { Left = NumExpr.Ctr(_schema.Counter("skybound_gauge")), Op = CompareOp.Ge, Right = NumExpr.Const(15) },
+            _ => null,
+        };
+    }
+
     private BoolExpr ParseBoolAtom()
     {
         if (MatchIdent("true")) return BoolExpr.True;
         if (MatchIdent("false")) return BoolExpr.False;
+
+        // 游戏术语条件糖：overflow / wrath / skybound_art / super_skybound_art
+        // 与 TermForCompare 严格互为逆运算，只在固定阈值命中时生效。
+        if (Current.Kind == PyTokKind.Ident)
+        {
+            var term = TermToCompare(Current.Text);
+            if (term != null) { Advance(); return term; }
+        }
 
         // is selected | is <CardKind>[(Of)] | is <UnitState>[(Of)]
         if (MatchIdent("is"))
