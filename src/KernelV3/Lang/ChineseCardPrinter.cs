@@ -1480,8 +1480,14 @@ public sealed class ChineseCardPrinter
                 parts.Add("来自【" + hp.PackId + "】卡包的");
                 break;
 
+            // 与 PrintBool / PrintPoolFilter 保持同一套三分支：
+            // 漏了 IsSelfClan 与多职业时，DIY 写的「本职业随从」「皇家或巫师随从」
+            // 会印成空白或只印第一个职业。
             case HasClanExpr hc:
-                parts.Add(ClanZh(hc.Clan.Name) + "职业的");
+                if (hc.IsSelfClan) parts.Add("本职业的");
+                else if (hc.Clans != null && hc.Clans.Count > 0)
+                    parts.Add(string.Join("或", hc.Clans.Select(x => ClanZh(x.Name))) + "职业的");
+                else parts.Add(ClanZh(hc.Clan.Name) + "职业的");
                 break;
             case HasKeywordExpr hkw:
                 parts.Add("拥有【" + KeywordZh(hkw.Keyword.Name) + "】的");
@@ -1593,12 +1599,15 @@ public sealed class ChineseCardPrinter
         if (c.Left is not NumExpr { Op: NumOp.Counter } l) return null;
         if (c.Right is not NumExpr { Op: NumOp.Const } r) return null;
         string n = l.Counter.Name ?? "";
+        // 双主语条件（both players are in Overflow）里对手的计数器要带敌方前缀，
+        // 否则「我方觉醒且敌方觉醒」会印成「觉醒状态已发动且觉醒状态已发动」。
+        string side = l.Of?.Owner == ZoneScope.Opponent ? "敌方" : "";
         return (n, r.Value) switch
         {
-            ("max_pp", 7) => "【觉醒】状态已发动",
-            ("wrath", 7) => "【狂乱】状态已发动",
-            ("skybound_gauge", 10) => "满足【奥义】10条件",
-            ("skybound_gauge", 15) => "满足【解放奥义】15条件",
+            ("max_pp", 7) => side + "【觉醒】状态已发动",
+            ("wrath", 7) => side + "【狂乱】状态已发动",
+            ("skybound_gauge", 10) => side + "满足【奥义】10条件",
+            ("skybound_gauge", 15) => side + "满足【解放奥义】15条件",
             ("turn_ally_attacks", 0) => "本回合中我方随从尚未进行攻击",
             ("ally_attacked_leader_last_turn", 1) => "上回合中有我方随从攻击过敌方主战者",
             _ => null,
@@ -1716,7 +1725,9 @@ public sealed class ChineseCardPrinter
                     + (e.Args != null && e.Args.Count > 0 ? PrintNum(e.Args[0]) : e.Value.ToString())
                     + "的随机数）";
             // 计数器当数值用时不能带「点」这类量词：「造成连击点伤害」读不通。
-            case NumOp.Counter: return CounterZh(e.Counter.Name) + "值";
+            case NumOp.Counter:
+                // 双主语条件里对手的计数器带敌方前缀，与 TermOfCompare 同口径。
+                return (e.Of?.Owner == ZoneScope.Opponent ? "敌方" : "") + CounterZh(e.Counter.Name) + "值";
             case NumOp.Property: return StatZh(e.Stat);
             case NumOp.Count:
                 return "「" + PrintTarget(e.Of ?? TargetSpec.Self) + "」的数量";
