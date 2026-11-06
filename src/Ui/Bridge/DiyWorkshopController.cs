@@ -120,7 +120,7 @@ public sealed class DiyWorkshopController
     public void LoadSampleCard()
     {
         string sample = string.Join("\n",
-            "card 950001 \"星界旅者\" (Follower, clan=Swordcraft, cost=3, atk=3, life=4):",
+            "card 950001 \"星界旅者\" (Follower, clan=皇家, cost=3, atk=3, life=4):",
             "    deck_mod: ModifyDeckSize 10 0",
             "    keywords: [ward, rush]",
             "    fanfare:",
@@ -807,89 +807,89 @@ public sealed class DiyWorkshopController
         var root = RootListOf(scope);
         if (root == null) return false;
 
+        List<Block> targetList = null;
+        int insertIdx = -1;
+
         // 规则 1：事件帽永远挂在能力域根列表。
         if (opcode.StartsWith("hat_"))
         {
-            root.Add(blk);
-            ActiveInsertList = blk.Stacks ??= new List<Block>();
-            LastInsertedBlock = blk;
-            return CompileFromBlocks(BlockModel);
+            targetList = root;
+            insertIdx = root.Count;
         }
-
         // 规则 2：构筑修正永远进 DeckModBlocks，混进事件帽会让编译报「不是事件帽」。
-        if (opcode == "act_deck_mod")
+        else if (opcode == "act_deck_mod")
         {
             BlockModel.DeckModBlocks ??= new List<Block>();
-            BlockModel.DeckModBlocks.Add(blk);
-            return CompileFromBlocks(BlockModel);
+            targetList = BlockModel.DeckModBlocks;
+            insertIdx = targetList.Count;
         }
-
-        // 规则 3：选中了某颗非帽积木 -> 插在它同级正下方。
-        if (selectedBlock != null && !(selectedBlock.Opcode ?? "").StartsWith("hat_"))
-        {
-            var parent = DiyBlockTree.FindParentContainer(BlockModel, selectedBlock);
-            if (parent != null)
-            {
-                int idx = parent.IndexOf(selectedBlock);
-                if (idx >= 0) parent.Insert(idx + 1, blk);
-                else parent.Add(blk);
-                ActiveInsertList = parent;
-                LastInsertedBlock = blk;
-                return CompileFromBlocks(BlockModel);
-            }
-        }
-
         // 规则 3b：选中的是控制流块 -> 落到它的分支槽。
-        // 「点过哪个分支槽」由界面通过 ActiveBranch 指定；没指定就落主 Stacks。
-        if (selectedBlock != null && (selectedBlock.Opcode ?? "").StartsWith("c_"))
+        else if (selectedBlock != null && (selectedBlock.Opcode ?? "").StartsWith("c_"))
         {
-            List<Block> slot = null;
             switch (ActiveBranch)
             {
                 case "else":
-                    selectedBlock.ElseStacks ??= new List<Block>();
-                    slot = selectedBlock.ElseStacks;
+                    targetList = selectedBlock.ElseStacks ??= new List<Block>();
                     break;
                 case "branch" when ActiveBranchIndex >= 0:
                     selectedBlock.Branches ??= new List<List<Block>>();
                     while (selectedBlock.Branches.Count <= ActiveBranchIndex)
                         selectedBlock.Branches.Add(new List<Block>());
-                    slot = selectedBlock.Branches[ActiveBranchIndex];
+                    targetList = selectedBlock.Branches[ActiveBranchIndex];
                     break;
                 default:
-                    selectedBlock.Stacks ??= new List<Block>();
-                    slot = selectedBlock.Stacks;
+                    targetList = selectedBlock.Stacks ??= new List<Block>();
                     break;
             }
-            slot.Add(blk);
-            ActiveInsertList = slot;
-            // 注意：CompileFromBlocks 会整棵重建模型，blk 随即成为旧树死节点。
-            // 所以这里只记路径，编译后在新树上找回，否则 UI 的选中绑在死节点上，
-            // 改任何属性都不会反映到新树。
-            var slotPath = PathOfListIn(BlockModel, slot);
-            int insIdx = slot.IndexOf(blk);
-            if (!CompileFromBlocks(BlockModel)) return false;
-            LastInsertedBlock = ResolveBlockAt(BlockModel, slotPath, insIdx);
-            return true;
+            insertIdx = targetList.Count;
+        }
+        // 规则 3：选中了某颗非帽积木 -> 插在它同级正下方。
+        else if (selectedBlock != null && !(selectedBlock.Opcode ?? "").StartsWith("hat_"))
+        {
+            var parent = DiyBlockTree.FindParentContainer(BlockModel, selectedBlock);
+            if (parent != null)
+            {
+                targetList = parent;
+                int idx = parent.IndexOf(selectedBlock);
+                insertIdx = idx >= 0 ? idx + 1 : parent.Count;
+            }
         }
 
-        // 规则 4：有明确插入点就直接追加。
+        // 规则 4：有明确插入点（且不是域根）。
         // 必须排除域根：Hats 只收事件帽，动作块塞进去编译会报
         // 「不是事件帽积木」，而玩家看到的是「点了没反应」。
-        if (ActiveInsertList != null && !ReferenceEquals(ActiveInsertList, root))
+        if (targetList == null && ActiveInsertList != null && !ReferenceEquals(ActiveInsertList, root))
         {
-            ActiveInsertList.Add(blk);
-            return CompileFromBlocks(BlockModel);
+            targetList = ActiveInsertList;
+            insertIdx = targetList.Count;
         }
 
         // 规则 5：兜底落到本域最后一顶帽子的 Stacks（没帽子就补一顶）。
-        if (root.Count == 0 || !(root[root.Count - 1].Opcode ?? "").StartsWith("hat_"))
-            root.Add(DiyBlockTree.CreateDefaultBlock("hat_self_event"));
-        var lastHat = root[root.Count - 1];
-        lastHat.Stacks ??= new List<Block>();
-        lastHat.Stacks.Add(blk);
-        ActiveInsertList = lastHat.Stacks;
-        return CompileFromBlocks(BlockModel);
+        if (targetList == null)
+        {
+            if (root.Count == 0 || !(root[root.Count - 1].Opcode ?? "").StartsWith("hat_"))
+                root.Add(DiyBlockTree.CreateDefaultBlock("hat_self_event"));
+            var lastHat = root[root.Count - 1];
+            targetList = lastHat.Stacks ??= new List<Block>();
+            insertIdx = targetList.Count;
+        }
+
+        // 统一在插入前记容器路径，重编译后从新树精准取回新节点。
+        //
+        // 这一步必须在**末尾统一做**：早期只在分支槽那条路上写了路径恢复，
+        // 其余四条的 LastInsertedBlock 都指向重编译前旧树上的死节点，
+        // UI 的选中绑在死节点上，右侧检视器改任何属性都不生效。
+        var slotPath = PathOfListIn(BlockModel, targetList);
+        targetList.Insert(insertIdx, blk);
+        if (!CompileFromBlocks(BlockModel)) return false;
+
+        LastInsertedBlock = ResolveBlockAt(BlockModel, slotPath, insertIdx);
+        ActiveInsertList = LastInsertedBlock != null
+            ? ((LastInsertedBlock.Opcode ?? "").StartsWith("hat_")
+                ? (LastInsertedBlock.Stacks ??= new List<Block>())
+                : DiyBlockTree.FindParentContainer(BlockModel, LastInsertedBlock))
+            : null;
+        return true;
     }
 
 

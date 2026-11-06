@@ -468,8 +468,9 @@ public partial class PackAndPoolManagerView : Control
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
         box.AddThemeConstantOverride("separation", 6);
 
-        var nameEdit = new LineEdit { PlaceholderText = "内部 ID（如 my_charge）" };
-        var showEdit = new LineEdit { PlaceholderText = "显示名（如 充能）" };
+        // 只填一个名字：计数器名就是玩家写的那一个，同时作为内部标识。
+        // 分「内部 ID + 显示名」两套的话，改了名要同步两处，迟早对不上。
+        var nameEdit = new LineEdit { PlaceholderText = "计数器名称（如 充能）" };
         var minEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 0 };
         var maxEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 99 };
         var initEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 0 };
@@ -485,17 +486,14 @@ public partial class PackAndPoolManagerView : Control
         {
             nameEdit.Editable = false;
             nameEdit.Text = existing.Name ?? "";
-            showEdit.Text = existing.NameChs ?? "";
             minEdit.Value = existing.Min;
             maxEdit.Value = existing.Max;
             initEdit.Value = existing.Initial;
             lifePick.Select((int)existing.Lifecycle);
         }
 
-        box.AddChild(new Label { Text = "内部 ID" });
+        box.AddChild(new Label { Text = "计数器名称" });
         box.AddChild(nameEdit);
-        box.AddChild(new Label { Text = "显示名" });
-        box.AddChild(showEdit);
         box.AddChild(new Label { Text = "最小值" });
         box.AddChild(minEdit);
         box.AddChild(new Label { Text = "最大值" });
@@ -509,13 +507,12 @@ public partial class PackAndPoolManagerView : Control
         dlg.Confirmed += () =>
         {
             string id = nameEdit.Text?.Trim();
-            string show = showEdit.Text?.Trim();
-            if (string.IsNullOrEmpty(id)) { _ruleStatus.Text = "内部 ID 不能为空"; return; }
-            if (string.IsNullOrEmpty(show)) show = id;
+            if (string.IsNullOrEmpty(id)) { _ruleStatus.Text = "计数器名称不能为空"; return; }
 
             var def = new KernelV3.Packs.PoolCounterDef
             {
-                Name = id, NameChs = show,
+                // 名字只有一个：Name 既是标识也是显示名，NameChs 保持同值只为兼容旧字段。
+                Name = id, NameChs = id,
                 Min = (int)minEdit.Value, Max = (int)maxEdit.Value, Initial = (int)initEdit.Value,
                 Lifecycle = (KernelV3.Packs.CounterLifecycle)lifePick.Selected,
                 IsBuiltin = false,
@@ -524,7 +521,7 @@ public partial class PackAndPoolManagerView : Control
             // 注册进 Schema：不注册的话效果里写 ctr:my_charge 会拿到 Invalid。
             _store.Catalog.Schema.Counter(id, cfg.PoolId);
             _store.Catalog.Schema.CounterLimits[id] = (def.Min, def.Max);
-            _store.Catalog.Glossary.Add(id, show);
+            _store.Catalog.Glossary.Add(id, id);
 
             var ctrs = new List<KernelV3.Packs.PoolCounterDef>(cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>());
             ctrs.RemoveAll(x => x != null && string.Equals(x.Name, id, StringComparison.OrdinalIgnoreCase));
@@ -642,14 +639,14 @@ public partial class PackAndPoolManagerView : Control
     private void OpenRenameClanDialog(string clanName)
     {
         if (string.IsNullOrWhiteSpace(clanName)) return;
-        var dlg = new AcceptDialog { Title = "修改职业显示名" };
+        var dlg = new AcceptDialog { Title = "重命名职业" };
         dlg.OkButtonText = "保存";
 
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
         box.AddThemeConstantOverride("separation", 6);
-        box.AddChild(new Label { Text = "内部 ID（不可改）：" + clanName });
-        var edit = new LineEdit { Text = SvWbTheme.ClanDisplayZh(clanName) };
-        box.AddChild(new Label { Text = "显示名" });
+        box.AddChild(new Label { Text = "当前职业名：" + clanName });
+        var edit = new LineEdit { Text = clanName };
+        box.AddChild(new Label { Text = "新职业名" });
         box.AddChild(edit);
         dlg.AddChild(box);
 
@@ -663,6 +660,19 @@ public partial class PackAndPoolManagerView : Control
             // 分两处存的话迟早对不上。
             if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var latest)) return;
             if (string.Equals(zh, clanName, StringComparison.Ordinal)) return;
+
+            // 改名等于换一个职业符号：已有卡绑在旧名上，改完它们的 Clan 就失效了。
+            // 而卡包里如果声明过旧职业名，RefreshPoolClans 会把它重新扫出来，
+            // 界面上变成「旧名（未勾选）+ 新名（已勾选）」两个职业并存。
+            var deps = ClanDependencyScanner.FindCardsDependingOnClan(
+                _store.GetPoolRuntime(_selectedPoolId), clanName);
+            if (deps.Count > 0)
+            {
+                _ruleStatus.Text = "✘ 无法重命名【" + clanName + "】：卡池内有 " + deps.Count
+                                   + " 张卡绑定此职业（" + string.Join("、", deps.Take(3))
+                                   + "）。请先改掉这些卡的职业，或新建一个职业。";
+                return;
+            }
 
             var clans = new List<string>(latest.PoolClans ?? new List<string>());
             int at = clans.FindIndex(x => string.Equals(x, clanName, StringComparison.OrdinalIgnoreCase));
@@ -859,31 +869,20 @@ public partial class PackAndPoolManagerView : Control
         box.AddThemeConstantOverride("separation", 6);
         dlg.AddChild(box);
 
+        // 牌组名只有一个。分「英文标识名 + 中文显示名」两套的话，
+        // replace_deck 引用的是英文名、卡面显示的是中文名，改名要同步两处。
         var nameRow = new HBoxContainer();
         var nameLb = new Label { Text = "牌组名", CustomMinimumSize = new Vector2(70, 0) };
         nameLb.AddThemeFontSizeOverride("font_size", 12);
         nameRow.AddChild(nameLb);
         var nameEdit = new LineEdit
         {
-            Text = target.DeckName ?? "",
+            Text = string.IsNullOrEmpty(target.DeckNameChs) ? (target.DeckName ?? "") : target.DeckNameChs,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            TooltipText = "英文标识名，供 replace_deck 引用（如 Apocalypse Deck）",
+            TooltipText = "牌组名称，供 replace_deck 引用（如 启示录牌组）",
         };
         nameRow.AddChild(nameEdit);
         box.AddChild(nameRow);
-
-        var chsRow = new HBoxContainer();
-        var chsLb = new Label { Text = "中文显示名", CustomMinimumSize = new Vector2(70, 0) };
-        chsLb.AddThemeFontSizeOverride("font_size", 12);
-        chsRow.AddChild(chsLb);
-        var chsEdit = new LineEdit
-        {
-            Text = target.DeckNameChs ?? "",
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            TooltipText = "卡面上显示的名字（如 启示录牌组）",
-        };
-        chsRow.AddChild(chsEdit);
-        box.AddChild(chsRow);
 
         var listScroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         SvWbTheme.StyleScroll(listScroll);
@@ -974,7 +973,7 @@ public partial class PackAndPoolManagerView : Control
             var newNd = new ShadowverseFan.KernelV3.Packs.NamedDeckRawDef
             {
                 DeckName = nameEdit.Text?.Trim() ?? target.DeckName,
-                DeckNameChs = chsEdit.Text?.Trim() ?? target.DeckNameChs,
+                DeckNameChs = nameEdit.Text?.Trim() ?? target.DeckNameChs,
                 Entries = working,
             };
 
@@ -1134,7 +1133,9 @@ public partial class PackAndPoolManagerView : Control
         if (existing != null) idEdit.Editable = false;   // ID 是目录名，改了等于换包
         var nameEdit = Field("卡包名称", existing?.Name);
         var authorEdit = Field("作者", existing?.Author);
-        var nativeEdit = Field("原生卡池 ID", existing?.NativePoolId ?? "standard");
+        // 默认填当前选中的卡池：写死 "standard" 会让新包挂到标准池，
+        // 而玩家明明是在自定义卡池的界面里建的。
+        var nativeEdit = Field("所属卡池", existing?.NativePoolId ?? (_selectedPoolId ?? "standard"));
 
         dlg.Confirmed += () =>
         {
@@ -1142,7 +1143,16 @@ public partial class PackAndPoolManagerView : Control
                 idEdit.Text?.Trim(), nameEdit.Text?.Trim(), authorEdit.Text?.Trim(),
                 nativeEdit.Text?.Trim(), out string msg);
             _header.Text = "卡包 / 卡池管理 —— " + msg;
-            if (ok) { _selectedPackId = idEdit.Text?.Trim(); RefreshPacks(); }
+            // 新建卡包会改卡池的 enabled_packs，右栏勾选区必须跟着刷，
+            // 否则新包已经进了卡池，玩家在界面上却看不到它被勾上。
+            if (ok)
+            {
+                _selectedPackId = idEdit.Text?.Trim();
+                RefreshPacks();
+                RefreshRules();
+                RefreshPoolClans();
+                RefreshPoolCounters();
+            }
             dlg.QueueFree();
         };
         dlg.Canceled += () => dlg.QueueFree();

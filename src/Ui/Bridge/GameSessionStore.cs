@@ -734,7 +734,9 @@ public sealed class GameSessionStore
         {
             nativeCfg.EnabledPackIds.Add(packId);
             SavePoolRules(nativeCfg.PoolId, nativeCfg.Rules, out _);
-            PoolConfigs[packId] = nativeCfg;
+            // 这里曾经写成 PoolConfigs[packId] = nativeCfg —— 把包 ID 当成卡池 ID 塞进字典，
+            // 从此 PoolConfigs 里多出一个叫「某卡包」的假卡池，而它指向的配置还是别人的。
+            // nativeCfg 已经在 PoolConfigs[nativeCfg.PoolId] 里，不需要再写一次。
         }
 
         ReloadCatalogAndPools();

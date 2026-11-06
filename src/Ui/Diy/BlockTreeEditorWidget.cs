@@ -1368,14 +1368,14 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildTargetSlotEditor(col, "使谁变身", b.Target, v => { b.Target = v; Apply(); });
                 // 卡牌一律按**卡 ID**指定，不认卡名 —— 卡名是可变显示文本，
                 // 玩家改了名或换了语言，按名查就查不到，效果静默失效。
-                BuildCardIdPicker(col, "变成", b.IntB, v => { b.IntB = v; Apply(); });
+                BuildCardIdPicker(col, "变成", b.IntB, (id, nm) => { b.IntB = id; if (!string.IsNullOrEmpty(nm)) b.Text = nm; Apply(); });
                 break;
 
             // 获得纹章：纹章名 + 授予对象
             case "act_gain_crest":
                 // 纹章是独立实体：卡 ID 非 0 时按 ID 建，否则按 Text 找。
                 // 优先 ID，卡名只作显示。
-                BuildCardIdPicker(col, "纹章", b.IntB, v => { b.IntB = v; Apply(); });
+                BuildCardIdPicker(col, "纹章", b.IntB, (id, nm) => { b.IntB = id; if (!string.IsNullOrEmpty(nm)) b.Text = nm; Apply(); });
                 BuildTextEditor(col, "纹章名（显示用）", b.Text, v => { b.Text = v; Apply(); });
                 BuildEnumCombo(col, "授予对象",
                     new[] { ("Self", "我方"), ("Opponent", "敌方"), ("Any", "双方") },
@@ -1417,7 +1417,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
             case "act_summon":
             case "act_add_hand":
-                BuildCardIdPicker(col, "卡牌", b.IntB, v => { b.IntB = v; Apply(); });
+                BuildCardIdPicker(col, "卡牌", b.IntB, (id, nm) => { b.IntB = id; if (!string.IsNullOrEmpty(nm)) b.Text = nm; Apply(); });
                 BuildNumberSlotEditor(col, "数量", b.Number, v => { b.Number = v; Apply(); });
                 break;
 
@@ -1452,7 +1452,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
             default:
                 // 兜底：确实需要手填的少数积木。卡牌一律用卡 ID，不认卡名。
-                BuildCardIdPicker(col, "卡牌", b.IntB, v => { b.IntB = v; Apply(); });
+                BuildCardIdPicker(col, "卡牌", b.IntB, (id, nm) => { b.IntB = id; if (!string.IsNullOrEmpty(nm)) b.Text = nm; Apply(); });
                 BuildNumberSlotEditor(col, "数值", b.Number, v => { b.Number = v; Apply(); });
                 break;
         }
@@ -1640,7 +1640,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     /// 而且编译端 DoSpawn / DoTransform 只读 CardId。
     /// 但交互上允许输入卡号或中/英卡名检索，点选后立刻转成 ID。
     /// </summary>
-    private void BuildCardIdPicker(VBoxContainer col, string label, int currentId, Action<int> onPicked)
+    private void BuildCardIdPicker(VBoxContainer col, string label, int currentId, Action<int, string> onPicked)
     {
         var box = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         box.AddThemeConstantOverride("separation", 4);
@@ -1667,7 +1667,9 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             int id = (int)v;
             var hit = all.FirstOrDefault(c => c.Id == id);
             head.Text = label + "：" + (id > 0 ? (hit.Id > 0 ? "#" + hit.Id + " 《" + hit.Zh + "》" : "#" + id) : "（未指定卡 ID）");
-            onPicked(id);
+            // 同时回传卡名：act_gain_crest 在编译器里靠 Text 匹配纹章名，
+            // 只给卡号会让纹章变成空名实体。
+            onPicked(id, hit.Zh ?? hit.En ?? "");
         };
         box.AddChild(idSpin);
 

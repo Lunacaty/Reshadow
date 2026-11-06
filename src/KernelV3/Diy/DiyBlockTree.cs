@@ -126,7 +126,7 @@ public static class DiyBlockTree
                     Target = new Block { Opcode = "tgt_query", IntA = 1, IntB = 0, EnumA = "Choose", Number = ConstNum(1) },
                 };
             case "act_transform":
-                return new Block { Opcode = opcode, Target = EnemyFollower(), Text = "Fairy" };
+                return new Block { Opcode = opcode, Target = EnemyFollower(), IntB = 90011110, Text = "Fairy" };
             case "act_move_to_board":
                 return new Block { Opcode = opcode, Target = SelfSlot() };
 

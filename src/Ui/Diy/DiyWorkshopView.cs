@@ -651,11 +651,10 @@ public partial class DiyWorkshopView : Control
         if (fm == null) { _endpointHost.AddChild(new Label { Text = "（表单模型为空）" }); return; }
 
         // 可编辑：这些是表单端真正能改的字段
-        _formNameEdit = new LineEdit { Text = fm.NameChs ?? "", CustomMinimumSize = new Vector2(260, 32) };
-        _endpointHost.AddChild(EditRow("卡名（中文）", _formNameEdit));
-
-        _formNameEngEdit = new LineEdit { Text = fm.NameEng ?? "", CustomMinimumSize = new Vector2(260, 32) };
-        _endpointHost.AddChild(EditRow("卡名（英文）", _formNameEngEdit));
+        // 卡名只有一个。分中英两个输入框等于存两套名字，
+        // 玩家改了一个另一个还是旧的，卡面上到底显示哪个全看谁最后写。
+        _formNameEdit = new LineEdit { Text = fm.NameChs ?? fm.NameEng ?? "", CustomMinimumSize = new Vector2(260, 32) };
+        _endpointHost.AddChild(EditRow("卡牌名称", _formNameEdit));
 
         _formCostSpin = MakeSpin(fm.Cost, 0, 30);
         _endpointHost.AddChild(EditRow("基础费用", _formCostSpin));
@@ -741,8 +740,10 @@ public partial class DiyWorkshopView : Control
         var fm = _ctrl.FormModel;
         if (fm == null) return false;
 
-        fm.NameChs = _formNameEdit?.Text ?? fm.NameChs;
-        fm.NameEng = _formNameEngEdit?.Text ?? fm.NameEng;
+        // 一个名字写进两个字段：NameChs 是显示名，NameEng 是同值（旧字段，卡名查询用）。
+        string nm = _formNameEdit?.Text ?? fm.NameChs;
+        fm.NameChs = nm;
+        fm.NameEng = nm;
         fm.Cost = _formCostSpin != null ? (int)_formCostSpin.Value : fm.Cost;
         fm.Attack = _formAtkSpin != null ? (int)_formAtkSpin.Value : fm.Attack;
         fm.Life = _formLifeSpin != null ? (int)_formLifeSpin.Value : fm.Life;

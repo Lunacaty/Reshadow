@@ -72,6 +72,14 @@ public static class AuthoritativeNames
     }
 
     /// <summary>按卡号取英文名；没有返回 null。</summary>
+    /// <summary>卡号 -> 中文名；查不到返回空串。</summary>
+    public static string ChineseOf(int cardId)
+    {
+        if (cardId <= 0) return "";
+        try { return Zh.TryGetValue(cardId, out var zh) ? (zh ?? "") : ""; }
+        catch (Exception) { return ""; }
+    }
+
     public static string EnglishOf(int cardId)
         => En.TryGetValue(cardId, out var v) ? v : null;
 

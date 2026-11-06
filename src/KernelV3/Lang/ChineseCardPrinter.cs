@@ -742,7 +742,11 @@ public sealed class ChineseCardPrinter
                 // 按卡名印会印出空的《》。
                 if (t.CopySource != null)
                     return "使" + PrintTarget(t.Target) + "【变身】为" + PrintTarget(t.CopySource) + "的复制。";
-                return "使" + PrintTarget(t.Target) + "【变身】为《" + CardZh(t.IntoCardName) + "》。";
+                // 同样优先按卡号取名：积木端只填 IntB，CardName 常为空，
+                // 只看 CardName 会印出「变身为《》」。
+                string intoZh = Packs.AuthoritativeNames.ChineseOf(t.IntoCardId);
+                if (string.IsNullOrEmpty(intoZh)) intoZh = CardZh(t.IntoCardName);
+                return "使" + PrintTarget(t.Target) + "【变身】为《" + intoZh + "》。";
 
             case EvolveNode e:
                 return "使" + PrintTarget(e.Target) + (e.IsSuperEvolve ? "【超进化】" : "【进化】") + "。";
@@ -878,11 +882,14 @@ public sealed class ChineseCardPrinter
                 : "召唤" + count + "个" + PrintTarget(sp.CopyFrom) + "的" + kind + "到战场上。";
         }
 
-        // CopyOfPrevious（spawn_previous）等形态的 CardName 是空串，
-        // 直接拼会印出空书名号《》。
-        string cardTitle = string.IsNullOrEmpty(sp.CardName)
-            ? "同名卡牌"
-            : "《" + CardZh(sp.CardName) + "》";
+        // 优先按**卡号**取名：积木端现在只填 IntB，CardName 常常是空串，
+        // 只看 CardName 会把「召唤 #90011110 妖精」印成「召唤1个同名卡牌」，
+        // 玩家根本看不出自己选的是哪张。
+        string byId = Packs.AuthoritativeNames.ChineseOf(sp.CardId);
+        string cardTitle;
+        if (!string.IsNullOrEmpty(byId)) cardTitle = "《" + byId + "》";
+        else if (!string.IsNullOrEmpty(sp.CardName)) cardTitle = "《" + CardZh(sp.CardName) + "》";
+        else cardTitle = "同名卡牌";
         return sp.ToZone == ZoneRef.Hand
             ? "将" + count + "张" + cardTitle + "加入我方手牌。"
             : "召唤" + count + "个" + cardTitle + "到战场上。";
@@ -2098,29 +2105,13 @@ public sealed class ChineseCardPrinter
     /// loot 译成「战利品」—— 与官方中文卡面不一致，玩家认不出。
     /// 未收录的走 Glossary（DIY 自定义兵种走 DefineTrait 注册）。
     /// </summary>
-    public string TraitZh(string en) => (en ?? "").ToLowerInvariant() switch
-    {
-        "officer" => "士兵",
-        "luminous" => "鲁米那斯",
-        "levin" => "雷维翁",
-        "pixie" => "妖精",
-        "departed" => "亡者",
-        "earth sigil" => "土之印",
-        "mysteria" => "玛纳利亚",
-        "golem" => "巨像",
-        "shikigami" => "式神",
-        "artifact" => "创造物",
-        "puppetry" => "人偶",
-        "marine" => "海洋",
-        "loot" => "财宝",
-        "encroacher" => "侵蚀者",
-        "anathema" => "安纳提玛",
-        "clue" => "证据",
-        // 非官方兵种（DIY / 旧版本遗留）走 Glossary。
-        "machina" => "机械",
-        "commander" => "司令官",
-        _ => _glossary.ToChinese(en),
-    };
+    /// <summary>
+    /// 兵种名转中文。
+    ///
+    /// 不在代码里写对照表 —— 兵种的中英对照统一放在 glossary.json，
+    /// 与卡名、术语走同一条路。数据能改、能扩，代码不用重新编译。
+    /// </summary>
+    public string TraitZh(string en) => _glossary.ToChinese(en);
 
     /// <summary>
     /// 卡名转中文。

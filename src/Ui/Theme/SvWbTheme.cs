@@ -37,17 +37,42 @@ public static class SvWbTheme
     public static readonly Color TextMuted    = new("64748B");
 
     /// <summary>获取八大职业的代表主题色。</summary>
-    public static Color ClanColor(string clanName) => (clanName ?? "").ToLowerInvariant() switch
+    /// <summary>
+    /// 职业配色。
+    ///
+    /// 职业名在数据里已经是中文（「皇家」「精灵」…），这里按中文匹配。
+    /// 自定义职业没有预设色，用名字哈希稳定分配一个 ——
+    /// 全部落进默认灰会让玩家分不清哪个是哪个职业。
+    /// </summary>
+    public static Color ClanColor(string clanName)
     {
-        "forestcraft" => new Color("10B981"),
-        "swordcraft"  => new Color("EAB308"),
-        "runecraft"   => new Color("6366F1"),
-        "dragoncraft" => new Color("EF4444"),
-        "abysscraft" or "shadowcraft" or "bloodcraft" => new Color("A855F7"),
-        "havencraft"  => new Color("FDE047"),
-        "portalcraft" => new Color("06B6D4"),
-        _             => new Color("94A3B8"),
-    };
+        string k = (clanName ?? "").Trim();
+        return k switch
+        {
+            "精灵" => new Color("10B981"),
+            "皇家" => new Color("EAB308"),
+            "巫师" => new Color("6366F1"),
+            "龙族" => new Color("EF4444"),
+            "深渊" => new Color("A855F7"),
+            "主教" => new Color("FDE047"),
+            "超越者" => new Color("06B6D4"),
+            "中立" => new Color("94A3B8"),
+            _ => HashColor(k),
+        };
+    }
+
+    /// <summary>自定义职业：按名字哈希稳定取色（同名永远同色，不同名尽量不同）。</summary>
+    private static Color HashColor(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return new Color("94A3B8");
+        unchecked
+        {
+            int h = 17;
+            foreach (char c in name) h = h * 31 + c;
+            float hue = (h & 0x7FFFFFFF) % 360;
+            return Color.FromHsv(hue, 0.55f, 0.85f);
+        }
+    }
 
     /// <summary>
     /// 职业名的显示形式。

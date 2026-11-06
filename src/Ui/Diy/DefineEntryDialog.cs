@@ -66,13 +66,11 @@ public partial class DefineEntryDialog : Control
         SvWbTheme.StyleOptionPopup(_kindPicker);
         v.AddChild(Field("类别", _kindPicker));
 
-        _engEdit = new LineEdit { CustomMinimumSize = new Vector2(260, 34),
-                                  PlaceholderText = "英文名，如 Mecha" };
-        v.AddChild(Field("英文名", _engEdit));
-
+        // 只填一个名字：词条名就是玩家写的那一个，同时作为内部标识。
+        // PyAST 词法器原生支持中文标识符，不需要先起个英文 ID。
         _chsEdit = new LineEdit { CustomMinimumSize = new Vector2(260, 34),
-                                  PlaceholderText = "中文名，如 机甲" };
-        v.AddChild(Field("中文名", _chsEdit));
+                                  PlaceholderText = "名称，如 机甲" };
+        v.AddChild(Field("名称", _chsEdit));
 
         _minSpin = new SpinBox { MinValue = 0, MaxValue = 999, Value = 0,
                                  CustomMinimumSize = new Vector2(120, 34) };
@@ -118,11 +116,10 @@ public partial class DefineEntryDialog : Control
 
     private void OnConfirm()
     {
-        string eng = (_engEdit?.Text ?? "").Trim();
         string chs = (_chsEdit?.Text ?? "").Trim();
+        string eng = chs;   // 同一个名字同时用作标识与显示名
 
-        if (string.IsNullOrEmpty(eng)) { _status.Text = "英文名不能为空"; return; }
-        if (string.IsNullOrEmpty(chs)) chs = eng;
+        if (string.IsNullOrEmpty(chs)) { _status.Text = "名称不能为空"; return; }
 
         string kind = _kindPicker?.Selected switch
         {
