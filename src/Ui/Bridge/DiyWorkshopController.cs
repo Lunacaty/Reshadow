@@ -636,6 +636,15 @@ public sealed class DiyWorkshopController
     /// <summary>当前选中的插入焦点列表；null 表示未指定。</summary>
     public List<Block> ActiveInsertList { get; private set; }
 
+    /// <summary>最近插入的积木。界面据此把选中推进过去，连续点击就能一路往下搭。</summary>
+    public Block LastInsertedBlock { get; private set; }
+
+    /// <summary>插入目标分支：null=主 Stacks，"else"=ElseStacks，"branch"=Branches[i]。</summary>
+    public string ActiveBranch { get; set; }
+
+    /// <summary>ActiveBranch == "branch" 时的分支下标。</summary>
+    public int ActiveBranchIndex { get; set; } = -1;
+
     /// <summary>把某个列表设为当前的插入焦点（画布上的「设为插入点」按钮）。</summary>
     public void SetActiveInsertList(List<Block> list) => ActiveInsertList = list;
 
@@ -688,6 +697,7 @@ public sealed class DiyWorkshopController
         {
             root.Add(blk);
             ActiveInsertList = blk.Stacks ??= new List<Block>();
+            LastInsertedBlock = blk;
             return CompileFromBlocks(BlockModel);
         }
 
@@ -709,8 +719,37 @@ public sealed class DiyWorkshopController
                 if (idx >= 0) parent.Insert(idx + 1, blk);
                 else parent.Add(blk);
                 ActiveInsertList = parent;
+                LastInsertedBlock = blk;
                 return CompileFromBlocks(BlockModel);
             }
+        }
+
+        // 规则 3b：选中的是控制流块 -> 落到它的分支槽。
+        // 「点过哪个分支槽」由界面通过 ActiveBranch 指定；没指定就落主 Stacks。
+        if (selectedBlock != null && (selectedBlock.Opcode ?? "").StartsWith("c_"))
+        {
+            List<Block> slot = null;
+            switch (ActiveBranch)
+            {
+                case "else":
+                    selectedBlock.ElseStacks ??= new List<Block>();
+                    slot = selectedBlock.ElseStacks;
+                    break;
+                case "branch" when ActiveBranchIndex >= 0:
+                    selectedBlock.Branches ??= new List<List<Block>>();
+                    while (selectedBlock.Branches.Count <= ActiveBranchIndex)
+                        selectedBlock.Branches.Add(new List<Block>());
+                    slot = selectedBlock.Branches[ActiveBranchIndex];
+                    break;
+                default:
+                    selectedBlock.Stacks ??= new List<Block>();
+                    slot = selectedBlock.Stacks;
+                    break;
+            }
+            slot.Add(blk);
+            ActiveInsertList = slot;
+            LastInsertedBlock = blk;
+            return CompileFromBlocks(BlockModel);
         }
 
         // 规则 4：有明确插入点就直接追加。

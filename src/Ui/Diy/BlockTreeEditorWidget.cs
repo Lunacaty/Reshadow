@@ -170,12 +170,15 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     /// </summary>
     private void EnsureInsertList()
     {
+        // 167 §2.2：靠「是否还属于当前树」来判定，
+        // 而不是保存 List<Block> 内存引用（重编译后它指向旧树，成为野指针）。
         if (_insertList != null && BelongsToTree(_insertList)) return;
         var root = _ctrl?.RootListOf(_scopeTab);
         if (root == null) root = ScopeRootFallback();
         _insertList = root;
         _ctrl?.SetActiveInsertList(root);
     }
+
 
     /// <summary>这个列表还是当前树的一部分吗（防止重编译后的野指针）。</summary>
     private bool BelongsToTree(List<Block> list)
@@ -673,6 +676,13 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         // 把当前选中传下去：动作积木会插在它同级正下方，连续点击就能一路往下搭。
         if (!_ctrl.InsertBlock(opcode, _scopeTab, _selected)) return;
         _ws = _ctrl.BlockModel;
+
+        // 167 §2.1：选中推进到新插入的那颗积木。
+        // 不推进的话第二次点击仍然插在原来那颗下面，顺序会是倒的，
+        // 玩家得每加一颗都重新点一次目标位置。
+        // LastInsertedBlock 是 InsertBlock 内部插完才赋的引用，直接用它。
+        if (_ctrl.LastInsertedBlock != null) _selected = _ctrl.LastInsertedBlock;
+
         Refresh();
     }
 
@@ -1334,7 +1344,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             // 使目标变身：变谁 + 变成哪张卡
             case "act_transform":
                 BuildTargetSlotEditor(col, "使谁变身", b.Target, v => { b.Target = v; Apply(); });
-                BuildTextEditor(col, "变成（卡名）", b.Text, v => { b.Text = v; Apply(); });
+                BuildCardPicker(col, "变成（从卡池选）", b.Text, v => { b.Text = v; Apply(); });
                 break;
 
             // 获得纹章：纹章名 + 授予对象
@@ -1380,7 +1390,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
             case "act_summon":
             case "act_add_hand":
-                BuildTextEditor(col, "卡名", b.Text, v => { b.Text = v; Apply(); });
+                BuildCardPicker(col, "卡名（从卡池选）", b.Text, v => { b.Text = v; Apply(); });
                 BuildNumberSlotEditor(col, "数量", b.Number, v => { b.Number = v; Apply(); });
                 break;
 
@@ -1415,7 +1425,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
             default:
                 // 兜底：确实需要手填的少数积木，但也要给出中文说明。
-                BuildTextEditor(col, "卡名 / 名称", b.Text, v => { b.Text = v; Apply(); });
+                BuildCardPicker(col, "卡名（从卡池选）", b.Text, v => { b.Text = v; Apply(); });
                 BuildNumberSlotEditor(col, "数值", b.Number, v => { b.Number = v; Apply(); });
                 break;
         }
@@ -1592,6 +1602,55 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         edit.FocusExited += () => setter(edit.Text);
         row.AddChild(edit);
         col.AddChild(row);
+    }
+
+
+    /// <summary>
+    /// 卡牌选择器（167 §2.4）：从当前卡池列卡，不让玩家手敲卡名。
+    ///
+    /// 手敲卡名的失败是静默的 —— 拼错一个字母，编译器认不出这张卡，
+    /// 效果退化成「对任意卡生效」或在运行期才炸，而界面上完全正常。
+    /// </summary>
+    private void BuildCardPicker(VBoxContainer col, string label, string cur, Action<string> setter)
+    {
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 3);
+        var head = new Label { Text = label };
+        head.AddThemeFontSizeOverride("font_size", 11);
+        head.AddThemeColorOverride("font_color", new Color("C4B5FD"));
+        box.AddChild(head);
+
+        var opt = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        SvWbTheme.StyleOptionPopup(opt);
+        opt.AddItem("（未指定）");
+
+        var cards = new List<string>();
+        try
+        {
+            var store = _ctrl?.Store;
+            var rt = _ctrl != null ? store?.GetPoolRuntime(_ctrl.ActivePoolId) : null;
+            var pool = rt?.AllCards?.Values ?? store?.Catalog?.AllCards?.Values;
+            if (pool != null)
+            {
+                foreach (var cd in pool.OrderBy(x => x.CardId))
+                {
+                    string nm = string.IsNullOrWhiteSpace(cd.NameChs) ? (cd.Name ?? "") : cd.NameChs;
+                    cards.Add(nm);
+                    opt.AddItem(cd.CardId + " " + nm);
+                }
+            }
+        }
+        catch (Exception) { }
+
+        int idx = cards.IndexOf(cur ?? "");
+        opt.Selected = idx >= 0 ? idx + 1 : 0;
+        opt.ItemSelected += s =>
+        {
+            int i = (int)s;
+            setter(i <= 0 || i - 1 >= cards.Count ? "" : cards[i - 1]);
+        };
+        box.AddChild(opt);
+        col.AddChild(box);
     }
 
     private static void BuildInlineText(VBoxContainer col, string label, string cur, Action<string> setter)
