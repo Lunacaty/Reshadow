@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using ShadowverseFan.KernelV3.Core;
 
 namespace ShadowverseFan.KernelV3.Packs;
@@ -37,7 +39,53 @@ public sealed class ConstructedDeck
     public List<string> ChosenExtraClans { get; init; } = new();
 
     /// <summary>构筑清单：(CardId, 投入张数)。</summary>
+    ///
+    /// 必须挂转换器：ValueTuple 的字段在 System.Text.Json 里默认不参与序列化，
+    /// 直接 Serialize(deck) 会写出 "Cards":[{}]，联机握手把牌组发到房主端后
+    /// 整张清单退化成 (0,0)，校验必然失败。磁盘存档走另一套匿名对象序列化，不受影响。
+    [JsonConverter(typeof(CardListConverter))]
     public List<(int cardId, int count)> Cards { get; init; } = new();
+
+    /// <summary>把 (卡号, 张数) 列表写成 {"card_id":N,"count":N} 数组。</summary>
+    public sealed class CardListConverter : JsonConverter<List<(int cardId, int count)>>
+    {
+        public override List<(int cardId, int count)> Read(
+            ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var list = new List<(int cardId, int count)>();
+            if (reader.TokenType != JsonTokenType.StartArray) return list;
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+            {
+                if (reader.TokenType != JsonTokenType.StartObject) continue;
+                int id = 0, count = 0;
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName) continue;
+                    string key = reader.GetString() ?? "";
+                    if (!reader.Read()) break;
+                    if (key is "card_id" or "Item1") id = reader.GetInt32();
+                    else if (key is "count" or "Item2") count = reader.GetInt32();
+                    else reader.Skip();
+                }
+                list.Add((id, count));
+            }
+            return list;
+        }
+
+        public override void Write(Utf8JsonWriter writer,
+            List<(int cardId, int count)> value, JsonSerializerOptions options)
+        {
+            writer.WriteStartArray();
+            foreach (var (cardId, count) in value ?? new List<(int, int)>())
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("card_id", cardId);
+                writer.WriteNumber("count", count);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+        }
+    }
 
     /// <summary>展开为局内发牌器所需的卡号序列。</summary>
     public List<int> ExpandToCardIds()

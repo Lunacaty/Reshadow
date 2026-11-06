@@ -1,0 +1,29 @@
+fix(联机): 修复局域网握手的牌组序列化与职业名迁移
+
+## 实测发现的 2 个真实阻断级 Bug
+
+### 1. ConstructedDeck.Cards 在网络传输中整张丢失
+  Cards 是 List<(int cardId, int count)>，ValueTuple 的字段在
+  System.Text.Json 里默认不参与序列化：
+    JsonSerializer.Serialize(deck) -> "Cards":[{}]
+    回读 -> (0, 0)
+  联机握手把牌组发给房主端后，校验看到的是「0 张 + 一堆 id=0」，
+  任何合法牌组都会被判定为不合规，LAN 对局根本无法开局。
+  已加 CardListConverter，写成 {"card_id":N,"count":N} 数组。
+  磁盘存档走的是另一套匿名对象序列化（card_id/count），不受影响。
+
+### 2. 存档牌组仍是旧英文职业名
+  official-forest.deck.json 的 leader_clan 是 "Forestcraft"，
+  而卡片数据现在是「精灵」—— 校验器据此拒绝所有旧牌组。
+  已把 5 处存档（decks/ 与 build/decks/）迁移到官方中文名：
+  Forestcraft->精灵、Swordcraft->皇家护卫（含 Runecraft/Abysscraft 等全映射）。
+
+## 自连验证
+  同一进程内 host + client 走 127.0.0.1 回环，用 40 张官方牌组：
+    卡池指纹 15543CB692D1... 一致
+    房主: 握手通过，客机牌组 14 项
+    客机: 握手完成，座次=1
+    连接结果: True / ClientMatched: True
+
+## 门禁
+  全部通过，无退化。
