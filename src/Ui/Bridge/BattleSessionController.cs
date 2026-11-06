@@ -325,18 +325,31 @@ public sealed class BattleSessionController
     /// <summary>当前挂起的 BranchModeNode（供 SelectMode 弹窗渲染每个选项的中文描述）。</summary>
     public BranchModeNode GetPendingBranchModeNode()
     {
-        if (Runner.PendingChoice?.Kind != ChoiceKind.SelectMode) return null;
+        if (EffectivePendingChoice?.Kind != ChoiceKind.SelectMode) return null;
 
         // 发动前预选阶段 VM 还没开始跑、没有任何帧，
         // 此时要从这张卡的 AST 里把那个 BranchModeNode 找回来。
         if (Runner.PreAction?.Subject != null)
         {
+            // 必须按当前动作时机匹配触发器：否则打牌时会拿进化能力里的模式节点，
+            // 进化时又可能拿不到（174 号文档 BUG4）。
+            var kind = Runner.PreAction.ActionKind;
             foreach (var ab in Runner.PreAction.Subject.Def?.Abilities ??
-                                new System.Collections.Generic.List<ShadowverseFan.KernelV3.Ast.AbilityDef>())
+                                new System.Collections.Generic.List<AbilityDef>())
             {
-                if (ab?.Body == null) continue;
-                foreach (var n in ab.Body)
-                    if (n is BranchModeNode bm && bm.Kind == ModeDispatchKind.Choose) return bm;
+                if (ab?.Trigger == null || ab.Body == null) continue;
+                bool match = kind switch
+                {
+                    PlayerActionKind.Evolve => ab.Trigger.Event == CoreEvent.OnEvolve,
+                    PlayerActionKind.SuperEvolve => ab.Trigger.Event == CoreEvent.OnSuperEvolve,
+                    PlayerActionKind.EngageAmulet => ab.Trigger.Event == CoreEvent.OnEngage,
+                    _ => ab.Trigger.Event == CoreEvent.OnPlay,
+                };
+                if (!match) continue;
+                // 经 MetaModeWeaver / InsteadWeaver 编织后，BranchModeNode 通常包在
+                // ConditionalNode 的 Then/Else 里，必须递归查找。
+                var found = FindBranchModeRecursive(ab.Body);
+                if (found != null) return found;
             }
             return null;
         }
@@ -347,9 +360,25 @@ public sealed class BattleSessionController
         return top.Ip < top.Code.Count ? top.Code[top.Ip] as BranchModeNode : null;
     }
 
+    private static BranchModeNode FindBranchModeRecursive(IReadOnlyList<EffectNode> nodes)
+    {
+        if (nodes == null) return null;
+        foreach (var n in nodes)
+        {
+            if (n is BranchModeNode bm && bm.Kind == ModeDispatchKind.Choose) return bm;
+            if (n is ConditionalNode c)
+            {
+                var r = FindBranchModeRecursive(c.Then) ?? FindBranchModeRecursive(c.Else);
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+
     /// <summary>当前挂起选择的来源实体（弹窗左侧展示「是哪张卡发起的」）。</summary>
     /// <summary>当前挂起是否可被玩家撤回（预选阶段才可）。</summary>
-    public bool CanCancelPending => Runner.PendingChoice?.CanCancel == true;
+    // 客机模式下 Runner.PendingChoice 恒为 null，必须走 EffectivePendingChoice。
+    public bool CanCancelPending => EffectivePendingChoice?.CanCancel == true;
 
     /// <summary>取消发动前预选：卡退回手牌、PP/EP 零消耗。</summary>
     public bool CancelPendingChoice() => Runner.CancelPendingChoice();

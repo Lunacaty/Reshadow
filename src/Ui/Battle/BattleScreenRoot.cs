@@ -337,6 +337,8 @@ public partial class BattleScreenRoot : Control
             var target = _actionPanel.BoundEntity;
             if (target == null) return;
             if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
+            // 进入预选后收起左上角详情面板：否则它会挡在画面左侧（174 号文档 BUG4）。
+            _actionPanel.HidePanel();
             if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
         };
         _foeLeader.OnEvolveOrbClicked += isSuper =>
@@ -345,6 +347,7 @@ public partial class BattleScreenRoot : Control
             var target = _actionPanel.BoundEntity;
             if (target == null) return;
             if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
+            _actionPanel.HidePanel();
             if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
         };
         AddChild(_allyLeader);
@@ -499,7 +502,8 @@ public partial class BattleScreenRoot : Control
     {
         if (_field == null || _ctrl == null) return;
 
-        var p = _ctrl.Runner?.PendingChoice;
+        // 客机模式下 Runner.PendingChoice 恒为 null —— 必须走 EffectivePendingChoice。
+        var p = _ctrl?.EffectivePendingChoice;
         bool aiming = !_seq.Busy
                       && p != null
                       && p.Kind == ChoiceKind.SelectTarget
@@ -564,7 +568,7 @@ public partial class BattleScreenRoot : Control
 
     private void ApplyChoiceHighlightToLeaders()
     {
-        var p = _ctrl?.Runner?.PendingChoice;
+        var p = _ctrl?.EffectivePendingChoice;
         bool choosing = !_seq.Busy
                         && p != null
                         && p.Kind == ChoiceKind.SelectTarget
@@ -585,7 +589,7 @@ public partial class BattleScreenRoot : Control
 
     private void ApplyChoiceHighlightToBoards()
     {
-        var p = _ctrl?.Runner?.PendingChoice;
+        var p = _ctrl?.EffectivePendingChoice;
         bool choosing = !_seq.Busy
                         && p != null
                         && p.Kind == ChoiceKind.SelectTarget
@@ -610,6 +614,19 @@ public partial class BattleScreenRoot : Control
             int eid = hand[i].EntityId;
             bool cand = p.Candidates.Contains(eid);
             wd.SetCandidate(cand, false);
+        }
+
+        // 候选里包含手牌时自动展开手牌托盘：
+        // 折叠态下第一次点击会被 _Input 的「展开手牌」分支吞掉，
+        // 玩家必须连点两次才选得上（174 号文档 4.2）。
+        if (choosing)
+        {
+            bool anyHandCand = p.Candidates.Any(id => hand.Any(h => h.EntityId == id));
+            if (anyHandCand && !_handExpanded)
+            {
+                _handExpanded = true;
+                RebuildHand();
+            }
         }
     }
 
@@ -1782,7 +1799,7 @@ public partial class BattleScreenRoot : Control
     /// <summary>该点是否落在某个合法候选（棋子 / 主战者）上。</summary>
     private bool HitAnyCandidate(Vector2 at)
     {
-        var pending = _ctrl?.Runner?.PendingChoice;
+        var pending = _ctrl?.EffectivePendingChoice;
         if (pending == null) return false;
 
         foreach (var id in pending.Candidates)
@@ -1917,6 +1934,8 @@ public partial class BattleScreenRoot : Control
                 && rmb.Pressed && rmb.ButtonIndex == MouseButton.Right)
             {
                 _ctrl.CancelPendingChoice();
+                // 客机模式：本地取消后必须通知房主，否则房主还卡在等待客机提交预选答案。
+                if (IsRemote) _ = _remoteClient.CancelPending();
                 Rebuild();
                 GetViewport().SetInputAsHandled();
                 return;
@@ -1942,6 +1961,7 @@ public partial class BattleScreenRoot : Control
                 if (pc != null && pc.Kind == ChoiceKind.SelectTarget && !onTarget)
                 {
                     _ctrl.CancelPendingChoice();
+                    if (IsRemote) _ = _remoteClient.CancelPending();
                     Rebuild();
                     GetViewport().SetInputAsHandled();
                     return;

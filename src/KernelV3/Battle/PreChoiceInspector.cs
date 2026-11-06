@@ -152,7 +152,10 @@ public static class PreChoiceInspector
     {
         foreach (var node in body)
         {
-            if (IsIrreversible(node)) return null;
+            // 预选阶段**什么都还没执行**：前置的抽牌 / 随机 / 循环不该阻断
+            // 同能力内 BranchModeNode(Choose) 的预选（174 号文档 BUG4）。
+            // 直接 return null 会让「进化时：抽 1 张牌，然后选模式」永远弹不出模式框。
+            if (IsIrreversible(node)) continue;
 
             switch (node)
             {
@@ -290,6 +293,9 @@ public static class PreChoiceInspector
         Owner = ZoneScope.Self,
         Controller = card.PlayerId,
         Source = EntityRef.From(card),
+        // 进化 / 入场能力里的 $trigger 指向本卡自己。
+        // 少了它，带 $trigger 的分支条件在预选阶段全部误判为 false（174 号文档 BUG4）。
+        Trigger = EntityRef.From(card),
     };
 
     private static PendingChoice NewPrompt(

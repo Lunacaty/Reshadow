@@ -71,7 +71,8 @@ public partial class PendingChoiceOverlay : Control
     /// <summary>战场棋子 / 主战者 / 手牌被点击时调用，尝试作为 SelectTarget 候选响应。</summary>
     public bool TryPickBoardOrHandEntity(int entityId)
     {
-        var p = _ctrl?.Runner?.PendingChoice;
+        // 客机模式下 Runner.PendingChoice 恒为 null，必须走 EffectivePendingChoice。
+        var p = _ctrl?.EffectivePendingChoice;
         if (p == null || p.Kind != ChoiceKind.SelectTarget) return false;
         if (!p.Candidates.Contains(entityId)) return false;
 
