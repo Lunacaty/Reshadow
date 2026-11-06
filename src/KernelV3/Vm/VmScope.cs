@@ -75,8 +75,21 @@ public sealed class VmScope
     public void Bind(string slot, IEnumerable<RuntimeEntity> entities)
     {
         if (string.IsNullOrEmpty(slot)) return;
-        Registers[slot] = entities?.Where(e => e != null).Select(EntityRef.From).ToList()
-                          ?? new List<EntityRef>();
+        SetSlot(slot, entities?.Where(e => e != null).Select(EntityRef.From).ToList()
+                        ?? new List<EntityRef>());
+    }
+
+    /// <summary>
+    /// 写槽位。$item 是循环/过滤的**局部**变量，只在当前帧可见；
+    /// 其余槽位（$selected / $created / $choose1..N）是本次能力的共享状态，
+    /// 必须同步给父帧，否则 if/else、modes、repeat 块里选中的目标
+    /// 传不出块外（174 号文档 三.2）。
+    /// </summary>
+    private void SetSlot(string slot, List<EntityRef> list)
+    {
+        Registers[slot] = list;
+        bool isItem = string.Equals(slot, Ast.TargetSpec.SlotItem, StringComparison.Ordinal);
+        if (!isItem && Parent != null) Parent.SetSlot(slot, list);
     }
 
     public void BindRefs(string slot, IEnumerable<EntityRef> refs)
@@ -141,6 +154,9 @@ public sealed class VmScope
     /// </summary>
     public Ast.AbilityDef SourceAbility { get; set; }
 
+    /// <summary>父作用域。子帧绑定非 $item 槽位时同步向上传播。</summary>
+    public VmScope Parent { get; set; }
+
     public VmScope Derive()
     {
         var s = new VmScope
@@ -159,6 +175,10 @@ public sealed class VmScope
             //   loop / 分支里的 Select 若把计数归零，第二次迭代会重新写 $choose1，
             //   把上一轮选中的目标覆盖掉。
             SelectSequence = SelectSequence,
+            // 必拷：跨时机 CopyOfPrevious（"入场曲召唤 X，超进化时改为召唤 2 个"）
+            // 的第二句跑在全新 scope 里，不拷就永远是 0（174 号文档 四.11）。
+            LastSpawnedCardId = LastSpawnedCardId,
+            Parent = this,
         };
         foreach (var kv in Registers) s.Registers[kv.Key] = new List<EntityRef>(kv.Value);
         return s;

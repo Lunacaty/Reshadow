@@ -158,6 +158,18 @@ public sealed class RuntimeEntity
     public bool IsSilenced { get; set; }
     public bool AttackedThisTurn { get; set; }
 
+    /// <summary>
+    /// 本卡最近一次召唤出的卡 ID（跨时机 CopyOfPrevious 用）。
+    /// 必须存在实体上："入场曲召唤 X，超进化时改为召唤 2 个" 的第二句
+    /// 跑在几回合后的新 VmScope 里，只存 scope 就永远是 0（174 号文档 四.11）。
+    /// </summary>
+    public int LastSpawnedCardId { get; set; }
+
+    /// <summary>当前已计入 Attack 的常驻光环攻防（PassiveAura）。</summary>
+    public int AppliedAuraAtk { get; set; }
+    /// <summary>当前已计入 Life / MaxLife 的常驻光环生命。</summary>
+    public int AppliedAuraLife { get; set; }
+
     /// <summary>本回合已攻击次数（受 max_attacks_per_turn 限制）。</summary>
     public int AttacksThisTurn { get; set; }
 

@@ -60,19 +60,19 @@ public sealed partial class CardVm
             case DealDamageNode n: return DoDamage(n, frame);
             case RestoreLifeNode n: return DoRestore(n, frame);
             case ModifyStatsNode n: return DoModifyStats(n, frame);
-            case ModifyCostNode n: return DoModifyCost(n, scope);
-            case ModifyKeywordNode n: return DoModifyKeyword(n, scope);
-            case ModifyCounterNode n: return DoModifyCounter(n, scope);
+            case ModifyCostNode n: return DoModifyCost(n, frame);
+            case ModifyKeywordNode n: return DoModifyKeyword(n, frame);
+            case ModifyCounterNode n: return DoModifyCounter(n, frame);
             case MoveZoneNode n: return DoMoveZone(n, frame);
             case SpawnCardNode n: return DoSpawn(n, scope);
             case ReplaceDeckNode n: return DoReplaceDeck(n, scope);
-            case EvolveNode n: return DoEvolve(n, scope);
-            case TransformNode n: return DoTransform(n, scope);
+            case EvolveNode n: return DoEvolve(n, frame);
+            case TransformNode n: return DoTransform(n, frame);
             case MarkVictoryCardNode n: return DoMarkVictoryCard(n, scope);
             case ConditionalNode n: return DoConditional(n, scope);
             case LoopNode n: return DoLoop(n, frame);
             case BranchModeNode n: return DoBranch(n, frame);
-            case GrantAbilityNode n: return DoGrant(n, scope);
+            case GrantAbilityNode n: return DoGrant(n, frame);
             case GrantCounterAbilityNode n: return DoGrantCounter(n, scope);
             case InvokeAbilityNode n: return DoInvoke(n, scope, frame);
             case MacroNode n: return DoMacro(n, scope);
@@ -251,7 +251,10 @@ public sealed partial class CardVm
     /// </summary>
     internal static Ast.TargetSpec NormalizeZoneWhere(Ast.TargetSpec spec)
     {
-        if (spec == null || spec.SourceKind != Ast.TargetSourceKind.Zone) return spec;
+        // Zone 与 CardId 都要归一化：`card:#10931110@self:board other history=...`
+        // 的 SourceKind 是 CardId，漏掉它整段补丁失效（174 号文档 BUG1 第二重断链）。
+        if (spec == null || (spec.SourceKind != Ast.TargetSourceKind.Zone
+                          && spec.SourceKind != Ast.TargetSourceKind.CardId)) return spec;
         var w = NormalizeWhereForItem(spec.Where);
         if (ReferenceEquals(w, spec.Where)) return spec;
         return new Ast.TargetSpec
@@ -433,9 +436,13 @@ public sealed partial class CardVm
         if (targets == null) return true;   // 已挂起
         foreach (var t in targets)
         {
+            int before = t.Life;
             int amt = n.FullRestore ? t.MaxLife : _eval.EvalNum(n.Amount, scope);
             t.Life = Math.Min(t.MaxLife, t.Life + amt);
-            _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnHealed, Subject = EntityRef.From(t), Amount = amt });
+            // 事件数值是**实际回复量**：完全恢复时是「缺口」而不是 MaxLife，
+            // 否则 4/5 回满会飘 +5（174 号文档 2.2）。
+            int healed = Math.Max(0, t.Life - before);
+            _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnHealed, Subject = EntityRef.From(t), Amount = healed });
         }
 
         return false;
@@ -533,9 +540,13 @@ public sealed partial class CardVm
         return false;
     }
 
-    private bool DoModifyCost(ModifyCostNode n, VmScope scope)
+    private bool DoModifyCost(ModifyCostNode n, VmFrame frame)
     {
-        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
+        var scope = frame.Scope;
+        // 必须走 ResolveOrBlock：否则带 Choose 的目标会绕过玩家手选，
+        // 直接把全场候选都改一遍（174 号文档 2.1）。
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), scope, TargetSpec.SlotSelected, frame);
+        if (targets == null) return true;
         int v = _eval.EvalNum(n.Value, scope);
         foreach (var t in targets)
         {
@@ -566,9 +577,11 @@ public sealed partial class CardVm
         return false;
     }
 
-    private bool DoModifyKeyword(ModifyKeywordNode n, VmScope scope)
+    private bool DoModifyKeyword(ModifyKeywordNode n, VmFrame frame)
     {
-        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
+        var scope = frame.Scope;
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), scope, TargetSpec.SlotSelected, frame);
+        if (targets == null) return true;
         foreach (var t in targets)
         {
             RecordEffect(t, scope, n.Op + " " + n.Keyword.Name);
@@ -627,14 +640,16 @@ public sealed partial class CardVm
         return false;
     }
 
-    private bool DoModifyCounter(ModifyCounterNode n, VmScope scope)
+    private bool DoModifyCounter(ModifyCounterNode n, VmFrame frame)
     {
+        var scope = frame.Scope;
         int delta = _eval.EvalNum(n.Delta, scope);
 
         // Target != null：修改每个目标实体自己的计数器
         if (n.Target != null)
         {
-            var ents = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
+            var ents = ResolveOrBlock(NormalizeZoneWhere(n.Target), scope, TargetSpec.SlotSelected, frame);
+            if (ents == null) return true;
             foreach (var e in ents)
             {
                 int curE = _world.ReadEntityCounter(e, n.Counter);
@@ -1012,7 +1027,10 @@ public sealed partial class CardVm
 
     private bool DoSpawn(SpawnCardNode n, VmScope scope)
     {
-        int count = Math.Max(1, _eval.EvalNum(n.Count, scope));
+        // 只有 Count == null 才默认 1；写了动态表达式算出 0 就是 0 个，
+        // 不能被 Math.Max(1, …) 强行变成 1 个（174 号文档 四.9）。
+        int count = n.Count != null ? _eval.EvalNum(n.Count, scope) : 1;
+        if (count <= 0) return false;
         var created = new List<RuntimeEntity>();
 
         // 卡池检索 / 发现必须在循环外一次性处理：
@@ -1036,13 +1054,12 @@ public sealed partial class CardVm
                 // "summon an exact copy of each" —— 必须遍历 refs 全部复制，
                 // 只取 refs[0] 会让「各自复制一份」变成「只复制第一个」。
                 int owner2 = scope.ResolvePlayer(n.ToOwner);
-                int times = Math.Max(1, _eval.EvalNum(n.Count, scope));
+                int times = n.Count != null ? _eval.EvalNum(n.Count, scope) : 1;
 
-                // 源集合有多张卡时（"exact copy **of each**"，选择 N 张各复制 1 份），
-                // 每张只复制 1 份；源集合只有 1 张时（"summon 2 exact copies of this card"），
-                // 才按 Count 复制多份。
-                // 不做这个区分的话，选 2 张会变成 2×2=4 个复制体。
-                int perRef = refs.Count > 1 ? 1 : times;
+                // "an exact copy of each" 在编译期把 Count 设为 1，靠遍历 refs
+                // 每个生成 1 份；"summon 2 exact copies of this card" 的 Count=2、
+                // refs.Count=1，则复制 2 份。所以直接按 times 即可（174 号文档 2.4）。
+                int perRef = times;
                 var made = new List<RuntimeEntity>();
                 foreach (var r in refs)
                 {
@@ -1073,6 +1090,12 @@ public sealed partial class CardVm
                 // 这句没有卡名，宾语就是上一句召唤的那张卡。
                 // 之前这里没有任何分支，SpawnCard 收到 CardId=0，产出空实体。
                 int prevId = scope.LastSpawnedCardId;
+                // scope 里没有时回退到实体上的持久记录（跨时机第二句跑在新 scope 里）。
+                if (prevId <= 0 && scope.Source.HasValue)
+                {
+                    var srcLive0 = _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial);
+                    if (srcLive0 != null) prevId = srcLive0.LastSpawnedCardId;
+                }
                 if (prevId <= 0) break;
                 e = _world.SpawnCard(prevId, n.ToZone, scope.ResolvePlayer(n.ToOwner));
             }
@@ -1107,7 +1130,15 @@ public sealed partial class CardVm
             else
             {
                 e = _world.SpawnCard(n.CardId, n.ToZone, scope.ResolvePlayer(n.ToOwner));
-                if (e != null) scope.LastSpawnedCardId = n.CardId;
+                if (e != null)
+                {
+                    scope.LastSpawnedCardId = n.CardId;
+                    if (scope.Source.HasValue)
+                    {
+                        var srcLive1 = _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial);
+                        if (srcLive1 != null) srcLive1.LastSpawnedCardId = n.CardId;
+                    }
+                }
             }
             if (e != null) created.Add(e);
         }
@@ -1196,9 +1227,11 @@ public sealed partial class CardVm
         return false;
     }
 
-    private bool DoEvolve(EvolveNode n, VmScope scope)
+    private bool DoEvolve(EvolveNode n, VmFrame frame)
     {
-        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
+        var scope = frame.Scope;
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), scope, TargetSpec.SlotSelected, frame);
+        if (targets == null) return true;
         foreach (var t in targets)
         {
             RecordEffect(t, scope, "进化");
@@ -1254,9 +1287,11 @@ public sealed partial class CardVm
         return false;
     }
 
-    private bool DoTransform(TransformNode n, VmScope scope)
+    private bool DoTransform(TransformNode n, VmFrame frame)
     {
-        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
+        var scope = frame.Scope;
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), scope, TargetSpec.SlotSelected, frame);
+        if (targets == null) return true;
         if (targets.Count == 0) return false;
 
         // 变形源是具体卡名：直接变成该卡
@@ -1275,7 +1310,23 @@ public sealed partial class CardVm
             {
                 var src = refs[Math.Min(i, refs.Count - 1)];
                 int intoId = src.Snapshot?.CardId ?? 0;
-                if (intoId > 0) _world.TransformEntity(targets[i], intoId);
+                if (intoId > 0)
+                {
+                    _world.TransformEntity(targets[i], intoId);
+                    // 变身成「复制集合」时要连实时状态一起拷：攻防、进化、关键词。
+                    // 只换卡号会变成白板印刷属性（174 号文档 2.3）。
+                    var srcLive = _world.GetLive(src.EntityId, src.EntrySerial);
+                    if (srcLive != null)
+                    {
+                        targets[i].Attack = srcLive.Attack;
+                        targets[i].Life = srcLive.Life;
+                        targets[i].MaxLife = srcLive.MaxLife;
+                        targets[i].IsEvolved = srcLive.IsEvolved;
+                        targets[i].IsSuperEvolved = srcLive.IsSuperEvolved;
+                        targets[i].Keywords.Clear();
+                        foreach (var k in srcLive.Keywords) targets[i].Keywords.Add(k);
+                    }
+                }
             }
             return false;
         }
@@ -1357,10 +1408,12 @@ public sealed partial class CardVm
             case LoopKind.ForEach:
             {
                 var items = _eval.Resolve(n.Collection, scope);
-                foreach (var it in items.Take(max))
+                // 帧栈是后进先出，必须倒序压入才能按「从旧到新」正序结算（174 号文档 四.10）。
+                var list = items.Take(max).ToList();
+                for (int i = list.Count - 1; i >= 0; i--)
                 {
                     var s = scope.Derive();
-                    s.Bind(TargetSpec.SlotItem, new[] { it });
+                    s.Bind(TargetSpec.SlotItem, new[] { list[i] });
                     PushBody(n.Body, s);
                 }
                 return false;
@@ -1503,9 +1556,11 @@ public sealed partial class CardVm
 
     // ---------- 授予 / 复刻 / 宏 ----------
 
-    private bool DoGrant(GrantAbilityNode n, VmScope scope)
+    private bool DoGrant(GrantAbilityNode n, VmFrame frame)
     {
-        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
+        var scope = frame.Scope;
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), scope, TargetSpec.SlotSelected, frame);
+        if (targets == null) return true;
         // Duration 必须一起传：不传就等于永久授予，
         // 「本回合赋予某能力」到了下回合依然生效。
         foreach (var t in targets)
@@ -1657,9 +1712,16 @@ public sealed partial class CardVm
             // 必须遍历**全部**同事件能力，不能用 FirstOrDefault：
             // 一张卡可能有两条同事件能力（或通过 GrantAbility 追加一条），
             // 只复刻第一条等于漏掉其余。
-            foreach (var ab in t.Def.Abilities)
+            // 倒序遍历：PushBody 是 LIFO，正序压栈会让第 2 条能力先执行（174 号文档 四.11）。
+            for (int ai = t.Def.Abilities.Count - 1; ai >= 0; ai--)
             {
+                var ab = t.Def.Abilities[ai];
                 if (ab?.Trigger == null || ab.Trigger.Event != n.Event) continue;
+                // 只复刻目标自身的入场曲/进化等能力；旁观触发器（on_play on(other)）
+                // 的事件类型可能相同，一起复刻会变成「每打一张牌就触发」。
+                if (ab.Trigger.SubjectFilter != null) continue;
+                // 防自递归：复刻同卡号的自身能力会无限压栈直到熔断。
+                if (ReferenceEquals(ab, frame?.Ability)) continue;
 
                 // 子作用域必须把 Source 与 $self 指向**被复刻的那个实体**：
                 // 「启动 $selected 里的护符」时，护符能力里的 $self 应当是护符自己，

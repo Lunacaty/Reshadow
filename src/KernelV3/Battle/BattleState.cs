@@ -1250,14 +1250,6 @@ public sealed class BattleState : IVmWorld
                         e.Counters[mc.Counter] = mc.Delta.Value;
                         break;
 
-                    case Ast.ModifyStatsNode ms when ms.Op == Ast.StatModOp.Add:
-                        if (ms.Attack?.Op == Ast.NumOp.Const) e.Attack += ms.Attack.Value;
-                        if (ms.Life?.Op == Ast.NumOp.Const)
-                        {
-                            e.Life += ms.Life.Value;
-                            e.MaxLife += ms.Life.Value;
-                        }
-                        break;
                 }
             }
 
@@ -1543,6 +1535,63 @@ public sealed class BattleState : IVmWorld
     ///   2. 场上或纹章区的 PassiveAura 里 ModifyKeywordNode(Grant) 给他的
     ///      —— 「当本卡在场时，我方其他随从获得【守护】」必须实时生效，
     ///         光环源离场或被沉默后立刻失效
+    /// <summary>
+    /// 该实体当前享有的常驻光环攻防修正（PassiveAura + ModifyStatsNode）。
+    /// 与 HasEffectiveKeyword 同构：扫全场与纹章区的 PassiveAura，按当时局面求值条件、
+    /// 回合限定与目标范围。早先把这类修正静态写死在创建时的面板上，
+    /// 于是「在你的回合中 +2/+0」「我方其他随从 +1/+1」全部失效或加错对象（174 号文档 三.7）。
+    /// </summary>
+    public (int Atk, int Life) AuraStatBonus(RuntimeEntity target)
+    {
+        int atk = 0, life = 0;
+        if (target == null) return (0, 0);
+        var eval = new Vm.VmEval(this);
+        for (int pid = 0; pid < 2; pid++)
+        {
+            var sources = new List<RuntimeEntity>();
+            sources.AddRange(Players[pid].Board);
+            sources.AddRange(Players[pid].CrestArea);
+
+            foreach (var src in sources)
+            {
+                if (src?.Def?.Abilities == null || src.IsSilenced) continue;
+
+                var scope = new Vm.VmScope
+                {
+                    Owner = ZoneScope.Self,
+                    Controller = src.PlayerId,
+                    Source = Vm.EntityRef.From(src),
+                };
+
+                foreach (var ab in src.Def.Abilities)
+                {
+                    if (ab?.Trigger == null || ab.Trigger.Event != CoreEvent.PassiveAura) continue;
+                    if (ab.Body == null) continue;
+                    scope.SourceAbility = ab;
+
+                    bool condOk;
+                    try { condOk = ab.Condition == null || eval.EvalBool(ab.Condition, scope); }
+                    catch { condOk = true; }
+                    if (!condOk) continue;
+
+                    // 回合限定（"在你的回合中，本随从 +2/+0"）
+                    if (ab.Trigger.DuringTurn == Core.TurnOwnerScope.Self && src.PlayerId != ActivePlayer) continue;
+                    if (ab.Trigger.DuringTurn == Core.TurnOwnerScope.Opponent && src.PlayerId == ActivePlayer) continue;
+
+                    foreach (var n in ab.Body)
+                    {
+                        if (n is not Ast.ModifyStatsNode ms || ms.Op != Ast.StatModOp.Add) continue;
+                        if (ms.Attack == null && ms.Life == null) continue;
+                        if (!AuraTargets(eval, ms.Target, scope, target)) continue;
+                        if (ms.Attack?.Op == Ast.NumOp.Const) atk += ms.Attack.Value;
+                        if (ms.Life?.Op == Ast.NumOp.Const) life += ms.Life.Value;
+                    }
+                }
+            }
+        }
+        return (atk, life);
+    }
+
     ///
     /// 不能只信 MountInnateProperties：它只在出生那一刻跑一次，
     /// 既不会随光环源离场而撤销，也不会随光环源入场而补上。
@@ -1993,6 +2042,17 @@ public sealed class BattleState : IVmWorld
         {
             foreach (var e in p.Board.ToList())
             {
+                // 常驻光环攻防：每步重算（条件 / 回合 / 目标范围都会变）。
+                var (aAtk, aLife) = AuraStatBonus(e);
+                if (aAtk != e.AppliedAuraAtk || aLife != e.AppliedAuraLife)
+                {
+                    e.Attack = Math.Max(0, e.Attack - e.AppliedAuraAtk + aAtk);
+                    e.Life = Math.Max(0, e.Life - e.AppliedAuraLife + aLife);
+                    e.MaxLife = Math.Max(0, e.MaxLife - e.AppliedAuraLife + aLife);
+                    e.AppliedAuraAtk = aAtk;
+                    e.AppliedAuraLife = aLife;
+                }
+
                 // 「生命归零即破坏」只对**随从**成立。
                 //
                 // 护符没有生命值这个概念：它的 Life 恒为 0（BaseLife 没写就是 0），

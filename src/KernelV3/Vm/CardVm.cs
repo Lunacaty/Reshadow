@@ -1032,6 +1032,10 @@ public sealed partial class CardVm
         if (filter.Where == null || (filter.Where is Ast.ConstBoolExpr cb && cb.Value)) return true;
         var sub = scope0.Derive();
         sub.BindRefs(TargetSpec.SlotItem, new[] { cand });
+        // 触发器主语里的 `other` 排除的是**监听者自己**（$self），不是事件主体（$trigger）。
+        // 沿用 scope0.Trigger（= subject）会让「其他随从」把正在进场的那个自己排除掉，
+        // 于是「每当其他友方随从进场/被破坏」全卡池 8 张 100% 哑火（174 号文档 三.1）。
+        sub.Trigger = null;
         return _eval.EvalBool(filter.Where, sub);
     }
 

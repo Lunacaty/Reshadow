@@ -595,7 +595,9 @@ public sealed class VmEval
     private bool RefHasKeyword(EntityRef r, SymbolId<KeywordTag> kw)
     {
         var live = RefLive(r);
-        if (live != null) return live.Keywords.Contains(kw);
+        // 必须走世界统一光环查询：直接查 HashSet 会漏掉 PassiveAura 授予的关键词，
+        // 于是 "where has ward" 对光环赋予的守护随从全部判 false（174 号文档 三.6）。
+        if (live != null) return _world.HasEffectiveKeyword(live, kw);
         return r.Snapshot != null && r.Snapshot.Keywords.Contains(kw);
     }
 
@@ -840,15 +842,27 @@ public sealed class VmEval
             case SelectMode.First: return pool.Take(Math.Max(1, n)).ToList();
             case SelectMode.Last: return pool.Skip(Math.Max(0, pool.Count - Math.Max(1, n))).ToList();
             case SelectMode.Random:
-                // 「随机取 1 个攻击力最高的」= 先收缩到极值并列子集再随机。
-                // 之前直接 OrderBy(Rng) 把上面的排序整个洗掉，
-                // 于是 Random 模式下的 Sort 完全是装饰品。
+                if (n <= 0) return new List<EntityRef>();
+                // 带 Sort 时按极值分组依次取满 n 个，只在跨过 n 的那一组内部随机。
+                // 早先只收缩到「并列极值」再随机，n>1 时会把次高组全部踢掉 ——
+                // 「随机破坏 2 个攻击力最高的随从」少破坏 1 个（174 号文档 四.10）。
                 if (t.Sort != SortKey.None && t.TopN == 0 && pool.Count > 1)
                 {
-                    int best = t.SortDescending ? pool.Max(sortKey) : pool.Min(sortKey);
-                    pool = pool.Where(r => sortKey(r) == best).ToList();
+                    var result = new List<EntityRef>();
+                    var groups = t.SortDescending
+                        ? pool.GroupBy(sortKey).OrderByDescending(g => g.Key)
+                        : pool.GroupBy(sortKey).OrderBy(g => g.Key);
+                    foreach (var g in groups)
+                    {
+                        int need = n - result.Count;
+                        if (need <= 0) break;
+                        var list = g.ToList();
+                        if (list.Count <= need) result.AddRange(list);
+                        else result.AddRange(list.OrderBy(_ => _world.Rng.Next()).Take(need));
+                    }
+                    return result;
                 }
-                return pool.OrderBy(_ => _world.Rng.Next()).Take(Math.Max(0, n)).ToList();
+                return pool.OrderBy(_ => _world.Rng.Next()).Take(n).ToList();
             case SelectMode.Distinct: return pool.Take(Math.Max(1, n)).ToList();
             case SelectMode.Choose: return pool;   // ← 由调用方挂起等玩家
             default: return pool;
