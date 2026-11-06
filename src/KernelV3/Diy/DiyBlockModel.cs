@@ -306,6 +306,22 @@ public sealed class DiyBlockCompiler
     /// DoTransform 只认 n.IntoCardId。只写 CardName 时卡面中文完全正确、
     /// 编译零错误，但打出去会召唤一个 CardId=0 的白板空壳。
     /// </summary>
+
+    /// <summary>
+    /// 按卡号补卡名。
+    ///
+    /// 积木端只填 IntB（卡号），CardName 常常是空串。而渲染某些节点时
+    /// 仍会读 CardName，空串就会印出「同名卡牌」这种无用文字。
+    /// 有卡号就查词法表补上，查不到再退回调用方给的文本。
+    /// </summary>
+    private string ResolveCardName(int cardId, string fallback)
+    {
+        if (cardId > 0 && _lex != null && _lex.TryGetCardName(cardId, out var nm)
+            && !string.IsNullOrWhiteSpace(nm))
+            return nm;
+        return fallback ?? "";
+    }
+
     private int CardIdOf(string name)
     {
         if (string.IsNullOrWhiteSpace(name) || _lex == null) return 0;
@@ -694,12 +710,14 @@ public sealed class DiyBlockCompiler
                     "Any" => ZoneScope.Any,
                     _ => ZoneScope.Self,
                 };
+                int spawnId = isCrest ? 0 : (b.IntB != 0 ? b.IntB : CardIdOf(b.Text));
                 return new SpawnCardNode
                 {
                     // 纹章/信仰是**独立实体**，不继承主人卡的卡号：
                     // 给了主人卡号，运行期会按那个卡号去建实体，拿到的却是主人卡本身。
-                    CardId = isCrest ? 0 : (b.IntB != 0 ? b.IntB : CardIdOf(b.Text)),
-                    CardName = b.Text ?? "",
+                    CardId = spawnId,
+                    // 积木端只填卡号，这里按卡号补名，否则渲染会印出「同名卡牌」。
+                    CardName = ResolveCardName(spawnId, b.Text),
                     Count = CompileNumber(b.Number) ?? NumExpr.Const(1),
                     // 纹章落在纹章区，不是战场。写成 Board 会让它在战场上占一个格子，
                     // 而且同名唯一/区域上限这些纹章规则全部失效。
@@ -841,13 +859,17 @@ public sealed class DiyBlockCompiler
             }
 
             case "act_transform":
+            {
                 // DoTransform 只认 IntoCardId：没有它，变身是彻底的空操作。
+                int intoId = b.IntB != 0 ? b.IntB : CardIdOf(b.Text);
                 return new TransformNode
                 {
                     Target = CompileTarget(b.Target) ?? TargetSpec.Self,
-                    IntoCardId = b.IntB != 0 ? b.IntB : CardIdOf(b.Text),
-                    IntoCardName = b.Text ?? "",
+                    IntoCardId = intoId,
+                    // 同 SpawnCardNode：积木端只填卡号，这里按卡号补名。
+                    IntoCardName = ResolveCardName(intoId, b.Text),
                 };
+            }
 
             case "act_reanimate":
                 // 用唯一标准构造：手写这条节点会漏掉 9 个字段里的某几个，

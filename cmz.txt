@@ -1,0 +1,25 @@
+fix(169): 补齐收口清单第 2 项 —— 编译期按卡号自动补卡名
+
+## DiyBlockCompiler
+  新增 ResolveCardName(cardId, fallback)：IntB > 0 且词法表里有这张卡时，
+  用 _lex.TryGetCardName 补齐 CardName。
+  用在 act_summon / act_add_hand / act_gain_crest 的 SpawnCardNode，
+  以及 act_transform 的 TransformNode.IntoCardName。
+
+## 为什么必须补
+  积木端现在只填 IntB（卡号），CardName 是空串。
+  渲染时读 CardName 会印出「召唤1个同名卡牌」这种无用文字，
+  玩家看不出自己选的是哪张卡。
+
+## 验证（真实卡池）
+  积木 IntB=90011110 -> 编译 CardName=[妖精]
+  -> 卡面「召唤1个《妖精》到战场上。」
+
+## 其余收口项复核
+  1. 单名唯一真相：ClanColor 中文分支 / LoadSampleCard clan=皇家 /
+     计数器·具名牌组·词条·表单卡名 均已是单输入框 —— 已完成
+  3. CreateOrUpdatePack 的 PoolConfigs[packId] 笔误 —— 已删
+  4. InsertBlock 五条规则统一路径恢复 —— 已完成
+
+## 门禁
+  全部通过，无退化。
