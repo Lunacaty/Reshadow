@@ -75,7 +75,8 @@ public sealed class MemoryWorld : IVmWorld
         => _entities.Where(e => e.Zone == zone && (playerId < 0 || e.PlayerId == playerId));
 
     public IEnumerable<RuntimeEntity> FindByCardId(ZoneRef zone, int playerId, int cardId)
-        => EnumerateZone(zone, playerId).Where(e => (e.Def?.CardId ?? 0) == cardId);
+        => EnumerateZone(zone, playerId).Where(e =>
+            (e.Def?.CardId ?? 0) == cardId || (e.Def?.ArtCardId ?? 0) == cardId);
 
     public int ReadCounter(int playerId, SymbolId<CounterTag> counter)
         => _counters.TryGetValue((playerId, counter.Id), out var v) ? v : 0;

@@ -114,6 +114,47 @@ public sealed class AstCanonicalParser
         return list;
     }
 
+    /// <summary>
+    /// 解析「本体能力 + crest / faith / accelerate / crystallize 子卡段」。
+    ///
+    /// 供 DIY ③ AST 端使用：此前只调 ParseAbilities，遇到 crest / faith 关键字
+    /// 直接抛未捕获的 SubDefException 当场崩掉，而且编译完也不回填 CrestDef，
+    /// 于是 DIY 两端都无法定义纹章 / 信仰（174 号文档 五.3.1）。
+    /// </summary>
+    public (List<AbilityDef> Abilities, Ast.CardDef Crest, Ast.CardDef Faith,
+            Ast.CardDef Accel, Ast.CardDef Cryst) ParseAbilitiesWithSubDefs(string dslText)
+    {
+        _tokens = PyAstLexer.Tokenize(dslText);
+        _pos = 0;
+        Errors.Clear();
+        _budget = Math.Max(10000, _tokens.Count * 50);
+
+        var list = new List<AbilityDef>();
+        Ast.CardDef crestDef = null, faithDef = null, accelDef = null, crystDef = null;
+        SkipNewlines();
+        while (!IsAtEnd && Current.Kind != PyTokKind.Dedent && Current.Kind != PyTokKind.Eof)
+        {
+            int guard = _pos;
+            try
+            {
+                if (Current.Kind == PyTokKind.Ident
+                    && Current.Text is "crest" or "faith" or "accelerate" or "crystallize")
+                    throw new SubDefException();
+                var ab = ParseAbility();
+                if (ab != null) list.Add(ab);
+            }
+            catch (SubDefException)
+            {
+                ParseSubDef(ref crestDef, ref faithDef, ref accelDef, ref crystDef);
+            }
+            SkipNewlines();
+            if (_pos == guard) { Error("解析无进展，强制跳过"); _pos++; }
+        }
+
+        BindSubDefToSpawns(list, crestDef, true);
+        return (list, crestDef, faithDef, accelDef, crystDef);
+    }
+
     /// <summary>该词是不是触发头（用于区分「能力」与「裸动作效果块」）。</summary>
 
     /// <summary>把子卡段（crest 等）的定义回填到主卡里的 SpawnCardNode。</summary>

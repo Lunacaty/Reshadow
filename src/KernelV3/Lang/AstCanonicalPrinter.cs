@@ -152,6 +152,24 @@ public static class AstCanonicalPrinter
         return sb.ToString();
     }
 
+    /// <summary>
+    /// 打印「本体能力 + 子卡段」（无 card 头），供 DIY ③ AST 端使用。
+    /// 此前只调 PrintAbilities，纹章 / 信仰 / 激奏 / 结晶四个子段全丢（174 号文档 五.3.1）。
+    /// </summary>
+    public static string PrintBodyAndSubDefs(Ast.CardDef card)
+    {
+        if (card == null) return "";
+        var sb = new StringBuilder();
+        if (card.Abilities is { Count: > 0 })
+            sb.Append(PrintAbilities(card.Abilities, 0));
+
+        AppendSub(sb, "crest", card.CrestDef);
+        AppendSub(sb, "faith", card.FaithDef);
+        AppendSub(sb, "accelerate", card.AccelerateDef);
+        AppendSub(sb, "crystallize", card.CrystallizeDef);
+        return sb.ToString().TrimStart('\n');
+    }
+
     private static void AppendSub(StringBuilder sb, string label, Ast.CardDef sub)
     {
         if (sub == null) return;

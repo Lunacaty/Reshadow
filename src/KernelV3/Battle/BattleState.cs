@@ -1037,8 +1037,13 @@ public sealed class BattleState : IVmWorld
         };
     }
 
+    /// <summary>
+    /// 按卡号找实体。纹章在生成时 CardId 会被改写成 400xxxxxx 的合成哈希，
+    /// 原卡号存进 ArtCardId —— 只比 CardId 的话「named #10444110」永远找不到（174 号文档 五.1.2）。
+    /// </summary>
     public IEnumerable<RuntimeEntity> FindByCardId(ZoneRef zone, int playerId, int cardId)
-        => EnumerateZone(zone, playerId).Where(e => (e.Def?.CardId ?? 0) == cardId);
+        => EnumerateZone(zone, playerId).Where(e =>
+            (e.Def?.CardId ?? 0) == cardId || (e.Def?.ArtCardId ?? 0) == cardId);
 
     public RuntimeEntity GetLive(int entityId, int entrySerial)
     {

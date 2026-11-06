@@ -348,7 +348,7 @@ public sealed class ChineseCardPrinter
         // 读者完全不知道是哪张卡进入了战场。
         if (trig.SubjectFilter != null && trig.SubjectFilter.SourceKind != TargetSourceKind.Slot)
         {
-            string who = PrintTarget(trig.SubjectFilter);
+            string who = PrintTarget(trig.SubjectFilter, forTriggerSubject: true);
             string verb = EventVerbZh(trig.Event, trig.SecondaryEvent);
 
             // 及物动词（打出 / 融合 / 舍弃 / 抽牌…）必须放在宾语**前面**：
@@ -1287,7 +1287,11 @@ public sealed class ChineseCardPrinter
             }
         return null;
     }
-    public string PrintTarget(TargetSpec t)
+    /// <param name="forTriggerSubject">
+    /// 触发器主语（on(...)）里 SelectMode.All 的语义是「任一该类单位」，
+    /// 不是「所有单位同时怎样」—— 此时不能印「所有」（174 号文档 五.2）。
+    /// </param>
+    public string PrintTarget(TargetSpec t, bool forTriggerSubject = false)
     {
         if (t == null) return "目标";
 
@@ -1333,7 +1337,9 @@ public sealed class ChineseCardPrinter
             if (t.DuplicatesOnly) w.Insert(0, "重复的");
 
             string noun = string.IsNullOrEmpty(t.CardName) ? "该卡牌" : "《" + CardZh(t.CardName) + "》";
-            string qty = t.Mode == SelectMode.All ? "所有" : (t.Count != null ? PrintNum(t.Count) + "个" : "1个");
+            string qty = t.Mode == SelectMode.All
+                ? (forTriggerSubject ? "" : "所有")
+                : (t.Count != null ? PrintNum(t.Count) + "个" : "1个");
             return string.Concat(pre) + ownerZh + qty + string.Concat(w) + noun;
         }
 
@@ -1403,7 +1409,9 @@ public sealed class ChineseCardPrinter
         string cnt = t.Count != null ? PrintNum(t.Count) : "1";
         switch (t.Mode)
         {
-            case SelectMode.All: sb.Append("所有"); break;
+            case SelectMode.All:
+                if (!forTriggerSubject) sb.Append("所有");
+                break;
             case SelectMode.Random: sb.Append("随机" + cnt + "个"); break;
             case SelectMode.First: sb.Append("前" + cnt + "个"); break;
             case SelectMode.Choose: sb.Append(cnt + "个"); break;
@@ -1752,7 +1760,27 @@ public sealed class ChineseCardPrinter
             case NumOp.Counter:
                 // 双主语条件里对手的计数器带敌方前缀，与 TermOfCompare 同口径。
                 return (e.Of?.Owner == ZoneScope.Opponent ? "敌方" : "") + CounterZh(e.Counter.Name) + "值";
-            case NumOp.Property: return StatZh(e.Stat);
+            case NumOp.Property:
+            {
+                // 属性读取必须带主语：「若生命值>0」是没头没脑的病句，
+                // 官方简中是「若该卡牌的生命值>0」（174 号文档 五.2）。
+                string prefix = "";
+                if (e.Of != null && e.Of.SourceKind == TargetSourceKind.Slot)
+                {
+                    prefix = e.Of.Slot switch
+                    {
+                        TargetSpec.SlotTrigger => "该卡牌的",
+                        TargetSpec.SlotSelected => "所选目标的",
+                        TargetSpec.SlotOpposing => "交战目标的",
+                        _ => "",
+                    };
+                }
+                else if (e.Of != null && e.Of.Zone == ZoneRef.Leader)
+                {
+                    prefix = PrintTarget(e.Of) + "的";
+                }
+                return prefix + StatZh(e.Stat);
+            }
             case NumOp.Count:
                 return "「" + PrintTarget(e.Of ?? TargetSpec.Self) + "」的数量";
             case NumOp.DistinctCount:

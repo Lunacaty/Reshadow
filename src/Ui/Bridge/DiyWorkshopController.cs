@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Core;
 using ShadowverseFan.KernelV3.Diy;
@@ -350,9 +351,17 @@ public sealed class DiyWorkshopController
 
         var parser = new AstCanonicalParser(Workspace.Schema, Workspace.Lexicon);
         List<AbilityDef> abilities = null;
+        CardDef parsedCrest = null, parsedFaith = null, parsedAccel = null, parsedCryst = null;
         try
         {
-            abilities = parser.ParseAbilities(dsl);
+            // 必须走带子卡段的版本：手写 crest / faith 段时 ParseAbilities 会抛
+            // 未捕获的 SubDefException 直接崩掉（174 号文档 五.3.1）。
+            var parsed = parser.ParseAbilitiesWithSubDefs(dsl);
+            abilities = parsed.Abilities;
+            parsedCrest = parsed.Crest;
+            parsedFaith = parsed.Faith;
+            parsedAccel = parsed.Accel;
+            parsedCryst = parsed.Cryst;
         }
         catch (Exception ex)
         {
@@ -384,10 +393,11 @@ public sealed class DiyWorkshopController
             DeckModifiers = head.DeckModifiers,
             HasFuse = head.HasFuse,
             FuseMaterialFilter = head.FuseMaterialFilter,
-            CrestDef = head.CrestDef,
-            FaithDef = head.FaithDef,
-            AccelerateDef = head.AccelerateDef,
-            CrystallizeDef = head.CrystallizeDef,
+            // 用户在 ③ 端手写了子卡段就用解析结果，否则沿用原卡的。
+            CrestDef = parsedCrest ?? head.CrestDef,
+            FaithDef = parsedFaith ?? head.FaithDef,
+            AccelerateDef = parsedAccel ?? head.AccelerateDef,
+            CrystallizeDef = parsedCryst ?? head.CrystallizeDef,
             IsToken = head.IsToken,
             Abilities = abilities,
             SourceText = head.SourceText,
@@ -439,6 +449,20 @@ public sealed class DiyWorkshopController
     {
         LastErrors.Clear();
         if (spec == null) { LastStatusMessage = "英文规格为空"; return false; }
+
+        // ④ 端支持内联子段标记：[Crest] / [Faith] / [Accelerate (N)] / [Crystallize (N)]。
+        // 用户在同一个文本框里写完本体再换行写子段即可（174 号文档 五.3.2 / 3.3）。
+        var (bodyText, inlineAlts) = SplitInlineAltModes(spec.EngText);
+        if (inlineAlts.Count > 0)
+        {
+            spec = new DiyWorkspace.CnlCardSpec
+            {
+                CardId = spec.CardId, Name = spec.Name, NameChs = spec.NameChs,
+                Kind = spec.Kind, Cost = spec.Cost, Attack = spec.Attack, Life = spec.Life,
+                Clan = spec.Clan, Traits = spec.Traits,
+                EngText = bodyText, AltModes = inlineAlts,
+            };
+        }
         CnlSpec = spec;
 
         var def = Workspace.CompileFromEnglishCnl(spec, out var errs);
@@ -454,6 +478,57 @@ public sealed class DiyWorkshopController
         LastStatusMessage = "✔ 从【受限英文端】编译成功，已同步至其余三端";
         OnCardUpdated?.Invoke();
         return true;
+    }
+
+    /// <summary>
+    /// 把英文文本里内联的子段标记切出来：
+    ///   [Crest] ... / [Faith] ... / [Accelerate (N)] ... / [Crystallize (N)] ...
+    /// 返回本体文本与 alt_modes 列表。没有标记时原样返回。
+    /// </summary>
+    private static (string Body, List<(string typeEng, int cost, string textEng)> Alts)
+        SplitInlineAltModes(string text)
+    {
+        var alts = new List<(string, int, string)>();
+        if (string.IsNullOrEmpty(text)) return ("", alts);
+
+        var body = new List<string>();
+        var cur = new List<string>();
+        string curTag = null;
+        int curCost = 0;
+
+        void Flush()
+        {
+            if (curTag == null) return;
+            alts.Add((curTag, curCost, string.Join("\n", cur).Trim()));
+            curTag = null; curCost = 0; cur.Clear();
+        }
+
+        foreach (var raw in text.Split('\n'))
+        {
+            string line = raw.TrimEnd('\r');
+            string t = line.Trim();
+            if (t.Length > 2 && t[0] == '[' && t[^1] == ']')
+            {
+                string inner = t.Substring(1, t.Length - 2).Trim();
+                int cost = 0;
+                string tag = inner;
+                int lp = inner.IndexOf('(');
+                if (lp > 0 && inner.EndsWith(")"))
+                {
+                    tag = inner.Substring(0, lp).Trim();
+                    int.TryParse(inner.Substring(lp + 1, inner.Length - lp - 2).Trim(), out cost);
+                }
+                if (tag is "Crest" or "Faith" or "Accelerate" or "Crystallize")
+                {
+                    Flush();
+                    curTag = tag; curCost = cost;
+                    continue;
+                }
+            }
+            (curTag != null ? cur : body).Add(line);
+        }
+        Flush();
+        return (string.Join("\n", body).Trim(), alts);
     }
 
     // ---------------------------------------------------------------- 反向投影
@@ -474,7 +549,8 @@ public sealed class DiyWorkshopController
         // ③ AST 端展示的是 ReshadowScript 的**效果块**（无卡头），不是 JSON：
         // 复用脚本编译器自带的符号绑定，天然过四端同构门禁，
         // 不再维护第四套 AST 表示。
-        AstJsonText = AstCanonicalPrinter.PrintAbilities(CurrentDef.Abilities ?? new List<AbilityDef>(), 0);
+        // 必须连子卡段一起打印：只打本体的 Abilities 会让纹章 / 信仰在 ③ 端彻底消失（174 号文档 五.3.1）。
+        AstJsonText = AstCanonicalPrinter.PrintBodyAndSubDefs(CurrentDef);
 
         // ③ 表单端：超纲时标只读并保留原因，绝不静默丢效果
         var fc = new DiyFormCompiler(Workspace.Schema, Workspace.Lexicon);
@@ -511,6 +587,24 @@ public sealed class DiyWorkshopController
         string engText = !string.IsNullOrWhiteSpace(CurrentDef.SourceText)
             ? CurrentDef.SourceText
             : np.PrintCard(CurrentDef.Abilities);
+
+        // 子卡段内联进英文文本：只写本体的话，④ 端看不到也写不了纹章 / 信仰（174 号文档 五.3.2）。
+        {
+            var sb = new StringBuilder(engText);
+            void AppendAlt(string tag, CardDef sub, bool withCost)
+            {
+                if (sub == null) return;
+                string subTxt = !string.IsNullOrWhiteSpace(sub.SourceText)
+                    ? sub.SourceText : np.PrintCard(sub.Abilities);
+                sb.Append("\n\n[").Append(withCost ? $"{tag} ({sub.BaseCost})" : tag)
+                  .Append("]\n").Append(subTxt);
+            }
+            AppendAlt("Crest", CurrentDef.CrestDef, false);
+            AppendAlt("Faith", CurrentDef.FaithDef, false);
+            AppendAlt("Accelerate", CurrentDef.AccelerateDef, true);
+            AppendAlt("Crystallize", CurrentDef.CrystallizeDef, true);
+            engText = sb.ToString();
+        }
 
         CnlSpec = new DiyWorkspace.CnlCardSpec
         {
