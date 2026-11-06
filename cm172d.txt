@@ -1,0 +1,17 @@
+fix: 卡号冲突分支的立绘来源优先取作者指定的 art_card_id
+
+复查时发现 CardPool 的「卡号冲突自动改号」分支里，
+ArtCardId 直接用了改号前的原号，覆盖了作者显式写的 art_card_id。
+两者语义不同：
+  · art_card_id —— 作者明确指定去哪个包目录找图
+  · 改号前的原号 —— 只在外卡没写时的兜底
+改为作者值优先。
+
+## 同时复核
+  · 其余两处 ResolveAndValidate 调用（MatchRunner / ConstructedDeck）
+    都已正确检查 IsValid 或返回 Errors，没有同类漏洞。
+  · 纹章的 ArtCardId 链路（SubArtCardId 往返）完整。
+  · 三套编译分支 + 冲突改号分支，共 6 处 ArtCardId 赋值齐全。
+
+## 门禁
+  全部通过，无退化。

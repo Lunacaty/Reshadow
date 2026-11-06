@@ -466,9 +466,11 @@ public static class CardPoolBuilder
                     // 这样两张撞号的 1001 各自去自己的包目录取图，不会串图。
                     if (pendingArtCardId.TryGetValue(c, out int artId) && artId > 0)
                     {
+                        // 作者显式写的 art_card_id 优先；只有没写时才用「改号前的原号」。
+                        int fixedArt = c.ArtCardId > 0 ? c.ArtCardId : artId;
                         var fixedCard = new CardDef
                         {
-                            CardId = card.CardId, ArtCardId = artId,
+                            CardId = card.CardId, ArtCardId = fixedArt,
                             Name = card.Name, NameChs = card.NameChs, Kind = card.Kind,
                             BaseCost = card.BaseCost, BaseAttack = card.BaseAttack, BaseLife = card.BaseLife,
                             Clan = card.Clan, Traits = card.Traits, Abilities = card.Abilities,
