@@ -403,12 +403,12 @@ public sealed class CombatResolver
         if (amount <= 0) return 0;
 
         var barrierKey = _schema.Keyword("barrier");
-        if (target.Keywords.Contains(barrierKey))
+        // 必须走 HasEffectiveKeyword：光环授予的屏障同样要拦。
+        if (_state.HasEffectiveKeyword(target, barrierKey))
         {
             target.Keywords.Remove(barrierKey);
-            // 这里只入队、不写 EventLog：能力伤害经 BattleState.ApplyDamage 时
-            // 由那个包装器统一 EmitEvent（含日志）。两条路各发一次就成了双份。
-            EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnDamaged, Subject = EntityRef.From(target), Amount = 0 });
+            // 屏障把本次伤害抵消为 0 —— 规则上**没有造成过伤害**，
+            // 绝不能发 OnDamaged，否则「受到伤害时」能力会被误触发（174 号文档 三.8）。
             return 0;
         }
 
