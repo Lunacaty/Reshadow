@@ -1,0 +1,40 @@
+feat(170): 严格落实 170 号文档 —— 3 处英文残留 + 3 处逻辑漏洞 + 删除内置卡表
+
+## 用户指出的核心问题：引擎硬编码了衍生卡
+  删除 BattleState 里三张表：
+    · BuiltinTokenDefs   —— 15 张卡的 id/名字/属性/兵种/关键词
+    · BuiltinTokenTexts  —— 5 张卡的效果原文
+    · LoadTokenEntriesFromPacks 的回落分支
+  衍生卡与普通卡从此同源：只来自 data/packs，靠 is_token 字段标记。
+  补入卡包：90005150 燃刃（唯一缺失的一张，写成 py_ast）。
+
+  连带修正：
+    · TestsetLoader 改为从卡包加载 token，并用权威卡库补英文名
+      （卡包产物只有中文名，测试集正文写的是 Add a Fairy / Summon a Bat）
+    · BlockTreeEditorWidget 的卡牌选择器改为遍历卡池卡表取 is_token 卡
+
+## 一、3 处英文残留
+  · bool_has_trait 默认值写死 Fairy -> 取当前卡池首个兵种
+    同时修掉同类的 bool_has_clan 写死精灵 -> 取首个职业
+  · GetSearchableCards 的 token 英文名 -> 取卡池卡表的中文名
+  · 具名牌组新增默认名 New Deck -> 新牌组；
+    计数器行「充能 (充能)」-> 单名时只显示一次；
+    兵种占位提示 Officer, Commander -> 士兵, 指挥官
+
+## 二、3 处逻辑漏洞
+  1. PersistPackEntry / RenameClanInPacks 会改到官方包 official-sv：
+     注册词条优先挑非官方包，改名跳过官方包。
+  2. DescribeTargetShort 的区域序号 5/7 颠倒且缺 8/9：
+     对齐 DiyBlockModel.ZoneCode（5=主战者 6=纹章区 7=额外区 8/9=卡池）。
+  3. CloneDefWithId 漏 ArtCardId：另存新卡继承原卡立绘号，不再黑底。
+
+## 三、act_deck_mod 积木补齐
+  检视器：规则种类下拉（8 种）/ 修正数值 / 指定混组职业 /
+          按投入张数叠加 / 互斥组标识。
+  画布标签：「★ 构筑修正：牌组容量 +10（按张数叠加）」这样的具体描述，
+          不再是干瘪的「构筑规则修正」。
+
+## 门禁
+  全部通过：VM 50/50、文档验收 102/102、Combat 16/16、效用 11/11(弃1)、
+  逐卡矩阵 26/26(弃6)、完整对局 7/7、DIY 3/3(弃1)、PyAST 12/12、
+  卡池 17/17(弃2)、UI 3/3、战斗 UI 25/25(弃6)。

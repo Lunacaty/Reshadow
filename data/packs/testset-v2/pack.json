@@ -48,6 +48,9 @@
     },
     {
       "name": "妖精"
+    },
+    {
+      "name": "探测机甲"
     }
   ],
   "keywords": [],
@@ -485,6 +488,13 @@
       "source_format": "py_ast",
       "text": "card 81000039 \"秘术猎人·尤娜\" (Follower, clan=深渊, cost=4, atk=3, life=5):\n    keywords: [ward]\n    last_words:\n        add_to_hand 1 #90051130",
       "name": "秘术猎人·尤娜"
+    }
+  ],
+  "counters": [
+    {
+      "name": "探测计数",
+      "min": 0,
+      "max": 7
     }
   ]
 }

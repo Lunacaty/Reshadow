@@ -1,0 +1,71 @@
+### 灼热的安纳提玛·班德奈特 #10144110
+EN: Fanfare: Select a card in your hand and discard it. Deal X damage to all enemy followers. X is the cost of the selected card. /  /  / Super-Evolve: Give your opponent Crest: Burnite, Anathema of Flame.
+缺: on_healed turn=Self max=1 on(self:leader): | deal 1 damage to $trigger
+
+### 自动机械刺客 #10171140
+EN: Fanfare: Add an Enhanced Puppet to your hand. /  / Once on each of your turns, when an allied Puppetry follower enters the field, give it Bane.
+缺: on_enter turn=Self max=1 on(self:board<Follower> All where has trait 人偶): | grant_keyword bane to $trigger
+
+### 不弑的继承者·库露露 #10314110
+EN: Fanfare: Give all enemy followers on the field -0/-2. /  / Ambush / Once on each of your turns, when an enemy follower is given - defense on the field, restore 1 defense to your leader. /  /  / Super-Evolve: Give your opponent Crest: Krulle, Heir to Unkilling.
+缺: on_statsmodified turn=Self max=1 on(opponent:board<Follower> All): | restore 1 life to self:leader
+
+### 烈绝的显现·嘉尔缪 #10344120
+EN: Fanfare: Gain Crest: Galmieux, Ardor Manifest. / Enhance (7): Give this follower Storm. /  / Once on each of your turns, when this follower takes damage but isn't destroyed, deal 3 damage to a random enemy follower.
+缺: on_damaged turn=Self max=1 on($self) if prop:Life($trigger) > 0: | deal 3 damage to opponent:board<Follower> Random(1) | on_damaged turn=Self max=1 on(self:board<Follower> All) if prop:Life($trigger) > 0: | add_to_hand 1 #90044320
+
+### 奏绝的显现·莉洁纳 #10374120
+EN: Fanfare: Add a Melodious Monody to your hand. /  / Can't be destroyed by abilities. /  /  / Evolve: Summon a White Psalm, New Revelation.
+缺: keywords: [cannot_destroy]
+
+### 调和的舞者·尤艾尔&苏丝雅 #10414120
+EN: Fanfare: Do this 2 times: "Deal 4 damage to a random enemy follower." /  /  / Super-Evolve: Gain Crest: Yuel & Societte, Dancing Duo.
+缺: on_play turn=Self max=1 on(self:board<Follower> All): | evolve $trigger
+
+### 不动如山的将校 #10523110
+EN: Can't attack followers or leaders. / At the end of your turn, summon a Steelclad Knight. /  /  / Super-Evolve: Give all other allied followers on the field +3/+3.
+缺: keywords: [cannot_attack]
+
+### 波摇花·夕夜 #10544120
+EN: Fanfare: Summon a Majestic Megalorca. /  /  / Evolve: Select a card in your hand and discard it. Gain Crest: Yube, Crestpetal.
+缺: strike on(self:board<Follower> All where has trait 海洋): | buff $trigger +1/+0 [dur=ThisTurn] | strike turn=Self max=1 on(self:board<Follower> All where has trait 海洋): | add_to_hand 1 #90041130
+
+### 焦灰的安纳提玛·班德奈特 #10744110
+EN: Fanfare: Deal 9 damage to all enemy followers. /  /  / Super-Evolve: Give your opponent Crest: Burnite, Anathema of Ash.
+缺: on_healed turn=Self max=1 on(self:leader): | deal 1 damage to $trigger
+
+### 太古的妖精·露芙蕾 #10812110
+EN: Once on each of your turns, when this follower is given + attack or defense on the field, summon a Fairy. / Last Words: Add a Fairy to your hand.
+缺: on_statsmodified turn=Self max=1 on($self): | summon 1 #90011110
+
+### 永恒冰晶·蒂亚 #10814120
+EN: Enhance (4): Give all allied followers on the field +1/+1. /  / Rush / Once on each of your turns, when this follower is given + attack or defense on the field, add an Eve, Blade of Crystalia to your hand.
+缺: on_statsmodified turn=Self max=1 on($self): | add_to_hand 1 #90014110
+
+### 越狱者·卡婕 #10822110
+EN: Once on each of your turns, when you play a spell, deal 2 damage to a random enemy follower. /  /  / Evolve: Add a Glittering Gold to your hand.
+缺: on_play turn=Self max=1 on(self:board<Spell> All): | deal 2 damage to opponent:board<Follower> Random(1)
+
+### 万术的罪人·赛菲 #10934110
+EN: Fuse: Cards / Whenever you Fuse to this card, spend 2 play points to summon an Obsessed Test Subject. /  / Fanfare: Summon 2 copies of Obsessed Test Subject. /  /  / Super-Evolve: Gain Crest: Sephie, Maven Convict.
+缺: on_enter turn=Self max=1 on(card:#10931110@self:board All): | grant_keyword storm to $trigger
+
+### 束刃的罪人·卡特斯罗特 #10974110
+EN: Bane /  /  / Evolve: Draw a Portalcraft follower with Bane. Then, if there are no duplicates in your deck, gain Crest: Cutthroat, Fluxblade Convict.
+缺: tutor self:deck<Follower> Random(1) where (has clan 超越者 and has bane) | on_play turn=Self max=1 on(self:board<Follower> All): | evolve $trigger
+
+### 宝石淑女 #11021120
+EN: Fanfare: Add a Gilded Necklace to your hand. /  / Once on each of your turns, when you play a spell, deal 2 damage to all enemies.
+缺: on_play turn=Self max=1 on(self:board<Spell> All): | deal 2 damage to opponent:board +leader All
+
+### 迷歌侦探·诺茵华薇儿 #11034110
+EN: Fanfare: Summon a Divine Evidence. /  / Whenever you Engage an amulet, deal 3 damage to a random enemy follower. /  /  / Evolve: Gain Crest: Noeinhowell, Hymnodic Detective.
+缺: engage turn=Self max=1 on(any:board<Amulet> Choose(1)): | recover_pp 1
+
+### 未来核心 #90071210
+EN: Fuse: Artifact amulets / When you Fuse to this card, transform it into a Striker Artifact. /  / Can't be played.
+缺: card 90071210 "未来核心" (Amulet, clan=超越者, cost=1, token, rarity=1): | keywords: [cannot_be_played] | fuse: any:board<Amulet> All where has trait 创造物
+
+### 过往核心 #90071220
+EN: Fuse: Artifact amulets / When you Fuse to this card, transform it into a Fortifier Artifact. /  / Can't be played.
+缺: card 90071220 "过往核心" (Amulet, clan=超越者, cost=1, token, rarity=1): | keywords: [cannot_be_played] | fuse: any:board<Amulet> All where has trait 创造物

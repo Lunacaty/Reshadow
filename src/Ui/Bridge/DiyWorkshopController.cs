@@ -200,6 +200,9 @@ public sealed class DiyWorkshopController
         return new ShadowverseFan.KernelV3.Ast.CardDef
         {
             CardId = newId,
+            // 另存新卡要继承原卡立绘号，否则新卡去找 950002.png 找不到，
+            // 手牌、构筑台、战场全是黑底无图。
+            ArtCardId = c.ArtCardId > 0 ? c.ArtCardId : (c.CardId > 0 ? c.CardId : 0),
             PackId = packId,
             Name = c.Name,
             NameChs = c.NameChs,
@@ -615,7 +618,11 @@ public sealed class DiyWorkshopController
         {
             if (!Store.PoolConfigs.TryGetValue(ActivePoolId ?? "", out var cfg))
                 cfg = Store.PoolConfigs.Values.FirstOrDefault();
-            string packId = cfg?.EnabledPackIds?.FirstOrDefault() ?? "testset-v2";
+            // 必须避开 official-sv：几乎每个卡池的 EnabledPackIds[0] 都是它，
+            // 直接取第一个会把自定义兵种/计数器写进官方核心包。
+            string packId = cfg?.EnabledPackIds?
+                .FirstOrDefault(x => !string.Equals(x, "official-sv", StringComparison.OrdinalIgnoreCase))
+                ?? "testset-v2";
             Store.AddPackSymbolEntry(packId, kind, name, min, max, out _);
         }
         catch (Exception) { }

@@ -337,51 +337,12 @@ public sealed class BattleState : IVmWorld
     /// 幂等：重复调用只会覆盖成同一份定义。
     /// </summary>
     /// <summary>
-    /// 内置衍生卡的「名字 → 卡号」表。
-    ///
-    /// 测试集正文会引用这些名字（Add a Fairy / Summon 3 copies of Fairy /
-    /// Ominous Artifact α…），加载器必须把它们登记进词法层，
-    /// 否则那些句子在编译期就认不出宾语。
-    /// 与 RegisterBuiltinTokens 必须保持同一份真相 —— 两边各写一份必然漂移。
-    /// </summary>
-    public static readonly (int id, string name, CardKind kind, int cost, int atk, int life,
-                             string[] traits, string[] keywords)[] BuiltinTokenDefs =
-    {
-        (MagicSedimentCardId, "Magic Sediment", CardKind.Amulet, 1, 0, 0, null, null),
-        (ClueDefaultCardId, "Divine Evidence", CardKind.Amulet, 1, 0, 0, new[] { "证据" }, null),
-        (90011110, "Fairy", CardKind.Follower, 1, 1, 1, new[] { "妖精" }, null),
-        (90051120, "Bat", CardKind.Follower, 1, 1, 1, null, null),
-        (90021110, "Knight", CardKind.Follower, 1, 1, 1, new[] { "士兵" }, null),
-        (90031120, "Guardian Golem", CardKind.Follower, 2, 2, 2, new[] { "巨像" }, new[] { "ward" }),
-        (90073110, "Ominous Artifact \u03b1", CardKind.Follower, 1, 2, 1, new[] { "创造物" }, null),
-        (90073120, "Ominous Artifact \u03b2", CardKind.Follower, 2, 3, 2, new[] { "创造物" }, null),
-        (90073130, "Ominous Artifact \u03b3", CardKind.Follower, 3, 5, 3, new[] { "创造物" }, null),
-        (90024310, "Remnant of Hollowness", CardKind.Spell, 1, 0, 0, new[] { "财宝" }, null),
-        (90005150, "Kindled Blade", CardKind.Spell, 2, 0, 0, null, null),
-        (90034310, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null, null),
-        // Fortifier Artifact 不在测试集里，只是 Striker Artifact 分档表的另一档目标。
-        (90072120, "Fortifier Artifact", CardKind.Follower, 4, 3, 3, new[] { "创造物" }, new[] { "ward" }),
-        (90004110, "Silent Rider", CardKind.Follower, 6, 8, 8, null, new[] { "storm" }),
-        (90004120, "Servant of Cocytus", CardKind.Follower, 1, 13, 13, null, null),
-        (90004130, "Demon of Purgatory", CardKind.Follower, 4, 9, 6, null, null),
-        (90004310, "Astaroth's Reckoning", CardKind.Spell, 10, 0, 0, null, null),
-    };
-
-    /// <summary>
     /// 衍生卡的真实卡面文本。为空表示它本来就没有效果。
     ///
     /// 不挂这些文本，衍生法术就是白板：打出去什么都不发生，
     /// 而「什么都没发生」与「效果生效了但没观测到」在测试里长得一模一样，
     /// 是最容易蒙混过关的一类空白。
     /// </summary>
-    public static readonly Dictionary<int, string> BuiltinTokenTexts = new()
-    {
-        [90004130] = "<b><color=Keyword>Fanfare</color></b>: Select 2 enemy followers on the field and deal 6 damage to them and the enemy leader.",
-        [90004310] = "Set the enemy leader's max defense to 1.",
-        [90024310] = "Deal 2 damage to the enemy leader.",
-        [90005150] = "Deal 2 damage to the enemy leader.",
-        [90034310] = "Select an enemy follower on the field and banish it.",
-    };
 
     public void RegisterBuiltinTokens(Lang.Lexicon lex = null)
     {
@@ -398,14 +359,11 @@ public sealed class BattleState : IVmWorld
             // 有卡面文本的衍生卡必须真的编译出能力 —— 否则它是个白板，
             // 而「白板」与「效果已生效但没观测到」在测试里无法区分。
             //
-            // 文本优先取**卡包里写的**，其次才是内置回落表。
-            // 只查 BuiltinTokenTexts 会让 DIY 作者新加的带效果衍生卡变成白板 ——
-            // 他的卡包装进引擎了，效果却没人读。
+            // 文本只取卡包里写的：衍生卡与普通卡同源，没有内置回落表。
             IReadOnlyList<Ast.AbilityDef> abilities = Array.Empty<Ast.AbilityDef>();
             string text = null;
-            string src = !string.IsNullOrWhiteSpace(packText)
-                ? packText
-                : (BuiltinTokenTexts.TryGetValue(id, out var builtinSrc) ? builtinSrc : null);
+            // 文本只从卡包取：衍生卡与普通卡同源，没有内置回落表。
+            string src = string.IsNullOrWhiteSpace(packText) ? null : packText;
             if (lex != null && !string.IsNullOrWhiteSpace(src))
             {
                 text = src;
@@ -423,8 +381,7 @@ public sealed class BattleState : IVmWorld
         }
 
         // 从 packs/*/pack.json 加载衍生卡（引擎零硬编码卡牌）。
-        // 加载不到时回落到 BuiltinTokenDefs —— 回落分支保证
-        // 「把仓库拷到没有 data/packs 的地方」时测试仍然能跑。
+        // 读不到就是没有卡：衍生卡与普通卡同源，不存在内置定义。
         var tokens = LoadTokenEntriesFromPacks();
         foreach (var t in tokens)
         {
@@ -472,11 +429,8 @@ public sealed class BattleState : IVmWorld
             // 读卡包失败时静默回落到内置表：卡包是可选内容，不是运行前提。
         }
 
-        if (list.Count == 0)
-        {
-            foreach (var t in BuiltinTokenDefs)
-                list.Add((t.id, t.name, t.kind, t.cost, t.atk, t.life, t.traits, t.keywords, null));
-        }
+        // 没有任何回落表：衍生卡与其他卡一样，只能来自卡包。
+        // 读不到 data/packs 就是真的没有卡，而不是「退回一套内置定义」。
         return list;
     }
 

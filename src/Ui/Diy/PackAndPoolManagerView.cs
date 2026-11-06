@@ -329,7 +329,7 @@ public partial class PackAndPoolManagerView : Control
                 cfg0.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>());
             list0.Add(new ShadowverseFan.KernelV3.Packs.NamedDeckRawDef
             {
-                DeckName = "New Deck",
+                DeckName = "新牌组",
                 DeckNameChs = "新牌组",
                 Entries = new List<ShadowverseFan.KernelV3.Packs.NamedDeckEntryRaw>(),
             });
@@ -731,7 +731,7 @@ public partial class PackAndPoolManagerView : Control
             string zhName = string.IsNullOrWhiteSpace(def.NameChs) ? def.Name : def.NameChs;
             var name = new Label
             {
-                Text = zhName + " (" + def.Name + ")  [" + def.Min + ".." + def.Max
+                Text = (zhName == def.Name ? def.Name : zhName + " (" + def.Name + ")") + "  [" + def.Min + ".." + def.Max
                        + ", 初值:" + def.Initial + "] · " + LifecycleZh(def.Lifecycle),
                 SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 ClipText = true,

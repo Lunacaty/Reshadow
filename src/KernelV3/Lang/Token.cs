@@ -51,9 +51,13 @@ public sealed class Token
     public int Indent { get; init; }
     public IReadOnlyList<Token> Inner { get; init; } = Array.Empty<Token>();
 
+    // Number 也要算：EnglishNumber 把 once/twice/thrice 当数值（
+    // "Can attack twice per turn" 必须读成 2），于是 "Once on each of your
+    // turns" 里的 Once 成了 Number token。若 IsWord 不认 Number，
+    // 整条频率前缀匹配不上，该句会被当成无法解析的动作整段丢弃。
     public bool IsWord(string w) =>
         (Kind == TokKind.Word || Kind == TokKind.Keyword || Kind == TokKind.CardName
-         || Kind == TokKind.Trait || Kind == TokKind.Clan)
+         || Kind == TokKind.Trait || Kind == TokKind.Clan || Kind == TokKind.Number)
         && string.Equals(Text, w, StringComparison.OrdinalIgnoreCase);
 
     public bool IsAnyWord(params string[] words)

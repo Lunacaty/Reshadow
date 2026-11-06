@@ -14099,6 +14099,20 @@
       "name": "涸绝的甘露"
     },
     {
+      "card_id": 90005150,
+      "kind": 3,
+      "is_token": true,
+      "clan": "中立",
+      "traits": [],
+      "cost": 2,
+      "attack": 0,
+      "life": 0,
+      "source_format": "py_ast",
+      "text": "card 90005150 \"燃刃\" (Spell, clan=中立, cost=2, token, rarity=1):\n    on_play:\n        deal 2 damage to opponent:leader",
+      "rarity": 1,
+      "name": "燃刃"
+    },
+    {
       "card_id": 90011110,
       "kind": 1,
       "is_token": true,

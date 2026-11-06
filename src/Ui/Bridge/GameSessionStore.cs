@@ -1033,6 +1033,9 @@ public sealed class GameSessionStore
 
             foreach (var dir in Directory.GetDirectories(root))
             {
+                // 官方核心包不参与改名：那是编译产物，改了就与数据源脱节。
+                if (string.Equals(Path.GetFileName(dir), "official-sv", StringComparison.OrdinalIgnoreCase))
+                    continue;
                 string file = Path.Combine(dir, "pack.json");
                 if (!File.Exists(file)) continue;
                 string raw = File.ReadAllText(file, System.Text.Encoding.UTF8);

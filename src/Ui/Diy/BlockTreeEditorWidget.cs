@@ -1177,6 +1177,19 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         col.AddChild(row);
     }
 
+    /// <summary>构筑修正的规则种类。键必须与 DiyBlockModel 的 DeckModifier 编译分支一致。</summary>
+    static (string Key, string Zh)[] DeckModKinds() => new[]
+    {
+        ("size", "牌组张数上下限增减"),
+        ("leader_life", "主战者初始生命增减"),
+        ("hand", "起手抽牌数增减"),
+        ("ep", "初始进化点 (EP) 增减"),
+        ("sep", "初始超进化点 (SEP) 增减"),
+        ("self_copy", "本卡投入张数上限覆盖"),
+        ("allow_clan_fixed", "允许混组指定职业"),
+        ("allow_clan_choose", "允许任选 N 个额外职业"),
+    };
+
     private void BuildScriptSpecificInspector(VBoxContainer col, Block b)
     {
         switch (b.Opcode)
@@ -1446,9 +1459,24 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 break;
 
             case "act_deck_mod":
-                BuildTextEditor(col, "规则项", b.Text, v => { b.Text = v; Apply(); });
-                BuildIntEditor(col, "数值", b.IntA, v => { b.IntA = v; Apply(); });
+            {
+                // 构筑修正支持 8 种规则，还要能配职业参数 / 叠加 / 互斥组。
+                // 只给「规则项 + 数值」两个裸框，玩家得自己记住 size / leader_life
+                // 这些内码，等于做不到。
+                BuildEnumCombo(col, "规则种类", DeckModKinds(), b.Text ?? "size",
+                               v => { b.Text = v; Apply(rebuildInspector: true); });
+
+                BuildIntEditor(col, "修正数值", b.IntA, v => { b.IntA = v; Apply(); });
+
+                if ((b.Text ?? "") == "allow_clan_fixed")
+                    BuildEnumCombo(col, "指定混组职业", AvailableClans(), b.CardNameA ?? "",
+                                   v => { b.CardNameA = v; Apply(); });
+
+                BuildBoolCheck(col, "按投入张数成倍叠加", b.FlagA, v => { b.FlagA = v; Apply(); });
+                BuildInlineText(col, "互斥组标识（留空=无）", b.Text2 ?? "",
+                                v => { b.Text2 = v; Apply(); });
                 break;
+            }
 
             default:
                 // 兜底：确实需要手填的少数积木。卡牌一律用卡 ID，不认卡名。
@@ -1752,8 +1780,16 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         try
         {
-            foreach (var t in ShadowverseFan.KernelV3.Battle.BattleState.BuiltinTokenDefs)
-                map[t.id] = (t.id, t.name, t.name, true);
+            // 衍生卡与普通卡同源：直接遍历卡池的卡表，is_token 标记的就是衍生物。
+            var store = _ctrl?.Store;
+            var all = store?.Catalog?.AllCards?.Values;
+            if (all != null)
+                foreach (var cd in all)
+                {
+                    if (cd == null || cd.CardId <= 0 || !cd.IsToken) continue;
+                    string tzh = !string.IsNullOrWhiteSpace(cd.NameChs) ? cd.NameChs : (cd.Name ?? "");
+                    map[cd.CardId] = (cd.CardId, tzh, cd.Name ?? "", true);
+                }
         }
         catch (Exception) { }
 
@@ -2056,8 +2092,19 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 made.Number2 = new Block { Opcode = "num_const", IntA = 1 };
             }
             else if (op == "bool_has_kw") made.Text = "ward";
-            else if (op == "bool_has_trait") made.Text = "Fairy";
-            else if (op == "bool_has_clan") made.Text = "精灵";
+            else if (op == "bool_has_trait")
+            {
+                // 兵种数据全是中文，写死 "Fairy" 会让下拉框空白、卡面印英文、
+                // 而且实战永远匹配不到兵种为「妖精」的随从。
+                var ts = AvailableTraits();
+                made.Text = ts.Length > 0 ? ts[0].Key : "妖精";
+            }
+            else if (op == "bool_has_clan")
+            {
+                // 同 bool_has_trait：职业名也来自卡池数据，写死会让自定义职业池选不到。
+                var cs = AvailableClans();
+                made.Text = cs.Length > 0 ? cs[0].Key : "中立";
+            }
             // 编译器读的是 EnumA（DiyBlockCompiler.CompileCond），不是 Text。
             // 早先写进 Text 会让积木端拼出的条件全落进默认的 Damaged。
             else if (op == "bool_has_state") made.EnumA = "Evolved";
@@ -2208,7 +2255,11 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 string zone = t.IntA switch
                 {
                     0 => "战场", 1 => "手牌", 2 => "牌组", 3 => "墓场",
-                    4 => "放逐区", 5 => "额外区", 6 => "纹章区", 7 => "主战者",
+                    // 序号必须与 DiyBlockModel.ZoneCode 一致：
+                    // 5=主战者 6=纹章区 7=额外区 8=当前卡池 9=全部卡池。
+                    // 早先 5/7 写反，选「主战者」画布显示「额外区」，反之亦然。
+                    4 => "放逐区", 5 => "主战者", 6 => "纹章区", 7 => "额外区",
+                    8 => "当前卡池", 9 => "全部卡池",
                     _ => "区域",
                 };
                 string owner = t.IntB switch
@@ -2301,7 +2352,25 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             case "act_grant_entity_ability": return "赋予目标一段能力";
             case "act_grant_ability": return "赋予常驻能力";
             case "act_invoke": return "复刻发动时机能力";
-            case "act_deck_mod": return "构筑规则修正";
+            case "act_deck_mod":
+            {
+                // 画出具体规则，而不是干瘪的一行「构筑规则修正」——
+                // 玩家在一屏里分不清三张同名的构筑修正积木各改了什么。
+                string sign = blk.IntA >= 0 ? "+" : "";
+                string detail = (blk.Text ?? "size") switch
+                {
+                    "size" => "牌组容量 " + sign + blk.IntA,
+                    "leader_life" => "主战者生命 " + sign + blk.IntA,
+                    "hand" => "起手牌数 " + sign + blk.IntA,
+                    "ep" => "初始EP " + sign + blk.IntA,
+                    "sep" => "初始SEP " + sign + blk.IntA,
+                    "self_copy" => "本卡上限设为 " + blk.IntA + " 张",
+                    "allow_clan_fixed" => "允许投入【" + (blk.CardNameA ?? "?") + "】职业卡",
+                    "allow_clan_choose" => "允许任选 " + blk.IntA + " 个额外职业",
+                    _ => "构筑规则修正",
+                };
+                return "★ 构筑修正：" + detail + (blk.FlagA ? "（按张数叠加）" : "");
+            }
             case "act_move_to_board": return "移动到战场";
             case "act_select": return "显式选择目标";
             default: return string.IsNullOrEmpty(op) ? "(空积木)" : op;

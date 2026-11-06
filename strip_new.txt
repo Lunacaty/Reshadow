@@ -1,0 +1,23 @@
+    /// <summary>
+    /// 清洗卡面 HTML。
+    ///
+    /// 标签带语义，不能一律剥掉：
+    ///   <hr>       段分隔          -> 空行
+    ///   <ev>       进化段开始      -> 换行
+    ///   <sev>      超进化段开始    -> 换行
+    ///   <ridx=N>   模式编号前缀    -> 只去标签，保留里面的「1.」「（1）」这类文字
+    ///   <b> <i> <color=…>  纯样式 -> 直接去掉
+    /// </summary>
+    static string StripHtml(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"<hr\s*/?>", "\n\n");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"<br\s*/?>", "\n");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"</?ev>", "\n");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"</?sev>", "\n");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"</?ridx(=[^>]*)?>", "");
+        s = System.Text.RegularExpressions.Regex.Replace(s, "<[^>]+>", "");
+        s = s.Replace("&amp;", "&").Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", "\"");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\n{3,}", "\n\n");
+        return s.Trim();
+    }

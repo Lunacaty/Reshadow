@@ -56,6 +56,8 @@ public static class TestsetLoader
     /// 把 30 张卡全部编译并注册进 <paramref name="ctx"/> 的 BattleState，
     /// 同时把卡名登记进词法层（供「add a X to your hand」之类引用解析）。
     /// </summary>
+    private static readonly List<ShadowverseFan.KernelV3.Packs.CardRawEntry> _pendingTokens = new();
+
     public static List<LoadedCard> LoadInto(CompileContext ctx, bool verbose = false)
     {
         var path = ResolvePath();
@@ -101,8 +103,29 @@ public static class TestsetLoader
         // 「Add a Fairy to your hand」「Summon 3 copies of Fairy」
         // 「transform ... into Ominous Artifact α」「Add a Remnant of Hollowness」。
         // 它们必须一并登记进词法层，否则那些句子编译期就认不出宾语。
-        foreach (var t in BattleState.BuiltinTokenDefs)
-            ctx.Lexicon.AddCard(t.name, t.id);
+        // 从卡包登记衍生卡的英文名 —— 引擎里没有内置卡表，
+        // 衍生卡与普通卡同源，都只来自 data/packs。
+        // 衍生卡与普通卡同源：从卡包登记英文名，并把定义也塞进本局的卡池。
+        // 以前这两件事由 BattleState 里一张硬编码的 token 表兼做；
+        // 表删掉后，测试集必须自己把卡包里的 token 带进 State，
+        // 否则「Add a Fairy」造出来的是 Def == null 的白板空壳。
+        foreach (var pack in ShadowverseFan.KernelV3.Packs.CardPackLoader.LoadAll(
+                     ShadowverseFan.KernelV3.Packs.CardPackLoader.ResolvePacksRoot()))
+        {
+            foreach (var c in pack.Cards)
+            {
+                if (!c.IsToken) continue;
+                // 卡包产物只有中文名，英文名要从权威卡库按卡号补 ——
+                // 测试集正文写的是 "Add a Fairy" / "Summon a Bat"，
+                // 没有英文名这些句子编译期就认不出宾语。
+                string en = ShadowverseFan.KernelV3.Packs.AuthoritativeNames.EnglishOf(c.CardId);
+                if (string.IsNullOrWhiteSpace(en)) en = c.NameEng;
+                if (!string.IsNullOrWhiteSpace(en)) ctx.Lexicon.AddCard(en, c.CardId);
+                if (!string.IsNullOrWhiteSpace(c.NameChs))
+                    ctx.Lexicon.AddCard(c.NameChs, c.CardId);
+                _pendingTokens.Add(c);
+            }
+        }
 
         ctx.Lexicon.Build();
 
@@ -110,7 +133,15 @@ public static class TestsetLoader
         var st = ctx.State;
         // 传 Lexicon 进去：有卡面文本的衍生卡（Remnant of Hollowness 等）
         // 需要当场编译出能力，否则它们是白板。
-        st.RegisterBuiltinTokens(ctx.Lexicon);
+        // 把卡包里的衍生卡编成真实的 CardDef 并注册进本局卡池。
+        // 引擎已无可用的内置 token 表，这里是唯一来源。
+        var catalog = ShadowverseFan.KernelV3.Packs.GlobalCatalog.LoadAll(
+            ShadowverseFan.KernelV3.Packs.CardPackLoader.ResolvePacksRoot());
+        foreach (var tc in _pendingTokens)
+        {
+            var tdef = catalog.TryGetCard(tc.CardId);
+            if (tdef != null) st.RegisterCard(tdef);
+        }
 
         var result = new List<LoadedCard>();
         foreach (var r in raw)

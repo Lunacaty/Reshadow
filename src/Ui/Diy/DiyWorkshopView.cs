@@ -694,7 +694,7 @@ public partial class DiyWorkshopView : Control
         {
             Text = string.Join(", ", fm.Traits ?? new List<string>()),
             CustomMinimumSize = new Vector2(260, 32),
-            PlaceholderText = "逗号分隔，如 Officer, Commander",
+            PlaceholderText = "逗号分隔，如 士兵, 指挥官",
         };
         _endpointHost.AddChild(EditRow("兵种", _formTraitsEdit));
 
@@ -834,7 +834,7 @@ public partial class DiyWorkshopView : Control
         {
             Text = string.Join(", ", spec.Traits ?? new List<string>()),
             CustomMinimumSize = new Vector2(300, 32),
-            PlaceholderText = "逗号分隔，如 Officer, Commander",
+            PlaceholderText = "逗号分隔，如 士兵, 指挥官",
         };
         _endpointHost.AddChild(EditRow("Traits", _engTraitsEdit));
 

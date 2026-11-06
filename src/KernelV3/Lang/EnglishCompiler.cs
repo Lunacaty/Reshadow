@@ -167,6 +167,18 @@ public sealed class EnglishCompiler
 
     private IReadOnlyList<(string typeEng, int cost, string textEng)> _altModes;
 
+    /// <summary>当前段的 InnateKeywords 收集器（CompileSegment 每次进来重设）。</summary>
+    private List<Core.SymbolId<Core.KeywordTag>> _currentInnateSink;
+
+    /// <summary>把一个关键词写进 InnateKeywords（去重）。</summary>
+    private void AddInnate(string kwName)
+    {
+        var sym = _lex.Keyword(kwName);
+        if (!sym.IsValid) return;
+        var sink = _currentInnateSink;
+        if (sink != null && !sink.Contains(sym)) sink.Add(sym);
+    }
+
     private Result CompileCore(string text)
     {
         // 防止上一张卡的状态跨卡污染。
@@ -613,6 +625,7 @@ public sealed class EnglishCompiler
     private List<AbilityDef> CompileSegment(string segment, SectionZone zone = SectionZone.Normal,
                                             List<Core.SymbolId<Core.KeywordTag>> innateSink = null)
     {
+        _currentInnateSink = innateSink;
         var result = new List<AbilityDef>();
         var tokens = _tokenizer.Tokenize(segment);
 
@@ -1003,6 +1016,43 @@ public sealed class EnglishCompiler
                     if (consumedAny) continue;
                 }
                 c.Seek(saveKw);
+            }
+
+
+
+            // ---- 裸限制句：「Can't be destroyed by abilities.」「Can't attack followers or leaders.」----
+            //
+            // 这类句子只声明一条常驻属性，不带任何动作。以前整句落到动作解析器，
+            // 报「无法解析的动作」后整段丢弃 —— 卡面上看不出缺了什么，
+            // 但这条限制在实战里完全不存在。
+            if (c.Current.IsAnyWord("can't", "cannot", "cant"))
+            {
+                int saveBan = c.Position;
+                string banKw = null;
+                c.Advance();
+                if (c.MatchWord("be"))
+                {
+                    if (c.MatchPhrase("played")) banKw = "cannot_be_played";
+                    else if (c.MatchWord("destroyed")) banKw = "cannot_destroy";
+                }
+                else if (c.MatchWord("attack"))
+                {
+                    // "followers or leaders" / 单个 followers / 单个 leaders 都算全面受限
+                    if (c.MatchPhrase("followers", "or", "leaders")
+                        || c.MatchPhrase("followers")
+                        || c.MatchPhrase("leaders"))
+                        banKw = "cannot_attack";
+                }
+
+                if (banKw != null)
+                {
+                    AddInnate(banKw);
+                    // 吞掉本句剩余部分，停在句号之后
+                    while (!c.IsAtEnd && c.Current.Kind != TokKind.Period) c.Advance();
+                    if (!c.IsAtEnd) c.Advance();
+                    continue;
+                }
+                c.Seek(saveBan);
             }
 
             // 句首裸关键词（Ward / Rush / Storm …）：每个词生成一个独立常驻能力

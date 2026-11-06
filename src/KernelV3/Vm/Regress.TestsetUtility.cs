@@ -123,7 +123,7 @@ public static partial class Regress
     private static CompileContext UtilCtx(int seed) => CompileContext.Create(seed)
         .Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier")
         .Traits("妖精", "创造物", "财宝", "证据", "巨像", "士兵")
-        // 卡名 → 卡号必须与 BattleState.BuiltinTokenDefs 一致。
+        // 卡名 → 卡号取自卡包数据，引擎里没有内置卡表。
         // 「Ghost」曾被错绑到 90021110（那是 Knight）—— 效果想加 Ghost，
         // 手里却出现一张白板骑士；81000020 才是测试集里的真 Ghost。
         // 同理 Striker / Gear / Shoddy 都是测试集真卡，不能另起 9000 号段。
