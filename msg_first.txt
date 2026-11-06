@@ -1,0 +1,32 @@
+feat: AI 对战开局可选先后手
+
+## 之前的状态
+  内核其实完整支持先后手（MatchRunner.StartWithConstructedDecks 接受 firstPlayer，
+  BattleState.FirstPlayer 可设 0/1），但 UI 一路写死 0，且**多处补偿判定写死
+  playerId == 0/1** —— 即使传了 firstPlayer=1，后手补偿也会发给错误的一方。
+
+## 内核修正（按 FirstPlayer 判断，不再写死 0/1）
+  · MatchRules 四个方法加 firstPlayer 参数：
+    EvolveUnlockTurn / SuperEvolveUnlockTurn / InitialEp / InitialSep
+  · MatchRunner.InitCountersWithBonus、StartWithConstructedDecks 传 State.FirstPlayer
+  · BattleState 的进化解锁检查传 FirstPlayer
+  · TurnRunner 三处：
+    - FirstPlayerDrawsOnTurn1 判定改为 playerId == FirstPlayer
+    - CanUseExtraPp 改为「非先手才有额外能量点」
+    - 进化/超进化解锁回合传 FirstPlayer
+
+## UI 链路
+  · BattleSelectDialog 加第 4 栏「④ 先后手」，两个按钮：我方先手 / 我方后手
+  · 状态行显示「我方先手」或「我方后手（多得额外能量点）」
+  · OnStart 事件带出 firstPlayer，经 DeckManagementRoot.StartBattle →
+    BattleScreenRoot.Boot → BattleSessionController 构造一路传到 MatchRunner
+  · 牌组列表的「直接开打」也走同一个选择窗（预选该牌组），
+    不再绕过先后手选择
+
+## 实测
+  firstPlayer=0: FirstPlayer=0, 我方进化解锁第5回合, 超进化第7回合
+  firstPlayer=1: FirstPlayer=1, 我方进化解锁第4回合, 超进化第6回合
+  后手补偿正确落到我方(id 0)。
+
+## 门禁
+  全部通过，无退化。

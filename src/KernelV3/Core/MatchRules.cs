@@ -89,18 +89,25 @@ public sealed class MatchRules
 
     public static MatchRules CreateStandard() => new();
 
+    // 这四个「先手 / 后手」补偿**不能按 playerId == 0/1 写死**：
+    // 玩家可以在开局界面选自己后手，此时 FirstPlayer = 1，
+    // 写死的话额外能量点、进化解锁回合会发给错误的一方。
+    // 统一以 FirstPlayer 为基准判断，调用方必须把本局先手传进来。
+    private static bool IsFirst(int playerId, int firstPlayer)
+        => playerId == firstPlayer;
+
     /// <summary>某玩家第 N 回合能否手动进化。</summary>
-    public int EvolveUnlockTurn(int playerId)
-        => playerId == 0 ? EvolveUnlockTurnFirstPlayer : EvolveUnlockTurnSecondPlayer;
+    public int EvolveUnlockTurn(int playerId, int firstPlayer = 0)
+        => IsFirst(playerId, firstPlayer) ? EvolveUnlockTurnFirstPlayer : EvolveUnlockTurnSecondPlayer;
 
-    public int SuperEvolveUnlockTurn(int playerId)
-        => playerId == 0 ? SuperEvolveUnlockTurnFirstPlayer : SuperEvolveUnlockTurnSecondPlayer;
+    public int SuperEvolveUnlockTurn(int playerId, int firstPlayer = 0)
+        => IsFirst(playerId, firstPlayer) ? SuperEvolveUnlockTurnFirstPlayer : SuperEvolveUnlockTurnSecondPlayer;
 
-    public int InitialEp(int playerId)
-        => playerId == 0 ? InitialEpFirstPlayer : InitialEpSecondPlayer;
+    public int InitialEp(int playerId, int firstPlayer = 0)
+        => IsFirst(playerId, firstPlayer) ? InitialEpFirstPlayer : InitialEpSecondPlayer;
 
-    public int InitialSep(int playerId)
-        => playerId == 0 ? InitialSepFirstPlayer : InitialSepSecondPlayer;
+    public int InitialSep(int playerId, int firstPlayer = 0)
+        => IsFirst(playerId, firstPlayer) ? InitialSepFirstPlayer : InitialSepSecondPlayer;
 
     /// <summary>基础校验：数值必须自洽，否则卡池配置一加载就该报错。</summary>
     public void Validate(System.Collections.Generic.List<string> errors)

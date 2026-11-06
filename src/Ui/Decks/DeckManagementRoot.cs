@@ -56,7 +56,7 @@ public partial class DeckManagementRoot : Control
         Swap(menu);
         menu.Boot(_store);
 
-        menu.OnStartBattle    += ShowBattleSelect;
+        menu.OnStartBattle    += () => ShowBattleSelect();
         menu.OnLanBattle      += ShowLanLobby;
         menu.OnDeckManagement += ShowDeckList;
         menu.OnDiyWorkshop    += ShowDiyWorkshop;
@@ -179,26 +179,26 @@ public partial class DeckManagementRoot : Control
     }
 
     /// <summary>对战选择窗：先卡池、再双方牌组，然后直接开局。</summary>
-    private void ShowBattleSelect()
+    private void ShowBattleSelect(ConstructedDeck presetMine = null)
     {
         var dlg = new BattleSelectDialog();
         AddChild(dlg);
         dlg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        dlg.Boot(_store);
+        dlg.Boot(_store, presetMine);
 
         dlg.OnCancelled += () => dlg.QueueFree();
-        dlg.OnStart += (my, foe) =>
+        dlg.OnStart += (my, foe, firstPlayer) =>
         {
             dlg.QueueFree();
-            StartBattle(my, foe);
+            StartBattle(my, foe, firstPlayer);
         };
     }
 
-    private void StartBattle(ConstructedDeck my, ConstructedDeck foe)
+    private void StartBattle(ConstructedDeck my, ConstructedDeck foe, int firstPlayer = 0)
     {
         var view = new Battle.BattleScreenRoot();
         Swap(view);
-        view.Boot(_store, my, foe);
+        view.Boot(_store, my, foe, firstPlayer);
         view.OnExitToDecks += ShowMainMenu;
     }
 
@@ -235,13 +235,9 @@ public partial class DeckManagementRoot : Control
 
     private void ShowBattle(ConstructedDeck deck)
     {
-        if (_store == null) return;
-        var view = new Battle.BattleScreenRoot();
-        view.OnExitToDecks += ShowDeckList;
-        Swap(view);
-
-        // 对手用同一副牌组（本地演示没有联机对手）
-        view.Boot(_store, deck, deck);
+        // 从牌组列表「直接开打」也走同一个选择窗：先后手是开局必须能选的，
+        // 不能因为入口不同就写死我方先手。这里预选好这副牌组，只需补对手与先后手。
+        ShowBattleSelect(deck);
     }
 
     private void ShowDiyWorkshop()

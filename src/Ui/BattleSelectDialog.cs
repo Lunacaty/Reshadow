@@ -16,7 +16,7 @@ namespace ShadowverseFan.Ui;
 /// </summary>
 public partial class BattleSelectDialog : Control
 {
-    public event Action<ConstructedDeck, ConstructedDeck> OnStart;
+    public event Action<ConstructedDeck, ConstructedDeck, int> OnStart;
     public event Action OnCancelled;
 
     private GameSessionStore _store;
@@ -29,8 +29,10 @@ public partial class BattleSelectDialog : Control
     private VBoxContainer _foeCol;
     private Button _startBtn;
     private Label _status;
+    private VBoxContainer _firstCol;
+    private int _firstPlayer = 0;   // 0 = 我方先手，1 = AI 先手
 
-    public void Boot(GameSessionStore store)
+    public void Boot(GameSessionStore store, ConstructedDeck presetMine = null)
     {
         _store = store;
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -70,6 +72,8 @@ public partial class BattleSelectDialog : Control
         _poolCol = AddColumn(cols, "① 赛制卡池", 240);
         _myCol = AddColumn(cols, "② 我方牌组", 380);
         _foeCol = AddColumn(cols, "③ 对手（AI）牌组", 380);
+        _firstCol = AddColumn(cols, "④ 先后手", 180);
+        RefreshFirstPlayer();
 
         var bar = new HBoxContainer();
         bar.AddThemeConstantOverride("separation", 12);
@@ -91,13 +95,15 @@ public partial class BattleSelectDialog : Control
         SvWbTheme.StyleButton(_startBtn, isPrimary: true, customAccent: SvWbTheme.AccentGold);
         _startBtn.Pressed += () =>
         {
-            if (_myDeck != null && _foeDeck != null) OnStart?.Invoke(_myDeck, _foeDeck);
+            if (_myDeck != null && _foeDeck != null) OnStart?.Invoke(_myDeck, _foeDeck, _firstPlayer);
         };
         bar.AddChild(_startBtn);
 
         // 默认选中第一个卡池
-        var first = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).FirstOrDefault();
+        var first = presetMine != null ? presetMine.PoolId
+            : _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).FirstOrDefault();
         SelectPool(first);
+        if (presetMine != null) { _myDeck = presetMine; RefreshDeckColumns(); UpdateStatus(); }
     }
 
     private static VBoxContainer AddColumn(HBoxContainer host, string title, int width)
@@ -234,6 +240,26 @@ public partial class BattleSelectDialog : Control
         return b;
     }
 
+    /// <summary>先后手选择：默认我方先手；后手由内核按 FirstPlayer 给补偿。</summary>
+    private void RefreshFirstPlayer()
+    {
+        if (_firstCol == null) return;
+        Clear(_firstCol);
+        var hint = new Label
+        {
+            Text = "后手可获额外能量点、进化/超进化更早解锁。",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        hint.AddThemeFontSizeOverride("font_size", 11);
+        hint.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+        _firstCol.AddChild(hint);
+
+        _firstCol.AddChild(MakePickButton("① 我方先手", _firstPlayer == 0, SvWbTheme.AccentGold,
+            () => { _firstPlayer = 0; RefreshFirstPlayer(); UpdateStatus(); }));
+        _firstCol.AddChild(MakePickButton("② 我方后手", _firstPlayer == 1, SvWbTheme.AccentCyan,
+            () => { _firstPlayer = 1; RefreshFirstPlayer(); UpdateStatus(); }));
+    }
+
     private void UpdateStatus()
     {
         if (_startBtn == null) return;
@@ -244,6 +270,7 @@ public partial class BattleSelectDialog : Control
         {
             _status.Text = ready
                 ? "我方：" + _myDeck.Name + "　vs　AI：" + _foeDeck.Name
+                  + "　·　" + (_firstPlayer == 0 ? "我方先手" : "我方后手（多得额外能量点）")
                 : "请先选择卡池与双方牌组";
         }
     }

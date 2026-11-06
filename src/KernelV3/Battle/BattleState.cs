@@ -487,7 +487,7 @@ public sealed class BattleState : IVmWorld
         if (playerId is < 0 or > 1) return;
         var p = Players[playerId];
 
-        int epTurn = Rules.EvolveUnlockTurn(playerId);
+        int epTurn = Rules.EvolveUnlockTurn(playerId, FirstPlayer);
         if (!p.EpUnlocked && (TurnNumber > epTurn
             || (TurnNumber == epTurn && ActivePlayer == playerId)))
         {
@@ -496,7 +496,7 @@ public sealed class BattleState : IVmWorld
             p.Counters[epKey.Id] = Schema.ClampCounter(epKey, p.InitialEpToGrant);
         }
 
-        int sepTurn = Rules.SuperEvolveUnlockTurn(playerId);
+        int sepTurn = Rules.SuperEvolveUnlockTurn(playerId, FirstPlayer);
         if (!p.SepUnlocked && (TurnNumber > sepTurn
             || (TurnNumber == sepTurn && ActivePlayer == playerId)))
         {

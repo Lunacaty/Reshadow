@@ -124,13 +124,13 @@ public partial class BattleScreenRoot : Control
         || _ctrl?.IsWaitingForInput == true
         || _ctrl?.IsFinished == true;
 
-    public void Boot(GameSessionStore store, ConstructedDeck mine, ConstructedDeck foe)
+    public void Boot(GameSessionStore store, ConstructedDeck mine, ConstructedDeck foe, int firstPlayer = 0)
     {
         _store = store;
         _myDeck = mine;
         _foeDeck = foe;
         _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
-                                            startInMulligan: true);
+                                            startInMulligan: true, firstPlayer: firstPlayer);
         BoardUnitWidget.CurrentController = _ctrl;
 
         _lastEventIdx = _ctrl.State.EventLog.Count;

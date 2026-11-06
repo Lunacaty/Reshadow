@@ -31,7 +31,7 @@ public sealed class BattleSessionController
 
     public BattleSessionController(GameSessionStore store, ConstructedDeck myDeck,
                                    ConstructedDeck foeDeck, int seed = 0,
-                                   bool startInMulligan = false)
+                                   bool startInMulligan = false, int firstPlayer = 0)
     {
         Store = store ?? throw new ArgumentNullException(nameof(store));
         Store.Initialize();
@@ -52,7 +52,9 @@ public sealed class BattleSessionController
         // 只有 AI 对手的选择才走 ResolveAiPendingIfAny 自动消解。
         Runner.AutoChoicePolicy = null;
 
-        Runner.StartWithConstructedDecks(pool, 0, myDeck, foeDeck ?? myDeck);
+        // firstPlayer 由开局界面传入：0 = 我方先手，1 = 我方后手（AI 先手）。
+        // 内核按 State.FirstPlayer 决定后手补偿，不再写死玩家 0 先手。
+        Runner.StartWithConstructedDecks(pool, firstPlayer, myDeck, foeDeck ?? myDeck);
 
         if (startInMulligan)
             ResolveAiPendingIfAny();

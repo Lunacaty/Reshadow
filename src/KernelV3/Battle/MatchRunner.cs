@@ -121,8 +121,8 @@ public sealed class MatchRunner
         var rules = _state.Rules;
         _state.WriteCounter(playerId, schema.Counter("pp"), 0);
         _state.WriteCounter(playerId, schema.Counter("max_pp"), rules.InitialMaxPp);
-        int targetEp = Math.Max(0, rules.InitialEp(playerId) + prof.InitialEpBonus);
-        int targetSep = Math.Max(0, rules.InitialSep(playerId) + prof.InitialSepBonus);
+        int targetEp = Math.Max(0, rules.InitialEp(playerId, _state.FirstPlayer) + prof.InitialEpBonus);
+        int targetSep = Math.Max(0, rules.InitialSep(playerId, _state.FirstPlayer) + prof.InitialSepBonus);
 
         // 先拓宽上限再写：WriteCounter 会按 CounterLimits 钳制，
         // 而 BattleState 构造时把 ep/sep 上限设成了 MaxEpCap(=2)。
@@ -265,8 +265,8 @@ public sealed class MatchRunner
         _state.WriteCounter(playerId, _schema.Counter("max_pp"), rules.InitialMaxPp);
         // 同上：记下解锁时的发放量，开局置 0。
         var p1 = _state.Players[playerId];
-        p1.InitialEpToGrant = rules.InitialEp(playerId);
-        p1.InitialSepToGrant = rules.InitialSep(playerId);
+        p1.InitialEpToGrant = rules.InitialEp(playerId, _state.FirstPlayer);
+        p1.InitialSepToGrant = rules.InitialSep(playerId, _state.FirstPlayer);
         p1.EpUnlocked = false;
         p1.SepUnlocked = false;
         _state.Players[playerId].Counters[_schema.Counter("ep").Id] = 0;

@@ -184,7 +184,7 @@ public sealed class TurnRunner
     private bool ShouldDrawThisTurn(int playerId)
     {
         var rules = _state.Rules;
-        if (_state.TurnNumber == 1 && playerId == 0 && !rules.FirstPlayerDrawsOnTurn1) return false;
+        if (_state.TurnNumber == 1 && playerId == _state.FirstPlayer && !rules.FirstPlayerDrawsOnTurn1) return false;
         return true;
     }
 
@@ -1185,7 +1185,7 @@ public sealed class TurnRunner
     public bool CanUseExtraPp(int playerId)
     {
         if (!_state.Rules.EnableExtraPpForSecondPlayer) return false;
-        if (playerId != 1) return false;                       // 只有后手有
+        if (playerId == _state.FirstPlayer) return false;      // 只有后手有（先手由本局决定）
         if (playerId != _state.ActivePlayer) return false;      // 只能在自己回合
         var pl = _state.Players[playerId];
         if (pl.UsedExtraPpThisTurn) return false;
@@ -1229,7 +1229,7 @@ public sealed class TurnRunner
         var p = _state.Players[playerId];
         if (p.ManualEvolvedThisTurn) return false;
 
-        if (_state.TurnNumber < _state.Rules.EvolveUnlockTurn(playerId)) return false;
+        if (_state.TurnNumber < _state.Rules.EvolveUnlockTurn(playerId, _state.FirstPlayer)) return false;
 
         // 走 HasEffectiveKeyword：光环授予的「无需进化点进化」同样要生效。
         if (unit != null && _state.HasEffectiveKeyword(unit, _schema.Keyword("free_evolve")))
@@ -1249,7 +1249,7 @@ public sealed class TurnRunner
         var p = _state.Players[playerId];
         if (p.ManualEvolvedThisTurn) return false;
 
-        if (_state.TurnNumber < _state.Rules.SuperEvolveUnlockTurn(playerId)) return false;
+        if (_state.TurnNumber < _state.Rules.SuperEvolveUnlockTurn(playerId, _state.FirstPlayer)) return false;
 
         if (unit != null && _state.HasEffectiveKeyword(unit, _schema.Keyword("free_super_evolve")))
             return true;
