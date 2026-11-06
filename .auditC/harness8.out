@@ -1,0 +1,11 @@
+世界：己方战场3随从，敌方战场2随从；Source=法术 10542310(Kind=Spell)
+  count(any:board<Follower> All) => 0
+  count(self:board<Follower> All where has trait 巨像) => 0
+  count(self:board<Follower> All where has ward) => 0
+  count(self:board<Follower> All) => 0
+  count(self:board<Follower> other All) => 0
+  count(self:board<Follower> other All) => 0
+  count(self:hand All) => 1
+=== 对照：显式把 where 的 HasKind.Of 改成 $item ===
+  count.Of.Where = HasKind(Follower,Of=$self)
+  原 EvalNum=0  修正后 EvalNum=5  (期望5)

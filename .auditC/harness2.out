@@ -1,0 +1,51 @@
+===== A: where has ward 真实卡 AST 结构 =====
+-- 10162110 煌枪魔兔·萨莉沙
+  ModifyStatsNode :: buff $self +1/+1
+  ModifyKeywordNode :: grant_keyword barrier to $self
+-- 10262310 神圣守护
+  SelectTargetNode :: select self:board<Follower> Choose(1) where has ward
+      Target.Where=(is Follower and has ward)  Target=self:board<Follower> Choose(1) where has ward
+  ModifyStatsNode :: buff $selected +0/+1
+  DealDamageNode :: deal prop:Life($selected) damage to opponent:board<Follower> Random(1)
+      Target.Where=is Follower  Target=opponent:board<Follower> Random(1)
+-- 10264120 呜咽的圣骑士·维尔伯特
+  SpawnCardNode :: summon 2 #90064110
+  SpawnCardNode :: gain_crest #10264120
+  SUB 呜咽的圣骑士·维尔伯特
+    ModifyStatsNode :: buff $trigger +1/+2
+-- 10562210 穹顶护甲
+  MoveZoneNode :: destroy $self
+  MoveZoneNode :: draw count(self:board<Follower> All where has ward)
+-- 10874110 决断的交错·亚修雷&莉缇雅
+  ConditionalNode :: if ctr:pp_at_play >= 9:
+    select opponent:board<Follower> Choose(1)
+    grant_keyword ward to $selected
+    evolve $self
+    grant_keyword storm to $self
+else:
+    select opponent:board<Follower> Choose(1)
+    grant_keyword ward to $selected
+    then> SelectTargetNode :: select opponent:board<Follower> Choose(1)
+    then>     Target.Where=is Follower  Target=opponent:board<Follower> Choose(1)
+    then> ModifyKeywordNode :: grant_keyword ward to $selected
+    then> EvolveNode :: evolve $self
+    then> ModifyKeywordNode :: grant_keyword storm to $self
+    else> SelectTargetNode :: select opponent:board<Follower> Choose(1)
+    else>     Target.Where=is Follower  Target=opponent:board<Follower> Choose(1)
+    else> ModifyKeywordNode :: grant_keyword ward to $selected
+  MoveZoneNode :: destroy opponent:board<Follower> Random(2) where has ward
+===== B: where 求值（$item 绑定 / 未绑定） =====
+  select Target=self:board<Follower> Choose(1) where has ward Where=(is Follower and has ward)
+  ResolveRef 结果数=0 ids=[]
+  期望：只选中带 ward 的实体 id=2；普通实体 id=3 不应入选
+  [对照] Of=$item 的 Where => 1 ids=[2]
+===== C: count(card:#id + history) 真实卡 =====
+  10844110 ability.Condition: true
+  ModifyStatsNode :: buff $self +count(card:#10844110@self:board other history=EnteredThisMatch All)/+count(card:#10844110@self:board other history=EnteredThisMatch All)
+  ConditionalNode :: if count(card:#10844110@self:board other history=EnteredThisMatch All) >= 2:
+    evolve $self
+    then> EvolveNode :: evolve $self
+  10844110 ability.Condition: true
+  SpawnCardNode :: gain_crest #10844110
+  10931110 ability.Condition: count(card:#10931110@self:board other history=EnteredThisMatch All) >= 5
+  ModifyStatsNode :: buff $self +3/+3

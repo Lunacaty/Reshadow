@@ -1,0 +1,334 @@
+COUNTS {"起始为":7,"本卡牌的":38,"X+":7,"Y+":0,"Z+":0,"X起始":7,"的 X":0,"的X":7}
+UNION 38
+UNION_IDS [10032120,10113130,10131320,10132120,10132130,10132320,10133310,10133320,10134310,10212120,10232310,10241110,10331110,10441120,10462210,10522110,10532120,10534120,10612310,10634120,10641310,10643310,10673310,10721110,10731310,10733310,10831310,10832110,10833310,10834110,10862120,10913310,10914120,10922310,10934120,10954120,11032110,90014320]
+--- 10032120 魔焰毁灭者 | 【魔力增幅时】使本卡牌的费用-1。
+    on_spellboost:
+            modify_cost $self by -1
+--- 10113130 煌击战士·贝鲁 | 在手牌中发动。自己的随从离开战场时，使本卡牌的费用-1。
+【入场曲】选择对手的战场上的1个随从，对其造成4点伤害。
+    on_leave zone=Hand on(self:board<Follower> All):
+            modify_cost $self by -1
+        fanfare:
+            select opponent:board<Follower> Choose(1)
+            deal 4 damage to $selected
+--- 10131320 暴风破 | X起始为2。
+【魔力增幅时】使本卡牌的X+1。
+选择对手的战场上的1个随从，对其造成X点伤害。
+    on_spellboost:
+            counter X by 1
+        on_play:
+            select opponent:board<Follower> Choose(1)
+            deal ctr:X damage to $selected
+        aura:
+            counter X = 2
+--- 10132120 奇迹女巫·爱蜜儿 | 【魔力增幅时】使本卡牌的费用-1。
+【进化时】召唤1个『泥尘巨像』。对对手的战场上的所有随从造成X点伤害。X为自己的战场上的巨像·随从的张数。
+    on_spellboost:
+            modify_cost $self by -1
+        evolve:
+            summon 1 #90031110
+            deal count(self:board<Follower> All where has trait 巨像) damage to opponent:board<Follower> All
+--- 10132130 玛纳利亚的学生·威廉 | X起始为0。
+【魔力增幅时】使本卡牌的X+1。
+【入场曲】对对手的战场上的所有随从造成X点伤害。
+【进化时】使自己的所有手牌发动2次魔力增幅。
+    traits: [玛纳利亚]
+        on_spellboost:
+            counter X by 1
+        fanfare:
+            deal ctr:X damage to opponent:board<Follower> All
+        evolve:
+            spellboost self:hand All by 2
+        aura:
+            counter X = 0
+--- 10132320 雪人觉醒 | 【魔力增幅时】使本卡牌的费用-1。
+选择对手的战场上的1个随从，使其生命值变为1。对手的回合结束前，使其获得「无法攻击随从或主战者」。
+    on_spellboost:
+            modify_cost $self by -1
+        on_play:
+            select opponent:board<Follower> Choose(1)
+            set_stats $selected to _/1
+            grant_keyword cannot_attack to $selected [dur=UntilEndOfOpponentTurn]
+--- 10133310 做作业啦！ | X起始为0。
+【魔力增幅时】使本卡牌的X+1。之后，若X为5或以上，则本卡牌变身为『有所成长了！』。
+抽取2张卡牌。
+    traits: [玛纳利亚]
+        on_spellboost:
+            counter X by 1
+            if ctr:X >= 5:
+                transform $self into #90033310
+        on_play:
+            draw 2
+        aura:
+            counter X = 0
+--- 10133320 唤鬼术 | 【魔力增幅时】使本卡牌的费用-1。
+召唤1个『式神·暴鬼』。
+    on_spellboost:
+            modify_cost $self by -1
+        on_play:
+            summon 1 #90031140
+--- 10134310 超越次元 | 【魔力增幅时】使本卡牌的费用-1。
+使自己的所有手牌返回牌组。抽取5张卡牌。使自己的所有手牌发动5次魔力增幅。回复自己的能量点至上限。
+    on_spellboost:
+            modify_cost $self by -1
+        on_play:
+            return_to_deck self:hand All
+            draw 5
+            spellboost self:hand All by 5
+            counter pp = ctr:max_pp
+--- 10212120 妖精击剑士 | 在手牌中发动。自己的随从超进化时，使本卡牌的费用变为1。
+【入场曲】将1张『妖精』加入手牌。
+    on_super_evolve zone=Hand on(self:board<Follower> All):
+            set_cost $self to 1
+        fanfare:
+            add_to_hand 1 #90011110
+--- 10232310 混沌赤焰 | X起始为0。
+【魔力增幅时】使本卡牌的X+1。
+对对手的战场上的所有随从分配X点伤害。
+    on_spellboost:
+            counter X by 1
+        on_play:
+            deal ctr:X damage to opponent:board<Follower> All split
+        aura:
+            counter X = 0
+--- 10241110 庇护的智龙 | 在手牌中发动。自己的随从超进化时，使本卡牌的费用-3。
+【入场曲】召唤1个『巨翼飞龙』。
+    on_super_evolve zone=Hand on(self:board<Follower> All):
+            modify_cost $self by -3
+        fanfare:
+            summon 1 #90041120
+--- 10331110 真理的肯定者 | 【入场曲】若本卡牌的费用不为2，则回复自己的主战者3点生命值。
+    fanfare if prop:Cost != 2:
+            restore 3 life to self:leader
+--- 10441120 梅格的挚友·玛丽亲 | 在手牌中发动。自己的原始费用为3的随从超进化时，回合结束前，使本卡牌的费用变为0。
+自己的回合结束时，使自己的战场上的随机1个超进化后的随从+1/+1。
+    on_super_evolve zone=Hand on(self:board<Follower> All where prop:BaseCost = 3):
+            set_cost $self to 0 [dur=ThisTurn]
+        turn_end turn=Self:
+            buff self:board<Follower> Random(1) where is SuperEvolved +1/+1
+--- 10462210 骑驰天空之艇 | 在手牌中发动。自己【启动】护符时，使本卡牌的费用-1。
+【启动】破坏本卡牌。选择自己的战场上的1个进化前的随从，使其进化。
+    engage zone=Hand on(any:board<Amulet> Choose(1)):
+            modify_cost $self by -1
+        engage [engage(0)]:
+            destroy $self
+            select self:board<Follower> Choose(1) where not is Evolved
+            evolve $selected
+--- 10522110 迅猛的武术家 | 抽到本卡牌时，回合结束前，使本卡牌的费用变为3。
+【入场曲】抽取1张卡牌。回复自己的主战者3点生命值。
+【突进】
+    keywords: [rush]
+        on_draw on($self):
+            set_cost $self to 3
+        fanfare:
+            draw 1
+            restore 3 life to self:leader
+--- 10532120 余韵俳谐师 | 【魔力增幅时】使本卡牌的费用-1。
+【入场曲】抽取1张卡牌。
+【谢幕曲】使自己的所有手牌发动1次魔力增幅。
+    on_spellboost:
+            modify_cost $self by -1
+        fanfare:
+            draw 1
+        last_words:
+            spellboost self:hand All by 1
+--- 10534120 明越花·阿罗 | 【魔力增幅时】使本卡牌的费用-1。
+【入场曲】选择对手的战场上的1个随从，对其造成10点伤害。
+【进化时】选择战场上的1个其他随从，使其变身为『壮丽大神隼』。
+    on_spellboost:
+            modify_cost $self by -1
+        fanfare:
+            select opponent:board<Follower> Choose(1)
+            deal 10 damage to $selected
+        evolve:
+            select any:board<Follower> other Choose(1)
+            transform $selected into #90061130
+--- 10612310 向女王献花 | 在手牌中发动。自己的随从进化时，使本卡牌的费用-1。
+抽取2张卡牌。
+    on_evolve zone=Hand on(self:board<Follower> All):
+            modify_cost $self by -1
+        on_play:
+            draw 2
+--- 10634120 古旧天晶·卡卢基典瑟拉 | 在手牌中发动。自己的『天晶魔手』进入战场时，使本卡牌的费用-1。
+【入场曲】召唤2个『天晶魔手』，使其获得【疾驰】。
+【进化时】将1张『天晶深渊』加入手牌。
+    traits: [侵蚀者]
+        on_enter zone=Hand on(card:#10631110@self:board All):
+            modify_cost $self by -1
+        fanfare:
+            summon 2 #10631110
+            grant_keyword storm to $created
+        evolve:
+            add_to_hand 1 #90034330
+    
+        faith "古旧天晶·卡卢基典瑟拉" (cost=0):
+            on_enter on(card:#10631110@self:board All):
+                gain_faith 1
+            aura:
+                counter faith = 0
+--- 10641310 天刀授予 | 本卡牌被舍弃时，若本卡牌的费用为4，则将1张『天刀授予』加入手牌，使其费用变为2。
+选择自己的战场上的1个随从，使其+2/+2。
+    traits: [侵蚀者]
+        on_discard on($self) if prop:Cost = 4:
+            add_to_hand 1 #10641310
+            set_cost $created to 2
+        on_play:
+            select self:board<Follower> Choose(1)
+            buff $selected +2/+2
+--- 10643310 断头的天刀 | 本卡牌被舍弃时，若本卡牌的费用为7，则将1张『断头的天刀』加入手牌，使其费用变为5。若为5，则将1张『断头的天刀』加入手牌，使其费用变为3。
+对对手的战场上的所有随从造成X点伤害，X为本卡牌的费用。
+    traits: [侵蚀者]
+        on_discard on($self):
+            if prop:Cost = 7:
+                add_to_hand 1 #10643310
+                set_cost $created to 5
+            if prop:Cost = 5:
+                add_to_hand 1 #10643310
+                set_cost $created to 3
+        on_play:
+            deal prop:Cost damage to opponent:board<Follower> All
+--- 10673310 恶劣的天斧 | 在手牌中发动。自己的原始费用为5或以上的随从进入战场时，回合结束前，使本卡牌的费用-1。
+使自己的战场上的随机1个「原始费用为5或以上的进化前的随从」进化。对对手的战场上的随机1个随从造成6点伤害。
+    traits: [侵蚀者]
+        on_enter zone=Hand on(self:board<Follower> All where prop:BaseCost >= 5):
+            modify_cost $self by -1 [dur=ThisTurn]
+        on_play:
+            evolve self:board<Follower> Random(1) where (not is Evolved and prop:BaseCost >= 5)
+            deal 6 damage to opponent:board<Follower> Random(1)
+--- 10721110 曲行工兵 | 在手牌中发动。自己的随从超进化时，使本卡牌的费用变为1。
+【入场曲】选择对手的战场上的1个随从，对其造成3点伤害。
+    on_super_evolve zone=Hand on(self:board<Follower> All):
+            set_cost $self to 1
+        fanfare:
+            select opponent:board<Follower> Choose(1)
+            deal 3 damage to $selected
+--- 10731310 召唤仆从 | 在手牌中发动。自己发动【土之秘术】时，使本卡牌的费用-1。
+抽取2张卡牌。使自己的战场上的土之印+1。
+    traits: [安纳提玛]
+        on_earth_rite zone=Hand:
+            modify_cost $self by -1
+        on_play:
+            draw 2
+            gain_earth_sigil 1
+--- 10733310 饕餮魔咒 | 在手牌中发动。自己发动【土之秘术】时，使本卡牌的费用-1。
+选择对手的战场上的1个随从，破坏该随从。使自己的战场上的土之印+2。
+    traits: [安纳提玛]
+        on_earth_rite zone=Hand:
+            modify_cost $self by -1
+        on_play:
+            select opponent:board<Follower> Choose(1)
+            destroy $selected
+            gain_earth_sigil 2
+--- 10831310 暴风破 | X起始为2。
+【魔力增幅时】使本卡牌的X+1。
+选择对手的战场上的1个随从，对其造成X点伤害。
+    on_spellboost:
+            counter X by 1
+        on_play:
+            select opponent:board<Follower> Choose(1)
+            deal ctr:X damage to $selected
+        aura:
+            counter X = 2
+--- 10832110 快乐绽花·萨米&玛莉 | 【魔力增幅时】使本卡牌的费用-1。
+【入场曲】抽取2张卡牌。对手抽取1张卡牌。
+    on_spellboost:
+            modify_cost $self by -1
+        fanfare:
+            draw 2
+            draw 1 [owner=Opponent]
+--- 10833310 钢铁的小憩 | X起始为0。
+【魔力增幅时】使本卡牌的X+1。
+抽取2张卡牌。若X为5或以上，则回复自己的主战者2点生命值。回复自己2点能量点。
+    on_spellboost:
+            counter X by 1
+        on_play:
+            draw 2
+            if ctr:X >= 5:
+                restore 2 life to self:leader
+                recover_pp 2
+        aura:
+            counter X = 0
+--- 10834110 恩爱的大地·坦忒拉&拉缇卡 | X起始为0。
+【魔力增幅时】使本卡牌的X+1。
+【入场曲】若X为10或以上，则将1张『苍奏之四』加入手牌。若为20或以上，则将1张『宏大的回归』加入手牌。
+【疾驰】
+    keywords: [storm]
+        on_spellboost:
+            counter X by 1
+        fanfare:
+            if ctr:X >= 10:
+                add_to_hand 1 #90034340
+            if ctr:X >= 20:
+                add_to_hand 1 #90034350
+        aura:
+            counter X = 0
+--- 10862120 深渊探究者·维切 | 在手牌中发动。自己的随从超进化时，使本卡牌的费用-3。
+【突进】
+【毁灭】
+    keywords: [rush, bane]
+        on_super_evolve zone=Hand on(self:board<Follower> All):
+            modify_cost $self by -3
+--- 10913310 绯岸橙醉 | 在手牌中发动。自己的回合结束时，【连击_3】使本卡牌的费用-1。
+选择对手的战场上的1个随从，破坏该随从。抽取1张卡牌。
+    turn_end zone=Hand turn=Self [combo(3)]:
+            modify_cost $self by -1
+        on_play:
+            select opponent:board<Follower> Choose(1)
+            destroy $selected
+            draw 1
+--- 10914120 香风的变貌·飞燕 | 在手牌中发动。自己使用卡牌时，回合结束前，使本卡牌的费用-1。
+【入场曲】选择对手的战场上的1个随从，对其造成4点伤害。
+【谢幕曲】召唤1个『香风的变貌·飞燕』。
+    on_play zone=Hand on(self:board All):
+            modify_cost $self by -1 [dur=ThisTurn]
+        fanfare:
+            select opponent:board<Follower> Choose(1)
+            deal 4 damage to $selected
+        last_words:
+            summon 1 #10914120
+--- 10922310 燃尽之缘 | 选择对手的战场上的1个随从，对其造成5点伤害。若本卡牌的费用为3，则将1张『燃尽之缘』加入手牌，使其费用变为1。
+    on_play:
+            select opponent:board<Follower> Choose(1)
+            deal 5 damage to $selected
+            if prop:Cost = 3:
+                add_to_hand 1 #10922310
+                set_cost $created to 1
+--- 10934120 破式的变貌·菲绫 | 【魔力增幅时】使本卡牌的费用-1。
+【毁灭】
+【守护】
+【灵气】
+    keywords: [bane, ward, aura]
+        on_spellboost:
+            modify_cost $self by -1
+--- 10954120 伽罗塔德 对 泽特 | 在手牌中发动。自己的回合结束时，若自己的主战者的生命值为12或以下，则使本卡牌的费用-1。
+【入场曲】【模式】选择1个能力发动。
+（1）本随从获得【疾驰】。对自己的主战者造成2点伤害。
+（2）本随从获得【守护】。对对手的战场上的所有随从造成8点伤害。
+    turn_end zone=Hand turn=Self if prop:Life(self:leader) <= 12:
+            modify_cost $self by -1
+        fanfare:
+            modes Choose(pick=1):
+                option 1:
+                    grant_keyword storm to $self
+                    deal 2 damage to self:leader
+                option 2:
+                    grant_keyword ward to $self
+                    deal 8 damage to opponent:board<Follower> All
+--- 11032110 无聊顾问 | 在手牌中发动。自己【启动】护符时，使本卡牌的费用-1。
+【入场曲】召唤1张『神域的物证』。
+自己【启动】护符时，回复自己的主战者1点生命值。
+    engage zone=Hand on(any:board<Amulet> Choose(1)):
+            modify_cost $self by -1
+        fanfare:
+            summon 1 #90001210
+        engage on(any:board<Amulet> Choose(1)):
+            restore 1 life to self:leader
+--- 90014320 绝命的痛击 | 在手牌中发动。自己的回合结束时，使本卡牌的费用-1。
+对对手的主战者造成6点伤害。若自己的战场上有『绝命的显现·艾斯迪亚』，则改为20点伤害。
+    turn_end zone=Hand turn=Self:
+            modify_cost $self by -1
+        on_play:
+            if count(card:#10314120@self:board All) >= 1:
+                deal 20 damage to opponent:leader
+            else:
+                deal 6 damage to opponent:leader

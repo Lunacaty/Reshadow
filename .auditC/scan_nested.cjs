@@ -1,0 +1,10 @@
+const fs=require('fs');
+const pack=JSON.parse(fs.readFileSync('data/packs/official-sv/pack.json','utf8')).cards;
+const re=/count[(][^)]*<(Follower|Amulet|Spell)>[^)]*where/;
+const hits=pack.filter(c=>re.test(c.text||''));
+console.log('NESTED_COUNT_KIND_WHERE',hits.length);
+for(const c of hits) console.log(c.card_id,c.name,'|',(c.text||'').split('\n').filter(l=>re.test(l)).slice(0,2).join(' ; ').trim());
+console.log('--- all count(...) with <Kind> ---');
+const re2=/count[(][^)]*<(Follower|Amulet|Spell)>/;
+const h2=pack.filter(c=>re2.test(c.text||''));
+console.log('COUNT_KIND',h2.length,JSON.stringify(h2.map(c=>c.card_id)));

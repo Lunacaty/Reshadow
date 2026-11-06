@@ -1,0 +1,12 @@
+=== 10262310 神圣守护：卡面 X = 选择随从（buff 后）的生命值 ===
+  选中时 live.Life=5  EvalNum(prop:Life($selected))=5
+  buff +0/+1 后 live.Life=6  EvalNum(prop:Life($selected))=5  <- 应为 6，实际读到快照 5
+  【对照】若活体优先：应读到 6
+=== 10562210 穹顶护甲：draw count(where has ward) 的真实入口是否归一化 ===
+  Target.Count = count(self:board<Follower> All where has ward)
+  EvalNum(Target.Count) 直接走 VmEval = 0  <- 期望 1
+  DrawThroughPipeline 调用点 _eval.EvalNum(n.Target.Count, scope) 无 NormalizeZoneWhere (CardVm.Nodes.cs:733)
+  但 ResolveOrBlock(n.Target...) 会归一化外层；内层 count 的 Where 不归一化 (VmEval.cs:751-767)
+=== 目标筛选：where 中 Of=$self 未归一化的真实影响（TriggerSpec.SubjectFilter） ===
+  主卡 10162110 SubjectFilter Where 含 Of=$self 的 HasKind = True => MatchesTrigger 走 _eval.EvalBool(Where) 而非 Normalize（CardVm.cs:833-877）
+  子卡 10264120 SubjectFilter Where 含 Of=$self 的 HasKind = True => MatchesTrigger 走 _eval.EvalBool(Where) 而非 Normalize（CardVm.cs:833-877）

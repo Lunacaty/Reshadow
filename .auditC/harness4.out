@@ -1,0 +1,19 @@
+=== 真实卡 where 谓词的 Of 主语 ===
+-- 10162110 煌枪魔兔·萨莉沙 : card 10162110 "煌枪魔兔·萨莉沙" (Follower, clan=主教, cost=2, atk=2, life=2, rarity=2): |     on_destroy on(self:board<Follower> All where has ward): |         buff $self +1/+1 |     evolve: |         grant_keyword barrier to $self
+   trigger.SubjectFilter.Where=And[HasKind(Follower,Of=$self),HasKeyword(ward,Of=$item)] tgt=self:board<Follower> All where has ward
+-- 10262310 神圣守护 : card 10262310 "神圣守护" (Spell, clan=主教, cost=1, rarity=2): |     on_play: |         select self:board<Follower> Choose(1) where has ward |         buff $selected +0/+1 |         deal prop:Life($selected) damage to opponent:board<Follower> Random(1)
+   SelectTargetNode Where=And[HasKind(Follower,Of=$self),HasKeyword(ward,Of=$item)] | self:board<Follower> Choose(1) where has ward
+   DealDamageNode Where=HasKind(Follower,Of=$self) | opponent:board<Follower> Random(1)
+-- 10264120 呜咽的圣骑士·维尔伯特 : card 10264120 "呜咽的圣骑士·维尔伯特" (Follower, clan=主教, cost=6, atk=4, life=6, rarity=4): |     keywords: [ward] |     last_words: |         summon 2 #90064110 |     evolve: |         gain_crest #10264120 |  |     crest "呜咽的圣骑士·维尔伯特" (cost=0): |         on_enter on(self:board<Follower> All where has ward): |             buff $trigger +1/+2
+   SUB subject.Where=And[HasKind(Follower,Of=$self),HasKeyword(ward,Of=$item)]
+-- 10562210 穹顶护甲 : card 10562210 "穹顶护甲" (Amulet, clan=主教, cost=2, rarity=2): |     engage [engage(0)]: |         destroy $self |         draw count(self:board<Follower> All where has ward)
+   MoveZoneNode Where=ConstBoolExpr | $self
+   MoveZoneNode Where=ConstBoolExpr | self:deck First(count(self:board<Follower> All where has ward))
+-- 10874110 决断的交错·亚修雷&莉缇雅 : card 10874110 "决断的交错·亚修雷&莉缇雅" (Follower, clan=超越者, cost=5, atk=5, life=5, rarity=4): |     fanfare [enhance(9)]: |         if ctr:pp_at_play >= 9: |             select opponent:board<Follower> Choose(1) |             grant_keyword ward to $selected |             evolve $self |             grant_keyword storm to $self |         else: |             select opponent:board<Follower> Choose(1) |             grant_keyword ward to $selected |     on_evolve on($self): |         destroy opponent:board<Follower> Random(2) where has ward
+    then> SelectTargetNode Where=HasKind(Follower,Of=$self) | opponent:board<Follower> Choose(1)
+    else> SelectTargetNode Where=HasKind(Follower,Of=$self) | opponent:board<Follower> Choose(1)
+   trigger.SubjectFilter.Where=ConstBoolExpr tgt=$self
+   MoveZoneNode Where=And[HasKind(Follower,Of=$self),HasKeyword(ward,Of=$item)] | opponent:board<Follower> Random(2) where has ward
+=== 用 Normalize 等价修正后重跑 10262310 ===
+  原 Where=And[HasKind(Follower,Of=$self),HasKeyword(ward,Of=$item)]  ResolveRef(原)=0
+  归一化 Where=And[HasKind(Follower,Of=$item),HasKeyword(ward,Of=$item)]  ResolveRef(归一化)=1 ids=[2]

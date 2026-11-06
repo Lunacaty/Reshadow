@@ -1,0 +1,72 @@
+=== 全包 ACP 往返 ===
+  同构 ok=896 失真 bad=87
+  失真样例(前40): 10114110:自然妖精公主·阿丽雅, 10124130:常在战场·景光, 10133110:黎明炼金术师·诺诺, 10144110:灼热的安纳提玛·班德奈特, 10153140:地下赏金猎人·巴尔特, 10163130:伟大的炽天使·勒碧丝, 10174110:崭新的少女·欧丝, 10204120:飓风天业·格里姆尼尔, 10214110:翅翼女王·提泰妮娅, 10232110:否定的咏唱·芭赛特, 10233310:帕梅拉的舞蹈, 10243110:苍海的制裁·尼普顿, 10254120:流动堕落的冥河·凯伦, 10263310:疯狂的恩宠, 10264120:呜咽的圣骑士·维尔伯特, 10304110:绝大的显现·麦哲佩恩, 10314110:不弑的继承者·库露露, 10324120:空绝的显现·奥克托丽丝, 10331310:水晶的指引, 10344120:烈绝的显现·嘉尔缪, 10354110:混融的继承者·莎木·纳克雅, 10361110:安息的肯定者, 10362110:安息的祈祷者, 10363110:安息的团结者, 10364110:安息的继承者·妃花, 10364120:绝望的显现·玛温, 10404110:天司长的继承者·圣德芬, 10412310:绮罗星, 10414120:调和的舞者·尤艾尔&苏丝雅, 10433110:缅怀之火·埃尔默特, 10434120:天才美少女炼金术士·卡莉奥丝特罗, 10441310:破浪新月, 10451310:妖异利刃, 10453310:堕落, 10454120:狡诈的堕天司·彼列, 10474110:光之法则·龙敖, 10524120:丽金花·云庆, 10532110:失眠女巫, 10534110:漫步的《愚者》·琳库露, 10544120:波摇花·夕夜
+=== 7张 ctr:X 卡的编译产物结构 ===
+-- 10131320 暴风破
+   event=OnSpellboost ActiveZone=Board body=1
+     ModifyCounter X Op=Add Delta=1 Target=null(玩家级)
+   event=OnPlay ActiveZone=Board body=2
+     select opponent:board<Follower> Choose(1)
+     deal ctr:X damage to $selected
+   event=PassiveAura ActiveZone=Board body=1
+     ModifyCounter X Op=Set Delta=2 Target=null(玩家级)
+-- 10132130 玛纳利亚的学生·威廉
+   event=OnSpellboost ActiveZone=Board body=1
+     ModifyCounter X Op=Add Delta=1 Target=null(玩家级)
+   event=OnPlay ActiveZone=Board body=1
+     deal ctr:X damage to opponent:board<Follower> All
+   event=OnEvolve ActiveZone=Board body=1
+     ModifyCounter spellboost Op=Add Delta=2 Target=self:hand All
+   event=PassiveAura ActiveZone=Board body=1
+     ModifyCounter X Op=Set Delta=0 Target=null(玩家级)
+-- 10133310 做作业啦！
+   event=OnSpellboost ActiveZone=Board body=2
+     ModifyCounter X Op=Add Delta=1 Target=null(玩家级)
+     Conditional ctr:X >= 5
+       then transform $self into #90033310
+   event=OnPlay ActiveZone=Board body=1
+     draw 2
+   event=PassiveAura ActiveZone=Board body=1
+     ModifyCounter X Op=Set Delta=0 Target=null(玩家级)
+-- 10232310 混沌赤焰
+   event=OnSpellboost ActiveZone=Board body=1
+     ModifyCounter X Op=Add Delta=1 Target=null(玩家级)
+   event=OnPlay ActiveZone=Board body=1
+     deal ctr:X damage to opponent:board<Follower> All split
+   event=PassiveAura ActiveZone=Board body=1
+     ModifyCounter X Op=Set Delta=0 Target=null(玩家级)
+-- 10831310 暴风破
+   event=OnSpellboost ActiveZone=Board body=1
+     ModifyCounter X Op=Add Delta=1 Target=null(玩家级)
+   event=OnPlay ActiveZone=Board body=2
+     select opponent:board<Follower> Choose(1)
+     deal ctr:X damage to $selected
+   event=PassiveAura ActiveZone=Board body=1
+     ModifyCounter X Op=Set Delta=2 Target=null(玩家级)
+-- 10833310 钢铁的小憩
+   event=OnSpellboost ActiveZone=Board body=1
+     ModifyCounter X Op=Add Delta=1 Target=null(玩家级)
+   event=OnPlay ActiveZone=Board body=2
+     draw 2
+     Conditional ctr:X >= 5
+       then restore 2 life to self:leader
+       then recover_pp 2
+   event=PassiveAura ActiveZone=Board body=1
+     ModifyCounter X Op=Set Delta=0 Target=null(玩家级)
+-- 10834110 恩爱的大地·坦忒拉&拉缇卡
+   event=OnSpellboost ActiveZone=Board body=1
+     ModifyCounter X Op=Add Delta=1 Target=null(玩家级)
+   event=OnPlay ActiveZone=Board body=2
+     Conditional ctr:X >= 10
+       then add_to_hand 1 #90034340
+     Conditional ctr:X >= 20
+       then add_to_hand 1 #90034350
+   event=PassiveAura ActiveZone=Board body=1
+     ModifyCounter X Op=Set Delta=0 Target=null(玩家级)
+=== ACP 打印中 Where 的 Of 主语（where has ward 回环） ===
+  原始: select self:board<Follower> Choose(1) where has ward
+  ACP : select self:board<Follower> Choose(1) where has ward
+  CCP : 选择我方战场的1个拥有【守护】的随从，
+  二次解析 errors=0 | 
+  where原 = And[HasKind(Follower, Of=$self),HasKeyword(ward, Of=$item)]
+  where回 = And[HasKind(Follower, Of=$self),HasKeyword(ward, Of=$item)]

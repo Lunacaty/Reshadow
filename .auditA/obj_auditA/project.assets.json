@@ -1,0 +1,179 @@
+{
+  "version": 3,
+  "targets": {
+    "net9.0": {
+      "GodotSharp/4.7.2": {
+        "type": "package",
+        "compile": {
+          "lib/net8.0/GodotSharp.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/GodotSharp.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "GodotSharpEditor/4.7.2": {
+        "type": "package",
+        "dependencies": {
+          "GodotSharp": "4.7.2"
+        },
+        "compile": {
+          "lib/net8.0/GodotSharpEditor.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/GodotSharpEditor.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "ShadowverseFan/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v9.0",
+        "dependencies": {
+          "GodotSharp": "4.7.2",
+          "GodotSharpEditor": "4.7.2"
+        },
+        "compile": {
+          "bin/placeholder/ShadowverseFan.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/ShadowverseFan.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "GodotSharp/4.7.2": {
+      "sha512": "EPvfayB7b7MrBNdASvy86jRS5AbM9dprkVivcRD80g+ngn2M8KAIrBQH4NhyQL+pwxni0xVnuqhD9AFpZeNQpw==",
+      "type": "package",
+      "path": "godotsharp/4.7.2",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "godotsharp.4.7.2.nupkg.sha512",
+        "godotsharp.nuspec",
+        "lib/net8.0/GodotSharp.dll",
+        "lib/net8.0/GodotSharp.xml"
+      ]
+    },
+    "GodotSharpEditor/4.7.2": {
+      "sha512": "Fuf2rNvajla9N8Z+ksxsSIt326wsjpB2F2uZCtxkdfWIsApabCHy5fsE2EKxOlQ4NaINGdgMIv62D0n583qe1A==",
+      "type": "package",
+      "path": "godotsharpeditor/4.7.2",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "godotsharpeditor.4.7.2.nupkg.sha512",
+        "godotsharpeditor.nuspec",
+        "lib/net8.0/GodotSharpEditor.dll",
+        "lib/net8.0/GodotSharpEditor.xml"
+      ]
+    },
+    "ShadowverseFan/1.0.0": {
+      "type": "project",
+      "path": "../ShadowverseFan.csproj",
+      "msbuildProject": "../ShadowverseFan.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net9.0": [
+      "ShadowverseFan >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\Erocatss\\.nuget\\packages\\": {},
+    "E:\\Tools\\VSshared\\NuGetPackages": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "E:\\text\\reshadow\\game\\.auditA\\auditA.csproj",
+      "projectName": "auditA",
+      "projectPath": "E:\\text\\reshadow\\game\\.auditA\\auditA.csproj",
+      "packagesPath": "C:\\Users\\Erocatss\\.nuget\\packages\\",
+      "outputPath": "E:\\text\\reshadow\\game\\.auditA\\obj_auditA/",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "E:\\Tools\\VSshared\\NuGetPackages"
+      ],
+      "configFilePaths": [
+        "C:\\Users\\Erocatss\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "net9.0"
+      ],
+      "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net9.0": {
+          "targetAlias": "net9.0",
+          "projectReferences": {
+            "E:\\text\\reshadow\\game\\ShadowverseFan.csproj": {
+              "projectPath": "E:\\text\\reshadow\\game\\ShadowverseFan.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "10.0.100"
+    },
+    "frameworks": {
+      "net9.0": {
+        "targetAlias": "net9.0",
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Ref",
+            "version": "[9.0.11, 9.0.11]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Host.win-x64",
+            "version": "[9.0.11, 9.0.11]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Ref",
+            "version": "[9.0.11, 9.0.11]"
+          },
+          {
+            "name": "Microsoft.WindowsDesktop.App.Ref",
+            "version": "[9.0.11, 9.0.11]"
+          }
+        ],
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.101/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

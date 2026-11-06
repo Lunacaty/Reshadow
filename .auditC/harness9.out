@@ -1,0 +1,75 @@
+=== 卡面(官方中文) vs CCP(引擎卡面) vs ACP(AST) 对照 14 张 ===
+-- 10131320 暴风破
+   官方: X起始为2。 / 【魔力增幅时】使本卡牌的X+1。 / 选择对手的战场上的1个随从，对其造成X点伤害。
+   CCP : 初始【X】值为2。 / 每当我方进行魔力增幅时，使【X】+1。 / 选择敌方战场的1个随从，对该目标造成X值点伤害。
+   ACP : on_spellboost: | counter X by 1 | on_play: | select opponent:board<Follower> Choose(1) | deal ctr:X damage to $selected | aura: | counter X = 2
+-- 10132130 玛纳利亚的学生·威廉
+   官方: X起始为0。 / 【魔力增幅时】使本卡牌的X+1。 / 【入场曲】对对手的战场上的所有随从造成X点伤害。 / 【进化时】使自己的所有手牌发动2次魔力增幅。
+   CCP : 初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。 / 【入场曲】对敌方战场的所有随从造成X值点伤害。 / 【进化时】使我方手牌的所有卡牌【魔力增幅】2次。
+   ACP : traits: [玛纳利亚] | on_spellboost: | counter X by 1 | fanfare: | deal ctr:X damage to opponent:board<Follower> All | evolve: | spellboost self:hand All by 2 | aura: | counter X = 0
+-- 10133310 做作业啦！
+   官方: X起始为0。 / 【魔力增幅时】使本卡牌的X+1。之后，若X为5或以上，则本卡牌变身为『有所成长了！』。 / 抽取2张卡牌。
+   CCP : 初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。若X值≥5，使本卡牌【变身】为《有所成长了！》。 / 抽取2张卡牌。
+   ACP : traits: [玛纳利亚] | on_spellboost: | counter X by 1 | if ctr:X >= 5: | transform $self into #90033310 | on_play: | draw 2 | aura: | counter X = 0
+-- 10232310 混沌赤焰
+   官方: X起始为0。 / 【魔力增幅时】使本卡牌的X+1。 / 对对手的战场上的所有随从分配X点伤害。
+   CCP : 初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。 / 将X值点伤害依次分配给敌方战场的所有随从。
+   ACP : on_spellboost: | counter X by 1 | on_play: | deal ctr:X damage to opponent:board<Follower> All split | aura: | counter X = 0
+-- 10833310 钢铁的小憩
+   官方: X起始为0。 / 【魔力增幅时】使本卡牌的X+1。 / 抽取2张卡牌。若X为5或以上，则回复自己的主战者2点生命值。回复自己2点能量点。
+   CCP : 初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。 / 抽取2张卡牌。若X值≥5，为我方主战者回复2点生命值。回复2点能量点。
+   ACP : on_spellboost: | counter X by 1 | on_play: | draw 2 | if ctr:X >= 5: | restore 2 life to self:leader | recover_pp 2 | aura: | counter X = 0
+-- 10834110 恩爱的大地·坦忒拉&拉缇卡
+   官方: X起始为0。 / 【魔力增幅时】使本卡牌的X+1。 / 【入场曲】若X为10或以上，则将1张『苍奏之四』加入手牌。若为20或以上，则将1张『宏大的回归』加入手牌。 / 【疾驰】
+   CCP : 【疾驰】初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。 / 【入场曲】若X值≥10，将1张《苍奏之四》加入我方手牌。若X值≥20，将1张《宏大的回归》加入我方手牌。
+   ACP : keywords: [storm] | on_spellboost: | counter X by 1 | fanfare: | if ctr:X >= 10: | add_to_hand 1 #90034340 | if ctr:X >= 20: | add_to_hand 1 #90034350 | aura: | counter X = 0
+-- 10111130 深奥的妖精守护圣兽
+   官方: 【入场曲】抽取1张卡牌。回复自己的主战者X点生命值。X为自己的手牌张数。
+   CCP : 【入场曲】抽取1张卡牌。为我方主战者回复「我方手牌的所有卡牌」的数量点生命值。
+   ACP : fanfare: | draw 1 | restore count(self:hand All) life to self:leader
+-- 10114130 起源剑师·阿玛兹
+   官方: 【入场曲】本随从+X/+X。X为自己的手牌中的妖精·随从的张数。 / 【守护】 / 【进化时】发动X次「对对手的战场上的随机1个随从造成1点伤害」。X为自己的手牌中的妖精·随从的张数。
+   CCP : 【守护】 / 【入场曲】给予本卡牌+（「我方手牌的所有妖精兵种的随从」的数量）/+（「我方手牌的所有妖精兵种的随从」的数量）效果。 / 【进化时】重复以下效果「我方手牌的所有妖精兵种的随从」的数量次：「对敌方战场的随机1个随从造成1点伤害。」
+   ACP : keywords: [ward] | fanfare: | buff $self +count(self:hand<Follower> All where has trait 妖精)/+count(self:hand<Follower> All where has trait 妖精) | evolve: | repeat count(self:hand<Follower> All where has trait 妖精) times: | deal 1 damage to opponent:board<Follower> Random(1)
+-- 10133110 黎明炼金术师·诺诺
+   官方: 【入场曲】选择对手的战场上的1个随从，对其造成X点伤害。X为自己的战场上的土之印数。 / 【进化时】使自己获得『纹章：黎明炼金术师·诺诺』。
+   CCP : 【入场曲】选择敌方战场的1个随从，对该目标造成土之印值点伤害。 / 【进化时】使我方获得【纹章：「」】。 /  / 【关联纹章：黎明炼金术师·诺诺】 / 【吟唱3】 / 【我方回合结束时】【土之秘术1】召唤1个《守护者巨像》到战场上。
+   ACP : fanfare: | select opponent:board<Follower> Choose(1) | deal ctr:earth_sigil damage to $selected | evolve: | gain_crest #10133110 | crest "黎明炼金术师·诺诺" (cost=0): | countdown(3) | turn_end turn=Self [earth_rite(1)]: | summon 1 #90031120
+-- 10331110 真理的肯定者
+   官方: 【入场曲】若本卡牌的费用不为2，则回复自己的主战者3点生命值。
+   CCP : 【入场曲】若费用=2，为我方主战者回复3点生命值。
+   ACP : fanfare if prop:Cost != 2: | restore 3 life to self:leader
+-- 10332110 真理的祈祷者
+   官方: 【入场曲】对战场上的其他所有随从造成3点伤害。若本随从的费用不为5，则抽取2张卡牌。
+   CCP : 【入场曲】对战场的其他的所有随从造成3点伤害。若费用=5，抽取2张卡牌。
+   ACP : fanfare: | deal 3 damage to any:board<Follower> other All | if prop:Cost != 5: | draw 2
+-- 10333110 真理的团结者
+   官方: 【入场曲】若本随从的费用不为3，则召唤2个本随从的复制随从。 / 【突进】 / 【超进化时】召唤1个本随从的复制随从。
+   CCP : 【突进】 / 【入场曲】若费用=3，召唤2个本卡牌的完整复制到战场上。 / 【超进化时】召唤1个本卡牌的完整复制到战场上。
+   ACP : keywords: [rush] | fanfare if prop:Cost != 3: | spawn_exact_copy 2 of $self to Board | super_evolve: | spawn_exact_copy 1 of $self to Board
+-- 10562210 穹顶护甲
+   官方: 【启动】破坏本卡牌。抽取X张卡牌。X为自己的战场上的拥有【守护】的随从的张数。
+   CCP : 【启动】破坏本卡牌。抽取「我方战场的所有拥有【守护】的随从」的数量张卡牌。
+   ACP : engage [engage(0)]: | destroy $self | draw count(self:board<Follower> All where has ward)
+-- 10262310 神圣守护
+   官方: 选择自己的战场上的1个拥有【守护】的随从，使其+0/+1。对对手的战场上的随机1个随从造成X点伤害。X为选择的随从的生命值。
+   CCP : 选择我方战场的1个拥有【守护】的随从，给予该目标+0/+1效果。对敌方战场的随机1个随从造成生命值点伤害。
+   ACP : on_play: | select self:board<Follower> Choose(1) where has ward | buff $selected +0/+1 | deal prop:Life($selected) damage to opponent:board<Follower> Random(1)
+=== TargetSpec 组合矩阵（真实 VmEval 求值） ===
+  self:board All => Refs=4 ids=[2,3,4,8]
+  self:board<Follower> All(Of=$self) => Refs=0 ids=[]
+  self:board<Follower> All(Of=$item) => Refs=3 ids=[2,3,4]
+  opponent:board +leader All => Refs=3 ids=[5,6,7]
+  any:board All => Refs=6 ids=[2,3,4,5,6,8]
+  Choose(2) 3候选 => Refs=4 ids=[2,3,4,8]
+  Random(5) 3候选 => Refs=4 ids=[8,2,4,3]
+  First(count=2) => Refs=2 ids=[2,3]
+  $trigger 未绑定 => Refs=0 ids=[]
+  $item 未绑定 => Refs=0 ids=[]
+  $selected 未绑定 => Refs=0 ids=[]
+  $self(有Source) => Refs=1 ids=[1]
+  card:#id @self:board All => Refs=3 ids=[2,3,4]
+  card:#id history=EnteredThisMatch => Refs=0 ids=[]
+  DistinctByName => Refs=2 ids=[2,8]
+  DuplicatesOnly => Refs=2 ids=[3,4]
+  [注] SecondaryFilter 走 _eval.ResolveRef(trig.SecondaryFilter, scope1) 且 scope1 无 Source/Trigger (CardVm.cs:928-930)

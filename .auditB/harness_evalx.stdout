@@ -1,0 +1,10 @@
+=== NUMERIC EVAL X ===
+CARD 10111130 深奥的妖精守护圣兽 handCards=4 playerCounterX=5
+  Restore EvalNum=4 expr=count(self:hand All)
+CARD 10114130 起源剑师·阿玛兹 handCards=4 playerCounterX=5
+  Buff EvalNum=0/0 expr=count(self:hand<Follower> All where has trait 妖精)/count(self:hand<Follower> All where has trait 妖精)
+  DealDamage EvalNum=1 expr=1
+CARD 10163110 终焉的白骨圣堂之主 handCards=4 playerCounterX=5
+  DealDamage EvalNum=0 expr=ctr:cards_destroyed_by_ability
+CARD 10131320 暴风破 handCards=4 playerCounterX=5
+  DealDamage EvalNum=5 expr=ctr:X

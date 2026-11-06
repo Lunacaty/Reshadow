@@ -1,0 +1,284 @@
+=== ROUNDTRIP ===
+cards=983 parse_exception=0 parse_errors=0 reparse_errors=0
+pack_text_vs_PrintCard(PyAST): mismatch=0
+PrintCard->ParseCard->PrintCard: mismatch=0
+parse_error_samples:
+
+orig_mismatch_samples:
+
+roundtrip_mismatch_samples:
+
+=== RECOMPILE FROM ENGLISH ===
+compiled=983 no_errors=857 with_errors=126 silent_drop_flags=43 zero_abilities=73
+error_classes=76
+  [9] [静默丢弃] 原文非空但产出了 0 条能力：[Storm]  e.g. 10021110,10021130,10143110,10612120
+  [9] [静默丢弃] 原文非空但产出了 0 条能力：[Rush]  e.g. 10211110,10631110,90011110,90022110
+  [7] [静默丢弃] 原文非空但产出了 0 条能力：[Ward]  e.g. 10001130,10041120,10061120,90031120
+  [6] [静默丢弃] 原文非空但产出了 0 条能力：[Storm  e.g. 10051110,10144120,10851110,11071120
+  [5] [Whenever an allied Officer follower enters the fie…] 无法解析的动作：解析器在此处无法推进  e.g. 10121130,10122110,10122120,10122130
+  [4] [Whenever an allied Artifact follower enters the fi…] 无法解析的动作：解析器在此处无法推进  e.g. 10771110,10773110,10774120,10974120
+  [4] [Activates in hand. Whenever you Engage a Clue amul…] 无法解析的动作：解析器在此处无法推进  e.g. 11021110,11022110,11023110,11024110
+  [3] [Whenever an allied Pixie follower enters the field…] 无法解析的动作：解析器在此处无法推进  e.g. 10011210,10311120,10511120
+  [3] [Whenever an allied Departed follower enters the fi…] 无法解析的动作：解析器在此处无法推进  e.g. 10153130,10254120,10753110
+  [3] [Whenever an allied Puppetry follower enters the fi…] 无法解析的动作：解析器在此处无法推进  e.g. 10174120,10274110,10972120
+  [3] [Whenever an allied Marine follower enters the fiel…] 无法解析的动作：解析器在此处无法推进  e.g. 10342120,10541120,10542120
+  [3] [静默丢弃] 原文非空但产出了 0 条能力：[Rush  e.g. 10512120,10662110,10921120
+  [3] [静默丢弃] 原文非空但产出了 0 条能力：[Intimidate]  e.g. 10911120,90041110,90041120
+  [2] [静默丢弃] 原文非空但产出了 0 条能力：[Ward  e.g. 10161120,10441110
+  [2] [Crest] [Whenever an allied Marine follower enters the fiel…] 无法解析的动作：解析器在此处无法推进  e.g. 10243110,10841130
+  [2] [Fanfare: Select an Artifact follower in your hand …] select 后面没有可识别的目标  e.g. 10274120,10473110
+  [2] [Fuse: Loot cards] Fuse 材料：材料过滤条件解析失败或未消费完所有词  e.g. 10323310,10324110
+  [2] [Whenever an allied Golem follower enters the field…] 无法解析的动作：解析器在此处无法推进  e.g. 10533110,11032120
+  [2] [Fuse: Artifact amulets] Fuse 材料：材料过滤条件解析失败或未消费完所有词  e.g. 90071210,90071220
+  [2] [Fuse: Artifact cards] Fuse 材料：材料过滤条件解析失败或未消费完所有词  e.g. 90072110,90072120
+  [1] [Select a card in your hand and return it to deck. …] 无法解析的动作：解析器在此处无法推进  e.g. 10021310
+  [1] [Super-Evolve: Select an allied Golem follower on t…] 无法解析的动作：解析器在此处无法推进  e.g. 10032110
+  [1] [静默丢弃] 原文非空但产出了 0 条能力：[Bane  e.g. 10071130
+  [1] [Crest] [Whenever an allied Pixie follower enters the field…] 无法解析的动作：解析器在此处无法推进  e.g. 10114110
+  [1] [Fanfare: Draw 2 Swordcraft followers. Recover 3 pl…] 无法解析的动作：解析器在此处无法推进  e.g. 10124120
+  [1] [Super-Evolve: Give all other allied Swordcraft fol…] Give 在目标之后未找到可授予的内容，停在 Swordcraft  e.g. 10124120
+  [1] [Enhance (10): Destroy all allied Shikigami followe…] 无法解析的动作：解析器在此处无法推进  e.g. 10134110
+  [1] [Super-Evolve: Select an allied Shikigami follower …] 无法解析的动作：解析器在此处无法推进  e.g. 10134110
+  [1] [Once on each of your turns, when an allied Puppetr…] 无法解析的动作：解析器在此处无法推进  e.g. 10171140
+  [1] [Fanfare: Add 3 copies of Puppet to your hand. Give…] Give 在目标之后未找到可授予的内容，停在 Puppetry  e.g. 10172130
+=== PACK PYAST PATTERNS ===
+cards=983 ability_heads=1930 empty_bodies=0 error_markers=0 fallback_tokens=0 standalone_comments=0
+empty_body_samples=
+marker_samples=
+heads=fanfare:475; on_play:281; keywords:265; evolve:185; traits:126; super_evolve:104; last_words:89; crest:72; engage:56; turn_end:49; on_enter:48; countdown:25; on_spellboost:18; aura:18; strike:16; on_evolve:16; on_fuse:13; fuse:13; on_super_evolve:9; on_discard:5; clash:5; faith:5; crystallize:5; accelerate:5; on_banish:5; on_statsmodified:4; on_destroy:3; on_damaged:3; on_draw:3; on_healed:3; on_leave:2; turn_start:2; on_earth_rite:2
+=== XYZ VARIABLES ===
+english_pattern_cards=57
+bucket inline_numexpr n=23 ids=10111140,10113120,10131110,10132120,10133110,10144110,10262310,10363210,10431120,10434110,10473110,10541310,10543110,10643310,10674110,10713110,10714110,10714120,11022110,11034120,11044120,90034120,90074130
+bucket ctr_XYZ n=7 ids=10131320,10132130,10133310,10232310,10831310,10833310,10834110
+bucket constant_only n=25 ids=10111130,10113140,10114130,10163110,10253120,10313310,10324110,10362210,10371110,10373110,10374110,10513310,10514110,10542310,10554120,10562210,10573110,10723310,10761120,10773310,10774110,10811110,10844110,10903110,10932120
+bucket missing n=2 ids=11044110,11053310
+CASE 10111130 深奥的妖精守护圣兽
+  ENG Fanfare: Draw a card. Restore X defense to your leader. X is the number of cards in your hand.
+  PYAST card 10111130 "深奥的妖精守护圣兽" (Follower, clan=精灵, cost=8, atk=4, life=4, rarity=1): /     fanfare: /         draw 1 /         restore count(self:hand All) life to self:leader
+CASE 10114130 起源剑师·阿玛兹
+  ENG Fanfare: Give this follower +X/+X. X is the number of Pixie followers in your hand. / <hr>Ward / <hr><ev>Evolve: Do this X times: "Deal 1 damage to a random enemy follower." X is the number of Pixie followers in your hand.</ev>
+  PYAST card 10114130 "起源剑师·阿玛兹" (Follower, clan=精灵, cost=3, atk=2, life=2, rarity=4): /     keywords: [ward] /     fanfare: /         buff $self +count(self:hand<Follower> All where has trait 妖精)/+count(self:hand<Follower> All where has trait 妖精) /     evolve: /         repeat count(self:hand<Follower> All where has trait 妖精) times: /             deal 1 damage to opponent:board<Follower> Random(1)
+CASE 10163110 终焉的白骨圣堂之主
+  ENG Fanfare: Destroy all allied amulets. Deal X damage to all enemies. X is the number of amulets destroyed by this ability.
+  PYAST card 10163110 "终焉的白骨圣堂之主" (Follower, clan=主教, cost=6, atk=4, life=4, rarity=3): /     fanfare: /         destroy self:board<Amulet> All /         deal ctr:cards_destroyed_by_ability damage to opponent:board +leader All
+CASE 10131320 暴风破
+  ENG X starts at 2. / On Spellboost: Increase X by 1. / <hr>Select an enemy follower on the field and deal it X damage.
+  PYAST card 10131320 "暴风破" (Spell, clan=巫师, cost=1, rarity=1): /     on_spellboost: /         counter X by 1 /     on_play: /         select opponent:board<Follower> Choose(1) /         deal ctr:X damage to $selected /     aura: /         counter X = 2
+CASE 10133110 黎明炼金术师·诺诺
+  ENG Fanfare: Select an enemy follower on the field and deal it X damage. X is the number of earth sigils you have. / <hr><ev>Evolve: Gain Crest: Juno, Visionary Alchemist.</ev>
+  PYAST card 10133110 "黎明炼金术师·诺诺" (Follower, clan=巫师, cost=5, atk=3, life=3, rarity=3): /     fanfare: /         select opponent:board<Follower> Choose(1) /         deal ctr:earth_sigil damage to $selected /     evolve: /         gain_crest #10133110 /  /     crest "黎明炼金术师·诺诺" (cost=0): /         countdown(3) /         turn_end turn=Self [earth_rite(1)]: /             summon 1 #90031120
+CASE 10374110 破坏的继承者·阿克西娅
+  ENG Ward / Can't be destroyed by abilities. / <hr><sev>Super-Evolve: Deal X damage to the enemy leader. X is the number of other allied cards on the field. Destroy all other allied cards on the field.</sev>
+  PYAST card 10374110 "破坏的继承者·阿克西娅" (Follower, clan=超越者, cost=3, atk=2, life=4, rarity=4): /     keywords: [ward, cannot_destroy] /     super_evolve: /         deal count(self:board other All) damage to opponent:leader /         destroy self:board other All
+=== PARAMETER KEYWORDS ===
+max_attacks_per_turn pack_cards=15 ids=10114120,10123110,10124110,10154120,10162120,10274120,10411110,10423310,10614110,10654110,10843110,10864110,10924120,11061120,90034350
+  10114120 丰丽的玫瑰皇后 head=[aura:] line=[grant_keyword max_attacks_per_turn(2) to $self]
+  10123110 雷维翁之斧·杰诺 head=[aura:] line=[grant_keyword max_attacks_per_turn(2) to $self]
+  10124110 雷维翁的迅雷·阿尔贝尔 head=[on_play [enhance(9)]:] line=[grant_keyword max_attacks_per_turn(2) to $self]
+  10154120 剧毒公主·美杜莎 head=[aura:] line=[grant_keyword max_attacks_per_turn(3) to $self]
+  10162120 煌翼羽人·莉诺 head=[super_evolve:] line=[grant_keyword max_attacks_per_turn(2) to $self]
+  10274120 精神武艺·迦尔拉 head=[super_evolve:] line=[grant_keyword max_attacks_per_turn(2) to $self]
+  10411110 爱恨舞者·晧&曜 head=[aura:] line=[grant_keyword max_attacks_per_turn(2) to $self]
+  10423310 骁勇骑士 head=[on_play:] line=[grant_keyword max_attacks_per_turn(2) to self:board<Follower> First(1) where has clan 皇家护卫]
+  10614110 慈爱的凛华·奥尔提雅 head=[aura:] line=[grant_keyword max_attacks_per_turn(2) to $self]
+  10654110 枯渴的魔神·阿尔弭斯 head=[super_evolve:] line=[grant_keyword max_attacks_per_turn(3) to $self]
+  10843110 穹顶的战火·杰亚达 head=[strike:] line=[grant_keyword max_attacks_per_turn(2) to $self [dur=ThisTurn]]
+  10864110 飞跃的姐妹·贝尔迪俪亚&卡诗黛儿 head=[crest "飞跃的姐妹·贝尔迪俪亚&卡诗黛儿" (cost=0):] line=[grant_keyword max_attacks_per_turn(2) to self:board<Follower> All [dur=ThisTurn]]
+  10924120 武皇的变貌·贝尔铁佐 head=[aura:] line=[grant_keyword max_attacks_per_turn(3) to $self]
+  11061120 斗志修行僧 head=[aura:] line=[grant_keyword max_attacks_per_turn(2) to $self]
+  90034350 宏大的回归 head=[on_play:] line=[grant_keyword max_attacks_per_turn(2) to $selected]
+max_attacks_per_turn heads aura=7 innate=0 other=8 null_ModifyKeywordNode_Target=0
+damage_cap pack_cards=4 ids=10401110,10444120,10464120,10711110
+  10401110 驰骋天空的守护者·卡塔莉娜 head=[aura:] line=[grant_keyword damage_cap(3) to $self]
+  10444120 世界的伙伴·佐伊 head=[fanfare [enhance(10)]:] line=[grant_keyword damage_cap(0) to self:leader [dur=UntilEndOfOpponentTurn]]
+  10464120 威严的星晶骑士·薇拉 head=[aura:] line=[grant_keyword damage_cap(3) to $self]
+  10711110 巨型熊 head=[aura:] line=[grant_keyword damage_cap(3) to $self]
+damage_cap heads aura=3 innate=0 other=1 null_ModifyKeywordNode_Target=0
+damage_taken_bonus pack_cards=1 ids=10474120
+  10474120 唯一王者·别西卜 head=[fanfare:] line=[grant_keyword damage_taken_bonus(1) to opponent:leader]
+damage_taken_bonus heads aura=0 innate=0 other=1 null_ModifyKeywordNode_Target=0
+=== MICRO: THREE X SENTENCES ===
+PROBE [X starts at 2. / On Spellboost: Increase X by 1. / <hr>Select an enemy follower on the field and deal it X damage.] ok=True abilities=3 errors=
+  AST on_spellboost: /     counter X by 1
+    ModifyCounter: counter=X op=Add delta=1 Target=null(player-level) Owner=Self
+  AST on_play: /     select opponent:board<Follower> Choose(1) /     deal ctr:X damage to $selected
+    DealDamage: amount=ctr:X target=$selected
+  AST aura: /     counter X = 2
+    ModifyCounter: counter=X op=Set delta=2 Target=null(player-level) Owner=Self
+PROBE [X starts at 2.] ok=True abilities=1 errors=
+  AST aura: /     counter X = 2
+    ModifyCounter: counter=X op=Set delta=2 Target=null(player-level) Owner=Self
+PROBE [On Spellboost: Increase X by 1.] ok=True abilities=1 errors=
+  AST on_spellboost: /     counter X by 1
+    ModifyCounter: counter=X op=Add delta=1 Target=null(player-level) Owner=Self
+PROBE [<hr>Select an enemy follower on the field and deal it X damage.] ok=True abilities=1 errors=
+  AST on_play: /     select opponent:board<Follower> Choose(1) /     deal ctr:X damage to $selected
+    DealDamage: amount=ctr:X target=$selected
+PROBE [Fanfare: Restore X defense to your leader. X is the number of cards in your hand.] ok=True abilities=1 errors=
+  AST fanfare: /     restore count(self:hand All) life to self:leader
+PROBE [Fanfare: Deal X damage to all enemies. X is the number of amulets destroyed by this ability.] ok=True abilities=1 errors=
+  AST fanfare: /     deal ctr:cards_destroyed_by_ability damage to opponent:board +leader All
+    DealDamage: amount=ctr:cards_destroyed_by_ability target=opponent:board +leader All
+=== MICRO: ALL ctr:X/Y/Z CARDS ===
+pack_ctr_XYZ_cards=7 ids=10131320,10132130,10133310,10232310,10831310,10833310,10834110
+  10131320 暴风破 counter_target_null=2 counter_target_set=0
+  10132130 玛纳利亚的学生·威廉 counter_target_null=2 counter_target_set=0
+  10133310 做作业啦！ counter_target_null=2 counter_target_set=0
+  10232310 混沌赤焰 counter_target_null=2 counter_target_set=0
+  10831310 暴风破 counter_target_null=2 counter_target_set=0
+  10833310 钢铁的小憩 counter_target_null=2 counter_target_set=0
+  10834110 恩爱的大地·坦忒拉&拉缇卡 counter_target_null=2 counter_target_set=0
+=== MICRO: SENTENCE-FAMILY PACK PRESENCE ===
+FAMILY [once on each of your turns] cards=7 max=1:7 repeat:0 modes:0 crest_opp:1 e.g. 10171140,10314110,10344120,10812110,10814120,10822110
+FAMILY [Can't be] cards=6 max=1:0 repeat:0 modes:0 crest_opp:0 e.g. 10273110,10374110,10374120,10654110,90071210,90071220
+FAMILY [Give your opponent Crest] cards=4 max=1:3 repeat:0 modes:1 crest_opp:4 e.g. 10144110,10314110,10574110,10744110
+FAMILY [Whenever] cards=94 max=1:2 repeat:1 modes:1 crest_opp:1 e.g. 10011210,10022210,10062120,10113130,10121130,10122110
+FAMILY [When] cards=137 max=1:9 repeat:4 modes:1 crest_opp:2 e.g. 10011210,10022210,10062120,10113130,10121130,10122110
+FAMILY [Do this] cards=27 max=1:1 repeat:27 modes:1 crest_opp:0 e.g. 10114130,10153120,10154110,10212310,10262110,10313310
+FAMILY [Select a Mode] cards=48 max=1:0 repeat:1 modes:48 crest_opp:0 e.g. 10031110,10051310,10122310,10132310,10173120,10234120
+FAMILY [Enhance] cards=67 max=1:3 repeat:2 modes:4 crest_opp:0 e.g. 10001110,10042120,10071120,10121140,10123120,10124110
+FAMILY [Engage] cards=57 max=1:1 repeat:0 modes:4 crest_opp:0 e.g. 10001210,10002210,10031210,10061210,10062120,10062210
+FAMILY [Fuse] cards=18 max=1:1 repeat:0 modes:0 crest_opp:0 e.g. 10173210,10213310,10323110,10323310,10324110,10933110
+FAMILY [X is the number of] cards=30 max=1:0 repeat:3 modes:0 crest_opp:0 e.g. 10111130,10113120,10114130,10132120,10133110,10163110
+=== MICRO: 22 NODE TYPES COVERED BY VM SWITCH ===
+switch cases=RevealCardNode,DamageModifierNode,SelectTargetNode,DealDamageNode,RestoreLifeNode,ModifyStatsNode,ModifyCostNode,ModifyKeywordNode,ModifyCounterNode,MoveZoneNode,SpawnCardNode,ReplaceDeckNode,EvolveNode,TransformNode,MarkVictoryCardNode,ConditionalNode,LoopNode,BranchModeNode,GrantAbilityNode,GrantCounterAbilityNode,InvokeAbilityNode,MacroNode
+=== SEMANTIC: pack PyAST vs fresh EnglishCompiler AST ===
+compared=857 identical_abilities=841 semantic_drift=16 skipped_fresh_errors=126
+DRIFT 10114120 丰丽的玫瑰皇后 PACK[    fanfare:
+        transform self:hand All where (has clan 精灵 and prop:Cost <= 2) into #90014310
+    aura:
+        grant_keyword max_attacks_per_turn(2) to $self] FRESH[    fanfare:
+        transform any:board All into #90014310
+    aura:
+        grant_keyword max_attacks_per_turn(2) to $self]
+DRIFT 10114130 起源剑师·阿玛兹 PACK[    fanfare:
+        buff $self +count(self:hand<Follower> All where has trait 妖精)/+count(self:hand<Follower> All where has trait 妖精)
+    evolve:
+        repeat count(self:hand<Follower> All where has trait 妖精) times:
+            deal 1 damage to opponent:board<Follower> Random(1)] FRESH[    fanfare:
+        buff $self +ctr:pixie_followers_hand/+ctr:pixie_followers_hand
+    evolve:
+        repeat ctr:pixie_followers_hand times:
+            deal 1 damage to opponent:board<Follower> Random(1)]
+DRIFT 10132120 奇迹女巫·爱蜜儿 PACK[    on_spellboost:
+        modify_cost $self by -1
+    evolve:
+        summon 1 #90031110
+        deal count(self:board<Follower> All where has trait 巨像) damage to opponent:board<Follower> All] FRESH[    on_spellboost:
+        modify_cost $self by -1
+    evolve:
+        summon 1 #90031110
+        deal count(self:board All) damage to opponent:board<Follower> All]
+DRIFT 10372110 破坏的祈祷者 PACK[    fanfare:
+        select self:board other Choose(1)
+        if exists($selected):
+            destroy $selected
+            deal 2 damage to opponent:board<Follower> Random(1)
+    evolve:
+        invoke_ability OnPlay on $self] FRESH[    fanfare:
+        select self:board other Choose(1)
+        if is selected:
+            destroy $selected
+            deal 2 damage to opponent:board<Follower> Random(1)
+    evolve:
+        invoke_ability OnPlay on $self]
+DRIFT 10372210 破坏的荒野 PACK[    fanfare:
+        select self:board other Choose(1)
+        if exists($selected):
+            destroy $selected
+            draw 2
+    last_words:
+        draw 1] FRESH[    fanfare:
+        select self:board other Choose(1)
+        if is selected:
+            destroy $selected
+            draw 2
+    last_words:
+        draw 1]
+DRIFT 10603210 黑暗次元 PACK[    countdown(2)
+    turn_end turn=Self:
+        deal 2 damage to any:board<Follower> All where not has trait 侵蚀者] FRESH[    countdown(2)
+    turn_end turn=Self:
+        deal 2 damage to any:board<Follower> All where not has trait Encroacher]
+DRIFT 10653110 渴命的破坏者 PACK[    fanfare:
+        select self:board<Follower> other Choose(1)
+        if exists($selected):
+            destroy $selected
+            evolve $self
+    on_evolve on($self):
+        summon 1 #90051120
+        evolve $created] FRESH[    fanfare:
+        select self:board<Follower> other Choose(1)
+        if is selected:
+            destroy $selected
+            evolve $self
+    on_evolve on($self):
+        summon 1 #90051120
+        evolve $created]
+DRIFT 10771120 炫酷舞者 PACK[    fanfare:
+        if count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) >= 3:
+            summon 2 #10771120
+        else:
+            summon 1 #10771120] FRESH[    fanfare:
+        if count(self:board distinct All) >= 3:
+            summon 2 #10771120
+        else:
+            summon 1 #10771120]
+DRIFT 10771310 跑酷 PACK[    on_play:
+        if count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) >= 3:
+            modes Sequence(pick=2):
+                option 1:
+                    add_to_hand 1 #90071130
+                option 2:
+                    add_to_hand 1 #90071140
+        else:
+            modes Choose(pick=1):
+                option 1:
+                    add_to_hand 1 #90071130
+                option 2:
+                    add_to_hand 1 #90071140] FRESH[    on_play:
+        if count(self:board distinct All) >= 3:
+            modes Sequence(pick=2):
+                option 1:
+                    add_to_hand 1 #90071130
+                option 2:
+                    add_to_hand 1 #90071140
+        else:
+            modes Choose(pick=1):
+                option 1:
+                    add_to_hand 1 #90071130
+                option 2:
+                    add_to_hand 1 #90071140]
+DRIFT 10772120 大胆的涂鸦师 PACK[    fanfare:
+        select opponent:board<Follower> Choose(1)
+        destroy $selected
+        if count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) >= 3:
+            summon 1 #90071140
+            summon 1 #90071150] FRESH[    fanfare:
+        select opponent:board<Follower> Choose(1)
+        destroy $selected
+        if count(self:board distinct All) >= 3:
+            summon 1 #90071140
+            summon 1 #90071150]
+DRIFT 10773310 瞬移斩击 PACK[    on_play:
+        deal count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) damage to opponent:board<Follower> All
+        deal 1 damage to opponent:leader] FRESH[    on_play:
+        deal count(self:board distinct All) damage to opponent:board<Follower> All
+        deal 1 damage to opponent:leader]
+DRIFT 10774110 虚刻的安纳提玛·斯卡雷特 PACK[    fanfare:
+        deal count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) damage to opponent:board<Follower> All] FRESH[    fanfare:
+        deal count(self:board distinct All) damage to opponent:board<Follower> All]
+=== AST FALLBACK / NODE AUDIT ===
+cards=983 empty_ability_bodies=25 (countdown-only expected) ids=10011210:PassiveAura,10022210:PassiveAura,10061210:PassiveAura,10062210:PassiveAura,10072210:PassiveAura,10161210:PassiveAura,10163210:PassiveAura,10332210:PassiveAura,10342210:PassiveAura,10362210:PassiveAura,10362220:PassiveAura,10363210:PassiveAura,10503210:PassiveAura,10603210:PassiveAura,10661210:PassiveAura,10662210:PassiveAura,10663210:PassiveAura,10703210:PassiveAura,10863210:PassiveAura,10961210:PassiveAura
+null_conditions=0 HasStateExpr(None)=0 ids=
+vm_unhandled_node_instances=0 types=
+=== NUMERIC EVAL X ===
+CARD 10111130 深奥的妖精守护圣兽 handCards=4 playerCounterX=5
+  Restore EvalNum=4 expr=count(self:hand All)
+CARD 10114130 起源剑师·阿玛兹 handCards=4 playerCounterX=5
+  Buff EvalNum=0/0 expr=count(self:hand<Follower> All where has trait 妖精)/count(self:hand<Follower> All where has trait 妖精)
+  DealDamage EvalNum=1 expr=1
+CARD 10163110 终焉的白骨圣堂之主 handCards=4 playerCounterX=5
+  DealDamage EvalNum=0 expr=ctr:cards_destroyed_by_ability
+CARD 10131320 暴风破 handCards=4 playerCounterX=5
+  DealDamage EvalNum=5 expr=ctr:X

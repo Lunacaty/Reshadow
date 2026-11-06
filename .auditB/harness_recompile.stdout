@@ -1,0 +1,33 @@
+=== RECOMPILE FROM ENGLISH ===
+compiled=983 no_errors=857 with_errors=126 silent_drop_flags=43 zero_abilities=73
+error_classes=76
+  [9] [静默丢弃] 原文非空但产出了 0 条能力：[Storm]  e.g. 10021110,10021130,10143110,10612120
+  [9] [静默丢弃] 原文非空但产出了 0 条能力：[Rush]  e.g. 10211110,10631110,90011110,90022110
+  [7] [静默丢弃] 原文非空但产出了 0 条能力：[Ward]  e.g. 10001130,10041120,10061120,90031120
+  [6] [静默丢弃] 原文非空但产出了 0 条能力：[Storm  e.g. 10051110,10144120,10851110,11071120
+  [5] [Whenever an allied Officer follower enters the fie…] 无法解析的动作：解析器在此处无法推进  e.g. 10121130,10122110,10122120,10122130
+  [4] [Whenever an allied Artifact follower enters the fi…] 无法解析的动作：解析器在此处无法推进  e.g. 10771110,10773110,10774120,10974120
+  [4] [Activates in hand. Whenever you Engage a Clue amul…] 无法解析的动作：解析器在此处无法推进  e.g. 11021110,11022110,11023110,11024110
+  [3] [Whenever an allied Pixie follower enters the field…] 无法解析的动作：解析器在此处无法推进  e.g. 10011210,10311120,10511120
+  [3] [Whenever an allied Departed follower enters the fi…] 无法解析的动作：解析器在此处无法推进  e.g. 10153130,10254120,10753110
+  [3] [Whenever an allied Puppetry follower enters the fi…] 无法解析的动作：解析器在此处无法推进  e.g. 10174120,10274110,10972120
+  [3] [Whenever an allied Marine follower enters the fiel…] 无法解析的动作：解析器在此处无法推进  e.g. 10342120,10541120,10542120
+  [3] [静默丢弃] 原文非空但产出了 0 条能力：[Rush  e.g. 10512120,10662110,10921120
+  [3] [静默丢弃] 原文非空但产出了 0 条能力：[Intimidate]  e.g. 10911120,90041110,90041120
+  [2] [静默丢弃] 原文非空但产出了 0 条能力：[Ward  e.g. 10161120,10441110
+  [2] [Crest] [Whenever an allied Marine follower enters the fiel…] 无法解析的动作：解析器在此处无法推进  e.g. 10243110,10841130
+  [2] [Fanfare: Select an Artifact follower in your hand …] select 后面没有可识别的目标  e.g. 10274120,10473110
+  [2] [Fuse: Loot cards] Fuse 材料：材料过滤条件解析失败或未消费完所有词  e.g. 10323310,10324110
+  [2] [Whenever an allied Golem follower enters the field…] 无法解析的动作：解析器在此处无法推进  e.g. 10533110,11032120
+  [2] [Fuse: Artifact amulets] Fuse 材料：材料过滤条件解析失败或未消费完所有词  e.g. 90071210,90071220
+  [2] [Fuse: Artifact cards] Fuse 材料：材料过滤条件解析失败或未消费完所有词  e.g. 90072110,90072120
+  [1] [Select a card in your hand and return it to deck. …] 无法解析的动作：解析器在此处无法推进  e.g. 10021310
+  [1] [Super-Evolve: Select an allied Golem follower on t…] 无法解析的动作：解析器在此处无法推进  e.g. 10032110
+  [1] [静默丢弃] 原文非空但产出了 0 条能力：[Bane  e.g. 10071130
+  [1] [Crest] [Whenever an allied Pixie follower enters the field…] 无法解析的动作：解析器在此处无法推进  e.g. 10114110
+  [1] [Fanfare: Draw 2 Swordcraft followers. Recover 3 pl…] 无法解析的动作：解析器在此处无法推进  e.g. 10124120
+  [1] [Super-Evolve: Give all other allied Swordcraft fol…] Give 在目标之后未找到可授予的内容，停在 Swordcraft  e.g. 10124120
+  [1] [Enhance (10): Destroy all allied Shikigami followe…] 无法解析的动作：解析器在此处无法推进  e.g. 10134110
+  [1] [Super-Evolve: Select an allied Shikigami follower …] 无法解析的动作：解析器在此处无法推进  e.g. 10134110
+  [1] [Once on each of your turns, when an allied Puppetr…] 无法解析的动作：解析器在此处无法推进  e.g. 10171140
+  [1] [Fanfare: Add 3 copies of Puppet to your hand. Give…] Give 在目标之后未找到可授予的内容，停在 Puppetry  e.g. 10172130

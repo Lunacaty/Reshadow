@@ -1,0 +1,152 @@
+========== PART 1: 卡面-AST 对照 (ChineseCardPrinter vs PyAST) ==========
+--- CARD 10131320 暴风破 ---
+  PyAST: card 10131320 "暴风破" (Spell, clan=巫师, cost=1, rarity=1): |     on_spellboost: |         counter X by 1 |     on_play: |         select opponent:board<Follower> Choose(1) |         deal ctr:X damage to $selected |     aura: |         counter X = 2
+  CCP  : 初始【X】值为2。 / 每当我方进行魔力增幅时，使【X】+1。 / 选择敌方战场的1个随从，对该目标造成X值点伤害。
+  ACP  : card 10131320 "暴风破" (Spell, clan=巫师, cost=1, rarity=1): |     on_spellboost: |         counter X by 1 |     on_play: |         select opponent:board<Follower> Choose(1) |         deal ctr:X damage to $selected |     aura: |         counter X = 2
+--- CARD 10132130 玛纳利亚的学生·威廉 ---
+  PyAST: card 10132130 "玛纳利亚的学生·威廉" (Follower, clan=巫师, cost=6, atk=5, life=5, rarity=2): |     traits: [玛纳利亚] |     on_spellboost: |         counter X by 1 |     fanfare: |         deal ctr:X damage to opponent:board<Follower> All |     evolve: |         spellboost self:hand All by 2 |     aura: |         counter X = 0
+  CCP  : 初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。 / 【入场曲】对敌方战场的所有随从造成X值点伤害。 / 【进化时】使我方手牌的所有卡牌【魔力增幅】2次。
+  ACP  : card 10132130 "玛纳利亚的学生·威廉" (Follower, clan=巫师, cost=6, atk=5, life=5, rarity=2): |     traits: [玛纳利亚] |     on_spellboost: |         counter X by 1 |     fanfare: |         deal ctr:X damage to opponent:board<Follower> All |     evolve: |         spellboost self:hand All by 2 |     aura: |         counter X = 0
+--- CARD 10133310 做作业啦！ ---
+  PyAST: card 10133310 "做作业啦！" (Spell, clan=巫师, cost=3, rarity=3): |     traits: [玛纳利亚] |     on_spellboost: |         counter X by 1 |         if ctr:X >= 5: |             transform $self into #90033310 |     on_play: |         draw 2 |     aura: |         counter X = 0
+  CCP  : 初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。若X值≥5，使本卡牌【变身】为《有所成长了！》。 / 抽取2张卡牌。
+  ACP  : card 10133310 "做作业啦！" (Spell, clan=巫师, cost=3, rarity=3): |     traits: [玛纳利亚] |     on_spellboost: |         counter X by 1 |         if ctr:X >= 5: |             transform $self into #90033310 |     on_play: |         draw 2 |     aura: |         counter X = 0
+--- CARD 10232310 混沌赤焰 ---
+  PyAST: card 10232310 "混沌赤焰" (Spell, clan=巫师, cost=3, rarity=2): |     on_spellboost: |         counter X by 1 |     on_play: |         deal ctr:X damage to opponent:board<Follower> All split |     aura: |         counter X = 0
+  CCP  : 初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。 / 将X值点伤害依次分配给敌方战场的所有随从。
+  ACP  : card 10232310 "混沌赤焰" (Spell, clan=巫师, cost=3, rarity=2): |     on_spellboost: |         counter X by 1 |     on_play: |         deal ctr:X damage to opponent:board<Follower> All split |     aura: |         counter X = 0
+--- CARD 10831310 暴风破 ---
+  PyAST: card 10831310 "暴风破" (Spell, clan=巫师, cost=1, rarity=1): |     on_spellboost: |         counter X by 1 |     on_play: |         select opponent:board<Follower> Choose(1) |         deal ctr:X damage to $selected |     aura: |         counter X = 2
+  CCP  : 初始【X】值为2。 / 每当我方进行魔力增幅时，使【X】+1。 / 选择敌方战场的1个随从，对该目标造成X值点伤害。
+  ACP  : card 10831310 "暴风破" (Spell, clan=巫师, cost=1, rarity=1): |     on_spellboost: |         counter X by 1 |     on_play: |         select opponent:board<Follower> Choose(1) |         deal ctr:X damage to $selected |     aura: |         counter X = 2
+--- CARD 10833310 钢铁的小憩 ---
+  PyAST: card 10833310 "钢铁的小憩" (Spell, clan=巫师, cost=3, rarity=3): |     on_spellboost: |         counter X by 1 |     on_play: |         draw 2 |         if ctr:X >= 5: |             restore 2 life to self:leader |             recover_pp 2 |     aura: |         counter X = 0
+  CCP  : 初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。 / 抽取2张卡牌。若X值≥5，为我方主战者回复2点生命值。回复2点能量点。
+  ACP  : card 10833310 "钢铁的小憩" (Spell, clan=巫师, cost=3, rarity=3): |     on_spellboost: |         counter X by 1 |     on_play: |         draw 2 |         if ctr:X >= 5: |             restore 2 life to self:leader |             recover_pp 2 |     aura: |         counter X = 0
+--- CARD 10834110 恩爱的大地·坦忒拉&拉缇卡 ---
+  PyAST: card 10834110 "恩爱的大地·坦忒拉&拉缇卡" (Follower, clan=巫师, cost=6, atk=5, life=5, rarity=4): |     keywords: [storm] |     on_spellboost: |         counter X by 1 |     fanfare: |         if ctr:X >= 10: |             add_to_hand 1 #90034340 |         if ctr:X >= 20: |             add_to_hand 1 #90034350 |     aura: |         counter X = 0
+  CCP  : 【疾驰】初始【X】值为0。 / 每当我方进行魔力增幅时，使【X】+1。 / 【入场曲】若X值≥10，将1张《苍奏之四》加入我方手牌。若X值≥20，将1张《宏大的回归》加入我方手牌。
+  ACP  : card 10834110 "恩爱的大地·坦忒拉&拉缇卡" (Follower, clan=巫师, cost=6, atk=5, life=5, rarity=4): |     keywords: [storm] |     on_spellboost: |         counter X by 1 |     fanfare: |         if ctr:X >= 10: |             add_to_hand 1 #90034340 |         if ctr:X >= 20: |             add_to_hand 1 #90034350 |     aura: |         counter X = 0
+--- CARD 10111130 深奥的妖精守护圣兽 ---
+  PyAST: card 10111130 "深奥的妖精守护圣兽" (Follower, clan=精灵, cost=8, atk=4, life=4, rarity=1): |     fanfare: |         draw 1 |         restore count(self:hand All) life to self:leader
+  CCP  : 【入场曲】抽取1张卡牌。为我方主战者回复「我方手牌的所有卡牌」的数量点生命值。
+  ACP  : card 10111130 "深奥的妖精守护圣兽" (Follower, clan=精灵, cost=8, atk=4, life=4, rarity=1): |     fanfare: |         draw 1 |         restore count(self:hand All) life to self:leader
+--- CARD 10114130 起源剑师·阿玛兹 ---
+  PyAST: card 10114130 "起源剑师·阿玛兹" (Follower, clan=精灵, cost=3, atk=2, life=2, rarity=4): |     keywords: [ward] |     fanfare: |         buff $self +count(self:hand<Follower> All where has trait 妖精)/+count(self:hand<Follower> All where has trait 妖精) |     evolve: |         repeat count(self:hand<Follower> All where has trait 妖精) times: |             deal 1 damage to opponent:board<Follower> Random(1)
+  CCP  : 【守护】 / 【入场曲】给予本卡牌+（「我方手牌的所有妖精兵种的随从」的数量）/+（「我方手牌的所有妖精兵种的随从」的数量）效果。 / 【进化时】重复以下效果「我方手牌的所有妖精兵种的随从」的数量次：「对敌方战场的随机1个随从造成1点伤害。」
+  ACP  : card 10114130 "起源剑师·阿玛兹" (Follower, clan=精灵, cost=3, atk=2, life=2, rarity=4): |     keywords: [ward] |     fanfare: |         buff $self +count(self:hand<Follower> All where has trait 妖精)/+count(self:hand<Follower> All where has trait 妖精) |     evolve: |         repeat count(self:hand<Follower> All where has trait 妖精) times: |             deal 1 damage to opponent:board<Follower> Random(1)
+--- CARD 10133110 黎明炼金术师·诺诺 ---
+  PyAST: card 10133110 "黎明炼金术师·诺诺" (Follower, clan=巫师, cost=5, atk=3, life=3, rarity=3): |     fanfare: |         select opponent:board<Follower> Choose(1) |         deal ctr:earth_sigil damage to $selected |     evolve: |         gain_crest #10133110 |  |     crest "黎明炼金术师·诺诺" (cost=0): |         countdown(3) |         turn_end turn=Self [earth_rite(1)]: |             summon 1 #90031120
+  CCP  : 【入场曲】选择敌方战场的1个随从，对该目标造成土之印值点伤害。 / 【进化时】使我方获得【纹章：「」】。 /  / 【关联纹章：黎明炼金术师·诺诺】 / 【吟唱3】 / 【我方回合结束时】【土之秘术1】召唤1个《守护者巨像》到战场上。
+  ACP  : card 10133110 "黎明炼金术师·诺诺" (Follower, clan=巫师, cost=5, atk=3, life=3, rarity=3): |     fanfare: |         select opponent:board<Follower> Choose(1) |         deal ctr:earth_sigil damage to $selected |     evolve: |         gain_crest #10133110
+--- CARD 10163110 终焉的白骨圣堂之主 ---
+  PyAST: card 10163110 "终焉的白骨圣堂之主" (Follower, clan=主教, cost=6, atk=4, life=4, rarity=3): |     fanfare: |         destroy self:board<Amulet> All |         deal ctr:cards_destroyed_by_ability damage to opponent:board +leader All
+  CCP  : 【入场曲】破坏我方战场的所有护符。对敌方的主战者与全体敌方随从造成本次能力破坏的卡牌数值点伤害。
+  ACP  : card 10163110 "终焉的白骨圣堂之主" (Follower, clan=主教, cost=6, atk=4, life=4, rarity=3): |     fanfare: |         destroy self:board<Amulet> All |         deal ctr:cards_destroyed_by_ability damage to opponent:board +leader All
+--- CARD 10324110 篡夺的继承者·辛瑟莱兹 ---
+  PyAST: card 10324110 "篡夺的继承者·辛瑟莱兹" (Follower, clan=皇家护卫, cost=6, atk=5, life=6, rarity=4): |     fuse: any:board All where has trait 财宝 |     fanfare: |         deal ctr:fuse_kinds damage to opponent:board +leader All |     super_evolve: |         invoke_ability OnPlay on $self
+  CCP  : 【融合】财宝兵种的卡牌 / 【入场曲】对敌方的主战者与全体敌方随从造成融合材料种类数值点伤害。 / 【超进化时】发动本卡牌的【入场曲】能力。
+  ACP  : card 10324110 "篡夺的继承者·辛瑟莱兹" (Follower, clan=皇家护卫, cost=6, atk=5, life=6, rarity=4): |     fuse: any:board All where has trait 财宝 |     fanfare: |         deal ctr:fuse_kinds damage to opponent:board +leader All |     super_evolve: |         invoke_ability OnPlay on $self
+--- CARD 10554120 奥夜花·释藤 ---
+  PyAST: card 10554120 "奥夜花·释藤" (Follower, clan=梦魇, cost=10, atk=4, life=4, rarity=4): |     fanfare: |         repeat 2 times: |             return_to_deck self:hand All |             draw ctr:cards_returned_to_hand |             if maxgroup(self:hand All) >= 4: |                 deal 4 damage to opponent:board +leader All |     super_evolve: |         invoke_ability OnPlay on $self
+  CCP  : 【入场曲】重复以下效果2次：「将我方手牌的所有卡牌洗回牌组。抽取本回合返回手牌数值张卡牌。若手牌中同费卡的数量≥4，对敌方的主战者与全体敌方随从造成4点伤害。」 / 【超进化时】发动本卡牌的【入场曲】能力。
+  ACP  : card 10554120 "奥夜花·释藤" (Follower, clan=梦魇, cost=10, atk=4, life=4, rarity=4): |     fanfare: |         repeat 2 times: |             return_to_deck self:hand All |             draw ctr:cards_returned_to_hand |             if maxgroup(self:hand All) >= 4: |                 deal 4 damage to opponent:board +leader All |     super_evolve: |         invoke_ability OnPlay on $self
+--- CARD 10844110 反照的赤红·德莱克&亚瑞札特 ---
+  PyAST: card 10844110 "反照的赤红·德莱克&亚瑞札特" (Follower, clan=龙族, cost=4, atk=4, life=4, rarity=4): |     keywords: [ward] |     fanfare: |         buff $self +count(card:#10844110@self:board other history=EnteredThisMatch All)/+count(card:#10844110@self:board other history=EnteredThisMatch All) |         if count(card:#10844110@self:board other history=EnteredThisMatch All) >= 2: |             evolve $self |     last_words: |         gain_crest #10844110 |  |     crest "反照的赤红·德莱克&亚瑞札特" (cost=0): |         countdown(2) |         last_words: |             add_to_hand 1 #10844110 |             set_cost $created to 2
+  CCP  : 【守护】 / 【入场曲】给予本卡牌+（「（本局对战中已进入战场的）我方的所有其他的该卡牌」的数量）/+（「（本局对战中已进入战场的）我方的所有其他的该卡牌」的数量）效果。若「（本局对战中已进入战场的）我方的所有其他的该卡牌」的数量≥2，使本卡牌【进化】。 / 【谢幕曲】使我方获得【纹章：「」】。 /  / 【关联纹章：反照的赤红·德莱克&亚瑞札特】 / 【吟唱2】 / 【谢幕曲】将1张《反照的赤红·德莱克&亚瑞札特》加入我方手牌。使该卡牌的费用变为2。
+  ACP  : card 10844110 "反照的赤红·德莱克&亚瑞札特" (Follower, clan=龙族, cost=4, atk=4, life=4, rarity=4): |     keywords: [ward] |     fanfare: |         buff $self +count(card:#10844110@self:board other history=EnteredThisMatch All)/+count(card:#10844110@self:board other history=EnteredThisMatch All) |         if count(card:#10844110@self:board other history=EnteredThisMatch All) >= 2: |             evolve $self |     last_words: |         gain_crest #10844110
+--- CARD 11044110 天噬三恶·莱特欧芙 ---
+  PyAST: card 11044110 "天噬三恶·莱特欧芙" (Follower, clan=龙族, cost=10, atk=8, life=10, rarity=4): |     keywords: [storm] |     fanfare: |         banish self:deck All where prop:BaseCost <= 4 |         discard self:hand<Amulet> All where has trait 证据 |         repeat ctr:cards_discarded_by_ability times: |             deal 8 damage to opponent:board<Follower> Random(1)
+  CCP  : 【疾驰】 / 【入场曲】使我方牌组的所有基础费用至多4的【消失】。舍弃我方手牌的所有证据兵种的护符。重复以下效果本次能力舍弃的卡牌数值次：「对敌方战场的随机1个随从造成8点伤害。」
+  ACP  : card 11044110 "天噬三恶·莱特欧芙" (Follower, clan=龙族, cost=10, atk=8, life=10, rarity=4): |     keywords: [storm] |     fanfare: |         banish self:deck All where prop:BaseCost <= 4 |         discard self:hand<Amulet> All where has trait 证据 |         repeat ctr:cards_discarded_by_ability times: |             deal 8 damage to opponent:board<Follower> Random(1)
+--- CARD 11053310 诺克坦的审讯 ---
+  PyAST: card 11053310 "诺克坦的审讯" (Spell, clan=梦魇, cost=1, rarity=3): |     on_play: |         deal ctr:clues damage to opponent:board<Follower> All |         banish self:board<Amulet> All where has trait 证据
+  CCP  : 对敌方战场的所有随从造成证据值点伤害。使我方战场的所有证据兵种的护符【消失】。
+  ACP  : card 11053310 "诺克坦的审讯" (Spell, clan=梦魇, cost=1, rarity=3): |     on_play: |         deal ctr:clues damage to opponent:board<Follower> All |         banish self:board<Amulet> All where has trait 证据
+--- CARD 10331110 真理的肯定者 ---
+  PyAST: card 10331110 "真理的肯定者" (Follower, clan=巫师, cost=2, atk=2, life=2, rarity=1): |     fanfare if prop:Cost != 2: |         restore 3 life to self:leader
+  CCP  : 【入场曲】若费用=2，为我方主战者回复3点生命值。
+  ACP  : card 10331110 "真理的肯定者" (Follower, clan=巫师, cost=2, atk=2, life=2, rarity=1): |     fanfare if prop:Cost != 2: |         restore 3 life to self:leader
+--- CARD 10332110 真理的祈祷者 ---
+  PyAST: card 10332110 "真理的祈祷者" (Follower, clan=巫师, cost=5, atk=3, life=2, rarity=2): |     fanfare: |         deal 3 damage to any:board<Follower> other All |         if prop:Cost != 5: |             draw 2
+  CCP  : 【入场曲】对战场的其他的所有随从造成3点伤害。若费用=5，抽取2张卡牌。
+  ACP  : card 10332110 "真理的祈祷者" (Follower, clan=巫师, cost=5, atk=3, life=2, rarity=2): |     fanfare: |         deal 3 damage to any:board<Follower> other All |         if prop:Cost != 5: |             draw 2
+--- CARD 10333110 真理的团结者 ---
+  PyAST: card 10333110 "真理的团结者" (Follower, clan=巫师, cost=3, atk=3, life=1, rarity=3): |     keywords: [rush] |     fanfare if prop:Cost != 3: |         spawn_exact_copy 2 of $self to Board |     super_evolve: |         spawn_exact_copy 1 of $self to Board
+  CCP  : 【突进】 / 【入场曲】若费用=3，召唤2个本卡牌的完整复制到战场上。 / 【超进化时】召唤1个本卡牌的完整复制到战场上。
+  ACP  : card 10333110 "真理的团结者" (Follower, clan=巫师, cost=3, atk=3, life=1, rarity=3): |     keywords: [rush] |     fanfare if prop:Cost != 3: |         spawn_exact_copy 2 of $self to Board |     super_evolve: |         spawn_exact_copy 1 of $self to Board
+--- CARD 10643310 断头的天刀 ---
+  PyAST: card 10643310 "断头的天刀" (Spell, clan=龙族, cost=7, rarity=3): |     traits: [侵蚀者] |     on_discard on($self): |         if prop:Cost = 7: |             add_to_hand 1 #10643310 |             set_cost $created to 5 |         if prop:Cost = 5: |             add_to_hand 1 #10643310 |             set_cost $created to 3 |     on_play: |         deal prop:Cost damage to opponent:board<Follower> All
+  CCP  : 【被舍弃时】若费用=7，将1张《断头的天刀》加入我方手牌。使该卡牌的费用变为5。若费用=5，将1张《断头的天刀》加入我方手牌。使该卡牌的费用变为3。 / 对敌方战场的所有随从造成费用点伤害。
+  ACP  : card 10643310 "断头的天刀" (Spell, clan=龙族, cost=7, rarity=3): |     traits: [侵蚀者] |     on_discard on($self): |         if prop:Cost = 7: |             add_to_hand 1 #10643310 |             set_cost $created to 5 |         if prop:Cost = 5: |             add_to_hand 1 #10643310 |             set_cost $created to 3 |     on_play: |         deal prop:Cost damage to opponent:board<Follower> All
+--- CARD 10954120 伽罗塔德 对 泽特 ---
+  PyAST: card 10954120 "伽罗塔德 对 泽特" (Follower, clan=梦魇, cost=8, atk=8, life=8, rarity=4): |     turn_end zone=Hand turn=Self if prop:Life(self:leader) <= 12: |         modify_cost $self by -1 |     fanfare: |         modes Choose(pick=1): |             option 1: |                 grant_keyword storm to $self |                 deal 2 damage to self:leader |             option 2: |                 grant_keyword ward to $self |                 deal 8 damage to opponent:board<Follower> All
+  CCP  : 【在手牌中】【回合结束时】若生命值≤12，使本卡牌的费用-1。 / 【入场曲】选择1个【模式】发动： / ① 给予本卡牌【疾驰】效果。对我方主战者造成2点伤害。 / ② 给予本卡牌【守护】效果。对敌方战场的所有随从造成8点伤害。
+  ACP  : card 10954120 "伽罗塔德 对 泽特" (Follower, clan=梦魇, cost=8, atk=8, life=8, rarity=4): |     turn_end zone=Hand turn=Self if prop:Life(self:leader) <= 12: |         modify_cost $self by -1 |     fanfare: |         modes Choose(pick=1): |             option 1: |                 grant_keyword storm to $self |                 deal 2 damage to self:leader |             option 2: |                 grant_keyword ward to $self |                 deal 8 damage to opponent:board<Follower> All
+--- CARD 90014320 绝命的痛击 ---
+  PyAST: card 90014320 "绝命的痛击" (Spell, clan=精灵, cost=6, token, rarity=4): |     turn_end zone=Hand turn=Self: |         modify_cost $self by -1 |     on_play: |         if count(card:#10314120@self:board All) >= 1: |             deal 20 damage to opponent:leader |         else: |             deal 6 damage to opponent:leader
+  CCP  : 【在手牌中】【回合结束时】使本卡牌的费用-1。 / 对敌方主战者造成6点伤害。若「我方的所有该卡牌」的数量≥1，则改为对敌方主战者造成20点伤害。
+  ACP  : card 90014320 "绝命的痛击" (Spell, clan=精灵, cost=6, token, rarity=4): |     turn_end zone=Hand turn=Self: |         modify_cost $self by -1 |     on_play: |         if count(card:#10314120@self:board All) >= 1: |             deal 20 damage to opponent:leader |         else: |             deal 6 damage to opponent:leader
+========== PART 2: VmEval.NumExpr 全分支实际求值 ==========
+  Const(7) => 7
+  ctr:X (玩家级, 未写) => 11
+  ctr:pp_at_play (未写) => 6
+  ctr:pp_at_play (写=6) => 6
+  prop:Life($trigger) => 0
+  prop:Life($self) => 2
+  prop:Life($item 空槽) => 0
+  prop:HandCount($self) => 0
+  prop:DeckCount($self) => 0
+  prop:BoardCount($self) => 0
+  prop:Cost($self) => 3
+  count(self:board<Follower> All) => 3
+  count(card:#id + History) => 0
+  maxgroup(self:hand All) => 2
+  Arith 3-2 => 1
+  Arith [] 空Args => 0
+  Extreme [] 空Args => 0
+  Clamp [] 空Args => 0
+  Cond true?5:9 => 5
+  Cond false?5:9 => 9
+  Cond null Then/Else => 0
+  RandomRange(2,5) => 3
+  SplitOf(X,0) => 7
+========== PART 3: 条件恒真/恒假分支 ==========
+  null BoolExpr => True
+  ConstBool(true) => True
+  ConstBool(false) => False
+  And() 空 => True
+  Or() 空 => False
+  Not(null) => False
+  Compare Ne 3!=2 => True
+  Compare Ne 3!=3 => False
+  Exists self:board>=1 => True
+  Exists empty slot>=1 => False
+  HasTrait 妖精($item 空槽) => False
+  HasTrait 妖精($self) => False
+  HasState Evolved($self) => True
+  HasState EnteredThisTurn($self) => False
+  HasState Destroyed($self) => False
+  HasState AttackedThisTurn($self) => False
+  HasClan self-clan($self) => True
+  HasKeyword ward($self) => False
+  HasCardName id($item 空) => False
+  NotSameEntity($self) => True
+  IsPrevious($selected 空) => False
+========== PART 4: TargetSpec 组合解析 ==========
+  self:board All => Refs=2 Live=2 ids=[2,3]
+  self:board Choose(1) => Refs=2 Live=2 ids=[2,3]
+  self:board Random(1) => Refs=1 Live=1 ids=[2]
+  self:board Random(5) => Refs=2 Live=2 ids=[2,3]
+  any:board All => Refs=3 Live=3 ids=[2,3,4]
+  self:leader All => Refs=0 Live=0 ids=[]
+  self:board +leader All => Refs=0 Live=0 ids=[]
+  $trigger 空 (Trigger未绑定) => Refs=0 Live=0 ids=[]
+  $item 空 => Refs=0 Live=0 ids=[]
+  $selected 空 => Refs=0 Live=0 ids=[]
+  $self 空 (Source已绑定) => Refs=1 Live=1 ids=[1]
+  card:#id + history => Refs=0 Live=0 ids=[]
+  card:#id zone=Board => Refs=0 Live=0 ids=[]
+  card:#id zone=Deck => Refs=0 Live=0 ids=[]
+  where NotSameEntity(other,$trigger) => Refs=2 Live=2 ids=[2,3]
+  Choose + Where => Refs=2 Live=2 ids=[2,3]

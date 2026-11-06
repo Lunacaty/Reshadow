@@ -1,0 +1,44 @@
+=== 真实卡 10562210 穹顶护甲 count(where has ward) 求值 ===
+  draw node: draw count(self:board<Follower> All where has ward)
+  Target=self:deck First(count(self:board<Follower> All where has ward))  Count=count(self:board<Follower> All where has ward)
+  EvalNum(Count) = 0  (期望 1，因为场上有 1 个带守护的随从)
+  直接 count(原 Of=$self) = 0
+  直接 count(修正 Of=$item) = 1
+=== 37 张里的 X 表达式分类（AST 形态 + 真实求值） ===
+  10111130 shape=Count | 1=1;count(self:hand All)=0
+  10113120 shape=Count | 2=2;count(self:hand All)=0
+  10114130 shape=Count | count(self:hand<Follower> All where has trait 妖精)=0;count(self:hand<Follower> All where has trait 妖精)=0;count(self:hand<Follower> All where has trait 妖精)=0
+  10131320 shape=ctr:X(玩家级) | 1=1;ctr:X=0;2=2
+  10132120 shape=Count | -1=-1;count(self:board<Follower> All where has trait 巨像)=0
+  10132130 shape=ctr:X(玩家级) | 1=1;ctr:X=0;2=2;0=0
+  10133110 shape=ctr:专用计数器 | ctr:earth_sigil=0
+  10133310 shape=ctr:X(玩家级) | 1=1;2=2;0=0
+  10163110 shape=ctr:专用计数器 | ctr:cards_destroyed_by_ability=0
+  10232310 shape=ctr:X(玩家级) | 1=1;ctr:X=0;0=0
+  10253120 shape=Count | count(self:board<Follower> other All)=0;0=0;2=2
+  10324110 shape=ctr:专用计数器 | ctr:fuse_kinds=0
+  10362210 shape=ctr:专用计数器 | 2=2;-ctr:crest=0
+  10363210 shape=ctr:专用计数器 | 4=4;4=4;-ctr:crest=0
+  10371110 shape=Count | count(self:board other All)=0;count(self:board other All)=0
+  10373110 shape=Count | count(self:board other All)=0
+  10374110 shape=Count | count(self:board other All)=0
+  10542310 shape=Count | count(any:board<Follower> All)=0
+  10543110 shape=ctr:专用计数器 | ctr:cards_banished_by_ability=0
+  10554120 shape=MaxGroupSize | 2=2
+  10562210 shape=Count | count(self:board<Follower> All where has ward)=0
+  10573110 shape=Count | count(self:board<Follower> other All)=0;2=2
+  10674110 shape=Count | count(self:board<Follower> All where prop:BaseCost >= 5)=0
+  10723310 shape=Count | 6=6;count(self:board<Follower> All)=0
+  10761120 shape=Count | 2=2;count(self:hand<Amulet> All)=0
+  10773310 shape=Count | count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物)=0;1=1
+  10774110 shape=Count | count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物)=0
+  10811110 shape=Count | (count(opponent:board<Follower> All) - count(self:board<Follower> All))=0
+  10831310 shape=ctr:X(玩家级) | 1=1;ctr:X=0;2=2
+  10833310 shape=ctr:X(玩家级) | 1=1;2=2;2=2;2=2
+  10834110 shape=ctr:X(玩家级) | 1=1;0=0
+  10844110 shape=Count | count(card:#10844110@self:board other history=EnteredThisMatch All)=0;count(card:#10844110@self:board other history=EnteredThisMatch All)=0
+  10903110 shape=Count | count(self:hand All where has clan 中立)=0;1=1
+  10932120 shape=ctr:专用计数器 | ctr:cards_returned_to_hand=0
+  11034120 shape=ctr:专用计数器 | ctr:earth_sigil=0
+  11044110 shape=ctr:专用计数器 | ctr:cards_discarded_by_ability=0
+  11053310 shape=ctr:专用计数器 | ctr:clues=0

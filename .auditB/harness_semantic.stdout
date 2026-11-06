@@ -1,0 +1,126 @@
+=== SEMANTIC: pack PyAST vs fresh EnglishCompiler AST ===
+compared=857 identical_abilities=841 semantic_drift=16 skipped_fresh_errors=126
+DRIFT 10114120 丰丽的玫瑰皇后 PACK[    fanfare:
+        transform self:hand All where (has clan 精灵 and prop:Cost <= 2) into #90014310
+    aura:
+        grant_keyword max_attacks_per_turn(2) to $self] FRESH[    fanfare:
+        transform any:board All into #90014310
+    aura:
+        grant_keyword max_attacks_per_turn(2) to $self]
+DRIFT 10114130 起源剑师·阿玛兹 PACK[    fanfare:
+        buff $self +count(self:hand<Follower> All where has trait 妖精)/+count(self:hand<Follower> All where has trait 妖精)
+    evolve:
+        repeat count(self:hand<Follower> All where has trait 妖精) times:
+            deal 1 damage to opponent:board<Follower> Random(1)] FRESH[    fanfare:
+        buff $self +ctr:pixie_followers_hand/+ctr:pixie_followers_hand
+    evolve:
+        repeat ctr:pixie_followers_hand times:
+            deal 1 damage to opponent:board<Follower> Random(1)]
+DRIFT 10132120 奇迹女巫·爱蜜儿 PACK[    on_spellboost:
+        modify_cost $self by -1
+    evolve:
+        summon 1 #90031110
+        deal count(self:board<Follower> All where has trait 巨像) damage to opponent:board<Follower> All] FRESH[    on_spellboost:
+        modify_cost $self by -1
+    evolve:
+        summon 1 #90031110
+        deal count(self:board All) damage to opponent:board<Follower> All]
+DRIFT 10372110 破坏的祈祷者 PACK[    fanfare:
+        select self:board other Choose(1)
+        if exists($selected):
+            destroy $selected
+            deal 2 damage to opponent:board<Follower> Random(1)
+    evolve:
+        invoke_ability OnPlay on $self] FRESH[    fanfare:
+        select self:board other Choose(1)
+        if is selected:
+            destroy $selected
+            deal 2 damage to opponent:board<Follower> Random(1)
+    evolve:
+        invoke_ability OnPlay on $self]
+DRIFT 10372210 破坏的荒野 PACK[    fanfare:
+        select self:board other Choose(1)
+        if exists($selected):
+            destroy $selected
+            draw 2
+    last_words:
+        draw 1] FRESH[    fanfare:
+        select self:board other Choose(1)
+        if is selected:
+            destroy $selected
+            draw 2
+    last_words:
+        draw 1]
+DRIFT 10603210 黑暗次元 PACK[    countdown(2)
+    turn_end turn=Self:
+        deal 2 damage to any:board<Follower> All where not has trait 侵蚀者] FRESH[    countdown(2)
+    turn_end turn=Self:
+        deal 2 damage to any:board<Follower> All where not has trait Encroacher]
+DRIFT 10653110 渴命的破坏者 PACK[    fanfare:
+        select self:board<Follower> other Choose(1)
+        if exists($selected):
+            destroy $selected
+            evolve $self
+    on_evolve on($self):
+        summon 1 #90051120
+        evolve $created] FRESH[    fanfare:
+        select self:board<Follower> other Choose(1)
+        if is selected:
+            destroy $selected
+            evolve $self
+    on_evolve on($self):
+        summon 1 #90051120
+        evolve $created]
+DRIFT 10771120 炫酷舞者 PACK[    fanfare:
+        if count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) >= 3:
+            summon 2 #10771120
+        else:
+            summon 1 #10771120] FRESH[    fanfare:
+        if count(self:board distinct All) >= 3:
+            summon 2 #10771120
+        else:
+            summon 1 #10771120]
+DRIFT 10771310 跑酷 PACK[    on_play:
+        if count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) >= 3:
+            modes Sequence(pick=2):
+                option 1:
+                    add_to_hand 1 #90071130
+                option 2:
+                    add_to_hand 1 #90071140
+        else:
+            modes Choose(pick=1):
+                option 1:
+                    add_to_hand 1 #90071130
+                option 2:
+                    add_to_hand 1 #90071140] FRESH[    on_play:
+        if count(self:board distinct All) >= 3:
+            modes Sequence(pick=2):
+                option 1:
+                    add_to_hand 1 #90071130
+                option 2:
+                    add_to_hand 1 #90071140
+        else:
+            modes Choose(pick=1):
+                option 1:
+                    add_to_hand 1 #90071130
+                option 2:
+                    add_to_hand 1 #90071140]
+DRIFT 10772120 大胆的涂鸦师 PACK[    fanfare:
+        select opponent:board<Follower> Choose(1)
+        destroy $selected
+        if count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) >= 3:
+            summon 1 #90071140
+            summon 1 #90071150] FRESH[    fanfare:
+        select opponent:board<Follower> Choose(1)
+        destroy $selected
+        if count(self:board distinct All) >= 3:
+            summon 1 #90071140
+            summon 1 #90071150]
+DRIFT 10773310 瞬移斩击 PACK[    on_play:
+        deal count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) damage to opponent:board<Follower> All
+        deal 1 damage to opponent:leader] FRESH[    on_play:
+        deal count(self:board distinct All) damage to opponent:board<Follower> All
+        deal 1 damage to opponent:leader]
+DRIFT 10774110 虚刻的安纳提玛·斯卡雷特 PACK[    fanfare:
+        deal count(self:board<Follower> history=EnteredThisMatch distinct All where has trait 创造物) damage to opponent:board<Follower> All] FRESH[    fanfare:
+        deal count(self:board distinct All) damage to opponent:board<Follower> All]

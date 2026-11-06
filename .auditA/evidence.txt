@@ -1,0 +1,346 @@
+[ContentPaths] root = E:\text\reshadow\game
+  proc = C:\Program Files\dotnet
+  base = E:\text\reshadow\game\.auditA\bin_auditA\Debug\net9.0\
+  cwd  = E:\text\reshadow\game\.auditA
+  assets/      OK
+  data/packs/  OK
+  data/pools/  OK
+  assets/cards/*.png  1559
+
+BOOT cards=1013 pool=official
+
+===== A. 暴风破 PyAST 与编译结果 =====
+--- 10131320  kind=Spell ---
+card 10131320 "暴风破" (Spell, clan=巫师, cost=1, rarity=1):
+    on_spellboost:
+        counter X by 1
+    on_play:
+        select opponent:board<Follower> Choose(1)
+        deal ctr:X damage to $selected
+    aura:
+        counter X = 2
+  AB event=OnSpellboost zone=Board subj=null cond=set costs=0 body=1
+    ModifyCounterNode{Counter=X,Op=Add,Delta=Const(1):,Target=null,Owner=Self}
+  AB event=OnPlay zone=Board subj=null cond=set costs=0 body=2
+    SelectTargetNode
+    DealDamageNode{Amount=Counter(0):X,Target=Slot:$selected:Board}
+  AB event=PassiveAura zone=Board subj=null cond=set costs=0 body=1
+    ModifyCounterNode{Counter=X,Op=Set,Delta=Const(2):,Target=null,Owner=Self}
+--- 10831310  kind=Spell ---
+card 10831310 "暴风破" (Spell, clan=巫师, cost=1, rarity=1):
+    on_spellboost:
+        counter X by 1
+    on_play:
+        select opponent:board<Follower> Choose(1)
+        deal ctr:X damage to $selected
+    aura:
+        counter X = 2
+  AB event=OnSpellboost zone=Board subj=null cond=set costs=0 body=1
+    ModifyCounterNode{Counter=X,Op=Add,Delta=Const(1):,Target=null,Owner=Self}
+  AB event=OnPlay zone=Board subj=null cond=set costs=0 body=2
+    SelectTargetNode
+    DealDamageNode{Amount=Counter(0):X,Target=Slot:$selected:Board}
+  AB event=PassiveAura zone=Board subj=null cond=set costs=0 body=1
+    ModifyCounterNode{Counter=X,Op=Set,Delta=Const(2):,Target=null,Owner=Self}
+
+===== B. 暴风破根因链实际数值 =====
+B0 初始: playerX=0 oppX=0
+B1 Put(card) 后: entityX=2 entitySpellboost=0 playerX=0
+B1 counters=X=2
+B2 aura 手工 PushAbility Step=Completed
+B2 后: entityX=2 playerX=2
+B3 打出前: card.entityX=2 playerX=2 card.spellboost=0
+B3 PlayCard(做作业啦)=True status=Completed
+B3 后: card.entityX=2 playerX=2 card.spellboost=1 dummySpell.X=0 dummySpell.sb=0
+B4 显式 OnSpellboost Step=Completed
+B4 后: card.entityX=2 playerX=2 card.spellboost=1
+B5 Eval ctr:X (Source=card, playerX=0, entityX=2) = 2
+B5b 写实体X=2 后 Eval ctr:X = 2; playerX=2
+B6 HasLegalTargetForSpell(有敌方随从)=True
+B6 CanPlay=True reason=
+B6 PlayCard=True status=Completed foeLife=8 pending=null
+B6 最终: playerX=0 card.entityX=2 foeLife=8 (期望<=6)
+B7 HasLegalTargetForSpell(空场)=False
+B7 CanPlay=False reason=没有合法目标
+B7 PlayCard=False
+
+===== C. 全卡池 22 种节点出现统计（PyAST 加载后的真实 AST） =====
+嵌套子定义数=91 明细=10114110:crest,10124130:crest,10133110:crest,10144110:crest,10153140:crest,10163130:crest,10174110:crest,10204120:crest,10214110:crest,10232110:crest,10233310:crest,10243110:crest
+SelectTargetNode               cards=262   first=[10001210,10002210,10012110,10012120,10012310,10021310]
+DealDamageNode                 cards=320   first=[10011210,10012110,10012310,10032310,10041110,10041130]
+RestoreLifeNode                cards=112   first=[10002110,10011130,10061110,10104110,10111130,10112110]
+ModifyStatsNode                cards=147   first=[10001110,10022210,10031110,10032110,10061130,10111110]
+ModifyCostNode                 cards=50    first=[10032120,10113130,10132120,10132320,10133320,10134310]
+ModifyKeywordNode              cards=167   first=[10001210,10002210,10022120,10031110,10051130,10052120]
+GrantAbilityNode               cards=11    first=[10172320,10173130,10214120,10242210,10261120,10271210]
+GrantCounterAbilityNode        cards=4     first=[10354110,10614120,10624120,81000007]
+SpawnCardNode                  cards=431   first=[10011110,10011210,10022110,10031320,10032110,10042120]
+MoveZoneNode                   cards=324   first=[10001120,10001210,10002210,10012120,10012310,10021120]
+MarkVictoryCardNode            cards=1     first=[10304110]
+TransformNode                  cards=18    first=[10114120,10133310,10214110,10272110,10334120,10461210]
+EvolveNode                     cards=66    first=[10011130,10032110,10104110,10133130,10143120,10153130]
+ModifyCounterNode              cards=125   first=[10011120,10031110,10031210,10042310,10061210,10062210]
+InvokeAbilityNode              cards=61    first=[10061130,10102110,10111120,10121120,10141140,10172120]
+ConditionalNode                cards=171   first=[10001110,10002110,10031110,10041310,10042110,10042120]
+LoopNode                       cards=29    first=[10114130,10153120,10154110,10212310,10262110,10313310]
+DamageModifierNode             cards=0     first=[]
+RevealCardNode                 cards=0     first=[]
+BranchModeNode                 cards=63    first=[10031110,10051310,10122310,10132310,10173120,10234120]
+ReplaceDeckNode                cards=3     first=[10104120,10304110,81000031]
+MacroNode                      cards=0     first=[]
+ModifyCounterNode 计数分布: countdown|entity=21 ; spellboost|entity=21 ; earth_sigil|player=17 ; X|player=14 ; pp|player=12 ; max_pp|player=4 ; combo|player=3 ; shadow|player=2 ; ep|player=2 ; clues|player=2 ; skybound_gauge|entity=1 ; sep|player=1
+
+===== D. 真实卡抽样复现 =====
+--- D 10131320  ---
+  AST=OnSpellboost:ModifyCounterNode | OnPlay:SelectTargetNode+DealDamageNode | PassiveAura:ModifyCounterNode
+  初始 entityX=2 playerX=0 entitySB=0 counters=[X=2]
+  施法1 10012310 ok=False status=Idle entityX=2 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=2 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=2 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=2 playerX=0 handZone=Cemetery
+--- D 10831310  ---
+  AST=OnSpellboost:ModifyCounterNode | OnPlay:SelectTargetNode+DealDamageNode | PassiveAura:ModifyCounterNode
+  初始 entityX=2 playerX=0 entitySB=0 counters=[X=2]
+  施法1 10012310 ok=False status=Idle entityX=2 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=2 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=2 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=2 playerX=0 handZone=Cemetery
+--- D 10132130  ---
+  AST=OnSpellboost:ModifyCounterNode | OnPlay:DealDamageNode | OnEvolve:ModifyCounterNode | PassiveAura:ModifyCounterNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[X=0]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Board
+--- D 10133310  ---
+  AST=OnSpellboost:ModifyCounterNode+ConditionalNode | OnPlay:MoveZoneNode | PassiveAura:ModifyCounterNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[X=0]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Cemetery
+--- D 10232310  ---
+  AST=OnSpellboost:ModifyCounterNode | OnPlay:DealDamageNode | PassiveAura:ModifyCounterNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[X=0]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Cemetery
+--- D 10833310  ---
+  AST=OnSpellboost:ModifyCounterNode | OnPlay:MoveZoneNode+ConditionalNode | PassiveAura:ModifyCounterNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[X=0]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Cemetery
+--- D 10834110  ---
+  AST=OnSpellboost:ModifyCounterNode | OnPlay:ConditionalNode+ConditionalNode | PassiveAura:ModifyCounterNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[X=0]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Board
+--- D 10114120  ---
+  AST=OnPlay:TransformNode | PassiveAura:ModifyKeywordNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Board
+--- D 10304110  ---
+  AST=OnPlay:SpawnCardNode | OnEvolve:SpawnCardNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Board
+--- D 10104120  ---
+  AST=OnPlay:ReplaceDeckNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Board
+--- D 11061120  ---
+  AST=PassiveAura:ModifyKeywordNode | OnAttack:ModifyStatsNode+ModifyKeywordNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Board
+--- D 10123110  ---
+  AST=PassiveAura:ModifyKeywordNode | OnAttack:ModifyKeywordNode+SpawnCardNode
+  初始 entityX=0 playerX=0 entitySB=0 counters=[]
+  施法1 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法2 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  施法3 10012310 ok=False status=Idle entityX=0 playerX=0 entitySB=0
+  被测卡出牌=True status=Completed pending=null
+  结果 foeLife=12 (初始12) entityX=0 playerX=0 handZone=Board
+
+===== E. 7 张 ctr:X 卡逐卡求值（真实 PyAST + 真实管线） =====
+--- E 10131320  ---
+  PyAST: card 10131320 "暴风破" (Spell, clan=巫师, cost=1, rarity=1): /     on_spellboost: /         counter X by 1 /     on_play: /         select opponent:board<Follower> Choose(1) /         deal ctr:X damage to $selected /     aura: /         counter X = 2
+  初始 entityX=2 playerX=0 entitySB=0
+  SelectTarget: Mode=Choose Zone=Board Owner=Opponent Where=HasKindExpr OutSlot=$selected Count=Const
+  DealDamage: Target.SourceKind=Slot Slot=$selected Zone=Board Mode=All
+  施放 10133310 ok=True => playerX=0 target.entityX=2 target.entitySB=1
+  施放 10833310 ok=True => playerX=0 target.entityX=2 target.entitySB=2
+  VmEval ctr:X (Source=本卡) = 2
+  期望：初始2/0 + 2次增幅 => 暴风破 4，其余 2
+  出牌=True status=Completed foeLife=12/12 手牌=4 playerX=0 entityX=2
+  deal ctr:X 求值=2 期望(2次增幅后)=4
+  HasLegalTargetForSpell(有敌方随从)=True CanPlay=True reason=
+--- E 10831310  ---
+  PyAST: card 10831310 "暴风破" (Spell, clan=巫师, cost=1, rarity=1): /     on_spellboost: /         counter X by 1 /     on_play: /         select opponent:board<Follower> Choose(1) /         deal ctr:X damage to $selected /     aura: /         counter X = 2
+  初始 entityX=2 playerX=0 entitySB=0
+  SelectTarget: Mode=Choose Zone=Board Owner=Opponent Where=HasKindExpr OutSlot=$selected Count=Const
+  DealDamage: Target.SourceKind=Slot Slot=$selected Zone=Board Mode=All
+  施放 10133310 ok=True => playerX=0 target.entityX=2 target.entitySB=1
+  施放 10833310 ok=True => playerX=0 target.entityX=2 target.entitySB=2
+  VmEval ctr:X (Source=本卡) = 2
+  期望：初始2/0 + 2次增幅 => 暴风破 4，其余 2
+  出牌=True status=Completed foeLife=12/12 手牌=4 playerX=0 entityX=2
+  deal ctr:X 求值=2 期望(2次增幅后)=4
+  HasLegalTargetForSpell(有敌方随从)=True CanPlay=True reason=
+--- E 10132130  ---
+  PyAST: card 10132130 "玛纳利亚的学生·威廉" (Follower, clan=巫师, cost=6, atk=5, life=5, rarity=2): /     traits: [玛纳利亚] /     on_spellboost: /         counter X by 1 /     fanfare: /         deal ctr:X damage to opponent:board<Follower> All /     evolve: /         spellboost self:hand All by 2 /     aura: /         counter X = 0
+  初始 entityX=0 playerX=0 entitySB=0
+  DealDamage: Target.SourceKind=Zone Slot= Zone=Board Mode=All
+  施放 10133310 ok=True => playerX=0 target.entityX=0 target.entitySB=1
+  施放 10833310 ok=True => playerX=0 target.entityX=0 target.entitySB=2
+  VmEval ctr:X (Source=本卡) = 0
+  期望：初始2/0 + 2次增幅 => 暴风破 4，其余 2
+  出牌=True status=Completed foeLife=12/12 手牌=4 playerX=0 entityX=0
+  deal ctr:X 求值=0 期望(2次增幅后)=2
+  HasLegalTargetForSpell(有敌方随从)=True CanPlay=False reason=费用不足
+--- E 10133310  ---
+  PyAST: card 10133310 "做作业啦！" (Spell, clan=巫师, cost=3, rarity=3): /     traits: [玛纳利亚] /     on_spellboost: /         counter X by 1 /         if ctr:X >= 5: /             transform $self into #90033310 /     on_play: /         draw 2 /     aura: /         counter X = 0
+  初始 entityX=0 playerX=0 entitySB=0
+  施放 10133310 ok=True => playerX=0 target.entityX=0 target.entitySB=1
+  施放 10833310 ok=True => playerX=0 target.entityX=0 target.entitySB=2
+  VmEval ctr:X (Source=本卡) = 0
+  期望：初始2/0 + 2次增幅 => 暴风破 4，其余 2
+  出牌=True status=Completed foeLife=12/12 手牌=4 playerX=0 entityX=0
+  HasLegalTargetForSpell(有敌方随从)=True CanPlay=True reason=
+--- E 10232310  ---
+  PyAST: card 10232310 "混沌赤焰" (Spell, clan=巫师, cost=3, rarity=2): /     on_spellboost: /         counter X by 1 /     on_play: /         deal ctr:X damage to opponent:board<Follower> All split /     aura: /         counter X = 0
+  初始 entityX=0 playerX=0 entitySB=0
+  DealDamage: Target.SourceKind=Zone Slot= Zone=Board Mode=All
+  施放 10133310 ok=True => playerX=0 target.entityX=0 target.entitySB=1
+  施放 10833310 ok=True => playerX=0 target.entityX=0 target.entitySB=2
+  VmEval ctr:X (Source=本卡) = 0
+  期望：初始2/0 + 2次增幅 => 暴风破 4，其余 2
+  出牌=True status=Completed foeLife=12/12 手牌=4 playerX=0 entityX=0
+  deal ctr:X 求值=0 期望(2次增幅后)=2
+  HasLegalTargetForSpell(有敌方随从)=True CanPlay=True reason=
+--- E 10833310  ---
+  PyAST: card 10833310 "钢铁的小憩" (Spell, clan=巫师, cost=3, rarity=3): /     on_spellboost: /         counter X by 1 /     on_play: /         draw 2 /         if ctr:X >= 5: /             restore 2 life to self:leader /             recover_pp 2 /     aura: /         counter X = 0
+  初始 entityX=0 playerX=0 entitySB=0
+  施放 10133310 ok=True => playerX=0 target.entityX=0 target.entitySB=1
+  施放 10833310 ok=True => playerX=0 target.entityX=0 target.entitySB=2
+  VmEval ctr:X (Source=本卡) = 0
+  期望：初始2/0 + 2次增幅 => 暴风破 4，其余 2
+  出牌=True status=Completed foeLife=12/12 手牌=4 playerX=0 entityX=0
+  HasLegalTargetForSpell(有敌方随从)=True CanPlay=True reason=
+--- E 10834110  ---
+  PyAST: card 10834110 "恩爱的大地·坦忒拉&拉缇卡" (Follower, clan=巫师, cost=6, atk=5, life=5, rarity=4): /     keywords: [storm] /     on_spellboost: /         counter X by 1 /     fanfare: /         if ctr:X >= 10: /             add_to_hand 1 #90034340 /         if ctr:X >= 20: /             add_to_hand 1 #90034350 /     aura: /         counter X = 0
+  初始 entityX=0 playerX=0 entitySB=0
+  施放 10133310 ok=True => playerX=0 target.entityX=0 target.entitySB=1
+  施放 10833310 ok=True => playerX=0 target.entityX=0 target.entitySB=2
+  VmEval ctr:X (Source=本卡) = 0
+  期望：初始2/0 + 2次增幅 => 暴风破 4，其余 2
+  出牌=True status=Completed foeLife=12/12 手牌=4 playerX=0 entityX=0
+  HasLegalTargetForSpell(有敌方随从)=True CanPlay=False reason=费用不足
+
+===== F. OnSpellboost 触发闸门定位 =====
+F0 onSpellboost Trigger: Event=OnSpellboost ActiveZone=Board SubjectFilter=null Condition=ConstBoolExpr
+F0 card.Zone=Hand entityX=2 playerX=0
+F1 手牌原样 Step=Completed entityX=2 playerX=0
+F2 卡移入Board后 Step=Completed entityX=2 playerX=1
+F3 直接PushAbility Step=Completed playerX 1->2 entityX=2
+F4 现 playerX=2 entityX=2; VmEval ctr:X=2
+F5 事件 PlayerId=-1（BumpSpellboost 实际写法）时: 
+    Step=Completed playerX=0 entityX=2
+
+===== G. 高危节点直接执行探测（自建 AST，仅测 VM handler 语义） =====
+  G1 counter X = 5 (Target=null): step=Completed fault=-
+     playerX=5 src.entityX=2
+  G2 counter X on $self = 7: step=Completed fault=-
+     playerX=5 src.entityX=7
+  G3 DamageModifier TakenCap(1) Combat only: step=Completed fault=-
+     ApplyTaken(Ability,5)=5 ApplyTaken(Combat,5)=1 (期望5/1); granted=1
+  G4 Reveal: step=Completed fault=-
+     src.IsRevealed=True
+  G5 BranchMode Sequence pick=1: step=Completed fault=-
+     playerX=6 (Sequence 语义应执行全部选项，无论 PickCount)
+  G6 Loop Times 3: step=Completed fault=-
+     playerX=9
+  G7 Conditional true: step=Completed fault=-
+     playerX=10
+  G8 MarkVictory: step=Completed fault=-
+     P0.HasVictoryCard=True WonByVictoryCard=False
+  G9 Macro(undefined_macro): step=Faulted fault=机制宏未实现：definitely_missing_macro（展开结果为空，效果会凭空消失）
+     fault=机制宏未实现：definitely_missing_macro（展开结果为空，效果会凭空消失） corrupted=True
+  G10 Transform by name: step=Completed fault=-
+     src.CardId=10131320 src.Zone=Hand (handler 直接 return false)
+  G11 Spawn CopyOfPrevious: step=Completed fault=-
+     board0=0 created=0
+  G12 GrantCounterAbility PassiveAura mode_count+1: step=Completed fault=-
+     mode_count=1 grantedCounterAbilities=1
+
+===== H. 终局复核 =====
+H1 出牌=True vmStatus=Completed pending=null
+H1 结算后 foe.Life=12/12 (期望10, 因X=2) vmStatus=Completed fault=-
+H1 X: player=0 entity=2
+H1b push on_play step=WaitingForInput pending=SelectTarget
+H1b cands=[86] foeId=86
+H1b after choice step=Completed $selected=1 foe.Life=10/12
+H1b VmEval ctr:X=2
+H2 playerX=7 entityX=2 => VmEval ctr:X=2 (实体优先，玩家级7被吞)
+H2 出牌=True foe.Life=12/12 (若读玩家级应为5, 若读实体级应为10)
+H2b OnPlay Trigger.ActiveZone=Board card.Zone=Hand SubjectFilter=null
+H2b Step(OnPlay, 主体=本卡, 卡在Hand)=WaitingForInput pending=SelectTarget:86
+H2b 选择后 Step=Completed foe.Life=10/12 (期望10)
+H2c 主体=别的卡 Step=Completed pending=null (期望null)
+H2d MatchRunner.PlayCard=True pending=SelectTarget:86
+H2d 选完 foe.Life=10/12 (期望10) entityX=2 playerX=0
+H2e init step=Completed granted=1 ApplyTaken(9)=2
+H2e after EndTurn granted=0 ApplyTaken(9)=9
+H3 Transform by CardName step=Completed cardId=10131320 (handler 无 name 分支)
+H4 Sequence pick=1 3选项 step=Completed X=3 (卡面语义应=1, 实现执行全部=3)
+H5 授予后 granted=1 ApplyTaken(Ability,9)=2
+H5 跨回合后 granted=1 ApplyTaken(Ability,9)=2
+
+===== I. 节点字段语义缺口的结构性证据（全卡池真实 AST） =====
+总节点实例=2937
+DealDamageNode IsAbility=false(应走战斗伤害) 卡数=0 例=
+ModifyStatsNode Op=Set 且 Duration!=Permanent 卡数=0 例=
+TransformNode IntoCardId=0 且 CopySource=null 卡数=0 例=
+SpawnCardNode CardId=0 且 CardName非空 且非Crest/Copy 卡数=0 例=
+SpawnCardNode ToOwner=Any 且非Crest 卡数=0 例=
+GrantCounterAbilityNode Counter!=faith 卡数=0 例=
+ModifyCounterNode Op=Fill 卡数=0
+LoopNode kinds=Times=36
+BranchMode kinds=Choose=53;Sequence=12;Random=6;RandomUnused=2;SequenceUnused=1
+BranchMode Sequence with PickCount<Options.Count 卡数=4 (AST 注释规定 Sequence 全部执行)
+I ReplaceDeck DeckName=[the Apocalypse Deck] DeckDefs.Has=True Expand=10
+I 执行 step=Completed fault=- 牌库 36->10
+I DealDamageNode.IsAbility=false 被 DoDamage 传给 ApplyDamage 后完全未使用(CardVm.Nodes.cs:406-424)；CombatResolver 默认 source=Ability。ApplyTaken(Combat,3)=3
+
+===== J. 真实卡 Sequence(pick=1) 复核 =====
+  PyAST: card 10703210 "巴别隆城" (Amulet, clan=中立, cost=1, rarity=3): /     countdown(1) /     turn_end turn=Self: /         modes Sequence(pick=1): /             option 1: /                 deal 2 damage to opponent:board<Follower> Random(1) /             option 2: /                 restore 2 life to self:leader /             option 3: /                 deal 2 damage to opponent:leader /                 destroy $self /     engage [engage(1)]: /         select self:hand Choose(1) /         move $selected to Cemetery /         delay_countdown $self by 1
+  BranchMode Kind=Sequence PickCount=Const(1) Options=3
+  执行 step=Completed fault=-
+  结果 敌方随从Life=10/12 己方主战者Life=20(前20) 敌方主战者Life=18(前20) 护符Zone=Cemetery
+  卡面 pick=1 应只执行 1 项；实测若三项效果全部落地(随从-2、己方+2、敌方-2、护符被破坏)则确认实现偏差

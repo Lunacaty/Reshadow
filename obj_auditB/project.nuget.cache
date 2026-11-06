@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "dgSpecHash": "fA4FMNXWT7Q=",
+  "success": true,
+  "projectFilePath": "E:\\text\\reshadow\\game\\ShadowverseFan.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Erocatss\\.nuget\\packages\\godot.sourcegenerators\\4.7.2\\godot.sourcegenerators.4.7.2.nupkg.sha512",
+    "C:\\Users\\Erocatss\\.nuget\\packages\\godotsharp\\4.7.2\\godotsharp.4.7.2.nupkg.sha512",
+    "C:\\Users\\Erocatss\\.nuget\\packages\\godotsharpeditor\\4.7.2\\godotsharpeditor.4.7.2.nupkg.sha512",
+    "C:\\Users\\Erocatss\\.nuget\\packages\\microsoft.netcore.app.ref\\9.0.11\\microsoft.netcore.app.ref.9.0.11.nupkg.sha512",
+    "C:\\Users\\Erocatss\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\9.0.11\\microsoft.windowsdesktop.app.ref.9.0.11.nupkg.sha512",
+    "C:\\Users\\Erocatss\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\9.0.11\\microsoft.aspnetcore.app.ref.9.0.11.nupkg.sha512"
+  ],
+  "logs": []
+}

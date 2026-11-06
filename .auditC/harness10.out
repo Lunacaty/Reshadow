@@ -1,0 +1,6 @@
+=== 端到端 VM 执行：10542310 日珥咆哮 deal count(any:board<Follower> All) ===
+  初始各随从 Life=8,8,8,8,8  (场上共5随从，卡面X应为5)
+  StepUntilBlocked=Completed
+  执行后各随从 Life=8,8,8,8,8  <- 卡面期望全部 -5 → 3
+  直接 EvalNum(Amount) = 0
+  归一化后 EvalNum(Amount) = 5

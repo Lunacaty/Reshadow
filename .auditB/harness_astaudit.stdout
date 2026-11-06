@@ -1,0 +1,4 @@
+=== AST FALLBACK / NODE AUDIT ===
+cards=983 empty_ability_bodies=25 (countdown-only expected) ids=10011210:PassiveAura,10022210:PassiveAura,10061210:PassiveAura,10062210:PassiveAura,10072210:PassiveAura,10161210:PassiveAura,10163210:PassiveAura,10332210:PassiveAura,10342210:PassiveAura,10362210:PassiveAura,10362220:PassiveAura,10363210:PassiveAura,10503210:PassiveAura,10603210:PassiveAura,10661210:PassiveAura,10662210:PassiveAura,10663210:PassiveAura,10703210:PassiveAura,10863210:PassiveAura,10961210:PassiveAura
+null_conditions=0 HasStateExpr(None)=0 ids=
+vm_unhandled_node_instances=0 types=

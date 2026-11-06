@@ -1,0 +1,5 @@
+=== 10132120 奇迹女巫·爱蜜儿 (Follower 主语) 现场 ===
+  世界: 2 巨像随从 + 1 带巨像兵种的「法术」 + 1 普通随从 => 正确 X=2（巨像·随从）
+  EvalNum(count(self:board<Follower> All where has trait 巨像)) = 4
+  修正 HasKind.Of=$item 后 = 3
+  Where 原式 = And[HasKind(Follower,Of=$self),HasTrait(巨像,Of=$item)]

@@ -1,0 +1,45 @@
+=== MICRO: THREE X SENTENCES ===
+PROBE [X starts at 2. / On Spellboost: Increase X by 1. / <hr>Select an enemy follower on the field and deal it X damage.] ok=True abilities=3 errors=
+  AST on_spellboost: /     counter X by 1
+    ModifyCounter: counter=X op=Add delta=1 Target=null(player-level) Owner=Self
+  AST on_play: /     select opponent:board<Follower> Choose(1) /     deal ctr:X damage to $selected
+    DealDamage: amount=ctr:X target=$selected
+  AST aura: /     counter X = 2
+    ModifyCounter: counter=X op=Set delta=2 Target=null(player-level) Owner=Self
+PROBE [X starts at 2.] ok=True abilities=1 errors=
+  AST aura: /     counter X = 2
+    ModifyCounter: counter=X op=Set delta=2 Target=null(player-level) Owner=Self
+PROBE [On Spellboost: Increase X by 1.] ok=True abilities=1 errors=
+  AST on_spellboost: /     counter X by 1
+    ModifyCounter: counter=X op=Add delta=1 Target=null(player-level) Owner=Self
+PROBE [<hr>Select an enemy follower on the field and deal it X damage.] ok=True abilities=1 errors=
+  AST on_play: /     select opponent:board<Follower> Choose(1) /     deal ctr:X damage to $selected
+    DealDamage: amount=ctr:X target=$selected
+PROBE [Fanfare: Restore X defense to your leader. X is the number of cards in your hand.] ok=True abilities=1 errors=
+  AST fanfare: /     restore count(self:hand All) life to self:leader
+PROBE [Fanfare: Deal X damage to all enemies. X is the number of amulets destroyed by this ability.] ok=True abilities=1 errors=
+  AST fanfare: /     deal ctr:cards_destroyed_by_ability damage to opponent:board +leader All
+    DealDamage: amount=ctr:cards_destroyed_by_ability target=opponent:board +leader All
+=== MICRO: ALL ctr:X/Y/Z CARDS ===
+pack_ctr_XYZ_cards=7 ids=10131320,10132130,10133310,10232310,10831310,10833310,10834110
+  10131320 暴风破 counter_target_null=2 counter_target_set=0
+  10132130 玛纳利亚的学生·威廉 counter_target_null=2 counter_target_set=0
+  10133310 做作业啦！ counter_target_null=2 counter_target_set=0
+  10232310 混沌赤焰 counter_target_null=2 counter_target_set=0
+  10831310 暴风破 counter_target_null=2 counter_target_set=0
+  10833310 钢铁的小憩 counter_target_null=2 counter_target_set=0
+  10834110 恩爱的大地·坦忒拉&拉缇卡 counter_target_null=2 counter_target_set=0
+=== MICRO: SENTENCE-FAMILY PACK PRESENCE ===
+FAMILY [once on each of your turns] cards=7 max=1:7 repeat:0 modes:0 crest_opp:1 e.g. 10171140,10314110,10344120,10812110,10814120,10822110
+FAMILY [Can't be] cards=6 max=1:0 repeat:0 modes:0 crest_opp:0 e.g. 10273110,10374110,10374120,10654110,90071210,90071220
+FAMILY [Give your opponent Crest] cards=4 max=1:3 repeat:0 modes:1 crest_opp:4 e.g. 10144110,10314110,10574110,10744110
+FAMILY [Whenever] cards=94 max=1:2 repeat:1 modes:1 crest_opp:1 e.g. 10011210,10022210,10062120,10113130,10121130,10122110
+FAMILY [When] cards=137 max=1:9 repeat:4 modes:1 crest_opp:2 e.g. 10011210,10022210,10062120,10113130,10121130,10122110
+FAMILY [Do this] cards=27 max=1:1 repeat:27 modes:1 crest_opp:0 e.g. 10114130,10153120,10154110,10212310,10262110,10313310
+FAMILY [Select a Mode] cards=48 max=1:0 repeat:1 modes:48 crest_opp:0 e.g. 10031110,10051310,10122310,10132310,10173120,10234120
+FAMILY [Enhance] cards=67 max=1:3 repeat:2 modes:4 crest_opp:0 e.g. 10001110,10042120,10071120,10121140,10123120,10124110
+FAMILY [Engage] cards=57 max=1:1 repeat:0 modes:4 crest_opp:0 e.g. 10001210,10002210,10031210,10061210,10062120,10062210
+FAMILY [Fuse] cards=18 max=1:1 repeat:0 modes:0 crest_opp:0 e.g. 10173210,10213310,10323110,10323310,10324110,10933110
+FAMILY [X is the number of] cards=30 max=1:0 repeat:3 modes:0 crest_opp:0 e.g. 10111130,10113120,10114130,10132120,10133110,10163110
+=== MICRO: 22 NODE TYPES COVERED BY VM SWITCH ===
+switch cases=RevealCardNode,DamageModifierNode,SelectTargetNode,DealDamageNode,RestoreLifeNode,ModifyStatsNode,ModifyCostNode,ModifyKeywordNode,ModifyCounterNode,MoveZoneNode,SpawnCardNode,ReplaceDeckNode,EvolveNode,TransformNode,MarkVictoryCardNode,ConditionalNode,LoopNode,BranchModeNode,GrantAbilityNode,GrantCounterAbilityNode,InvokeAbilityNode,MacroNode

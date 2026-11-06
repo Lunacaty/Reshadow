@@ -1,0 +1,33 @@
+=== F1: prop:Life 快照优先（活体变更后读旧值） 真实卡 10262310 ===
+  deal node = deal prop:Life($selected) damage to opponent:board<Follower> Random(1)
+  选中时 Life=5  EvalNum(prop:Life($selected))=5
+  buff后 Live.Life=1  EvalNum(prop:Life($selected))=5  <- 应为1，实际读到快照旧值
+  官方中文卡面: 【入场曲】选择1个拥有守护的己方随从，使其生命值+1。对敌方随从造成等同于该随从生命值的伤害。
+=== F2: CCP 把 != 印成 = 的 3 张真实卡（与实际 VM 求值对照） ===
+  10331110 真理的肯定者
+    PyAST = fanfare if prop:Cost != 2:
+    CCP   = 【入场曲】若费用=2，为我方主战者回复3点生命值。
+    AST.Op=Ne 官方中文含不为=见 sva_src
+  10332110 真理的祈祷者
+    PyAST = if prop:Cost != 5:
+    CCP   = 【入场曲】对战场的其他的所有随从造成3点伤害。若费用=5，抽取2张卡牌。
+    AST.Op=Ne 官方中文含不为=见 sva_src
+  10333110 真理的团结者
+    PyAST = fanfare if prop:Cost != 3:
+    CCP   = 【突进】 / 【入场曲】若费用=3，召唤2个本卡牌的完整复制到战场上。 / 【超进化时】召唤1个本卡牌的完整复制到战场上。
+    AST.Op=Ne 官方中文含不为=见 sva_src
+    10331110 卡Cost=2 时 VM EvalBool(prop:Cost != 2) = False （应为 false → 不回血）
+    10331110 卡Cost=4 时 VM EvalBool(prop:Cost != 2) = True （应为 true → 回血）
+=== F3: CompareOp.Ne 在 CCP 全量中的映射 ===
+  CCP.PrintBool 的 op switch 缺 Ne 分支 → default 落到 '=' （ChineseCardPrinter.cs:1676-1681）
+  ACP.PrintB 用 CmpWord: Ne => '!=' （AstCanonicalPrinter.cs:1039）
+=== F4: TargetSpec SourceKind=Slot + Zone != Board 时 IncludeLeader 不生效 ===
+  10163110 deal target = opponent:board +leader All IncludeLeader=True
+  ResolveRef => 2 ids=[2,3] (期望含随从id=2与主战者id=3)
+=== F5: AC 往返 87 张失真的成因抽样 ===
+  10133110 原始=10行 回打=6行; 原始尾部=countdown(3) | turn_end turn=Self [earth_rite(1)]: | summon 1 #90031120
+       回打尾部=deal ctr:earth_sigil damage to $selected | evolve: | gain_crest #10133110
+  10264120 原始=9行 回打=6行; 原始尾部=crest "呜咽的圣骑士·维尔伯特" (cost=0): | on_enter on(self:board<Follower> All where has ward): | buff $trigger +1/+2
+       回打尾部=summon 2 #90064110 | evolve: | gain_crest #10264120
+  10364110 原始=12行 回打=5行; 原始尾部=grant_ability to opponent:board<Follower> Random(ctr:crest) where prop:Attack <= 4: | turn_end turn=Self: | banish $self
+       回打尾部=gain_crest #10364110 | super_evolve: | set_stats opponent:board<Follower> All to 4/_

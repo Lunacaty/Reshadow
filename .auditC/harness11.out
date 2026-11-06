@@ -1,0 +1,21 @@
+=== 全包：嵌套 NumExpr.Count/DistinctCount/Sum 中含 HasKind(Of=$self) 的卡 ===
+  命中卡数 = 43
+  按本卡卡种: Follower=32, Spell=8, Amulet=3
+  卡号清单: 10114130,10132120,10201110,10204120,10222110,10231110,10242110,10253120,10262110,10263110,10271120,10411310,10452120,10521120,10522120,10542310,10562210,10573110,10671310,10674110,10674120,10723310,10761110,10761120,10762110,10762120,10763110,10764120,10771120,10771310,10772120,10773310,10774110,10774120,10811110,10863110,10863210,10873310,11022120,11042310,11043110,90034120,90064210
+  前12张明细:
+    10114130 起源剑师·阿玛兹 [Follower]  [self:hand<Follower> All where has trait 妖精] [self:hand<Follower> All where has trait 妖精]
+    10132120 奇迹女巫·爱蜜儿 [Follower]  [self:board<Follower> All where has trait 巨像]
+    10201110 双刀哥布林 [Follower]  [self:board<Follower> All where is SuperEvolved]
+    10204120 飓风天业·格里姆尼尔 [Follower]  [self:board<Follower> All where is SuperEvolved]
+    10222110 无畏的副团长·格尔德 [Follower]  [self:board<Follower> All where is SuperEvolved]
+    10231110 憧憬的魔女·梅薇 [Follower]  [self:board<Follower> All where is SuperEvolved]
+    10242110 宿愿的龙人公主 [Follower]  [self:board<Follower> All where is SuperEvolved]
+    10253120 夜曲将军·艾瑟拉 [Follower]  [self:board<Follower> other All]
+    10262110 弹幕驱魔人·珂蕾特 [Follower]  [self:board<Amulet> All]
+    10263110 速断之刃·阿尼耶丝 [Follower]  [self:board<Amulet> All]
+    10271120 猫偶 [Follower]  [self:board<Follower> All where is SuperEvolved]
+    10411310 彗星 [Spell]  [self:board<Follower> All where is Evolved]
+=== 主语为随从时不是 0 而是「全场通吃」 ===
+  世界: 3随从(Source+2) + 1护符，共4实体; 正确 X=2(己方随从数)
+  EvalNum(count(Of=$self 的 HasKind)) = 4  <- 把护符也算进去了
+  修正为 Of=$item 后 = 3
