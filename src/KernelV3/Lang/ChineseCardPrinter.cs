@@ -2015,86 +2015,7 @@ public sealed class ChineseCardPrinter
     /// 查不到时**保留原名**，不音译、不硬造 —— DIY 卡本来就没有中文名，
     /// 机器硬编一个反而让人认不出这就是他自己那张卡。
     /// </summary>
-    private static readonly Dictionary<string, string> CardNameZh = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Fairy"] = "妖精",
-        ["Bat"] = "蝙蝠",
-        ["Ghost"] = "幽灵",
-        ["Knight"] = "骑士",
-        ["Guardian Golem"] = "守护魔像",
-        ["Magic Sediment"] = "魔力残渣",
-        ["Divine Evidence"] = "神启",
-        ["Remnant of Hollowness"] = "虚无残渣",
-        ["Kindled Blade"] = "燃刃",
-        ["Testset Ghost"] = "幽灵",
-        ["Testset Striker Artifact"] = "突击神器",
-        ["Testset Gear of Ambition"] = "野心之齿轮",
-        ["Testset Prostrating Coward"] = "匍匐的懦夫",
-        ["Testset Shoddy Plaything"] = "粗制的玩具",
-        ["Testset Indomitable Fighter"] = "不屈的战士",
-        ["Testset Detective's Lens"] = "侦探的镜片",
-        ["Testset Bug Alert"] = "漏洞警报",
-        ["Testset Amataz, Origin Blader"] = "始祖剑士 阿玛兹",
-        ["Testset Aria, Lady of the Woods"] = "森林淑女 艾莉雅",
-        ["Testset Sham-Nacha, Heir to Entwining"] = "缠绕的继承者 杉那查",
-        ["Testset Witch's New Brew"] = "魔女的新酿",
-        ["Testset Runeblade Conductor"] = "符文刃指挥者",
-        ["Testset Blaze Destroyer"] = "烈焰破坏者",
-        ["Testset Godwood Staff"] = "神木之杖",
-        ["Testset Edelweiss, Sagelight Ward"] = "贤光守护 艾德薇丝",
-        ["Testset Reno, Luxwing Featherfolk"] = "光翼羽民 雷诺",
-        ["Testset Sinciro, Heir to Usurpation"] = "篡夺的继承者 辛西罗",
-        ["Testset Slaus, Revolving Wheel of Fortune"] = "旋转的命运之轮 斯劳斯",
-        ["Testset Sandalphon, Primarch Successor"] = "原初继承者 桑达尔丰",
-        ["Testset Obsessed Test Subject"] = "痴迷的试验体",
-        ["Testset Pascale's Dance"] = "帕斯卡尔的舞蹈",
-        ["Testset Mjerrabaine, Great Manifest"] = "大显身 姆耶拉班",
-        ["Testset Octrice, Hollowness Manifest"] = "虚无之显 奥克特莉丝",
-        ["Testset Glittering Gold"] = "闪耀的黄金",
-        ["Testset City of Babelon"] = "巴别伦之城",
-        ["Testset Shakdoh, Nightblossom"] = "夜花 沙克多",
-        ["Testset Adventurers' Guild"] = "冒险者公会",
-        ["Testset Ancient Cannon"] = "古代加农炮",
-        ["Testset Yuna, Occult Hunter"] = "神秘猎人 尤娜",
-        ["Ersatz Elimination"] = "替代排除",
-        ["Striker Artifact"] = "突击神器",
-        ["Fortifier Artifact"] = "强化神器",
-        ["Gear of Ambition"] = "野心之齿轮",
-        ["Ominous Artifact \u03b1"] = "不祥神器 α",
-        ["Ominous Artifact \u03b2"] = "不祥神器 β",
-        ["Ominous Artifact \u03b3"] = "不祥神器 γ",
-        ["Silent Rider"] = "寂静的骑士",
-        ["Servant of Cocytus"] = "科奇托斯的侍从",
-        ["Demon of Purgatory"] = "炼狱恶魔",
-        ["Astaroth's Reckoning"] = "阿斯塔罗特的结算",
-        ["Prostrating Coward"] = "匍匐的懦夫",
-        ["Shoddy Plaything"] = "粗制的玩具",
-        ["Indomitable Fighter"] = "不屈的战士",
-        ["Detective's Lens"] = "侦探的镜片",
-        ["Bug Alert"] = "漏洞警报",
-        ["Amataz, Origin Blader"] = "始祖剑士 阿玛兹",
-        ["Aria, Lady of the Woods"] = "森林淑女 艾莉雅",
-        ["Sham-Nacha, Heir to Entwining"] = "缠绕的继承者 杉那查",
-        ["Witch's New Brew"] = "魔女的新酿",
-        ["Runeblade Conductor"] = "符文刃指挥者",
-        ["Blaze Destroyer"] = "烈焰破坏者",
-        ["Godwood Staff"] = "神木之杖",
-        ["Edelweiss, Sagelight Ward"] = "贤光守护 艾德薇丝",
-        ["Reno, Luxwing Featherfolk"] = "光翼羽民 雷诺",
-        ["Sinciro, Heir to Usurpation"] = "篡夺的继承者 辛西罗",
-        ["Slaus, Revolving Wheel of Fortune"] = "旋转的命运之轮 斯劳斯",
-        ["Sandalphon, Primarch Successor"] = "原初继承者 桑达尔丰",
-        ["Obsessed Test Subject"] = "痴迷的试验体",
-        ["Pascale's Dance"] = "帕斯卡尔的舞蹈",
-        ["Mjerrabaine, Great Manifest"] = "大显身 姆耶拉班",
-        ["Octrice, Hollowness Manifest"] = "虚无之显 奥克特莉丝",
-        ["Glittering Gold"] = "闪耀的黄金",
-        ["City of Babelon"] = "巴别伦之城",
-        ["Shakdoh, Nightblossom"] = "夜花 沙克多",
-        ["Adventurers' Guild"] = "冒险者公会",
-        ["Ancient Cannon"] = "古代加农炮",
-        ["Yuna, Occult Hunter"] = "神秘猎人 尤娜",
-    };
+
 
     /// <summary>兵种中文化。查不到保留原名（DIY 兵种本来就没有官方译名）。</summary>
     /// <summary>
@@ -2106,12 +2027,24 @@ public sealed class ChineseCardPrinter
     /// 未收录的走 Glossary（DIY 自定义兵种走 DefineTrait 注册）。
     /// </summary>
     /// <summary>
-    /// 兵种名转中文。
+    /// 兵种名显示形式。
     ///
-    /// 不在代码里写对照表 —— 兵种的中英对照统一放在 glossary.json，
-    /// 与卡名、术语走同一条路。数据能改、能扩，代码不用重新编译。
+    /// 卡包里的 traits 本来就是中文，这里原样返回。
+    /// 只有英文编译器产出的英文 AST 才需要一次英文 → 中文的转换，
+    /// 那种情况走 Terminology()（查 glossary.json），不影响中文卡包。
     /// </summary>
-    public string TraitZh(string en) => _glossary.ToChinese(en);
+    public string TraitZh(string en)
+    {
+        if (string.IsNullOrWhiteSpace(en)) return "";
+        string k = en.Trim();
+        // 已是中文（或任何非 ASCII 名）就原样返回：玩家自定义的兵种名不能被改写。
+        bool hasAscii = false;
+        foreach (char ch in k) if (ch < 128 && char.IsLetter(ch)) { hasAscii = true; break; }
+        if (!hasAscii) return k;
+
+        string zh = _glossary.ToChinese(k);
+        return string.IsNullOrEmpty(zh) ? k : zh;
+    }
 
     /// <summary>
     /// 卡名转中文。
@@ -2148,14 +2081,46 @@ public sealed class ChineseCardPrinter
         _ => "未知状态",
     };
 
+    /// <summary>
+    /// 卡名转中文。
+    ///
+    /// 代码里不存卡名对照表 —— 卡名译文由 CardPool 在加载卡包时
+    /// 从 name_eng → name_chs 注入 Glossary，与卡池、语言版本同步。
+    /// 查不到就原样返回（英文编译器的中间产物本来就该显示英文）。
+    /// </summary>
     public string CardZh(string en)
     {
         if (string.IsNullOrWhiteSpace(en)) return "";
         string key = en.Trim();
-        if (CardNameZh.TryGetValue(key, out var zh)) return zh;
 
-        string fromGlossary = _glossary.ToChinese(key);
-        if (!string.IsNullOrEmpty(fromGlossary) && fromGlossary != key) return fromGlossary;
+        // 1) 术语表（CardPool 从卡包注入的译文）
+        string zh = _glossary.ToChinese(key);
+        if (!string.IsNullOrEmpty(zh) && zh != key) return zh;
+
+        // 2) 权威卡库反查：内置衍生 Token（Fairy / Knight …）的英文名
+        //    只存在于引擎常量与权威卡库里，卡包数据里没有对应条目。
+        int id = Packs.AuthoritativeNames.IdOfEnglish(key);
+        if (id > 0)
+        {
+            string byId = Packs.AuthoritativeNames.ChineseOf(id);
+            if (!string.IsNullOrEmpty(byId)) return byId;
+        }
+
+        // 3) 测试集英文夹具的卡名带 "Testset " 前缀，权威卡库里没有这一条。
+        //    去掉前缀再查一次，避免中文卡面残留英文。
+        const string testsetPrefix = "Testset ";
+        if (key.StartsWith(testsetPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            string bare = key.Substring(testsetPrefix.Length).Trim();
+            int bareId = Packs.AuthoritativeNames.IdOfEnglish(bare);
+            if (bareId > 0)
+            {
+                string bareZh = Packs.AuthoritativeNames.ChineseOf(bareId);
+                if (!string.IsNullOrEmpty(bareZh)) return bareZh;
+            }
+            string bareGloss = _glossary.ToChinese(bare);
+            if (!string.IsNullOrEmpty(bareGloss) && bareGloss != bare) return bareGloss;
+        }
 
         return key;
     }

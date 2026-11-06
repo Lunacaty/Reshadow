@@ -32,6 +32,8 @@ public static class AuthoritativeNames
     /// <summary>卡号 -> 简中名。</summary>
     public static IReadOnlyDictionary<int, string> Zh { get { Ensure(); return _zh; } }
 
+    private static readonly Dictionary<string, int> _enToId = new(StringComparer.OrdinalIgnoreCase);
+
     private static void Ensure()
     {
         if (_en != null) return;
@@ -53,7 +55,11 @@ public static class AuthoritativeNames
                         if (ns.TryGetProperty("en", out var e) && e.ValueKind == JsonValueKind.String)
                         {
                             var v = e.GetString();
-                            if (!string.IsNullOrWhiteSpace(v)) en[cid] = v;
+                            if (!string.IsNullOrWhiteSpace(v))
+                            {
+                                en[cid] = v;
+                                _enToId[v.Trim()] = cid;
+                            }
                         }
                         string z = null;
                         if (ns.TryGetProperty("zh-Hans", out var h1) && h1.ValueKind == JsonValueKind.String) z = h1.GetString();
@@ -72,6 +78,14 @@ public static class AuthoritativeNames
     }
 
     /// <summary>按卡号取英文名；没有返回 null。</summary>
+    /// <summary>英文卡名 -> 卡号；查不到返回 0。</summary>
+    public static int IdOfEnglish(string en)
+    {
+        if (string.IsNullOrWhiteSpace(en)) return 0;
+        Ensure();
+        return _enToId.TryGetValue(en.Trim(), out int id) ? id : 0;
+    }
+
     /// <summary>卡号 -> 中文名；查不到返回空串。</summary>
     public static string ChineseOf(int cardId)
     {
