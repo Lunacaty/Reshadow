@@ -2659,6 +2659,10 @@ public sealed class ActionParser
                     Counter = _lex.Counter(vn),
                     Op = CounterOp.Add,
                     Delta = sign < 0 ? NumExpr.Sub(NumExpr.Const(0), dv) : dv,
+                    // X/Y/Z 是「单卡变量」：初值由 MountInnateProperties 写在实体上，
+                    // 读取侧（VmEval）也优先读实体计数器。增量必须写实体级，
+                    // 否则写进玩家级、能力永远读不到（7 张 ctr:X 卡全废）。
+                    Target = Ast.TargetSpec.Self,
                 },
             };
         }

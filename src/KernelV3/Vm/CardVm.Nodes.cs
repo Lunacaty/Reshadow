@@ -658,7 +658,39 @@ public sealed partial class CardVm
             return false;
         }
 
-        // Target == null：修改主战者级计数器
+        // Target == null：默认修改主战者级计数器。
+        //
+        // 例外：X/Y/Z 是「单卡变量」—— 初值由 MountInnateProperties 写在实体上，
+        // 读取侧（VmEval.NumOp.Counter）也优先读实体计数器。写侧必须与读侧对称，
+        // 否则增量写进玩家级、能力永远读不到（7 张 ctr:X 卡因此全废）。
+        // 旧编译产物（pack.json）把这两个节点编译成 Target=null，这里兜底。
+        if (n.Counter.Name is "X" or "Y" or "Z")
+        {
+            var srcLive = scope.Source.HasValue
+                ? _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial)
+                : null;
+            if (srcLive != null)
+            {
+                int curE = srcLive.Counters.TryGetValue(n.Counter, out var cv) ? cv : 0;
+                int nextE = n.Op switch
+                {
+                    CounterOp.Add => curE + delta,
+                    CounterOp.Set => delta,
+                    CounterOp.Fill => delta,
+                    _ => curE,
+                };
+                srcLive.Counters[n.Counter] = nextE;
+                _world.EmitEvent(new VmEvent
+                {
+                    Kind = CoreEvent.OnCounterChange,
+                    Amount = delta,
+                    CounterName = n.Counter.Name,
+                    PlayerId = srcLive.PlayerId,
+                });
+                return false;
+            }
+        }
+
         int cur = _world.ReadCounter(scope.ResolvePlayer(n.Owner), n.Counter);
         int next = n.Op switch
         {
@@ -1384,8 +1416,11 @@ public sealed partial class CardVm
                 return false;
             }
             case ModeDispatchKind.Sequence:
-                // 帧栈是后进先出，必须倒序压入才能正序执行
-                for (int i = opts.Count - 1; i >= 0; i--)
+                // 「按顺序发动以下 N 个能力」：只取前 N 项按顺序执行。
+                // pick == 选项总数时即「Activate all of them instead」，此时全部执行；
+                // pick < 总数时（官方卡面「按顺序发动以下1个能力」）只执行前 pick 项。
+                // 早先无条件压入全部选项，导致 pick=1 的卡把 3 项全跑了。
+                for (int i = pick - 1; i >= 0; i--)
                     PushBody(opts[i], DeriveForBranch(n, frame.Scope));
                 return false;
 

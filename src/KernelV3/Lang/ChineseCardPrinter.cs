@@ -1225,12 +1225,25 @@ public sealed class ChineseCardPrinter
         {
             ModeDispatchKind.Choose => "选择" + pick + "个【模式】发动：",
             ModeDispatchKind.Random => "从以下能力中随机发动" + pick + "个：",
-            ModeDispatchKind.Sequence => "按顺序发动以下全部能力：",
+            // Sequence 的引导句按 PickCount 是否小于选项总数区分（见 SequenceHead）。
+            ModeDispatchKind.Sequence => SequenceHead(b),
             ModeDispatchKind.RandomUnused => "从以下尚未发动过的能力中随机发动" + pick + "个：",
             ModeDispatchKind.SequenceUnused => "从以下尚未发动过的能力中按顺序发动：",
             _ => "发动以下能力：",
         };
         return head + PrintBranchOptions(b);
+    }
+
+    /// <summary>
+    /// Sequence 的引导句：PickCount 是常量且小于选项总数时，官方卡面是
+    /// 「按顺序发动以下 N 个能力」；等于总数（或动态表达式）时才是
+    /// 「Activate all of them instead」的全部发动。
+    /// </summary>
+    private static string SequenceHead(BranchModeNode b)
+    {
+        if (b.PickCount is NumExpr { Op: NumOp.Const, Value: var v } && v < b.Options.Count)
+            return "按顺序发动以下" + v + "个能力：";
+        return "按顺序发动以下全部能力：";
     }
 
     /// <summary>逐条打印模式选项（①②③…），由 PrintBranch 与 GrantTarget 分支共用。</summary>
@@ -1676,7 +1689,8 @@ public sealed class ChineseCardPrinter
                 string op = c.Op switch
                 {
                     CompareOp.Ge => "≥", CompareOp.Le => "≤",
-                    CompareOp.Eq => "=", CompareOp.Gt => ">", CompareOp.Lt => "<",
+                    CompareOp.Eq => "=", CompareOp.Ne => "≠",
+                    CompareOp.Gt => ">", CompareOp.Lt => "<",
                     _ => "=",
                 };
                 return l + op + r;

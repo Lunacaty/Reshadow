@@ -756,7 +756,9 @@ _ = (sep, superAoE);
         bool noPrompt = e.Vm.Pending == null;
         bool damaged = foe.Life == 7;
         bool drew = e.St.EnumerateZone(ZoneRef.Hand, 0).Count() == h0 + 1;
-        return (noPrompt && damaged && drew, "不弹窗=" + noPrompt + " 打2=" + damaged + " 抽1=" + drew);
+        // Sequence(pick=1) 只发动第 1 项：官方日文「下記の能力から順に1つの能力が働く」。
+        // 抽牌发生说明又把全部选项跑了 —— 那是修复前的行为，这里必须是否。
+        return (noPrompt && damaged && !drew, "不弹窗=" + noPrompt + " 打2=" + damaged + " 抽1=" + drew);
     }
 
     private static (bool, string) MatrixShakdoh(MatrixEnv e)

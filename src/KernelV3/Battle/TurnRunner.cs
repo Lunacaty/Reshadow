@@ -544,12 +544,13 @@ public sealed class TurnRunner
         }
         else
         {
-            // 法术：结算效果 → 进墓场 → shadow +1 → 魔力增幅。
+            // 法术：魔力增幅（效果生效前）→ 结算效果 → 进墓场 → shadow +1。
             //
-            // 这四步全部必须排在「效果彻底结算完」之后：法术若含 Select 或选模式，
-            // VM 会挂起等玩家输入。直接写在 StepUntilBlocked() 后面意味着
-            // **玩家还没选，法术已经进墓地、shadow 已 +1、魔力增幅已触发**，
-            // 甚至手牌里其它卡的魔力增幅会插到这次选择之前结算。
+            // 魔力增幅必须在**效果生效前**发动，所以排在 OnPlay 之前。
+            // 效果若含 Select 或选模式，VM 会挂起等玩家输入；进墓地与 shadow 仍排在
+            // 效果彻底结算完之后，避免「玩家还没选，法术已经进墓地」。
+            BumpSpellboost(playerId, card, vm);
+
             EmitOrEnqueue(vm, new VmEvent
             {
                 Kind = CoreEvent.OnPlay,
@@ -567,7 +568,6 @@ public sealed class TurnRunner
                     _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
                     var shadowKey = _schema.Counter("shadow");
                     _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
-                    BumpSpellboost(playerId, vm);
                 });
                 vm.StepUntilBlocked();
             }
@@ -576,7 +576,6 @@ public sealed class TurnRunner
                 _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
                 var shadowKey = _schema.Counter("shadow");
                 _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
-                BumpSpellboost(playerId, vm);
             }
         }
 
@@ -710,10 +709,12 @@ public sealed class TurnRunner
 
         if (isAccelerate)
         {
-            // 激奏：按法术结算 —— 效果 → 进墓地 → shadow +1 → 魔力增幅 → 还原。
-            // 与普通法术同理，全部排进续体：效果挂了起等选择时，
+            // 激奏：魔力增幅（效果生效前）→ 按法术结算 → 进墓地 → shadow +1 → 还原。
+            // 与普通法术同理：增幅排在 OnPlay 之前；效果挂了起等选择时，
             // 卡不该提前进墓地，也不该提前把 Def 还原成本体随从 ——
             // 那会让后续的「这张卡是什么」读错。
+            BumpSpellboost(playerId, card, vm);
+
             EmitOrEnqueue(vm, new VmEvent
             {
                 Kind = CoreEvent.OnPlay,
@@ -731,7 +732,6 @@ public sealed class TurnRunner
                     _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
                     var shadowKey = _schema.Counter("shadow");
                     _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
-                    BumpSpellboost(playerId, vm);
                     // 进墓地后还原：手牌 / 墓地里的这张卡必须显示本体卡面。
                     card.Def = original;
                     card.OriginalDef = null;
@@ -743,7 +743,6 @@ public sealed class TurnRunner
                 _state.MoveEntity(card, ZoneRef.Cemetery, playerId);
                 var shadowKey = _schema.Counter("shadow");
                 _state.WriteCounter(playerId, shadowKey, _state.ReadCounter(playerId, shadowKey) + 1);
-                BumpSpellboost(playerId, vm);
                 card.Def = original;
                 card.OriginalDef = null;
             }
@@ -975,13 +974,20 @@ public sealed class TurnRunner
         }
     }
 
-    /// <summary>法术打出后：手牌中带魔力增幅的卡计数 +1，并触发 OnSpellboost。</summary>
-    private void BumpSpellboost(int playerId, CardVm vm)
+    /// <summary>
+    /// 打出法术时：**默认发动一次魔力增幅**，且必须发生在该法术效果生效之前。
+    ///
+    /// 规则：打出任何法术都会发动一次魔力增幅，与该法术自身是否写了增幅无关；
+    /// 但「不包括给自己」—— 正在打出的这张法术不获得增幅。
+    ///
+    /// 手牌里所有带【魔力增幅时】能力的卡 +1；事件带 PlayerId 供能力按归属过滤。
+    /// </summary>
+    private void BumpSpellboost(int playerId, RuntimeEntity spellCard, CardVm vm)
     {
         var sbKey = _schema.Counter("spellboost");
-        bool any = false;
         foreach (var e in _state.Players[playerId].Hand)
         {
+            if (ReferenceEquals(e, spellCard)) continue;   // 不包括给自己
             if (e.Def?.Abilities == null) continue;
             bool has = false;
             foreach (var ab in e.Def.Abilities)
@@ -990,9 +996,9 @@ public sealed class TurnRunner
 
             e.Counters.TryGetValue(sbKey, out var cur);
             e.Counters[sbKey] = cur + 1;
-            any = true;
         }
-        if (any) EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnSpellboost });
+        // 任何法术都发一次事件（带 PlayerId）；没有增幅卡时事件无接收者，无害。
+        EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnSpellboost, PlayerId = playerId });
     }
 
 

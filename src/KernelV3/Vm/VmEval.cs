@@ -57,9 +57,10 @@ public sealed class VmEval
             case NumOp.Property:
             {
                 var t = e.Of ?? TargetSpec.Self;
-                // 优先走快照：实体已离场/死亡时仍能读到它生前的数值（LKI）
+                // 活体优先：刚被 +0/+1 的随从要读到**当前**生命值，而不是绑定时的快照；
+                // 实体已离场/死亡时才回落快照（LKI）。与 RefStat 的口径保持一致。
                 var refsP = ResolveRef(t, scope);
-                if (refsP.Count > 0) return ReadStatFromSnapshot(refsP[0].Snapshot, e.Stat);
+                if (refsP.Count > 0) return RefStat(refsP[0], e.Stat);
                 var ents = Resolve(t, scope);
                 if (ents.Count == 0) return 0;
                 return ReadStat(ents[0], e.Stat);
@@ -72,7 +73,9 @@ public sealed class VmEval
                 // 「本局入场过的 N 张同名卡」「本局被破坏的 N 张」这些候选
                 // 在事件到达时早已离场或死亡，GetLive 必然返回 null，
                 // 用 Resolve 计数会恒为 0 —— 条件永久为假。
-                return ResolveRef(t, scope).Count;
+                // <Kind> 修饰词必须归一化成 $item：编译期会把它提权成 HasKindExpr(Of=$self)，
+                // 不归一化它读的是事件源/施法者的卡种（对 Spell/Amulet 恒 false）→ 计数恒 0。
+                return ResolveRef(CardVm.NormalizeZoneWhere(t), scope).Count;
             }
 
             case NumOp.Sum:
@@ -83,7 +86,8 @@ public sealed class VmEval
                 // Resolve 只返回当前在场的活体（GetLive），而
                 // "... destroyed this turn" 这类历史快照里的实体早已离场，
                 // GetLive 一律返回 null —— 求和恒为 0（90034120 式神·贵人）。
-                var pool = ResolveRef(t, scope);
+                // 同 Count：<Kind> 修饰词要归一化成 $item，否则卡种过滤读的是事件源。
+                var pool = ResolveRef(CardVm.NormalizeZoneWhere(t), scope);
 
                 // "the sum of the 3 highest base costs"：先按 Sort 排好，再取前 TopN 项。
                 // ResolveRef 已经应用过 Sort / SortDescending，这里只需要截断。
@@ -165,7 +169,8 @@ public sealed class VmEval
                 var t = e.Of ?? TargetSpec.Self;
                 // 同 NumOp.Count：历史池里的候选没有活体，必须走引用池。
                 // 卡号取「活体 or 快照」，两者都缺才计 0（那不是一张可识别的卡）。
-                return ResolveRef(t, scope)
+                // 同 Count：先归一化 <Kind>，否则卡种过滤读的是事件源。
+                return ResolveRef(CardVm.NormalizeZoneWhere(t), scope)
                     .Select(r => RefDef(r)?.CardId ?? (r.Snapshot?.CardId ?? 0))
                     .Where(id => id != 0)
                     .Distinct()
@@ -175,7 +180,8 @@ public sealed class VmEval
             case NumOp.MaxGroupSize:
             {
                 var t = e.Of ?? TargetSpec.Self;
-                var ents = Resolve(t, scope);
+                // 同 Count：先归一化 <Kind>，否则卡种过滤读的是事件源。
+                var ents = Resolve(CardVm.NormalizeZoneWhere(t), scope);
                 var groups = ents.GroupBy(x => x.Cost).Select(g => g.Count()).ToList();
                 return groups.Count > 0 ? groups.Max() : 0;
             }

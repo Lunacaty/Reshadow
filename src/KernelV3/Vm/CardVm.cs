@@ -873,7 +873,12 @@ public sealed partial class CardVm
                          && ev.Subject != null
                          && ev.Subject.Value.EntityId == owner.EntityId
                          && ev.Subject.Value.EntrySerial == owner.EntrySerial;
-        if (owner.Zone != need && !graveSelf && !(need == ZoneRef.Board && ActsAsOnField(ev, owner)))
+        // 魔力增幅：卡的增幅计数住在**手牌**里，事件在打出法术时发出，此时卡还在手牌。
+        // 旧编译产物（pack.json）把 on_spellboost 的 ActiveZone 设成默认 Board，
+        // 按 Board 判定会 100% 挡掉手牌里的增幅卡 —— 这里按 Hand 放行。
+        bool spellboostInHand = trig.Event == CoreEvent.OnSpellboost && owner.Zone == ZoneRef.Hand;
+        if (owner.Zone != need && !graveSelf && !spellboostInHand
+            && !(need == ZoneRef.Board && ActsAsOnField(ev, owner)))
             return false;
 
         // 2. 回合归属

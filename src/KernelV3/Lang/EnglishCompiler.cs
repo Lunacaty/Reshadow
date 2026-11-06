@@ -283,6 +283,8 @@ public sealed class EnglishCompiler
                         Counter = _lex.Counter(kv.Key),
                         Op = CounterOp.Set,
                         Delta = NumExpr.Const(kv.Value),
+                        // 与增量保持一致：X/Y/Z 是单卡变量，写实体级。
+                        Target = TargetSpec.Self,
                     },
                 },
             });
