@@ -131,6 +131,13 @@ public sealed class GameSchema
         // 奥义槽 = 当前回合数 + 本卡在手时自己随从进化/超进化的次数。
         // 奥义 >= 10 可发动，解放奥义 >= 15。
         ("skybound_gauge", 0, 99),
+        // 以下三个是 ConditionCompiler 会生成的条件计数器。
+        // 必须与编译期用同一份内置表：SymbolId 的 Id 由注册顺序分配，
+        // 运行期单独注册会整体错位，让卡面 AST 里的 ctr: 读到别的计数器
+        // （实测 cards_returned_to_hand 被读成 distinct_base_costs_played）。
+        ("distinct_base_costs_played", 0, 99),
+        ("ced_engage", 0, 99),
+        ("damage_dealt_this_turn", 0, 999),
     };
 
     public static readonly string[] BuiltinKeywords =

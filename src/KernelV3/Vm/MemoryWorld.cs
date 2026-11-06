@@ -181,7 +181,8 @@ public sealed class MemoryWorld : IVmWorld
     /// <summary>统一伤害管线：屏障先吸收，再扣血。</summary>
     /// <param name="source">伤害来源。内存世界只实现屏障/扣血，不分战斗/能力来源。</param>
     public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId,
-                            DamageSourceMask source = DamageSourceMask.Ability)
+                            DamageSourceMask source = DamageSourceMask.Ability,
+                            RuntimeEntity sourceEntity = null)
     {
         if (target == null || amount <= 0) return;
         var barrier = Schema.Keyword("barrier");

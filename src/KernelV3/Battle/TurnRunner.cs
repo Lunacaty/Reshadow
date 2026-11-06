@@ -100,6 +100,9 @@ public sealed class TurnRunner
 
         var comboKey = _schema.Counter("combo");
         _state.WriteCounter(playerId, comboKey, 0);
+        // 本回合伤害与「本回合启动过线索护符」计数（条件计数器，每回合清零）。
+        _state.WriteCounter(playerId, _schema.Counter("damage_dealt_this_turn"), 0);
+        _state.WriteCounter(playerId, _schema.Counter("ced_engage"), 0);
 
         // 本回合我方随从攻击次数清零 —— 「本回合我方随从没攻击过」的判据。
         _state.WriteCounter(playerId, _schema.Counter("turn_ally_attacks"), 0);
@@ -136,13 +139,20 @@ public sealed class TurnRunner
 
         BumpSkyboundGauge(playerId);
 
-        // ── 第 2 步：我方纹章（回合初能力 + 吟唱推进） ──
+        // ── 第 2 步：先触发本回合开始的 TurnStart 能力 ──
+        // 必须排在吟唱递减**之前**：Countdown=1 的护符/纹章在最后一回合的
+        // 「回合开始时」能力要还能触发，然后才归零进场（174 号文档 二.6）。
+        // 早先把 TurnStart 放在递减之后，等于先把卡送进墓地再广播事件。
+        EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.TurnStart, PlayerId = playerId, Priority = 15 });
+        vm?.StepUntilBlocked();
+
+        // ── 第 3 步：我方纹章（吟唱推进） ──
         StepCrestArea(playerId, vm, ownTurn: true);
 
-        // ── 第 3 步：我方战场（回合初能力 + 护符吟唱推进） ──
+        // ── 第 4 步：我方战场（护符吟唱推进） ──
         StepBoardCountdown(playerId, vm);
 
-        // ── 第 4 步：对手纹章响应（“对手回合开始时”） ──
+        // ── 第 5 步：对手纹章响应（“对手回合开始时”） ──
         StepCrestArea(1 - playerId, vm, ownTurn: false);
 
         // ── 第 5 步：对手战场响应 ──
@@ -157,9 +167,6 @@ public sealed class TurnRunner
         //
         // 「满场不发动」由 MoveEntity 的满场拦截负责（牌库→战场被拒时原地不动）；
         // 「同一时机同名只 1 张」由 CardVm.FlushNextTrigger 的按 (CardId, 事件) 去重负责。
-
-        // ── 第 7 步：清空待机队列 ──
-        EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.TurnStart, PlayerId = playerId });
 
         // ── 第 8 步：常规抽牌（先手第一回合也抽） ──
         // 必须等第 2～7 步的回合初能力**彻底结算完**（含玩家完成所有选择）再抽。
@@ -495,6 +502,12 @@ public sealed class TurnRunner
 
         // 记入本局已使用卡牌（书页「使用」页签按它统计）。
         _state.Players[playerId].PlayedThisMatch.Add(card.Def);
+        // distinct_base_costs_played 是 ConditionCompiler 生成的条件计数器，
+        // 但从来没人写过它 —— 「本局打出过 N 种不同基准费用的卡」永远为 0（174 号文档 四.9）。
+        int distinctCosts = _state.Players[playerId].PlayedThisMatch
+            .Where(d => d != null && d.BaseCost >= 1 && d.BaseCost <= 8)
+            .Select(d => d.BaseCost).Distinct().Count();
+        _state.WriteCounter(playerId, _schema.Counter("distinct_base_costs_played"), distinctCosts);
         card.EnteredTurn = _state.TurnNumber;
 
         // ── 3. 连击 +1（包含当前这张）──
@@ -1109,6 +1122,9 @@ public sealed class TurnRunner
         if (!SpendPp(playerId, cost)) return false;
 
         amulet.EngagedThisTurn = true;
+        // ced_engage 同样是编译器生成却从未写入的条件计数器（174 号文档 四.9）。
+        var engKey = _schema.Counter("ced_engage");
+        _state.WriteCounter(playerId, engKey, _state.ReadCounter(playerId, engKey) + 1);
         EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnEngage, Subject = EntityRef.From(amulet) });
         vm?.StepUntilBlocked();
         return true;

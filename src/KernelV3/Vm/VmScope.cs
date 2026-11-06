@@ -259,6 +259,10 @@ public sealed class VmEvent
         CoreEvent.OnPlay or CoreEvent.OnEvolve or CoreEvent.OnSuperEvolve
             or CoreEvent.OnEngage or CoreEvent.OnFuse => 10,
 
+        // 15：回合开始 / 结束 —— 必须排在吟唱归零触发的 OnDestroy(20) 之前，
+        // 否则「回合开始时」能力会被自己的倒计时抢先送进墓地（174 号文档 二.6）。
+        CoreEvent.TurnStart or CoreEvent.TurnEnd => 15,
+
         // 20：场上出现时 / 离场与破坏 / 受伤回复
         CoreEvent.OnEnterField or CoreEvent.OnLeaveField or CoreEvent.OnDestroy
             or CoreEvent.OnDamaged or CoreEvent.OnHealed or CoreEvent.OnSummon => 20,

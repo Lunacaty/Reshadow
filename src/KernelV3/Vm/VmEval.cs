@@ -515,10 +515,10 @@ public sealed class VmEval
 
     private int ReadStat(RuntimeEntity e, StatKey k) => k switch
     {
-        StatKey.Attack => e.Attack,
+        StatKey.Attack => Math.Max(0, e.Attack),
         StatKey.Life => e.Life,
         StatKey.MaxLife => e.MaxLife,
-        StatKey.Cost => e.Cost,
+        StatKey.Cost => Math.Max(0, e.Cost),
         StatKey.BaseAttack => e.Def?.BaseAttack ?? 0,
         StatKey.BaseLife => e.Def?.BaseLife ?? 0,
         StatKey.BaseCost => e.Def?.BaseCost ?? 0,
@@ -540,10 +540,13 @@ public sealed class VmEval
         StatKey.MaxPlayPoint => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("max_pp")),
         StatKey.EvolvePoint => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("ep")),
         StatKey.MaxEvolvePoint => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("sep")),
-        StatKey.TurnIndex => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("turn_index")),
+        // 这四个键原先读的是从未被写入的幽灵计数器，恒为 0（174 号文档 四.8）。
+        // 直接对接真实数据源：回合数在 TurnNumber，本回合打出张数在 combo，
+        // 本局打出张数在 PlayedThisMatch。
+        StatKey.TurnIndex => (_world as Battle.BattleState)?.TurnNumber ?? 0,
         StatKey.DamageDealtThisTurn => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("damage_dealt_this_turn")),
-        StatKey.CardsPlayedThisTurn => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("cards_played_this_turn")),
-        StatKey.CardsPlayedThisMatch => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("cards_played_this_match")),
+        StatKey.CardsPlayedThisTurn => _world.ReadCounter(StatPlayer(e), _world.Schema.Counter("combo")),
+        StatKey.CardsPlayedThisMatch => (_world as Battle.BattleState)?.Players[StatPlayer(e)].PlayedThisMatch.Count ?? 0,
         _ => 0,
     };
 

@@ -413,9 +413,10 @@ public sealed partial class CardVm
         // 潜行（Ambush）铁律：造成伤害的那个随从立即失去潜行。
         // 攻击宣言时已在 ExecuteCombat 里处理；这里补「能力造成伤害」的情形。
         var ambushKw = Schema.Keyword("ambush");
+        RuntimeEntity self = null;
         if (scope?.Source != null)
         {
-            var self = _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial);
+            self = _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial);
             if (self != null && self.Keywords.Contains(ambushKw)) self.Keywords.Remove(ambushKw);
         }
 
@@ -425,8 +426,11 @@ public sealed partial class CardVm
         int srcPlayer = scope?.Controller ?? (t.PlayerId == 0 ? 1 : 0);
         // IsAbility 必须贯通到伤害管线："不受战斗伤害" / "不受能力伤害" 等免疫
         // 按来源精确拦截，丢掉它会让两种伤害被同等对待。
+        // sourceEntity 必须传：否则 DealtDelta / DealtCap 修正全被
+        // QueryDamageModifiers(null) 直接 yield break 吃掉（174 号文档 二.4）。
         _world.ApplyDamage(t, amount, srcPlayer,
-            isAbility ? Ast.DamageSourceMask.Ability : Ast.DamageSourceMask.Combat);
+            isAbility ? Ast.DamageSourceMask.Ability : Ast.DamageSourceMask.Combat,
+            sourceEntity: self);
     }
 
     private bool DoRestore(RestoreLifeNode n, VmFrame frame)

@@ -1436,7 +1436,9 @@ public sealed class BattleState : IVmWorld
         // 回手 / 加到手牌各有自己的事件。
         // 少了它们，「Whenever a card is returned to your hand」
         // 与「Whenever you add a card to your hand」这两类监听全部失明。
-        if (toZone == ZoneRef.Hand)
+        // 必须按**实际落点**判：手牌满 9 张时 MoveEntity 会把卡爆进墓地，
+        // 此时 e.Zone 已是 Cemetery，再按 toZone 发「加入手牌」就是假事件（174 号文档 三.7）。
+        if (e.Zone == ZoneRef.Hand)
         {
             if (leftBoard) EmitEvent(new VmEvent { Kind = CoreEvent.OnReturnToHand, Subject = EntityRef.From(e) });
             if (fromDeck || fromCemetery || fromExArea)
@@ -1791,7 +1793,8 @@ public sealed class BattleState : IVmWorld
 
     /// <summary>结算「造成伤害」侧的修正。currentTarget 用于找出伤害来源实体。</summary>
     public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId,
-                            Ast.DamageSourceMask source = Ast.DamageSourceMask.Ability)
+                            Ast.DamageSourceMask source = Ast.DamageSourceMask.Ability,
+                            RuntimeEntity sourceEntity = null)
     {
         if (target == null || amount <= 0) return;
 
@@ -1803,7 +1806,7 @@ public sealed class BattleState : IVmWorld
         // 是让 CombatResolver 改走 _state.EmitEvent —— 已经做了。
         // 之后再补发就是双发：界面上叠两个伤害数字，
         // 所有「受到伤害时」的能力也会触发两次。
-        new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId, source: source);
+        new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId, source: source, sourceEntity: sourceEntity);
     }
 
     public int ApplyDealtModifiers(int sourcePlayerId, RuntimeEntity sourceEntity,
@@ -1818,7 +1821,13 @@ public sealed class BattleState : IVmWorld
         // 之前这里手写了一遍扫描，既没扫 _granted（单选赋予某随从
         // 「造成的伤害 -3」无效），又只按 src.PlayerId 匹配玩家
         // （随从 A 自己的「造成伤害上限 1」会把队友随从 B 的伤害也锁成 1）。
-        var mods = QueryDamageModifiers(sourceEntity).ToList();
+        // 伤害源实体与**它所属的主战者**都要查：主战者身上的
+        // 「我方造成的伤害 +1」光环此前完全没被扫到（174 号文档 二.4）。
+        var mods = new List<(Ast.DamageModifierNode Node, Vm.VmScope Scope)>();
+        if (sourceEntity != null) mods.AddRange(QueryDamageModifiers(sourceEntity));
+        if (sourcePlayerId is 0 or 1 && Players[sourcePlayerId].Leader != null
+            && !ReferenceEquals(Players[sourcePlayerId].Leader, sourceEntity))
+            mods.AddRange(QueryDamageModifiers(Players[sourcePlayerId].Leader));
 
         foreach (var (dm, scope) in mods)
         {
@@ -2157,6 +2166,10 @@ public sealed class BattleState : IVmWorld
         if (CardDefOf(cardId) == null) UnresolvedSpawnCount++;
 
         var e = CreateEntity(cardId, toZone, toPlayerId);
+        // 凭空生成进手牌的卡（召唤 / 复制 / 发现 / 加入手牌）也要发 OnAddToHand：
+        // 否则「每当卡牌加入你的手牌时」这类监听对衍生卡 100% 失明（174 号文档 三.7）。
+        if (toZone == ZoneRef.Hand && e != null && e.Zone == ZoneRef.Hand)
+            EmitEvent(new VmEvent { Kind = CoreEvent.OnAddToHand, Subject = EntityRef.From(e), PlayerId = toPlayerId });
         // 召唤进场的随从同样要发「进入战场时」并加连携。
         // 早期只在 TurnRunner.PlayCard 里手写发事件，于是 Summon / Reanimate /
         // Invoke / 复制这几条路径造出来的实体对「进入战场时」完全失明。
@@ -2251,6 +2264,8 @@ public sealed class BattleState : IVmWorld
         {
             var plain = CreateEntity(s.CardId, toZone, toPlayerId);
             if (plain != null && addDepartedTrait) TagDeparted(plain);
+            if (toZone == ZoneRef.Hand && plain != null && plain.Zone == ZoneRef.Hand)
+                EmitEvent(new VmEvent { Kind = CoreEvent.OnAddToHand, Subject = EntityRef.From(plain), PlayerId = toPlayerId });
             if (plain != null) NotifySummoned(plain);
             return plain;
         }

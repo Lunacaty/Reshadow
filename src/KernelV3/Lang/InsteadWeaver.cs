@@ -553,6 +553,33 @@ public static class InsteadWeaver
             elseBody = new List<EffectNode> { elseBody[^1] };
         }
 
+        // cur 的消耗型代价（Necromancy 扣 shadow、Earth Rite 扣 earth_sigil）
+        // 必须织进 thenBody 头部：外层 mergedCosts 只保留 UsePp（否则墓场不足时
+        // 连基础效果都发不出来），而消耗本身又不能丢 —— 丢了就是零消耗白嫖（174 号文档 二.4）。
+        var costPayments = new List<EffectNode>();
+        foreach (var cs in cur.Costs ?? Array.Empty<CostSpec>())
+        {
+            string ctrName = cs.Kind switch
+            {
+                CostKind.Necromance => "shadow",
+                CostKind.DestroyAlly => "earth_sigil",
+                _ => null,
+            };
+            if (ctrName == null) continue;
+            costPayments.Add(new ModifyCounterNode
+            {
+                Counter = lex.Counter(ctrName),
+                Op = CounterOp.Add,
+                Delta = NumExpr.Sub(NumExpr.Const(0), cs.Amount),
+                Owner = Core.ZoneScope.Self,
+            });
+        }
+        if (costPayments.Count > 0)
+        {
+            costPayments.AddRange(thenBody);
+            thenBody = costPayments;
+        }
+
         // 合并后的 CostSpec 必须保留 Enhance 档位：
         // TurnRunner.EnhanceTiers 靠它算爆能档并扣 PP。丢了就永远只扣基础费用。
         var mergedCosts = (prev.Costs ?? Array.Empty<CostSpec>())
