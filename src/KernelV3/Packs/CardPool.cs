@@ -76,6 +76,14 @@ public sealed class CardPoolConfig
     /// </summary>
     public List<string> PoolClans { get; init; } = new();
 
+    /// <summary>
+    /// 自定义职业的中文显示名：{ "Mecha": "机甲" }。
+    ///
+    /// 必须落盘：pool_clans 只存 ID，光靠内存里的 Glossary 加一次，
+    /// 下次 Initialize 重建 Catalog 就没了，玩家看到「机甲」变回「Mecha」。
+    /// </summary>
+    public Dictionary<string, string> PoolClanNames { get; init; } = new();
+
     /// <summary>本卡池的主战者计数器（赛制级资源，跨卡包共享）。</summary>
     public List<PoolCounterDef> LeaderCounters { get; init; } = new();
 }

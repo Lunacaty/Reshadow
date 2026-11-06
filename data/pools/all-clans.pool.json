@@ -3,6 +3,7 @@
   "name": "全职业演示卡池",
   "enabled_packs": ["official-sv", "testset-v2"],
   "pool_clans": [],
+  "pool_clan_names": {},
   "leader_counters": [
   ],
   "rules": {

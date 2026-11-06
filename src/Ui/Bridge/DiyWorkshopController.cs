@@ -128,6 +128,103 @@ public sealed class DiyWorkshopController
         CompileFromScript(sample);
     }
 
+
+    // ---- 168 专项三：保存时区分「覆盖修改原卡」与「另存为新卡」----
+
+    /// <summary>当前卡牌是否源自已有卡（决定保存时要不要问「覆盖还是另存」）。</summary>
+    public int? LoadedOriginCardId { get; private set; }
+    public string LoadedOriginPackId { get; private set; }
+
+    public bool IsEditingExistingCard =>
+        LoadedOriginCardId.HasValue && CurrentDef != null &&
+        Store.Catalog.AllCards.ContainsKey(LoadedOriginCardId.Value);
+
+    /// <summary>分配一个够用的新卡 ID（DIY 段 950000 之后取最大值 +1）。</summary>
+    public int AllocateNewCardId()
+    {
+        int maxId = 950000;
+        foreach (var id in Store.Catalog.AllCards.Keys)
+            if (id >= 950000 && id < 10000000 && id > maxId) maxId = id;
+        return maxId + 1;
+    }
+
+    /// <summary>
+    /// 保存当前卡牌到指定卡包。
+    ///
+    /// overwriteExisting = true  覆盖原卡（沿用来源卡号）
+    /// overwriteExisting = false 另存为新卡（分配新卡号）
+    /// </summary>
+    public bool SaveCurrentCardToPackAny(string packId, bool overwriteExisting, out string message)
+    {
+        message = "";
+        if (CurrentDef == null) { message = "当前没有可保存的卡牌"; return false; }
+
+        // 占位文字「（选择卡包）」绝不能被当成目录名写进磁盘。
+        if (string.IsNullOrWhiteSpace(packId) || packId.StartsWith("（", StringComparison.Ordinal))
+            packId = !string.IsNullOrWhiteSpace(LoadedOriginPackId) ? LoadedOriginPackId : "testset-v2";
+
+        int targetId = overwriteExisting && LoadedOriginCardId.HasValue
+            ? LoadedOriginCardId.Value
+            : (overwriteExisting ? CurrentDef.CardId : AllocateNewCardId());
+
+        // 覆盖模式但换了卡包：必须先从原卡包删掉旧卡，否则两个包同号，
+        // 总表按卡号去重后只剩一张，另一张永远查不到。
+        if (overwriteExisting && LoadedOriginCardId.HasValue &&
+            !string.IsNullOrWhiteSpace(LoadedOriginPackId) &&
+            !string.Equals(LoadedOriginPackId, packId, StringComparison.OrdinalIgnoreCase))
+        {
+            Store.DeleteCardFromPack(LoadedOriginPackId, targetId, out _);
+        }
+
+        var saved = CloneDefWithId(CurrentDef, targetId, packId);
+        CurrentDef = saved;
+        SyncAllEndpointsFromCurrentDef();
+        Store.SaveCardIntoPack(packId, saved, AstCanonicalPrinter.PrintCard(saved));
+
+        LoadedOriginCardId = saved.CardId;
+        LoadedOriginPackId = packId;
+
+        string tag = overwriteExisting ? "覆盖修改原卡" : "另存为新卡 (#" + targetId + ")";
+        LastStatusMessage = "✔ 已" + tag + "《" + DeckEditorViewModel.DisplayName(saved) + "》至卡包 [" + packId + "]";
+        message = LastStatusMessage;
+        OnCardUpdated?.Invoke();
+        return true;
+    }
+
+    /// <summary>复制一份卡定义并改掉卡号与所属卡包（其余字段原样保留）。</summary>
+    private static ShadowverseFan.KernelV3.Ast.CardDef CloneDefWithId(
+        ShadowverseFan.KernelV3.Ast.CardDef src, int newId, string packId)
+    {
+        if (src == null) return null;
+        var c = src;
+        return new ShadowverseFan.KernelV3.Ast.CardDef
+        {
+            CardId = newId,
+            PackId = packId,
+            Name = c.Name,
+            NameChs = c.NameChs,
+            Kind = c.Kind,
+            Clan = c.Clan,
+            Traits = c.Traits,
+            BaseCost = c.BaseCost,
+            BaseAttack = c.BaseAttack,
+            BaseLife = c.BaseLife,
+            Rarity = c.Rarity,
+            IsToken = c.IsToken,
+            InnateKeywords = c.InnateKeywords,
+            InnateCounters = c.InnateCounters,
+            Abilities = c.Abilities,
+            DeckModifiers = c.DeckModifiers,
+            HasFuse = c.HasFuse,
+            FuseMaterialFilter = c.FuseMaterialFilter,
+            CrestDef = c.CrestDef,
+            FaithDef = c.FaithDef,
+            AccelerateDef = c.AccelerateDef,
+            CrystallizeDef = c.CrystallizeDef,
+            SourceText = c.SourceText,
+        };
+    }
+
     public void LoadExistingCard(CardDef def)
     {
         if (def == null) return;
@@ -168,7 +265,10 @@ public sealed class DiyWorkshopController
                 IsToken = CurrentDef.IsToken,
                 Name = string.IsNullOrWhiteSpace(form.NameEng) ? CurrentDef.Name : form.NameEng,
                 NameChs = !string.IsNullOrWhiteSpace(form.NameChs) ? form.NameChs : CurrentDef.NameChs,
-                Kind = CurrentDef.Kind,
+                // 卡种必须听表单的：只读的是「效果能力」，不是「这张卡是什么」。
+                // 写死 CurrentDef.Kind 的话，玩家在表单里把随从改成法术，
+                // 保存后还是随从，而界面上完全看不出被回退了。
+                Kind = ParseKindOrKeep(form.Kind, CurrentDef.Kind),
                 Clan = ParseClanOrKeep(form.Clan, CurrentDef.Clan),
                 Traits = ParseTraitsOrKeep(form.Traits, CurrentDef.Traits),
                 BaseCost = form.Cost,
@@ -505,6 +605,16 @@ public sealed class DiyWorkshopController
     /// 各端的编译器只从自己的输入里取英文名，中文名会丢 ——
     /// 而中文名是卡面上玩家实际看到的那行字，丢了卡面就变英文了。
     /// </summary>
+
+    /// <summary>解析卡种；表单没给或给错时保留原值。</summary>
+    private static ShadowverseFan.KernelV3.Ast.CardKind ParseKindOrKeep(
+        string kind, ShadowverseFan.KernelV3.Ast.CardKind fallback)
+    {
+        if (string.IsNullOrWhiteSpace(kind)) return fallback;
+        return Enum.TryParse<ShadowverseFan.KernelV3.Ast.CardKind>(kind.Trim(), ignoreCase: true, out var k)
+            ? k : fallback;
+    }
+
     private SymbolId<ClanTag> ParseClanOrKeep(string clanName, SymbolId<ClanTag> keep)
     {
         if (string.IsNullOrWhiteSpace(clanName)) return keep;
@@ -748,12 +858,20 @@ public sealed class DiyWorkshopController
             }
             slot.Add(blk);
             ActiveInsertList = slot;
-            LastInsertedBlock = blk;
-            return CompileFromBlocks(BlockModel);
+            // 注意：CompileFromBlocks 会整棵重建模型，blk 随即成为旧树死节点。
+            // 所以这里只记路径，编译后在新树上找回，否则 UI 的选中绑在死节点上，
+            // 改任何属性都不会反映到新树。
+            var slotPath = PathOfListIn(BlockModel, slot);
+            int insIdx = slot.IndexOf(blk);
+            if (!CompileFromBlocks(BlockModel)) return false;
+            LastInsertedBlock = ResolveBlockAt(BlockModel, slotPath, insIdx);
+            return true;
         }
 
         // 规则 4：有明确插入点就直接追加。
-        if (ActiveInsertList != null)
+        // 必须排除域根：Hats 只收事件帽，动作块塞进去编译会报
+        // 「不是事件帽积木」，而玩家看到的是「点了没反应」。
+        if (ActiveInsertList != null && !ReferenceEquals(ActiveInsertList, root))
         {
             ActiveInsertList.Add(blk);
             return CompileFromBlocks(BlockModel);
@@ -767,6 +885,104 @@ public sealed class DiyWorkshopController
         lastHat.Stacks.Add(blk);
         ActiveInsertList = lastHat.Stacks;
         return CompileFromBlocks(BlockModel);
+    }
+
+
+    /// <summary>把 List&lt;Block&gt; 编码成从域根出发的路径：每步是「第几个块 + 哪个子槽」。</summary>
+    private static List<(int Index, string Slot)> PathOfListIn(CardBlockWorkspace ws, List<Block> target)
+    {
+        if (ws == null || target == null) return null;
+        List<(int, string)> found = null;
+
+        void WalkBlock(Block b, List<(int, string)> prefix)
+        {
+            if (found != null || b == null) return;
+            void Try(List<Block> lst, string slot)
+            {
+                if (found != null || lst == null) return;
+                if (ReferenceEquals(lst, target)) { found = new List<(int, string)>(prefix) { (-1, slot) }; return; }
+                for (int i = 0; i < lst.Count; i++)
+                {
+                    var child = lst[i];
+                    if (child == null) continue;
+                    var next = new List<(int, string)>(prefix) { (i, slot) };
+                    WalkBlock(child, next);
+                }
+            }
+            Try(b.Stacks, "stacks");
+            Try(b.ElseStacks, "else");
+            if (b.Branches != null)
+                for (int bi = 0; bi < b.Branches.Count; bi++) Try(b.Branches[bi], "branch:" + bi);
+        }
+
+        foreach (var (lst, slot) in new[]{
+            (ws.Hats, "hats"), (ws.CrestHats, "crests"), (ws.FaithHats, "faiths"),
+            (ws.AccelerateHats, "accel"), (ws.CrystallizeHats, "cryst"), (ws.DeckModBlocks, "deckmod") })
+        {
+            if (found != null) break;
+            if (lst == null) continue;
+            if (ReferenceEquals(lst, target)) { return new List<(int, string)> { (-1, slot) }; }
+            for (int i = 0; i < lst.Count; i++)
+            {
+                var child = lst[i];
+                if (child == null) continue;
+                WalkBlock(child, new List<(int, string)> { (i, slot) });
+            }
+        }
+        return found;
+    }
+
+    /// <summary>按路径在新树上找回某个列表里的第 index 个块。</summary>
+    private static Block ResolveBlockAt(CardBlockWorkspace ws, List<(int Index, string Slot)> path, int index)
+    {
+        if (ws == null || path == null || path.Count == 0 || index < 0) return null;
+        List<Block> cur = path[0].Slot switch
+        {
+            "hats" => ws.Hats,
+            "crests" => ws.CrestHats,
+            "faiths" => ws.FaithHats,
+            "accel" => ws.AccelerateHats,
+            "cryst" => ws.CrystallizeHats,
+            "deckmod" => ws.DeckModBlocks,
+            _ => null,
+        };
+        // path[0].Slot 是域根槽；后续元素依次是 (块下标, 该块内的子槽)
+        for (int i = 0; i < path.Count; i++)
+        {
+            if (cur == null) return null;
+            int bi = path[i].Index;
+            if (i == 0)
+            {
+                if (bi < 0 || bi >= cur.Count) return null;
+                var blk0 = cur[bi];
+                cur = SubListOf(blk0, path.Count > 1 ? path[1].Slot : null);
+                continue;
+            }
+            var slotName = path[i].Slot;
+            if (i + 1 >= path.Count)
+            {
+                // 最后一层：bi 是 index 之前的位置，直接取 index
+                return index < cur.Count ? cur[index] : null;
+            }
+            if (bi < 0 || bi >= cur.Count) return null;
+            cur = SubListOf(cur[bi], path[i + 1].Slot);
+        }
+        return index < cur.Count ? cur[index] : null;
+    }
+
+    private static List<Block> SubListOf(Block b, string slot)
+    {
+        if (b == null || slot == null) return null;
+        if (slot == "stacks") return b.Stacks ??= new List<Block>();
+        if (slot == "else") return b.ElseStacks ??= new List<Block>();
+        if (slot.StartsWith("branch:"))
+        {
+            int bi = int.Parse(slot.Substring(7));
+            b.Branches ??= new List<List<Block>>();
+            while (b.Branches.Count <= bi) b.Branches.Add(new List<Block>());
+            return b.Branches[bi];
+        }
+        return null;
     }
 
     /// <summary>在整棵树里递归上下移动（支持嵌套在 if / repeat / mode 里的积木）。</summary>

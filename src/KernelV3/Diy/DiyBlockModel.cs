@@ -1342,7 +1342,9 @@ public sealed class DiyBlockDecompiler
         var ws = new CardBlockWorkspace
         {
             CardId = def.CardId,
-            Name = def.Name ?? "",
+            // 优先中文名：CompileFromBlocks 会用 blocks.Name 回写 NameChs，
+            // 这里取英文名的话，去积木端改一个积木就会把中文卡名冲成英文。
+            Name = !string.IsNullOrWhiteSpace(def.NameChs) ? def.NameChs : (def.Name ?? ""),
             Kind = def.Kind.ToString(),
             Cost = def.BaseCost,
             Attack = def.BaseAttack,

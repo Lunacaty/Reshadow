@@ -170,13 +170,33 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     /// </summary>
     private void EnsureInsertList()
     {
-        // 167 §2.2：靠「是否还属于当前树」来判定，
-        // 而不是保存 List<Block> 内存引用（重编译后它指向旧树，成为野指针）。
-        if (_insertList != null && BelongsToTree(_insertList)) return;
-        var root = _ctrl?.RootListOf(_scopeTab);
-        if (root == null) root = ScopeRootFallback();
-        _insertList = root;
-        _ctrl?.SetActiveInsertList(root);
+        var root = _ctrl?.RootListOf(_scopeTab) ?? ScopeRootFallback();
+        if (root == null) return;
+
+        // 插入点还在当前树上、且不是域根（域根只收事件帽）-> 保持不动。
+        // 必须先判 ReferenceEquals(_insertList, root)：BelongsToTree 对旧树引用
+        // 必然返回 false，不判 root 相等的话，每次改属性都会把玩家设的
+        // 插入点（比如 if-else 的否则分支）重置回 Hats 根。
+        if (_insertList != null && !ReferenceEquals(_insertList, root) && BelongsToTree(_insertList))
+            return;
+
+        if (_scopeTab == 5)
+        {
+            // 构筑域本来就是平铺列表，直接用根。
+            _insertList = root;
+        }
+        else if (root.Count > 0 && (root[^1].Opcode ?? "").StartsWith("hat_"))
+        {
+            // 动作积木绝不能落进 Hats 根列表 —— 那里只收事件帽，
+            // 塞进去编译会报「不是事件帽积木」。
+            root[^1].Stacks ??= new List<Block>();
+            _insertList = root[^1].Stacks;
+        }
+        else
+        {
+            _insertList = root;
+        }
+        _ctrl?.SetActiveInsertList(_insertList);
     }
 
 
@@ -1149,7 +1169,9 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         var lbl = new Label { Text = label, CustomMinimumSize = new Vector2(120, 0) };
         lbl.AddThemeFontSizeOverride("font_size", 11);
         row.AddChild(lbl);
-        var spin = new SpinBox { MinValue = 0, MaxValue = 99, Value = value, CustomMinimumSize = new Vector2(90, 0) };
+        // 上限必须能装下卡号：游戏里卡号是 6~8 位数（妖精 90011110），
+        // 写 99 会让卡号一打开就被截断成 99，而且大于 99 的根本敲不进去。
+        var spin = new SpinBox { MinValue = 0, MaxValue = 999999999, Value = value, CustomMinimumSize = new Vector2(130, 0) };
         spin.ValueChanged += v => setter((int)v);
         row.AddChild(spin);
         col.AddChild(row);
@@ -1346,14 +1368,14 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildTargetSlotEditor(col, "使谁变身", b.Target, v => { b.Target = v; Apply(); });
                 // 卡牌一律按**卡 ID**指定，不认卡名 —— 卡名是可变显示文本，
                 // 玩家改了名或换了语言，按名查就查不到，效果静默失效。
-                BuildIntSpin(col, "变成（卡 ID）", b.IntB, v => { b.IntB = v; Apply(); });
+                BuildCardIdPicker(col, "变成", b.IntB, v => { b.IntB = v; Apply(); });
                 break;
 
             // 获得纹章：纹章名 + 授予对象
             case "act_gain_crest":
                 // 纹章是独立实体：卡 ID 非 0 时按 ID 建，否则按 Text 找。
                 // 优先 ID，卡名只作显示。
-                BuildIntSpin(col, "纹章卡 ID", b.IntB, v => { b.IntB = v; Apply(); });
+                BuildCardIdPicker(col, "纹章", b.IntB, v => { b.IntB = v; Apply(); });
                 BuildTextEditor(col, "纹章名（显示用）", b.Text, v => { b.Text = v; Apply(); });
                 BuildEnumCombo(col, "授予对象",
                     new[] { ("Self", "我方"), ("Opponent", "敌方"), ("Any", "双方") },
@@ -1395,7 +1417,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
             case "act_summon":
             case "act_add_hand":
-                BuildIntSpin(col, "卡 ID", b.IntB, v => { b.IntB = v; Apply(); });
+                BuildCardIdPicker(col, "卡牌", b.IntB, v => { b.IntB = v; Apply(); });
                 BuildNumberSlotEditor(col, "数量", b.Number, v => { b.Number = v; Apply(); });
                 break;
 
@@ -1430,7 +1452,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
             default:
                 // 兜底：确实需要手填的少数积木。卡牌一律用卡 ID，不认卡名。
-                BuildIntSpin(col, "卡 ID", b.IntB, v => { b.IntB = v; Apply(); });
+                BuildCardIdPicker(col, "卡牌", b.IntB, v => { b.IntB = v; Apply(); });
                 BuildNumberSlotEditor(col, "数值", b.Number, v => { b.Number = v; Apply(); });
                 break;
         }
@@ -1609,6 +1631,145 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         col.AddChild(row);
     }
 
+
+
+    /// <summary>
+    /// 智能卡牌 ID 选择器（168 验收要求）：
+    ///
+    /// 底层只认卡 ID —— 卡名是可变的显示文本，按名查在改名/换语言后必然失效，
+    /// 而且编译端 DoSpawn / DoTransform 只读 CardId。
+    /// 但交互上允许输入卡号或中/英卡名检索，点选后立刻转成 ID。
+    /// </summary>
+    private void BuildCardIdPicker(VBoxContainer col, string label, int currentId, Action<int> onPicked)
+    {
+        var box = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        box.AddThemeConstantOverride("separation", 4);
+
+        var all = GetSearchableCards();
+        var hit0 = all.FirstOrDefault(c => c.Id == currentId);
+        string title = currentId > 0
+            ? (hit0.Id > 0 ? "#" + hit0.Id + " 《" + hit0.Zh + "》" : "#" + currentId)
+            : "（未指定卡 ID）";
+
+        var head = new Label { Text = label + "：" + title, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        head.AddThemeFontSizeOverride("font_size", 11);
+        head.AddThemeColorOverride("font_color", currentId > 0 ? new Color("6EE7B7") : SvWbTheme.StatusWarn);
+        box.AddChild(head);
+
+        // 直接填卡号
+        var idSpin = new SpinBox
+        {
+            MinValue = 0, MaxValue = 999999999, Value = currentId,
+            CustomMinimumSize = new Vector2(140, 0),
+        };
+        idSpin.ValueChanged += v =>
+        {
+            int id = (int)v;
+            var hit = all.FirstOrDefault(c => c.Id == id);
+            head.Text = label + "：" + (id > 0 ? (hit.Id > 0 ? "#" + hit.Id + " 《" + hit.Zh + "》" : "#" + id) : "（未指定卡 ID）");
+            onPicked(id);
+        };
+        box.AddChild(idSpin);
+
+        // 按卡号 / 中英名检索
+        var search = new LineEdit
+        {
+            PlaceholderText = "🔍 输入卡号或中/英卡名检索…",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        search.AddThemeFontSizeOverride("font_size", 11);
+        box.AddChild(search);
+
+        var list = new ItemList
+        {
+            CustomMinimumSize = new Vector2(0, 110),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        list.AddThemeFontSizeOverride("font_size", 11);
+        box.AddChild(list);
+
+        var filtered = new List<(int Id, string Zh, string En, bool IsToken)>();
+
+        void Populate(string q)
+        {
+            list.Clear();
+            filtered.Clear();
+            string key = (q ?? "").Trim();
+            IEnumerable<(int Id, string Zh, string En, bool IsToken)> src = all;
+            if (key.Length > 0)
+                src = src.Where(c =>
+                    c.Id.ToString().Contains(key, StringComparison.Ordinal) ||
+                    (!string.IsNullOrEmpty(c.Zh) && c.Zh.Contains(key, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(c.En) && c.En.Contains(key, StringComparison.OrdinalIgnoreCase)));
+            foreach (var it in src.Take(40))
+            {
+                filtered.Add(it);
+                string tag = it.IsToken ? " [衍生]" : "";
+                string disp = (!string.IsNullOrEmpty(it.En) && it.Zh != it.En)
+                    ? "#" + it.Id + " " + it.Zh + " (" + it.En + ")" + tag
+                    : "#" + it.Id + " " + it.Zh + tag;
+                int idx = list.AddItem(disp);
+                if (it.Id == currentId) list.Select(idx);
+            }
+        }
+
+        Populate("");
+        search.TextChanged += Populate;
+
+        // 回车：纯数字直接当卡号，否则取第一条匹配
+        search.TextSubmitted += q =>
+        {
+            string t = (q ?? "").Trim().TrimStart('#');
+            if (int.TryParse(t, out int raw) && raw > 0)
+            {
+                idSpin.Value = raw;
+            }
+            else if (filtered.Count > 0)
+            {
+                idSpin.Value = filtered[0].Id;
+            }
+        };
+
+        list.ItemSelected += idx =>
+        {
+            int i = (int)idx;
+            if (i < 0 || i >= filtered.Count) return;
+            var pick = filtered[i];
+            head.Text = label + "：#" + pick.Id + " 《" + pick.Zh + "》";
+            head.AddThemeColorOverride("font_color", new Color("6EE7B7"));
+            idSpin.Value = pick.Id;   // 触发 ValueChanged，统一走一条写入路径
+        };
+
+        col.AddChild(box);
+    }
+
+    /// <summary>可检索卡池：当前卡池 + 全局总表 + 内置衍生 Token，按卡号去重。</summary>
+    private List<(int Id, string Zh, string En, bool IsToken)> GetSearchableCards()
+    {
+        var map = new Dictionary<int, (int Id, string Zh, string En, bool IsToken)>();
+
+        try
+        {
+            foreach (var t in ShadowverseFan.KernelV3.Battle.BattleState.BuiltinTokenDefs)
+                map[t.id] = (t.id, t.name, t.name, true);
+        }
+        catch (Exception) { }
+
+        try
+        {
+            var cards = _ctrl?.Store?.Catalog?.AllCards?.Values;
+            if (cards != null)
+                foreach (var c in cards)
+                {
+                    if (c == null || c.CardId <= 0) continue;
+                    string zh = !string.IsNullOrWhiteSpace(c.NameChs) ? c.NameChs : (c.Name ?? "");
+                    map[c.CardId] = (c.CardId, zh, c.Name ?? "", c.IsToken);
+                }
+        }
+        catch (Exception) { }
+
+        return map.Values.OrderBy(x => x.IsToken ? 0 : 1).ThenBy(x => x.Id).ToList();
+    }
 
     private static void BuildInlineText(VBoxContainer col, string label, string cur, Action<string> setter)
     {
@@ -1830,7 +1991,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildInlineInt(box, "变量槽", cur.IntC, v => { cur.IntC = v; setter(cur); });
             }
             else if (cur.Opcode == "num_counter")
-                BuildEnumCombo(box, "计数器", DiyZh.Counters, cur.Text ?? "pp", v => { cur.Text = v; setter(cur); });
+                // 必须用 AvailableCounters()：只列 DiyZh.Counters 的话，
+                // 卡池里自定义的计数器在「读取」这一侧永远选不到 ——
+                // 能做「使电能+1」，却写不出「若电能 >= 5」。
+                BuildEnumCombo(box, "计数器", AvailableCounters(), cur.Text ?? "pp", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "num_prop")
             {
                 BuildEnumCombo(box, "读取属性", DiyZh.Stats, cur.EnumA ?? "Attack", v => { cur.EnumA = v; setter(cur); });

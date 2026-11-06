@@ -1,0 +1,9 @@
+
+    /// <summary>解析卡种；表单没给或给错时保留原值。</summary>
+    private static ShadowverseFan.KernelV3.Ast.CardKind ParseKindOrKeep(
+        string kind, ShadowverseFan.KernelV3.Ast.CardKind fallback)
+    {
+        if (string.IsNullOrWhiteSpace(kind)) return fallback;
+        return Enum.TryParse<ShadowverseFan.KernelV3.Ast.CardKind>(kind.Trim(), ignoreCase: true, out var k)
+            ? k : fallback;
+    }

@@ -145,6 +145,14 @@ public partial class DiyWorkshopView : Control
             _ctrl.BindPool(poolIds[k]);
             // 卡池换了，目标卡包与可加载卡牌都必须跟着换 ——
             // 留着旧列表会让玩家往新池子里存一个它根本没有的卡包。
+            // 断链 4：切换卡池后积木端必须重建。
+            // RefreshEndpoint 开头有「已有实例就 return」的复用逻辑（为了保住选中态），
+            // 但换卡池时那棵旧树的词条是旧卡池的，必须主动弃掉。
+            if (_blockEditor != null && IsInstanceValid(_blockEditor))
+            {
+                _blockEditor.QueueFree();
+                _blockEditor = null;
+            }
             FillPackPicker();
             FillLoadPicker();
             RefreshAll();
@@ -974,10 +982,55 @@ public partial class DiyWorkshopView : Control
 
     private void OnSave()
     {
-        string packId = _packPicker != null && _packPicker.ItemCount > 0
-            ? _packPicker.GetItemText(_packPicker.Selected) : "testset-v2";
+        // 第 0 项是占位「（选择卡包）」——把它当目录名会写出一个叫
+        // data/packs/（选择卡包）/ 的垃圾包，而玩家以为存进了目标卡包。
+        string packId = _packPicker != null && _packPicker.Selected > 0
+            ? _packPicker.GetItemText(_packPicker.Selected)
+            : _ctrl.LoadedOriginPackId;
 
-        _ctrl.SaveCurrentCardToPack(packId, out string msg);
+        // 从已有卡改出来的，必须问清楚是**改原卡**还是**另存新卡** ——
+        // 不问就默认覆盖，玩家想留个原版时会直接把官方卡改没了。
+        if (_ctrl.IsEditingExistingCard)
+        {
+            var dlg = new AcceptDialog
+            {
+                Title = "选择保存方式",
+                DialogText = "当前卡牌源自已有卡《" + DeckEditorViewModel.DisplayName(_ctrl.CurrentDef)
+                             + "》(#" + _ctrl.LoadedOriginCardId + ")。\n"
+                             + "请选择直接修改这张卡本身，还是另存为一张全新的卡牌：",
+                OkButtonText = "📝 修改原卡本身",
+            };
+            dlg.AddButton("✨ 另存为新卡（分配新 ID）", true, "save_new");
+
+            dlg.Confirmed += () =>
+            {
+                _ctrl.SaveCurrentCardToPackAny(packId, overwriteExisting: true, out string m);
+                FinishSave(m);
+                dlg.QueueFree();
+            };
+            dlg.CustomAction += act =>
+            {
+                if (act == "save_new")
+                {
+                    _ctrl.SaveCurrentCardToPackAny(packId, overwriteExisting: false, out string m);
+                    FinishSave(m);
+                    dlg.Hide();
+                    dlg.QueueFree();
+                }
+            };
+            dlg.Canceled += () => dlg.QueueFree();
+            AddChild(dlg);
+            dlg.PopupCentered();
+            return;
+        }
+
+        _ctrl.SaveCurrentCardToPackAny(packId, overwriteExisting: true, out string msg);
+        FinishSave(msg);
+    }
+
+    private void FinishSave(string msg)
+    {
+        FillLoadPicker();
         _statusLabel.Text = msg;
         _statusLabel.AddThemeColorOverride("font_color", SvWbTheme.StatusValid);
     }

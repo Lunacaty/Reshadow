@@ -207,9 +207,25 @@ public partial class PackAndPoolManagerView : Control
         exportBtn.Pressed += () =>
         {
             if (string.IsNullOrEmpty(_selectedPoolId)) { _ruleStatus.Text = "请先选择一个卡池"; return; }
-            string path = Path.Combine(OS.GetUserDataDir(), _selectedPoolId + ".poolbundle.json");
-            bool ok = _store.ExportPoolBundleToFile(_selectedPoolId, path, out string m);
-            _ruleStatus.Text = (ok ? "✔ " : "✘ ") + m + (ok ? " -> " + path : "");
+            // 必须让玩家自己选路径：写死到 UserDataDir 的隐藏文件，
+            // 他既不知道文件在哪，也没法直接发给别人。
+            var dlg = new FileDialog
+            {
+                FileMode = FileDialog.FileModeEnum.SaveFile,
+                Access = FileDialog.AccessEnum.Filesystem,
+                Title = "导出卡池整合包",
+                CurrentFile = _selectedPoolId + ".poolbundle.json",
+            };
+            dlg.AddFilter("*.json", "卡池整合包 JSON");
+            dlg.FileSelected += path =>
+            {
+                bool ok = _store.ExportPoolBundleToFile(_selectedPoolId, path, out string m);
+                _ruleStatus.Text = (ok ? "✔ " : "✘ ") + m + (ok ? " -> " + path : "");
+                dlg.QueueFree();
+            };
+            dlg.Canceled += () => dlg.QueueFree();
+            AddChild(dlg);
+            dlg.PopupCentered(new Vector2I(760, 520));
         };
         ruleBar.AddChild(exportBtn);
 
@@ -218,11 +234,27 @@ public partial class PackAndPoolManagerView : Control
         importBtn.AddThemeFontSizeOverride("font_size", 11);
         importBtn.Pressed += () =>
         {
-            string path = Path.Combine(OS.GetUserDataDir(), "import.poolbundle.json");
-            if (!File.Exists(path)) { _ruleStatus.Text = "把整合包放到：" + path; return; }
-            bool ok = _store.ImportPoolBundleFromFile(path, out string m);
-            _ruleStatus.Text = (ok ? "✔ " : "✘ ") + m;
-            if (ok) { RefreshPacks(); RefreshPoolClans(); RefreshPoolCounters(); RefreshNamedDecks(); }
+            var dlg = new FileDialog
+            {
+                FileMode = FileDialog.FileModeEnum.OpenFile,
+                Access = FileDialog.AccessEnum.Filesystem,
+                Title = "导入卡池整合包",
+            };
+            dlg.AddFilter("*.json", "卡池整合包 JSON");
+            dlg.FileSelected += path =>
+            {
+                bool ok = _store.ImportPoolBundleFromFile(path, out string m);
+                _ruleStatus.Text = (ok ? "✔ " : "✘ ") + m;
+                if (ok)
+                {
+                    RefreshPacks(); RefreshRules(); RefreshNamedDecks();
+                    RefreshPoolClans(); RefreshPoolCounters();
+                }
+                dlg.QueueFree();
+            };
+            dlg.Canceled += () => dlg.QueueFree();
+            AddChild(dlg);
+            dlg.PopupCentered(new Vector2I(760, 520));
         };
         ruleBar.AddChild(importBtn);
 
@@ -628,8 +660,20 @@ public partial class PackAndPoolManagerView : Control
         {
             string zh = edit.Text?.Trim();
             if (string.IsNullOrEmpty(zh)) return;
+
+            // 必须写进 .pool.json 的 pool_clan_names：
+            // 只加内存 Glossary 的话，下一次 Reload 重建 Catalog 就没了，
+            // 玩家看到「机甲」瞬间变回「Mecha」。
+            if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var latest)) return;
+            var names = new Dictionary<string, string>(latest.PoolClanNames ?? new Dictionary<string, string>())
+            {
+                [clanName] = zh,
+            };
+            _store.SavePoolConfigFull(latest.PoolId, latest.Name, latest.EnabledPackIds, latest.Rules,
+                                     latest.NamedDecks, out string m, latest.PoolClans,
+                                     latest.LeaderCounters, names);
             _store.Catalog.Glossary.Add(clanName, zh);
-            _ruleStatus.Text = "已更新职业【" + clanName + "】的显示名为「" + zh + "」";
+            _ruleStatus.Text = "已更新职业【" + clanName + "】的显示名为「" + zh + "」" + (string.IsNullOrEmpty(m) ? "" : "（" + m + "）");
             RefreshPoolClans();
         };
         dlg.Canceled += () => dlg.QueueFree();

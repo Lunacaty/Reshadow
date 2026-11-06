@@ -137,6 +137,11 @@ public sealed class GameSessionStore
                 if (string.IsNullOrWhiteSpace(cn)) continue;
                 Catalog.Schema.Clan(cn, cfg.PoolId);
                 Catalog.Lexicon.AddClan(cn);
+                // 把落盘的中文显示名注回 Glossary：不注的话重启后
+                // 「机甲」会变回「Mecha」，而玩家明明保存过。
+                if (cfg.PoolClanNames != null && cfg.PoolClanNames.TryGetValue(cn, out var zh) &&
+                    !string.IsNullOrWhiteSpace(zh))
+                    Catalog.Glossary.Add(cn, zh);
             }
             foreach (var ctr in cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>())
             {
@@ -588,6 +593,13 @@ public sealed class GameSessionStore
         // 卡池级职业与主战者计数器（165 专题二断链 A）。
         // 不写回的话，界面上勾选的职业与新增的计数器在下一次重载时全部丢失。
         sb.Append("  \"pool_clans\": ").Append(JsonArr(cfg.PoolClans ?? new List<string>())).Append(",\n");
+        // 自定义职业的中文显示名。不落盘的话，下次启动「机甲」会变回「Mecha」。
+        sb.Append("  \"pool_clan_names\": {");
+        var cnNames = cfg.PoolClanNames ?? new Dictionary<string, string>();
+        sb.Append(string.Join(", ", cnNames.Select(kv =>
+            "\"" + kv.Key.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\": \""
+            + (kv.Value ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"")));
+        sb.Append("},\n");
         sb.Append("  \"leader_counters\": [\n");
         var ctrs = (cfg.LeaderCounters ?? new List<ShadowverseFan.KernelV3.Packs.PoolCounterDef>())
             .Where(x => x != null && !x.IsBuiltin).ToList();
@@ -722,6 +734,21 @@ public sealed class GameSessionStore
         };
 
         File.WriteAllText(packFile, SerializePacket(pack), new UTF8Encoding(false));
+
+        // 断链 1（168 验收）：新包必须自动进原生卡池的启用列表。
+        //
+        // CardPoolBuilder 有一条铁律：某卡包的 NativePoolId 指向本卡池、
+        // 但 enabled_packs 里没有它，就**直接拒绝构建整个卡池**。
+        // 所以只写 pack.json 不勾启用，下一次 Reload 会把那座卡池整个炸掉，
+        // 表现为「新建空卡包后卡池消失了」。
+        if (PoolConfigs.TryGetValue(pack.NativePoolId, out var nativeCfg) &&
+            !nativeCfg.EnabledPackIds.Any(x => string.Equals(x, packId, StringComparison.OrdinalIgnoreCase)))
+        {
+            nativeCfg.EnabledPackIds.Add(packId);
+            SavePoolRules(nativeCfg.PoolId, nativeCfg.Rules, out _);
+            PoolConfigs[packId] = nativeCfg;
+        }
+
         ReloadCatalogAndPools();
         message = existing == null ? $"已新建空白卡包 [{packId}]" : $"已更新卡包 [{packId}] 信息";
         return true;
@@ -771,7 +798,8 @@ public sealed class GameSessionStore
     public bool SavePoolConfigFull(
         string poolId, string poolName, List<string> enabledPacks,
         MatchRules rules, List<NamedDeckRawDef> namedDecks, out string message,
-        List<string> poolClans = null, List<ShadowverseFan.KernelV3.Packs.PoolCounterDef> leaderCounters = null)
+        List<string> poolClans = null, List<ShadowverseFan.KernelV3.Packs.PoolCounterDef> leaderCounters = null,
+        Dictionary<string, string> poolClanNames = null)
     {
         message = "";
         if (string.IsNullOrWhiteSpace(poolId)) { message = "卡池 ID 不能为空"; return false; }
@@ -789,6 +817,7 @@ public sealed class GameSessionStore
             // 不传就沿用已有值：只改规则的调用方不该把它们抹掉。
             PoolClans = poolClans ?? (PoolConfigs.TryGetValue(poolId, out var prev) ? prev.PoolClans : new List<string>()),
             LeaderCounters = leaderCounters ?? (PoolConfigs.TryGetValue(poolId, out var prev2) ? prev2.LeaderCounters : new List<ShadowverseFan.KernelV3.Packs.PoolCounterDef>()),
+            PoolClanNames = poolClanNames ?? (PoolConfigs.TryGetValue(poolId, out var prev3) ? prev3.PoolClanNames : new Dictionary<string, string>()),
         };
         PoolConfigs[poolId] = updated;
         return SavePoolRules(poolId, updated.Rules, out message);

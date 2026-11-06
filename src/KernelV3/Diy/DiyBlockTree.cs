@@ -88,9 +88,11 @@ public static class DiyBlockTree
                 return new Block { Opcode = opcode, Number = ConstNum(1) };
             case "act_summon":
             case "act_add_hand":
-                return new Block { Opcode = opcode, Text = "Fairy", Number = ConstNum(1) };
+                // 默认给一个真实卡号（妖精 90011110）：只填卡名的话编译出的 CardId=0，
+                // 打出去召唤的是个白板空壳，而卡面看起来完全正常。
+                return new Block { Opcode = opcode, IntB = 90011110, Number = ConstNum(1) };
             case "act_gain_crest":
-                return new Block { Opcode = opcode, Text = "Aria, Lady of the Woods", EnumA = "Self" };
+                return new Block { Opcode = opcode, IntB = 90011110, Text = "Aria, Lady of the Woods", EnumA = "Self" };
             case "act_copy":
                 return new Block
                 {
