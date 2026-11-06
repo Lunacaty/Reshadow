@@ -420,7 +420,10 @@ public sealed partial class CardVm
         // 硬猜「目标的对手」在 2v2 / 自伤 / 队友增益时全错，
         // 而 scope.Controller 就是这一次能力结算的真正发起方。
         int srcPlayer = scope?.Controller ?? (t.PlayerId == 0 ? 1 : 0);
-        _world.ApplyDamage(t, amount, srcPlayer);
+        // IsAbility 必须贯通到伤害管线："不受战斗伤害" / "不受能力伤害" 等免疫
+        // 按来源精确拦截，丢掉它会让两种伤害被同等对待。
+        _world.ApplyDamage(t, amount, srcPlayer,
+            isAbility ? Ast.DamageSourceMask.Ability : Ast.DamageSourceMask.Combat);
     }
 
     private bool DoRestore(RestoreLifeNode n, VmFrame frame)
@@ -478,6 +481,12 @@ public sealed partial class CardVm
             int atk = n.Attack != null ? _eval.EvalNum(n.Attack, itemScope) : 0;
             int life = n.Life != null ? _eval.EvalNum(n.Life, itemScope) : 0;
 
+            // Set 型必须在改之前抓原值快照 —— 撤销时是按原值还原，不是减增量。
+            bool isSet = n.Op == StatModOp.Set;
+            int prevAtk = isSet && n.Attack != null ? t.Attack : 0;
+            int prevLife = isSet && n.Life != null ? t.Life : 0;
+            int prevMax = isSet && n.Life != null ? t.MaxLife : 0;
+
             switch (n.Op)
             {
                 case StatModOp.Add:
@@ -507,13 +516,18 @@ public sealed partial class CardVm
                     break;
             }
 
-            // 限时修正必须登记，否则回合结束时无从撤销（会永久生效）
+            // 限时修正必须登记，否则回合结束时无从撤销（会永久生效）。
+            // Set 型登记原值快照（到期还原），Add 型登记增量（到期减回去）。
             if (n.Duration != DurationKind.Permanent)
                 t.TempModifiers.Add(new TemporaryModifier
                 {
                     Duration = n.Duration,
-                    Attack = n.Op == StatModOp.Set ? 0 : atk,
-                    Life = n.Op == StatModOp.Set ? 0 : life,
+                    Attack = isSet ? prevAtk : atk,
+                    Life = isSet ? prevLife : life,
+                    IsStatSet = isSet,
+                    SetAttack = isSet && n.Attack != null,
+                    SetLife = isSet && n.Life != null,
+                    PrevMaxLife = prevMax,
                 });
         }
         return false;
@@ -628,7 +642,8 @@ public sealed partial class CardVm
                 {
                     CounterOp.Add => curE + delta,
                     CounterOp.Set => delta,
-                    CounterOp.Fill => delta,
+                    // Fill = 填到至少 delta（不足才补，已超过不动），不是 Set。
+                    CounterOp.Fill => Math.Max(curE, delta),
                     _ => curE,
                 };
                 _world.WriteEntityCounter(e, n.Counter, nextE);
@@ -676,7 +691,8 @@ public sealed partial class CardVm
                 {
                     CounterOp.Add => curE + delta,
                     CounterOp.Set => delta,
-                    CounterOp.Fill => delta,
+                    // Fill = 填到至少 delta（不足才补，已超过不动），不是 Set。
+                    CounterOp.Fill => Math.Max(curE, delta),
                     _ => curE,
                 };
                 srcLive.Counters[n.Counter] = nextE;
@@ -696,7 +712,8 @@ public sealed partial class CardVm
         {
             CounterOp.Add => cur + delta,
             CounterOp.Set => delta,
-            CounterOp.Fill => delta,
+            // Fill = 填到至少 delta，不是 Set。
+            CounterOp.Fill => Math.Max(cur, delta),
             _ => cur,
         };
         int owner = scope.ResolvePlayer(n.Owner);

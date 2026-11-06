@@ -91,7 +91,9 @@ public interface IVmWorld
     /// <summary>破坏（进墓场 + 触发 OnDestroy + 墓场 +1）。与 MoveEntity 不同，后者只移动不触发。</summary>
     void DestroyEntity(RuntimeEntity e);
     /// <summary>统一伤害管线（屏障 / 超进化免伤 / 伤害上限）。能力伤害必须走这里，不能直接扣血。</summary>
-    void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId);
+    /// <param name="source">伤害来源（战斗 / 能力）—— 「不受战斗伤害」「不受能力伤害」等免疫按它精确拦截。</param>
+    void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId,
+                     Ast.DamageSourceMask source = Ast.DamageSourceMask.Ability);
 
     /// <summary>把实体移出游戏（破坏 / 放逐后的最终去向）。</summary>
     void RemoveEntity(RuntimeEntity e);

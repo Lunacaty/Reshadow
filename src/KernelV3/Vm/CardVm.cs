@@ -620,15 +620,24 @@ public sealed partial class CardVm
                     AddCandidate(byEntity, e, ab);
             }
 
-            // 挂在资源计数器上的能力（信仰等）。
+            // 挂在资源计数器上的能力（信仰、线索等）。
             // 例："give your faith 'Whenever an allied follower evolves, deal 1 damage'"。
-            // 它们不属于任何卡，之前没有扫描，所以信仰掉上的被动永远不触发。
-            if (e.IsFaith && e.FaithOwner >= 0)
+            // 它们不属于任何卡，之前没有扫描，所以挂上的被动永远不触发。
+            //
+            // 按计数器名匹配，不再硬编码 faith：挂在线索（clues）等其它计数器上的
+            // 能力原本永远收不到触发。持有者可能是信仰实体（IsFaith，归属 FaithOwner）
+            // 或普通计数器实体（如线索护符，归属 PlayerId）。
+            int holderPid = e.IsFaith ? e.FaithOwner : e.PlayerId;
+            if (holderPid >= 0)
             {
                 foreach (var (pid, ctr, cab) in _world.GrantedCounterAbilities)
                 {
-                    if (pid != e.FaithOwner) continue;
-                    if (ctr.Name != "faith") continue;
+                    if (pid != holderPid) continue;
+                    // 信仰实体按定义持有 faith（哪怕还没写过值，Counters 里可能还没有它）；
+                    // 其它计数器实体（线索护符等）按自身 Counters 匹配。
+                    bool holds = e.IsFaith ? ctr.Name == "faith"
+                                             : e.Counters.ContainsKey(ctr);
+                    if (!holds) continue;
                     AddCandidate(byEntity, e, cab);
                 }
             }

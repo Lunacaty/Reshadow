@@ -328,4 +328,16 @@ public sealed class TemporaryModifier
     public Core.SymbolId<Core.CounterTag> Counter { get; init; }
     public int CounterDelta { get; init; }
     public bool IsCounterMod { get; init; }
+
+    // ---- 以下只用于「设为某值」型的限时攻防修正 ----
+    // Add 型存增量（到期减回去）；Set 型存改之前的原值（到期还原）。
+    // 混用会让限时 Set 在回合结束时被减 0 = 永久生效。
+    /// <summary>这条修正是 Set 型（到期还原原值，而不是减增量）。</summary>
+    public bool IsStatSet { get; init; }
+    /// <summary>Set 型：攻击是否被改过（false = 没改，到期不还原）。</summary>
+    public bool SetAttack { get; init; }
+    /// <summary>Set 型：生命是否被改过。</summary>
+    public bool SetLife { get; init; }
+    /// <summary>Set 型：改之前的生命上限（Life 被改时同步还原）。</summary>
+    public int PrevMaxLife { get; init; }
 }

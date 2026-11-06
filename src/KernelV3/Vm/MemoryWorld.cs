@@ -179,7 +179,9 @@ public sealed class MemoryWorld : IVmWorld
     public void RemoveEntity(RuntimeEntity e) => _entities.Remove(e);
 
     /// <summary>统一伤害管线：屏障先吸收，再扣血。</summary>
-    public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId)
+    /// <param name="source">伤害来源。内存世界只实现屏障/扣血，不分战斗/能力来源。</param>
+    public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId,
+                            DamageSourceMask source = DamageSourceMask.Ability)
     {
         if (target == null || amount <= 0) return;
         var barrier = Schema.Keyword("barrier");

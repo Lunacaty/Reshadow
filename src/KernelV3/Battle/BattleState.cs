@@ -1738,7 +1738,8 @@ public sealed class BattleState : IVmWorld
     }
 
     /// <summary>结算「造成伤害」侧的修正。currentTarget 用于找出伤害来源实体。</summary>
-    public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId)
+    public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId,
+                            Ast.DamageSourceMask source = Ast.DamageSourceMask.Ability)
     {
         if (target == null || amount <= 0) return;
 
@@ -1750,7 +1751,7 @@ public sealed class BattleState : IVmWorld
         // 是让 CombatResolver 改走 _state.EmitEvent —— 已经做了。
         // 之后再补发就是双发：界面上叠两个伤害数字，
         // 所有「受到伤害时」的能力也会触发两次。
-        new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId);
+        new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId, source: source);
     }
 
     public int ApplyDealtModifiers(int sourcePlayerId, RuntimeEntity sourceEntity,
@@ -2492,11 +2493,21 @@ public sealed class BattleState : IVmWorld
             }
             else if (!m.IsCounterMod)
             {
-                e.Attack -= m.Attack;
-                e.Life -= m.Life;
-                // 上限必须同步扣回：DoModifyStats 加临时 +2/+2 时把 MaxLife 也加了 2，
-                // 到期只减 Life 会留下「2/2 但 MaxLife=4」—— 被永久误判成已受伤。
-                if (m.Life > 0) e.MaxLife = Math.Max(e.Life, e.MaxLife - m.Life);
+                if (m.IsStatSet)
+                {
+                    // Set 型：还原改之前的原值（只还原被改过的那一项）。
+                    // 早先把 Set 的 Attack/Life 记成 0，这里减 0 —— 限时 Set 永久生效。
+                    if (m.SetAttack) e.Attack = m.Attack;
+                    if (m.SetLife) { e.Life = m.Life; e.MaxLife = m.PrevMaxLife; }
+                }
+                else
+                {
+                    e.Attack -= m.Attack;
+                    e.Life -= m.Life;
+                    // 上限必须同步扣回：DoModifyStats 加临时 +2/+2 时把 MaxLife 也加了 2，
+                    // 到期只减 Life 会留下「2/2 但 MaxLife=4」—— 被永久误判成已受伤。
+                    if (m.Life > 0) e.MaxLife = Math.Max(e.Life, e.MaxLife - m.Life);
+                }
             }
 
             e.TempModifiers.RemoveAt(i);

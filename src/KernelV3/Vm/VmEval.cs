@@ -181,8 +181,10 @@ public sealed class VmEval
             {
                 var t = e.Of ?? TargetSpec.Self;
                 // 同 Count：先归一化 <Kind>，否则卡种过滤读的是事件源。
-                var ents = Resolve(CardVm.NormalizeZoneWhere(t), scope);
-                var groups = ents.GroupBy(x => x.Cost).Select(g => g.Count()).ToList();
+                // 并且走引用池（含已离场的历史卡），与 Count/Sum 口径一致；
+                // 早先走活体池，跨回合的「同费卡分组」统计会漏掉已离场的卡。
+                var refs = ResolveRef(CardVm.NormalizeZoneWhere(t), scope);
+                var groups = refs.GroupBy(r => RefStat(r, StatKey.Cost)).Select(g => g.Count()).ToList();
                 return groups.Count > 0 ? groups.Max() : 0;
             }
 
