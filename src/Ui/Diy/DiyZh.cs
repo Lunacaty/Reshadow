@@ -55,6 +55,14 @@ public static class DiyZh
         ("$opposing", "交战敌方随从"),
     };
 
+    /// <summary>
+    /// 区域词表。**顺序必须与 ZoneCode 完全一致**。
+    ///
+    /// 早先这里按「战场/手牌/牌组/墓场/放逐/额外区/纹章区/主战者」排，
+    /// 而 ZoneCode 是 Leader=5 / CrestArea=6 / ExArea=7 ——
+    /// 玩家选「额外区」实际编译成「主战者」，选「主战者」编成「额外区」，
+    /// 而且界面上看不出任何异常。改这里之前先看 ZoneCode。
+    /// </summary>
     public static readonly (string Key, string Zh)[] Zones =
     {
         ("Board", "战场"),
@@ -62,9 +70,11 @@ public static class DiyZh
         ("Deck", "牌组"),
         ("Cemetery", "墓场"),
         ("Banished", "放逐区"),
-        ("ExArea", "额外区"),
-        ("CrestArea", "纹章区"),
         ("Leader", "主战者"),
+        ("CrestArea", "纹章区"),
+        ("ExArea", "额外区"),
+        ("CardPool", "当前卡池"),
+        ("GlobalPool", "全部卡池"),
     };
 
     public static readonly (string Key, string Zh)[] Owners =
@@ -113,10 +123,20 @@ public static class DiyZh
         ("intimidate", "威吓"),
     };
 
+    /// <summary>
+    /// 内置计数器词表。
+    ///
+    /// 这份表只是「常用项」，真正的全集在 GameSchema.Counters.All ——
+    /// 检视器会把两者合并，所以玩家在卡池里自定义的计数器也能选到。
+    /// 漏项的表现是「想选某个计数器，下拉框里根本没有」。
+    /// </summary>
     public static readonly (string Key, string Zh)[] Counters =
     {
         ("pp", "能量点"),
         ("pp_at_play", "打出时能量点"),
+        ("max_pp", "最大能量点"),
+        ("ep", "进化点"),
+        ("sep", "超进化点"),
         ("combo", "连击数"),
         ("rally", "协作数"),
         ("shadow", "墓场数"),
@@ -125,6 +145,13 @@ public static class DiyZh
         ("earth_sigil", "土之印"),
         ("clues", "线索"),
         ("wrath", "血怒"),
+        ("crest", "纹章数"),
+        ("countdown", "倒计数"),
+        ("spellboost", "魔力增幅"),
+        ("skybound_gauge", "奥义值"),
+        ("mode_count", "可选模式数"),
+        ("cards_returned_to_hand", "本回合返回手牌数"),
+        ("fuse_kinds", "融合种类数"),
     };
 
     /// <summary>可读属性。顺序与 StatKey 的重要程度对齐；
@@ -161,7 +188,7 @@ public static class DiyZh
     {
         ("Add", "增减"),
         ("Set", "设为"),
-        ("Half", "减半"),
+        ("Halve", "减半"),
     };
 
     public static readonly (string Key, string Zh)[] KeywordOps =
@@ -170,11 +197,18 @@ public static class DiyZh
         ("Remove", "移除"),
     };
 
+    /// <summary>
+    /// 持续时间。键必须与 DurationKind 枚举逐字一致 ——
+    /// 早先写的是 NextTurn，而枚举里叫 UntilEndOfOpponentTurn，
+    /// Enum.TryParse 失败后静默回落成 Permanent，
+    /// 于是「本回合 +2/+2」变成「永久 +2/+2」。
+    /// </summary>
     public static readonly (string Key, string Zh)[] Durations =
     {
         ("Permanent", "永久"),
         ("ThisTurn", "本回合"),
-        ("NextTurn", "下回合"),
+        ("UntilEndOfOpponentTurn", "直到敌方回合结束"),
+        ("ThisMatch", "本局对战"),
     };
 
     public static readonly (string Key, string Zh)[] DamageAuraKinds =

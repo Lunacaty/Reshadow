@@ -73,7 +73,7 @@ public static class DeckRuleResolver
         profile.StartingHandSize = baseRules.StartingHandSize;
 
         if (!string.IsNullOrWhiteSpace(deck.LeaderClan)) profile.AllowedClans.Add(deck.LeaderClan.Trim());
-        profile.AllowedClans.Add("Neutral");
+        profile.AllowedClans.Add("中立");
 
         var triggeredGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

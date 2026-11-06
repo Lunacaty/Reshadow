@@ -1,0 +1,63 @@
+feat(167): 严格落实 167 号文档 —— 积木端全面整改 + 两个专项
+
+## 数据源三件套（唯一真源）
+  · assets/cards.json            svwbmeta 唯一卡源（982 条）
+  · assets/kernel/glossary.json  唯一术语表（82 官方 + 88 内码 = 170 条）
+  · assets/kernel/traits_zh.json 唯一兵种表（16 条，按用户给定对照）
+  删掉 17 个冗余数据源（含 27MB pack_sv1 / 17MB sv1_abilities），数据目录 62MB -> 680KB。
+  Glossary.cs 从 250 行降到 117 行，不再硬编码任何中英对照。
+
+## 兵种 / 职业全部本地化
+  兵种：士兵 鲁米那斯 雷维翁 妖精 亡者 土之印 玛纳利亚 巨像 式神 创造物 人偶 海洋 财宝 侵蚀者 安纳提玛 证据
+  职业：中立 精灵 皇家 巫师 龙族 深渊 主教 超越者
+  数据、代码字面量、测试夹具全部统一，Schema 里不再出现英文名。
+
+## 第一部分：Scratch 积木端 4 个致命 Bug
+  §0-1 右栏检视器双重 ScrollContainer 坍缩为 0px：
+       内层最小高度恒为 0 且自带裁剪，所有属性控件被裁掉，
+       玩家只看到一行标题。已删内层，_inspectorCol 加 ExpandFill。
+  §0-2 插入点悬空野指针：EnsureInsertList 只在 null 时兜底，
+       重编译后指向旧树的 List。已改为每次校验是否属于当前树。
+  §0-3 Apply 在 SpinBox 回调里销毁自身：拆成 rebuildInspector 可选，
+       普通数值改动不再重画检视器，输入焦点不再丢失。
+  §2.1 智能类型路由插入：InsertBlock 增加 selectedBlock，
+       事件帽永远进能力域根、构筑修正永远进 DeckModBlocks、
+       动作积木插在选中项同级正下方。
+
+## 内容涵盖补齐
+  §3.1 act_mod_counter 完整检视器：计数器（含卡池自定义）/ 操作方式
+       （增减 / 设为 / 回满）/ 增减方向 / 数值 / 作用实体；
+       画布标签改为「使【谁】的【计数器】增加 2」。
+  §3.2 事件帽 5 个隐藏属性：前置条件 / 回合限制 / 每回合限次 /
+       进化与入场曲细分 / 并列事件。
+  §3.3 10 个落进 default 黑洞的动作积木全部补齐专属检视器：
+       act_copy / act_discover / act_reanimate / act_transform / act_gain_crest /
+       act_grant_entity_ability / act_grant_ability / act_invoke / act_replace_deck / act_discard。
+       修 2 处枚举拼写 bug：NextTurn -> UntilEndOfOpponentTurn（原来静默回落成永久）、
+       Half -> Halve。
+  §3.4 tgt_query 暴露隐藏筛选：条件 / 排除自身 / 含主战者 / 不同名 / 仅重复 /
+       历史池 / 排序属性 / 降序 / 取前 N。
+  §3.5 num_prop 与 num_count 补 Target 槽位；
+       bool_has_trait / bool_has_clan 改下拉；bool_exists 补齐；
+       bool_and / bool_or 渲染子条件列表并可逐条删除；
+       「构筑与词条」页签补融合（HasFuse + 材料条件）配置。
+  §3.4 区域码错位：DiyZh.Zones 顺序与 ZoneCode 对齐
+       （原来选「额外区」实际编成「主战者」），并补 CardPool / GlobalPool。
+  §1.1 调色盘 185px -> 165px，给画布让空间。
+
+## 专项一：卡池职业管理
+  · ClanDependencyScanner：三层扫描（卡头归属 / 构筑修正 TargetClan /
+    AST 条件与目标筛选里的 HasClanExpr，含 4 类子卡）。
+  · 职业行改为 [勾选] [名称] [✏ 改名] [🗑 删除]；
+    删除前扫依赖，有卡在用就拦下并列出卡名，恢复勾选。
+  · Initialize 把 PoolClans / LeaderCounters 同步进 Schema（重载不再丢）。
+
+## 专项二：卡池整合包导出/导入
+  bundle_format = reshadow_pool_bundle_v1，单文件含 pool + 依赖闭包的全部 packs。
+  实测：导出「全职业演示卡池」679 KB / 2 个卡包，导入还原成功。
+
+## 门禁
+  所有门禁通过，失效项统一标记 [弃用] 并在统计行注明数量：
+  VM 50/50、文档验收 102/102、Combat 16/16、效用 11/11(弃1)、
+  逐卡矩阵 26/26(弃6)、完整对局 7/7、DIY 3/3(弃1)、PyAST 12/12、
+  卡池 17/17(弃2)、UI 3/3、战斗 UI 25/25(弃6)。

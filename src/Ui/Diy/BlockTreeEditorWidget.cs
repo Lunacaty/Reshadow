@@ -147,7 +147,13 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         SvWbTheme.StyleScroll(inspScroll);
         inspectorPanel.AddChild(inspScroll);
 
-        _inspectorCol = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _inspectorCol = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            // 必须纵向填满：外层 ScrollContainer 按最小尺寸定高，
+            // 不给 ExpandFill 的话内容会被压扁到看不见。
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        };
         _inspectorCol.AddThemeConstantOverride("separation", 4);
         inspScroll.AddChild(_inspectorCol);
 
@@ -155,13 +161,49 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         RedrawInspector();
     }
 
+    /// <summary>
+    /// 确认插入点指向**当前这棵树**上的列表。
+    ///
+    /// 不能只在 null 时兜底：CompileFromBlocks 会整棵重建 BlockModel，
+    /// 旧树的 List<Block> 就成了野指针，再往里加积木玩家什么也看不到。
+    /// 所以每次都要校验它是否还属于当前树，不属于就重新定位。
+    /// </summary>
     private void EnsureInsertList()
     {
-        if (_insertList != null) return;
+        if (_insertList != null && BelongsToTree(_insertList)) return;
         var root = _ctrl?.RootListOf(_scopeTab);
         if (root == null) root = ScopeRootFallback();
         _insertList = root;
         _ctrl?.SetActiveInsertList(root);
+    }
+
+    /// <summary>这个列表还是当前树的一部分吗（防止重编译后的野指针）。</summary>
+    private bool BelongsToTree(List<Block> list)
+    {
+        if (list == null || _ws == null) return false;
+        return ContainsList(_ws, list);
+    }
+
+    private static bool ContainsList(CardBlockWorkspace ws, List<Block> target)
+    {
+        if (ws == null || target == null) return false;
+        bool hit = false;
+        void Walk(List<Block> lst)
+        {
+            if (hit || lst == null) return;
+            if (ReferenceEquals(lst, target)) { hit = true; return; }
+            foreach (var b in lst) WalkBlock(b);
+        }
+        void WalkBlock(Block b)
+        {
+            if (hit || b == null) return;
+            Walk(b.Stacks);
+            Walk(b.ElseStacks);
+            if (b.Branches != null) foreach (var br in b.Branches) Walk(br);
+        }
+        Walk(ws.Hats); Walk(ws.CrestHats); Walk(ws.FaithHats);
+        Walk(ws.AccelerateHats); Walk(ws.CrystallizeHats); Walk(ws.DeckModBlocks);
+        return hit;
     }
 
     private List<Block> ScopeRootFallback() => _scopeTab switch
@@ -485,6 +527,35 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         title.AddThemeColorOverride("font_color", new Color("FDE68A"));
         col.AddChild(title);
 
+        // 167 §3.5：融合配置。HasFuse 是编译器认的字段，
+        // 但积木端从来不给入口 —— 一张融合卡在积木端等于做不出来。
+        {
+            var fuseBox = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            fuseBox.AddThemeConstantOverride("separation", 4);
+            var fuseTitle = new Label { Text = "融合（Fuse）" };
+            fuseTitle.AddThemeFontSizeOverride("font_size", 13);
+            fuseTitle.AddThemeColorOverride("font_color", new Color("FDE68A"));
+            fuseBox.AddChild(fuseTitle);
+
+            BuildBoolCheck(fuseBox, "启用【融合】", _ws?.HasFuse == true, v =>
+            {
+                if (_ws == null || _ctrl == null) return;
+                _ws.HasFuse = v;
+                _ctrl.CompileFromBlocks(_ws);
+                _ws = _ctrl.BlockModel ?? _ws;
+                Refresh();
+            });
+            if (_ws?.HasFuse == true)
+                BuildTargetSlotEditor(fuseBox, "融合材料条件", _ws.FuseFilter, v =>
+                {
+                    if (_ws == null || _ctrl == null) return;
+                    _ws.FuseFilter = v;
+                    _ctrl.CompileFromBlocks(_ws);
+                    _ws = _ctrl.BlockModel ?? _ws;
+                });
+            col.AddChild(fuseBox);
+        }
+
         foreach (var (key, zh) in DiyZh.Keywords)
         {
             bool isParam = IsParameterizedKw(key);
@@ -542,7 +613,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     }
     private Control BuildPaletteColumn()
     {
-        var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(185, 0), SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        // 167 §1.1：调色盘收窄到 165px，把空间让给中间画布。
+        // 原来 185 + 检视器 265 一起吃掉了右半屏，画布只剩 400 出头，
+        // 嵌套两层 if/else 后文字全变成「▸ 对【敌方...」。
+        var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(165, 0), SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         SvWbTheme.StyleScroll(scroll);
         var col = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         col.AddThemeConstantOverride("separation", 3);
@@ -596,7 +670,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     {
         if (_ctrl == null) return;
         EnsureInsertList();
-        if (!_ctrl.InsertBlock(opcode, _scopeTab)) return;
+        // 把当前选中传下去：动作积木会插在它同级正下方，连续点击就能一路往下搭。
+        if (!_ctrl.InsertBlock(opcode, _scopeTab, _selected)) return;
         _ws = _ctrl.BlockModel;
         Refresh();
     }
@@ -967,12 +1042,15 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             return;
         }
 
-        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
-        SvWbTheme.StyleScroll(scroll);
+        // 不要再套一层 ScrollContainer！
+        //
+        // 外层 inspScroll 会按子节点的**最小尺寸**给 _inspectorCol 定高，
+        // 而内层 ScrollContainer 的最小高度恒为 0 且自带裁剪 ——
+        // 结果内层高度永远是 0px，下面所有下拉框/数值框全被裁掉，
+        // 玩家只看到一行标题，什么都改不了。
         var col = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         col.AddThemeConstantOverride("separation", 5);
-        scroll.AddChild(col);
-        _inspectorCol.AddChild(scroll);
+        _inspectorCol.AddChild(col);
 
         // 按 opcode 定制：每种积木只渲染它自己真正拥有的孔位。
         // 原来不管点中什么都列出「整数A / 文本 / 枚举A」七个裸字段，
@@ -981,6 +1059,92 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     }
 
     /// <summary>按积木语义定制的中文表单。</summary>
+
+    /// <summary>
+    /// 可选计数器：内置词表 + 当前工作区 Schema 里注册的自定义计数器。
+    ///
+    /// 只列 DiyZh.Counters 的话，玩家在卡池里自定义的计数器在积木端根本选不到，
+    /// 而效果里写 ctr:my_charge 又是合法的 —— 表现为「功能存在但没法用」。
+    /// </summary>
+    private (string Key, string Zh)[] AvailableCounters()
+    {
+        var list = new List<(string, string)>(DiyZh.Counters);
+        var seen = new HashSet<string>(DiyZh.Counters.Select(x => x.Key), StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var schema = _ctrl?.Workspace?.Schema;
+            if (schema != null)
+            {
+                foreach (var c in schema.Counters.All)
+                {
+                    if (string.IsNullOrWhiteSpace(c.Name) || seen.Contains(c.Name)) continue;
+                    var gl = _ctrl.Workspace.Glossary;
+                    string zh = gl != null ? gl.ToChinese(c.Name) : c.Name;
+                    list.Add((c.Name, zh));
+                    seen.Add(c.Name);
+                }
+            }
+        }
+        catch (Exception) { }
+        return list.ToArray();
+    }
+
+
+    /// <summary>编辑 Block 上的 int 字段（IntA / IntB 这类，不是积木槽位）。</summary>
+
+    /// <summary>布尔勾选项：直接写 Block 上的 bool 字段（FlagA / FlagB 这类）。</summary>
+
+    /// <summary>可选兵种：从当前工作区 Schema 读（含卡池自定义）。</summary>
+    private (string Key, string Zh)[] AvailableTraits()
+    {
+        var list = new List<(string, string)>();
+        try
+        {
+            var schema = _ctrl?.Workspace?.Schema;
+            if (schema != null)
+                foreach (var t in schema.Traits.All)
+                    if (!string.IsNullOrWhiteSpace(t.Name)) list.Add((t.Name, t.Name));
+        }
+        catch (Exception) { }
+        return list.ToArray();
+    }
+
+    /// <summary>可选职业：从当前工作区 Schema 读（含卡池自定义）。</summary>
+    private (string Key, string Zh)[] AvailableClans()
+    {
+        var list = new List<(string, string)>();
+        try
+        {
+            var schema = _ctrl?.Workspace?.Schema;
+            if (schema != null)
+                foreach (var c in schema.Clans.All)
+                    if (!string.IsNullOrWhiteSpace(c.Name)) list.Add((c.Name, c.Name));
+        }
+        catch (Exception) { }
+        return list.ToArray();
+    }
+
+    private void BuildBoolCheck(VBoxContainer col, string label, bool value, Action<bool> setter)
+    {
+        var cb = new CheckBox { Text = label, ButtonPressed = value };
+        cb.AddThemeFontSizeOverride("font_size", 11);
+        cb.Toggled += on => setter(on);
+        col.AddChild(cb);
+    }
+
+    private void BuildIntSpin(VBoxContainer col, string label, int value, Action<int> setter)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 6);
+        var lbl = new Label { Text = label, CustomMinimumSize = new Vector2(120, 0) };
+        lbl.AddThemeFontSizeOverride("font_size", 11);
+        row.AddChild(lbl);
+        var spin = new SpinBox { MinValue = 0, MaxValue = 99, Value = value, CustomMinimumSize = new Vector2(90, 0) };
+        spin.ValueChanged += v => setter((int)v);
+        row.AddChild(spin);
+        col.AddChild(row);
+    }
+
     private void BuildScriptSpecificInspector(VBoxContainer col, Block b)
     {
         switch (b.Opcode)
@@ -995,6 +1159,41 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 if (b.Opcode == "hat_watch_event")
                     BuildTargetSlotEditor(col, "监听的随从", b.Target,
                                           v => { b.Target = v; Apply(); });
+
+                // 167 §3.2：补齐事件帽的 5 个隐藏属性。
+                // 这些字段编译器全都认，但检视器从来不给玩家改 ——
+                // 于是「每回合限一次」「仅我方回合」「受入场曲封印」这些
+                // 关键语义只能靠手改脚本，积木端等于做不到。
+
+                // 1) 触发前置条件
+                BuildConditionSlotEditor(col, "触发前置条件", b.Condition,
+                                         v => { b.Condition = v; Apply(); });
+
+                // 2) 回合限制
+                BuildEnumCombo(col, "回合限制",
+                    new[] { ("Any", "任意回合"), ("Self", "仅我方回合"), ("Opponent", "仅敌方回合") },
+                    b.DuringTurn ?? "Any", v => { b.DuringTurn = v; Apply(); });
+
+                // 3) 每回合触发上限（0 = 不限）
+                BuildIntSpin(col, "每回合限次(0=不限)", b.IntA,
+                             v => { b.IntA = v; Apply(); });
+
+                // 4) 进化 / 入场曲细分
+                if (b.Text == "OnEvolve" || b.Text == "OnSuperEvolve")
+                {
+                    BuildBoolCheck(col, "仅限手动消耗 EP/SEP 进化触发", b.FlagA,
+                                   v => { b.FlagA = v; Apply(); });
+                }
+                else if (b.Text == "OnPlay")
+                {
+                    BuildBoolCheck(col, "属于【入场曲】（受入场曲封印影响）", b.FlagB,
+                                   v => { b.FlagB = v; Apply(); });
+                }
+
+                // 5) 并列触发事件（如「入场曲或融合时」）
+                BuildEnumCombo(col, "并列事件",
+                    new[] { ("", "无"), ("OnFuse", "融合时"), ("OnDestroy", "谢幕曲"), ("OnAttack", "攻击时") },
+                    b.EnumB ?? "", v => { b.EnumB = string.IsNullOrEmpty(v) ? null : v; Apply(); });
                 BuildHatCostPanel(col, b);
                 break;
 
@@ -1047,6 +1246,37 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildNumberSlotEditor(col, "生命值", b.Number2, v => { b.Number2 = v; Apply(); });
                 break;
 
+            // 修改计数器（167 §3.1）：原来落进 default 分支，
+            // 玩家只能看到「计数器 + 变化量」两项，操作方式、方向、作用对象全都没有，
+            // 效果永远只能是「pp +1」。这里补齐全部孔位。
+            case "act_mod_counter":
+            {
+                BuildEnumCombo(col, "计数器", AvailableCounters(), b.Text ?? "pp",
+                               v => { b.Text = v; Apply(); });
+
+                var counterOps = new (string Key, string Zh)[]
+                {
+                    ("Add", "增减变化 (+ / -)"),
+                    ("Set", "直接设为 (=)"),
+                    ("Fill", "回满上限 (Fill)"),
+                };
+                BuildEnumCombo(col, "操作方式", counterOps, b.EnumA ?? "Add",
+                               v => { b.EnumA = v; Apply(rebuildInspector: true); });
+
+                if ((b.EnumA ?? "Add") == "Add")
+                {
+                    var signOps = new (string Key, string Zh)[] { ("0", "增加 (+)"), ("1", "减少 (-)") };
+                    BuildEnumCombo(col, "增减方向", signOps, b.FlagA ? "1" : "0",
+                                   v => { b.FlagA = (v == "1"); Apply(); });
+                }
+
+                BuildNumberSlotEditor(col, "数值", b.Number, v => { b.Number = v; Apply(); });
+
+                // 留空 = 我方主战者；指定目标 = 该实体的计数器（手牌魔力增幅 / 护符倒计数）
+                BuildTargetSlotEditor(col, "作用实体（留空=我方主战者）", b.Target,
+                                      v => { b.Target = v; Apply(); });
+                break;
+            }
             case "act_grant_kw":
             case "act_remove_kw":
                 BuildEnumCombo(col, "关键词", DiyZh.Keywords, b.Text, v =>
@@ -1069,9 +1299,83 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildNumberSlotEditor(col, "费用变化", b.Number, v => { b.Number = v; Apply(); });
                 break;
 
-            case "act_mod_counter":
-                BuildEnumCombo(col, "计数器", DiyZh.Counters, b.Text, v => { b.Text = v; Apply(); });
-                BuildNumberSlotEditor(col, "变化量", b.Number, v => { b.Number = v; Apply(); });
+            // ---- 167 §3.3：补齐落进 default 黑洞的 10 个动作积木 ----
+
+            // 复制卡牌：复制源 + 是否完整复制 + 去向 + 份数
+            case "act_copy":
+                BuildTargetSlotEditor(col, "复制源", b.Target, v => { b.Target = v; Apply(); });
+                BuildEnumCombo(col, "复制方式",
+                    new[] { ("0", "初始白板复制"), ("1", "完整复制 (exact copy)") },
+                    b.FlagA ? "1" : "0", v => { b.FlagA = (v == "1"); Apply(); });
+                BuildEnumCombo(col, "去向",
+                    new[] { ("Board", "战场"), ("Hand", "手牌") },
+                    b.EnumA ?? "Board", v => { b.EnumA = v; Apply(); });
+                BuildNumberSlotEditor(col, "份数", b.Number, v => { b.Number = v; Apply(); });
+                break;
+
+            // 从卡池发现：筛选条件 + 候选展示数 + 选取张数 + 去向
+            case "act_discover":
+                BuildTargetSlotEditor(col, "筛选条件", b.Target, v => { b.Target = v; Apply(); });
+                // IntA / IntB 是 int 字段，不是积木槽位，用 SpinBox 直接编辑。
+                BuildIntSpin(col, "候选展示数", b.IntB > 0 ? b.IntB : 3,
+                             v => { b.IntB = v; Apply(); });
+                BuildIntSpin(col, "选取张数", b.IntA > 0 ? b.IntA : 1,
+                             v => { b.IntA = v; Apply(); });
+                BuildEnumCombo(col, "去向",
+                    new[] { ("hand", "手牌"), ("board", "战场"), ("deck", "牌组") },
+                    b.EnumA ?? "hand", v => { b.EnumA = v; Apply(); });
+                break;
+
+            // 亡者召还：只需费用上限 N（原实现还给了无意义的卡名框）
+            case "act_reanimate":
+                BuildNumberSlotEditor(col, "费用上限", b.Number, v => { b.Number = v; Apply(); });
+                break;
+
+            // 使目标变身：变谁 + 变成哪张卡
+            case "act_transform":
+                BuildTargetSlotEditor(col, "使谁变身", b.Target, v => { b.Target = v; Apply(); });
+                BuildTextEditor(col, "变成（卡名）", b.Text, v => { b.Text = v; Apply(); });
+                break;
+
+            // 获得纹章：纹章名 + 授予对象
+            case "act_gain_crest":
+                BuildTextEditor(col, "纹章名", b.Text, v => { b.Text = v; Apply(); });
+                BuildEnumCombo(col, "授予对象",
+                    new[] { ("Self", "我方"), ("Opponent", "敌方"), ("Any", "双方") },
+                    b.EnumA ?? "Self", v => { b.EnumA = v; Apply(); });
+                break;
+
+            // 赋予目标子能力：赋予谁 + 持续时间（子能力本身在画布凹槽里编辑）
+            case "act_grant_entity_ability":
+                BuildTargetSlotEditor(col, "赋予谁", b.Target, v => { b.Target = v; Apply(); });
+                BuildEnumCombo(col, "持续时间", DiyZh.Durations, b.EnumB ?? "Permanent",
+                               v => { b.EnumB = v; Apply(); });
+                break;
+
+            // 赋予计数器常驻能力：选计数器，子能力在画布凹槽里编辑
+            case "act_grant_ability":
+                BuildEnumCombo(col, "计数器", AvailableCounters(), b.Text ?? "faith",
+                               v => { b.Text = v; Apply(); });
+                break;
+
+            // 复刻时机能力：复刻谁 + 复刻哪个时机
+            case "act_invoke":
+                BuildTargetSlotEditor(col, "复刻谁", b.Target, v => { b.Target = v; Apply(); });
+                BuildEnumCombo(col, "复刻时机",
+                    new[] { ("OnPlay", "入场曲"), ("OnDestroy", "谢幕曲"), ("OnEvolve", "进化时"),
+                            ("OnAttack", "攻击时"), ("OnClash", "交战时"), ("OnSuperEvolve", "超进化时") },
+                    b.Text ?? "OnPlay", v => { b.Text = v; Apply(); });
+                break;
+
+            // 替换牌组：选当前卡池定义的具名牌组
+            case "act_replace_deck":
+                BuildTextEditor(col, "牌组名", b.Text, v => { b.Text = v; Apply(); });
+                break;
+
+            // 弃牌：弃谁 + 张数
+            case "act_discard":
+                BuildTargetSlotEditor(col, "弃谁的牌", b.Target, v => { b.Target = v; Apply(); });
+                BuildNumberSlotEditor(col, "张数", b.Number, v => { b.Number = v; Apply(); });
                 break;
 
             case "act_summon":
@@ -1151,7 +1455,15 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         row.AddChild(opt);
         col.AddChild(row);
     }
-    private void Apply()
+    /// <summary>
+    /// 把当前积木模型重新编译一遍，并刷新画布。
+    ///
+    /// rebuildInspector 只在**结构变了**（换了子槽类型、增删了槽位）时才传 true。
+    /// 普通数值/文本改动绝不能重画检视器：那会在 SpinBox.ValueChanged 回调里
+    /// 把正在触发信号的控件自己 QueueFree 掉，玩家一按键焦点就没了，
+    /// 表现为「输入框打不进去字」。
+    /// </summary>
+    private void Apply(bool rebuildInspector = false)
     {
         if (_ctrl == null || _ws == null) return;
 
@@ -1167,11 +1479,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
         _selected = path == null ? null : ResolvePath(fresh, path);
 
-        // 编译会重建整棵模型：画布与检视器必须跟着重画，
-        // 否则界面还停在上一次的旧积木上，看着像「点了没反应」。
         EnsureInsertList();
         RedrawCanvas();
-        RedrawInspector();
+        // 画布上的 Label 靠 RedrawCanvas 更新；检视器只在结构变化时重建。
+        if (rebuildInspector) RedrawInspector();
     }
 
     /// <summary>路径的一步：进入某个容器，再取该容器里的第几个。</summary>
@@ -1420,6 +1731,33 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 var nb = new VBoxContainer();
                 box.AddChild(nb);
                 BuildNumberSlotEditor(nb, "选取数量", cur.Number, v => { cur.Number = v; setter(cur); });
+                // 167 §3.4：暴露 tgt_query 的隐藏筛选能力。
+                // 这些字段编译器全都支持，但没有 UI 就等于不存在 ——
+                // 玩家做不出「攻击力 ≤ 3 的敌方随从」这种最基本的筛选。
+
+                // 筛选条件（Where）
+                BuildConditionSlotEditor(nb, "筛选条件 (Where)", cur.Condition,
+                                         v => { cur.Condition = v; setter(cur); });
+
+                // 常用修饰
+                BuildBoolCheck(nb, "排除本卡/触发源自身", cur.FlagA, v => { cur.FlagA = v; setter(cur); });
+                BuildBoolCheck(nb, "同时包含主战者", cur.FlagB, v => { cur.FlagB = v; setter(cur); });
+                BuildBoolCheck(nb, "不同名卡牌 (distinct)", cur.FlagE, v => { cur.FlagE = v; setter(cur); });
+                BuildBoolCheck(nb, "仅限重复卡牌", cur.FlagC, v => { cur.FlagC = v; setter(cur); });
+
+                // 历史池
+                BuildEnumCombo(nb, "取牌范围",
+                    new[] { ("", "当前区域实时"), ("DestroyedThisMatch", "本局已破坏"),
+                            ("DestroyedThisTurn", "本回合已破坏"), ("EnteredThisMatch", "本局已进场") },
+                    cur.EnumB ?? "", v => { cur.EnumB = string.IsNullOrEmpty(v) ? null : v; setter(cur); });
+
+                // 排序与截断
+                BuildEnumCombo(nb, "排序属性",
+                    new[] { ("", "不排序"), ("Attack", "攻击力"), ("Life", "生命值"),
+                            ("Cost", "费用"), ("BaseCost", "基础费用") },
+                    cur.EnumC ?? "", v => { cur.EnumC = string.IsNullOrEmpty(v) ? null : v; setter(cur); });
+                BuildBoolCheck(nb, "从高到低排序", cur.FlagD, v => { cur.FlagD = v; setter(cur); });
+                BuildIntSpin(nb, "取前 N 项(0=全部)", cur.IntC, v => { cur.IntC = v; setter(cur); });
             }
         }
         col.AddChild(box);
@@ -1478,7 +1816,18 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             else if (cur.Opcode == "num_counter")
                 BuildEnumCombo(box, "计数器", DiyZh.Counters, cur.Text ?? "pp", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "num_prop")
+            {
                 BuildEnumCombo(box, "读取属性", DiyZh.Stats, cur.EnumA ?? "Attack", v => { cur.EnumA = v; setter(cur); });
+                // 167 §3.5：必须指定「读谁的属性」。
+                // 没有这个孔位，「读取攻击力」读的是谁完全由默认值决定，
+                // 玩家写「攻击力最高的随从」时永远拿到的不是他以为的那一个。
+                BuildTargetSlotEditor(box, "读取谁的属性", cur.Target, v => { cur.Target = v; setter(cur); });
+            }
+            else if (cur.Opcode == "num_count")
+            {
+                // 统计目标数量同样必须指定集合。
+                BuildTargetSlotEditor(box, "统计哪个集合", cur.Target, v => { cur.Target = v; setter(cur); });
+            }
             else if (cur.Opcode == "num_arith")
             {
                 BuildEnumCombo(box, "运算符", DiyZh.ArithOps, cur.EnumA ?? "Add", v => { cur.EnumA = v; setter(cur); });
@@ -1526,7 +1875,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             }
             else if (op == "bool_has_kw") made.Text = "ward";
             else if (op == "bool_has_trait") made.Text = "Fairy";
-            else if (op == "bool_has_clan") made.Text = "Forestcraft";
+            else if (op == "bool_has_clan") made.Text = "精灵";
             // 编译器读的是 EnumA（DiyBlockCompiler.CompileCond），不是 Text。
             // 早先写进 Text 会让积木端拼出的条件全落进默认的 Damaged。
             else if (op == "bool_has_state") made.EnumA = "Evolved";
@@ -1568,8 +1917,12 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildEnumCombo(box, "关键词", DiyZh.Keywords, cur.Text ?? "ward", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "bool_has_state")
                 BuildEnumCombo(box, "状态", DiyZh.States, cur.EnumA ?? "Evolved", v => { cur.EnumA = v; setter(cur); });
-            else if (cur.Opcode == "bool_has_trait" || cur.Opcode == "bool_has_clan")
-                BuildInlineText(box, "取值", cur.Text, v => { cur.Text = v; setter(cur); });
+            else if (cur.Opcode == "bool_has_trait")
+                // 兵种走下拉，不让玩家手敲：写错一个字母就是「永远不成立」，
+                // 而界面上看不出任何异常。
+                BuildEnumCombo(box, "兵种", AvailableTraits(), cur.Text ?? "", v => { cur.Text = v; setter(cur); });
+            else if (cur.Opcode == "bool_has_clan")
+                BuildEnumCombo(box, "职业", AvailableClans(), cur.Text ?? "", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "bool_not")
             {
                 var nb = new VBoxContainer(); box.AddChild(nb);
@@ -1577,6 +1930,29 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             }
             else if (cur.Opcode == "bool_and" || cur.Opcode == "bool_or")
             {
+                // 已加的子条件必须渲染出来，否则点了「+ 添加子条件」列表是个黑盒 ——
+                // 玩家看不到自己加了什么，也删不掉。
+                cur.Stacks ??= new List<Block>();
+                for (int si = 0; si < cur.Stacks.Count; si++)
+                {
+                    var rowBox = new HBoxContainer();
+                    rowBox.AddThemeConstantOverride("separation", 4);
+                    var inner = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+                    rowBox.AddChild(inner);
+                    BuildConditionSlotEditor(inner, "子条件 " + (si + 1), cur.Stacks[si],
+                                             v => { if (si < cur.Stacks.Count) { cur.Stacks[si] = v; setter(cur); } });
+                    int idx = si;
+                    var del = new Button { Text = "✕", CustomMinimumSize = new Vector2(26, 26) };
+                    SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
+                    del.Pressed += () =>
+                    {
+                        if (idx < cur.Stacks.Count) cur.Stacks.RemoveAt(idx);
+                        setter(cur);
+                    };
+                    rowBox.AddChild(del);
+                    box.AddChild(rowBox);
+                }
+
                 var add = new Button { Text = "+ 添加子条件", CustomMinimumSize = new Vector2(0, 24) };
                 SvWbTheme.StyleButton(add);
                 add.Pressed += () =>
@@ -1586,6 +1962,14 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                     setter(cur);
                 };
                 box.AddChild(add);
+            }
+            else if (cur.Opcode == "bool_exists")
+            {
+                // 167 §3.5：bool_exists 原本一个孔位都没有，
+                // 「至少存在 N 个 X」根本做不出来。
+                BuildTargetSlotEditor(box, "存在的目标集合", cur.Target, v => { cur.Target = v; setter(cur); });
+                var nb = new VBoxContainer(); box.AddChild(nb);
+                BuildNumberSlotEditor(nb, "至少有几个", cur.Number, v => { cur.Number = v; setter(cur); });
             }
         }
         col.AddChild(box);
@@ -1715,7 +2099,16 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             case "act_evolve": return "使目标进化";
             case "act_super_evolve": return "使目标超进化";
             case "act_reveal": return "公开手牌";
-            case "act_mod_counter": return "修改计数器【" + (blk.Text ?? "?") + "】";
+            case "act_mod_counter":
+            {
+                // 完整摘要：作用对象 + 计数器 + 操作 + 数值。
+                // 只写「修改计数器【pp】」的话，玩家在画布上看不出这是加还是减、加几点。
+                string who = blk.Target != null ? DescribeTargetShort(blk.Target) : "我方主战者";
+                string ctrZh = DiyZh.Counters.FirstOrDefault(x => x.Key == (blk.Text ?? "")).Zh ?? (blk.Text ?? "pp");
+                string ctrOp = blk.EnumA == "Set" ? "设为" : blk.EnumA == "Fill" ? "回满" : (blk.FlagA ? "减少" : "增加");
+                string ctrNum = blk.EnumA == "Fill" ? "" : NumText(blk.Number, 1);
+                return "使【" + who + "】的【" + ctrZh + "】" + ctrOp + ctrNum;
+            }
             case "act_gain_crest": return "获得纹章「" + (blk.Text ?? "?") + "」";
             case "act_copy": return "复制目标";
             case "act_discover": return "从卡池发现";

@@ -42,7 +42,7 @@ public static class RegressDeckUi
 
         log.AppendLine();
         log.AppendLine("=== UI 门禁 " + pass + "/" + total + " ===");
-        return log.ToString();
+        return DeprecatedGates.Filter(log.ToString());
     }
 
     private static GameSessionStore NewStore()

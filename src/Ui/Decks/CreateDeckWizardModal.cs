@@ -234,7 +234,7 @@ public partial class CreateDeckWizardModal : Control
         // 「中立」不是主战者职业：无论哪个卡池、它在不在配置里，都不该出现在选择项里。
         return list
             .Where(c => !string.IsNullOrWhiteSpace(c))
-            .Where(c => !string.Equals(c, "Neutral", StringComparison.OrdinalIgnoreCase))
+            .Where(c => !string.Equals(c, "中立", StringComparison.OrdinalIgnoreCase))
             .Where(c => !string.Equals(c, "中立", StringComparison.Ordinal))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(c => c, StringComparer.Ordinal)

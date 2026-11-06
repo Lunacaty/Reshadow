@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Godot;
 using ShadowverseFan.KernelV3.Core;
@@ -197,6 +198,33 @@ public partial class PackAndPoolManagerView : Control
             RefreshPoolCounters();
         };
         ruleBar.AddChild(_poolPicker);
+
+        // 167 专项二：卡池整合包导出 / 导入。分享自制赛制时，
+        // 只发 .pool.json 对方会因缺卡包直接建池失败。
+        var exportBtn = new Button { Text = "📦 导出整合包", CustomMinimumSize = new Vector2(112, 32) };
+        SvWbTheme.StyleButton(exportBtn);
+        exportBtn.AddThemeFontSizeOverride("font_size", 11);
+        exportBtn.Pressed += () =>
+        {
+            if (string.IsNullOrEmpty(_selectedPoolId)) { _ruleStatus.Text = "请先选择一个卡池"; return; }
+            string path = Path.Combine(OS.GetUserDataDir(), _selectedPoolId + ".poolbundle.json");
+            bool ok = _store.ExportPoolBundleToFile(_selectedPoolId, path, out string m);
+            _ruleStatus.Text = (ok ? "✔ " : "✘ ") + m + (ok ? " -> " + path : "");
+        };
+        ruleBar.AddChild(exportBtn);
+
+        var importBtn = new Button { Text = "📥 导入整合包", CustomMinimumSize = new Vector2(112, 32) };
+        SvWbTheme.StyleButton(importBtn);
+        importBtn.AddThemeFontSizeOverride("font_size", 11);
+        importBtn.Pressed += () =>
+        {
+            string path = Path.Combine(OS.GetUserDataDir(), "import.poolbundle.json");
+            if (!File.Exists(path)) { _ruleStatus.Text = "把整合包放到：" + path; return; }
+            bool ok = _store.ImportPoolBundleFromFile(path, out string m);
+            _ruleStatus.Text = (ok ? "✔ " : "✘ ") + m;
+            if (ok) { RefreshPacks(); RefreshPoolClans(); RefreshPoolCounters(); RefreshNamedDecks(); }
+        };
+        ruleBar.AddChild(importBtn);
 
         var newPoolBtn = new Button { Text = "➕ 新建卡池", CustomMinimumSize = new Vector2(96, 32) };
         SvWbTheme.StyleButton(newPoolBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
@@ -502,21 +530,43 @@ public partial class PackAndPoolManagerView : Control
 
         foreach (var cname in allClanNames)
         {
+            // 167 专项一：每个职业一行 —— [勾选] [名称] [✏ 改名] [🗑 删除]。
+            // 只给一个 CheckBox 的话，玩家既改不了显示名也删不掉职业。
+            var rowBox = new HBoxContainer();
+            rowBox.AddThemeConstantOverride("separation", 6);
+
             var cb = new CheckBox { Text = SvWbTheme.ClanDisplayZh(cname), ButtonPressed = enabled.Contains(cname) };
             cb.AddThemeFontSizeOverride("font_size", 11);
+            cb.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             string captured = cname;
+
             cb.Toggled += on =>
             {
+                // 关闭勾选 = 从卡池移除该职业，必须先做依赖检查。
+                if (!on) { TryRemoveClan(captured, cb); return; }
+
                 // 必须读**最新**配置：闭包里的 cfg 是建控件那一刻的快照，
                 // 连续勾两个职业时第二个会拿旧快照覆盖第一个，前者当场消失。
                 if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var latest)) return;
                 var cur = new HashSet<string>(latest.PoolClans ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
-                if (on) cur.Add(captured); else cur.Remove(captured);
+                cur.Add(captured);
                 _store.SavePoolConfigFull(latest.PoolId, latest.Name, latest.EnabledPackIds, latest.Rules,
                                          latest.NamedDecks, out string m, cur.ToList(), latest.LeaderCounters);
                 _ruleStatus.Text = m;
             };
-            _poolClanList.AddChild(cb);
+            rowBox.AddChild(cb);
+
+            var rename = new Button { Text = "✏", CustomMinimumSize = new Vector2(26, 24) };
+            SvWbTheme.StyleButton(rename);
+            rename.Pressed += () => OpenRenameClanDialog(captured);
+            rowBox.AddChild(rename);
+
+            var del = new Button { Text = "🗑", CustomMinimumSize = new Vector2(26, 24) };
+            SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
+            del.Pressed += () => { cb.ButtonPressed = false; TryRemoveClan(captured, cb); };
+            rowBox.AddChild(del);
+
+            _poolClanList.AddChild(rowBox);
         }
     }
 
@@ -529,6 +579,63 @@ public partial class PackAndPoolManagerView : Control
         KernelV3.Packs.CounterLifecycle.IncrementOnTurnStart => "回合初+1",
         _ => "整局保留",
     };
+
+
+    /// <summary>
+    /// 尝试从卡池移除职业。先做依赖扫描，有卡依赖就拦下并恢复勾选。
+    ///
+    /// 不拦的话，删完那一刻看不出异常，要等构筑或对局才炸，
+    /// 而报错指向「符号无效」，跟这次删除毫无关联。
+    /// </summary>
+    private void TryRemoveClan(string clanName, CheckBox restoreTo)
+    {
+        if (string.IsNullOrWhiteSpace(clanName)) return;
+        if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var latest)) return;
+
+        var deps = ClanDependencyScanner.FindCardsDependingOnClan(_store.GetPoolRuntime(_selectedPoolId), clanName);
+        if (deps.Count > 0)
+        {
+            if (restoreTo != null) restoreTo.ButtonPressed = true;
+            _ruleStatus.Text = "✘ 无法删除职业【" + SvWbTheme.ClanDisplayZh(clanName) + "】：卡池内有 "
+                               + deps.Count + " 张卡依赖此职业（" + string.Join("、", deps.Take(3)) + "）";
+            return;
+        }
+
+        var cur = new HashSet<string>(latest.PoolClans ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+        cur.Remove(clanName);
+        _store.SavePoolConfigFull(latest.PoolId, latest.Name, latest.EnabledPackIds, latest.Rules,
+                                 latest.NamedDecks, out string m, cur.ToList(), latest.LeaderCounters);
+        _ruleStatus.Text = m;
+        RefreshPoolClans();
+    }
+
+    /// <summary>修改职业的显示名。只改 Glossary 里的译名，内部 ID 不动。</summary>
+    private void OpenRenameClanDialog(string clanName)
+    {
+        if (string.IsNullOrWhiteSpace(clanName)) return;
+        var dlg = new AcceptDialog { Title = "修改职业显示名" };
+        dlg.OkButtonText = "保存";
+
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
+        box.AddThemeConstantOverride("separation", 6);
+        box.AddChild(new Label { Text = "内部 ID（不可改）：" + clanName });
+        var edit = new LineEdit { Text = SvWbTheme.ClanDisplayZh(clanName) };
+        box.AddChild(new Label { Text = "显示名" });
+        box.AddChild(edit);
+        dlg.AddChild(box);
+
+        dlg.Confirmed += () =>
+        {
+            string zh = edit.Text?.Trim();
+            if (string.IsNullOrEmpty(zh)) return;
+            _store.Catalog.Glossary.Add(clanName, zh);
+            _ruleStatus.Text = "已更新职业【" + clanName + "】的显示名为「" + zh + "」";
+            RefreshPoolClans();
+        };
+        dlg.Canceled += () => dlg.QueueFree();
+        AddChild(dlg);
+        dlg.PopupCentered();
+    }
 
     /// <summary>刷新「主战者计数器」列表：内置的锁死只读，自定义的可删。</summary>
     private void RefreshPoolCounters()
@@ -1047,7 +1154,7 @@ public partial class PackAndPoolManagerView : Control
             nameLbl.AddThemeColorOverride("font_color", SvWbTheme.TextPrimary);
             row.AddChild(nameLbl);
 
-            var clanLbl = new Label { Text = c.Clan ?? "Neutral", CustomMinimumSize = new Vector2(96, 0) };
+            var clanLbl = new Label { Text = c.Clan ?? "中立", CustomMinimumSize = new Vector2(96, 0) };
             clanLbl.AddThemeFontSizeOverride("font_size", 11);
             clanLbl.AddThemeColorOverride("font_color", SvWbTheme.ClanColor(c.Clan));
             row.AddChild(clanLbl);

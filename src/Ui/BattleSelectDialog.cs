@@ -200,7 +200,7 @@ public partial class BattleSelectDialog : Control
     private static string DeckLabel(ConstructedDeck d)
     {
         int n = d.Cards?.Sum(x => x.count) ?? 0;
-        return d.Name + "\n" + n + " 张 · " + (d.LeaderClan ?? "Neutral");
+        return d.Name + "\n" + n + " 张 · " + (d.LeaderClan ?? "中立");
     }
 
     private static Button MakePickButton(string text, bool active, Color accent, Action onPressed)

@@ -194,7 +194,7 @@ public sealed class GameSessionStore
                 ? "新建" + SvWbClanName.Of(leaderClan) + "牌组"
                 : name,
             PoolId = string.IsNullOrEmpty(poolId) ? "standard" : poolId,
-            LeaderClan = string.IsNullOrEmpty(leaderClan) ? "Neutral" : leaderClan,
+            LeaderClan = string.IsNullOrEmpty(leaderClan) ? "中立" : leaderClan,
         };
         SavedDecks.Add(deck);
         return deck;
@@ -312,7 +312,7 @@ public sealed class GameSessionStore
             NameChs = !string.IsNullOrWhiteSpace(card.NameChs) ? card.NameChs : card.Name,
             Kind = card.Kind,
             IsToken = card.IsToken,
-            Clan = card.Clan.IsValid ? card.Clan.Name : "Neutral",
+            Clan = card.Clan.IsValid ? card.Clan.Name : "中立",
             Traits = (card.Traits ?? Array.Empty<SymbolId<TraitTag>>())
                      .Select(t => t.Name).ToList(),
             Cost = card.BaseCost,
@@ -384,7 +384,7 @@ public sealed class GameSessionStore
             sb.Append("      \"name_chs\": ").Append(JsonStr(c.NameChs ?? "")).Append(",\n");
             sb.Append("      \"kind\": ").Append(KindCode(c.Kind)).Append(",\n");
             sb.Append("      \"is_token\": ").Append(c.IsToken ? "true" : "false").Append(",\n");
-            sb.Append("      \"clan\": ").Append(JsonStr(c.Clan ?? "Neutral")).Append(",\n");
+            sb.Append("      \"clan\": ").Append(JsonStr(c.Clan ?? "中立")).Append(",\n");
             sb.Append("      \"traits\": ").Append(JsonArr(c.Traits)).Append(",\n");
             if (c.Keywords != null && c.Keywords.Count > 0)
                 sb.Append("      \"keywords\": ").Append(JsonArr(c.Keywords)).Append(",\n");
@@ -792,6 +792,141 @@ public sealed class GameSessionStore
         };
         PoolConfigs[poolId] = updated;
         return SavePoolRules(poolId, updated.Rules, out message);
+    }
+
+
+    /// <summary>
+    /// 把卡池连同它启用的全部卡包导出成单个 JSON（167 专项二）。
+    ///
+    /// 分享自制赛制时只发 .pool.json 会因为缺卡包直接建池失败，
+    /// 而报错只说「跨包依赖缺失」，对方根本不知道该找哪个包。
+    /// 单文件整合包把两者一起带走，导入即可用。
+    /// </summary>
+    public bool ExportPoolBundleToFile(string poolId, string targetFilePath, out string message)
+    {
+        message = "";
+        Initialize();
+        if (!PoolConfigs.TryGetValue(poolId, out var cfg))
+        {
+            message = "找不到卡池 [" + poolId + "]";
+            return false;
+        }
+
+        try
+        {
+            var bundle = new System.Text.Json.Nodes.JsonObject
+            {
+                ["bundle_format"] = "reshadow_pool_bundle_v1",
+            };
+
+            // 1) 卡池自身：优先读原文件，保证字段一个不漏
+            string poolPath = PoolFilePaths.TryGetValue(poolId, out var p) && File.Exists(p)
+                ? p : Path.Combine(DataRoot, "pools", poolId + ".pool.json");
+            if (!File.Exists(poolPath)) SavePoolRules(poolId, cfg.Rules, out _);
+            bundle["pool"] = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(poolPath, System.Text.Encoding.UTF8));
+
+            // 2) 依赖闭包：把启用包 + 它们依赖的包全部收进来
+            var wanted = new List<string>();
+            void Collect(string id)
+            {
+                if (string.IsNullOrWhiteSpace(id) || wanted.Contains(id)) return;
+                if (!Catalog.Packs.TryGetValue(id, out var pk)) return;
+                wanted.Add(id);
+                foreach (var dep in pk.Dependencies ?? new List<string>()) Collect(dep);
+            }
+            foreach (var id in cfg.EnabledPackIds ?? new List<string>()) Collect(id);
+
+            var packsArr = new System.Text.Json.Nodes.JsonArray();
+            foreach (var id in wanted)
+            {
+                string packPath = Path.Combine(DataRoot, "packs", id, "pack.json");
+                if (!File.Exists(packPath)) continue;
+                packsArr.Add(System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(packPath, System.Text.Encoding.UTF8)));
+            }
+            bundle["packs"] = packsArr;
+
+            var opt = new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            };
+            File.WriteAllText(targetFilePath, bundle.ToJsonString(opt) + "\n", new System.Text.UTF8Encoding(false));
+            message = "已导出卡池【" + (cfg.Name ?? poolId) + "】含 " + packsArr.Count + " 个卡包";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            message = "导出失败：" + ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 导入单个 JSON 整合包（167 专项二）。
+    ///
+    /// 卡包按 pack_id 写到 data/packs/&lt;id&gt;/pack.json，已存在则覆盖 ——
+    /// 整合包里的卡包就是作者当时那一份，用本地的旧版会与他分享的赛制不一致。
+    /// </summary>
+    public bool ImportPoolBundleFromFile(string sourceFilePath, out string message)
+    {
+        message = "";
+        Initialize();
+        try
+        {
+            if (!File.Exists(sourceFilePath)) { message = "文件不存在"; return false; }
+            var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(sourceFilePath, System.Text.Encoding.UTF8));
+            if (root == null) { message = "文件内容为空"; return false; }
+            string fmt = root["bundle_format"]?.GetValue<string>();
+            if (fmt != "reshadow_pool_bundle_v1")
+            {
+                message = "不是卡池整合包（bundle_format=" + (fmt ?? "缺失") + "）";
+                return false;
+            }
+
+            string poolsDir = Path.Combine(DataRoot, "pools");
+            Directory.CreateDirectory(poolsDir);
+
+            // 1) 先落卡包：建池时要用它们
+            int packCount = 0;
+            if (root["packs"] is System.Text.Json.Nodes.JsonArray packs)
+            {
+                var opt = new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                };
+                foreach (var pk in packs)
+                {
+                    string pid = pk?["pack_id"]?.GetValue<string>();
+                    if (string.IsNullOrWhiteSpace(pid)) continue;
+                    string dir = Path.Combine(DataRoot, "packs", pid);
+                    Directory.CreateDirectory(dir);
+                    File.WriteAllText(Path.Combine(dir, "pack.json"),
+                                      pk.ToJsonString(opt) + "\n", new System.Text.UTF8Encoding(false));
+                    packCount++;
+                }
+            }
+
+            // 2) 再落卡池配置
+            string poolId = root["pool"]?["pool_id"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(poolId)) { message = "卡池缺少 pool_id"; return false; }
+            var pOpt = new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            };
+            File.WriteAllText(Path.Combine(poolsDir, poolId + ".pool.json"),
+                              root["pool"].ToJsonString(pOpt) + "\n", new System.Text.UTF8Encoding(false));
+
+            ReloadCatalogAndPools();
+            message = "已导入卡池 [" + poolId + "] 与 " + packCount + " 个卡包";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            message = "导入失败：" + ex.Message;
+            return false;
+        }
     }
 
     /// <summary>删除一个卡池。标准卡池不可删。</summary>

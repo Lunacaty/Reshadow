@@ -134,7 +134,7 @@ public static class CardPackLoader
                         _ => CardKind.Follower,
                     },
                     IsToken = Bool(c, "is_token", false),
-                    Clan = Str(c, "clan") is { Length: > 0 } cl ? cl : "Neutral",
+                    Clan = Str(c, "clan") is { Length: > 0 } cl ? cl : "中立",
                     Traits = tr,
                     Cost = Int(c, "cost", 0),
                     Attack = Int(c, "attack", 0),

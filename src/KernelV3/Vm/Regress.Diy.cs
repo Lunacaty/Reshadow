@@ -49,7 +49,7 @@ public static partial class Regress
 
         log.AppendLine();
         log.AppendLine("=== DIY 门禁 " + pass + "/" + total + " ===");
-        return log.ToString();
+        return DeprecatedGates.Filter(log.ToString());
     }
 
     // ---------------------------------------------------------------- 夹具

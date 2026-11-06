@@ -901,7 +901,7 @@ public sealed partial class CardVm
     private void TagDeparted(RuntimeEntity e)
     {
         var schema = (_world as Battle.BattleState)?.Schema ?? Schema;
-        var departed = schema.Trait("Departed");
+        var departed = schema.Trait("亡者");
         if (!e.Traits.Contains(departed)) e.Traits.Add(departed);
     }
 

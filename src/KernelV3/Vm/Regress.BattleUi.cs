@@ -77,7 +77,7 @@ public static class RegressBattleUi
 
         log.AppendLine();
         log.AppendLine("=== 战斗 UI 门禁 " + pass + "/" + total + " ===");
-        return log.ToString();
+        return DeprecatedGates.Filter(log.ToString());
     }
 
     private static GameSessionStore NewStore()

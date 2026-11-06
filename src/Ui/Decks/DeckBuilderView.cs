@@ -51,8 +51,8 @@ public partial class DeckBuilderView : Control
 
     private static readonly string[] AllClans =
     {
-        "Forestcraft", "Swordcraft", "Runecraft", "Dragoncraft",
-        "Abysscraft", "Havencraft", "Portalcraft", "Neutral",
+        "精灵", "皇家", "巫师", "龙族",
+        "深渊", "主教", "超越者", "中立",
     };
 
     public DeckBuilderView(GameSessionStore store, ConstructedDeck deck)
@@ -190,7 +190,7 @@ public partial class DeckBuilderView : Control
 
         AddClanTab(filterRow, "本职业+中立", "SELF_NEUTRAL");
         AddClanTab(filterRow, "本职业", "SELF");
-        AddClanTab(filterRow, "中立", "Neutral");
+        AddClanTab(filterRow, "中立", "中立");
         AddClanTab(filterRow, "全部", "ALL");
 
         // 副职业页签：由 profile.AllowedClans 动态追加。
@@ -403,12 +403,12 @@ public partial class DeckBuilderView : Control
         foreach (var c in _extraClanTabs.GetChildren()) c.QueueFree();
 
         var allowed = _vm.CurrentProfile.AllowedClans;
-        string self = _vm.WorkingDeck.LeaderClan ?? "Neutral";
+        string self = _vm.WorkingDeck.LeaderClan ?? "中立";
 
         foreach (var clan in allowed)
         {
             if (string.Equals(clan, self, StringComparison.OrdinalIgnoreCase)) continue;
-            if (string.Equals(clan, "Neutral", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(clan, "中立", StringComparison.OrdinalIgnoreCase)) continue;
 
             string c = clan;
             var b = new Button { Text = "★ 副职业: " + SvWbTheme.ClanDisplayZh(clan) };

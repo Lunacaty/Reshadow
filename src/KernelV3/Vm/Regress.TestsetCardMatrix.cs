@@ -105,7 +105,7 @@ public static partial class Regress
 
         log.AppendLine();
         log.AppendLine("=== 测试集逐卡矩阵 " + pass + "/" + total + " ===");
-        return log.ToString();
+        return DeprecatedGates.Filter(log.ToString());
     }
 
     /// <summary>确认加载出来的卡面与文件里逐字节一致（防手抄/删减）。</summary>
@@ -572,7 +572,7 @@ _ = (sep, superAoE);
         // 不加这层过滤就会把自己当成材料，CanFuseCards 返回「不能把主体当材料」。
         var loots = e.St.EnumerateZone(ZoneRef.Hand, 0)
             .Where(x => x.EntityId != baseCard.EntityId)
-            .Where(x => x.Def?.Traits != null && x.Def.Traits.Contains(e.St.Schema.Trait("Loot")))
+            .Where(x => x.Def?.Traits != null && x.Def.Traits.Contains(e.St.Schema.Trait("财宝")))
             .ToList();
 
         e.Vm.DropPendingTriggers();
@@ -606,7 +606,7 @@ _ = (sep, superAoE);
             {
                 CardId = matCardId, Name = "ArtMat" + matCardId, Kind = CardKind.Follower,
                 BaseCost = 1, BaseAttack = 1, BaseLife = 1,
-                Traits = new List<SymbolId<TraitTag>> { env.St.Schema.Trait("Artifact") },
+                Traits = new List<SymbolId<TraitTag>> { env.St.Schema.Trait("创造物") },
             });
             var m = env.St.SpawnCard(matCardId, ZoneRef.Hand, 0);
             // 把材料成本调成目标总费
@@ -834,7 +834,7 @@ _ = (sep, superAoE);
         // 融合一张 Artifact 护符 → 变身 Striker Artifact（真卡 81000022）
         e.Filler(2990, ZoneRef.Hand, kind: CardKind.Amulet);
         var m = e.St.EnumerateZone(ZoneRef.Hand, 0).First(x => x.Def.CardId == 2990);
-        m.Def = new CardDef { CardId = 2990, Name = "ArtMat", Kind = CardKind.Amulet, BaseCost = 1, Traits = new[] { e.St.Schema.Trait("Artifact") } };
+        m.Def = new CardDef { CardId = 2990, Name = "ArtMat", Kind = CardKind.Amulet, BaseCost = 1, Traits = new[] { e.St.Schema.Trait("创造物") } };
         e.Vm.DropPendingTriggers();
         e.Tr.FuseCards(0, c, new[] { m }, e.Vm);
         e.Vm.StepUntilBlocked();

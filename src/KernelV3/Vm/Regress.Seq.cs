@@ -225,7 +225,7 @@ public static partial class Regress
         }
 
         log.AppendLine($"OK {pass}/{total}");
-        return log.ToString().TrimEnd() + Environment.NewLine;
+        return DeprecatedGates.Filter(log.ToString()).TrimEnd() + Environment.NewLine;
     }
 
     // ---------- 探针 ----------

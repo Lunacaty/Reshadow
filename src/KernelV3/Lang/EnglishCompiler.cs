@@ -938,7 +938,7 @@ public sealed class EnglishCompiler
                 if (c.IsAtEnd) continue;
             }
 
-            // "Ignores Ward" / "Earth Sigil" / "Clue" 这类句首类型词
+            // "Ignores Ward" / "Earth Sigil" / "证据" 这类句首类型词
             while (!c.IsAtEnd)
             {
                 if (c.MatchPhrase("ignores", "ward"))
@@ -2825,7 +2825,7 @@ public sealed class EnglishCompiler
                 if (joined.Contains("follower"))
                     filt = filt.WithWhere(new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item });
 
-                foreach (var tr in new[] { "Shikigami", "Artifact", "Golem", "Marine", "Puppetry", "Departed", "Officer", "Pixie", "Clue", "Loot" })
+                foreach (var tr in new[] { "Shikigami", "创造物", "巨像", "Marine", "Puppetry", "亡者", "士兵", "妖精", "证据", "财宝" })
                 {
                     if (!joined.Contains(tr.ToLowerInvariant())) continue;
                     filt = filt.WithWhere(new HasTraitExpr { Trait = _lex.Trait(tr), Of = TargetSpec.Item });

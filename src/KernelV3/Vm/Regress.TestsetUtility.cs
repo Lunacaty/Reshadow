@@ -108,7 +108,7 @@ public static partial class Regress
 
         log.AppendLine();
         log.AppendLine("=== 测试集效用 " + pass + "/" + total + " ===");
-        return log.ToString();
+        return DeprecatedGates.Filter(log.ToString());
     }
 
     // ---------------------------------------------------------------- 夹具
@@ -122,7 +122,7 @@ public static partial class Regress
     /// </summary>
     private static CompileContext UtilCtx(int seed) => CompileContext.Create(seed)
         .Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier")
-        .Traits("Pixie", "Artifact", "Loot", "Clue", "Golem", "Officer")
+        .Traits("妖精", "创造物", "财宝", "证据", "巨像", "士兵")
         // 卡名 → 卡号必须与 BattleState.BuiltinTokenDefs 一致。
         // 「Ghost」曾被错绑到 90021110（那是 Knight）—— 效果想加 Ghost，
         // 手里却出现一张白板骑士；81000020 才是测试集里的真 Ghost。
@@ -366,10 +366,10 @@ public static partial class Regress
             {
                 SourceKind = TargetSourceKind.Zone, Owner = ZoneScope.Self,
                 Zone = ZoneRef.Hand, Mode = SelectMode.All,
-                Where = new HasTraitExpr { Trait = st.Schema.Trait("Loot"), Of = TargetSpec.Item },
+                Where = new HasTraitExpr { Trait = st.Schema.Trait("财宝"), Of = TargetSpec.Item },
             },
         });
-        st.RegisterCard(new CardDef { CardId = 2021, Name = "LootCard", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, Traits = new[] { st.Schema.Trait("Loot") } });
+        st.RegisterCard(new CardDef { CardId = 2021, Name = "LootCard", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1, Traits = new[] { st.Schema.Trait("财宝") } });
         st.RegisterCard(new CardDef { CardId = 2022, Name = "PlainCard", Kind = CardKind.Follower, BaseAttack = 1, BaseLife = 1, BaseCost = 1 });
 
         var baseCard = st.SpawnCard(2020, ZoneRef.Hand, 0);

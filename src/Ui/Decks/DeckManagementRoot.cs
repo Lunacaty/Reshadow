@@ -366,7 +366,7 @@ public partial class DeckManagementRoot : Control
         if (_store == null) return;
         // 挑一副有卡的，没有就现造一副
         var deck = _store.SavedDecks.OrderByDescending(d => d.Cards.Count).FirstOrDefault()
-                   ?? _store.CreateDeck("standard", "Swordcraft", "截图牌组");
+                   ?? _store.CreateDeck("standard", "皇家", "截图牌组");
         ShowBuilder(deck);
     }
 
@@ -383,7 +383,7 @@ public partial class DeckManagementRoot : Control
     {
         if (_store == null) return;
         var deck = _store.SavedDecks.OrderByDescending(d => d.Cards.Count).FirstOrDefault()
-                   ?? _store.CreateDeck("standard", "Swordcraft", "截图牌组");
+                   ?? _store.CreateDeck("standard", "皇家", "截图牌组");
         var view = new DeckBuilderView(_store, deck);
         view.OnSaveAndBack += _ => ShowDeckList();
         Swap(view);
@@ -400,7 +400,7 @@ public partial class DeckManagementRoot : Control
     {
         if (_store == null) return;
         var deck = _store.SavedDecks.OrderByDescending(d => d.Cards.Count).FirstOrDefault()
-                   ?? _store.CreateDeck("all-clans", "Forestcraft", "截图牌组");
+                   ?? _store.CreateDeck("all-clans", "精灵", "截图牌组");
 
         var view = new Battle.BattleScreenRoot();
         Swap(view);

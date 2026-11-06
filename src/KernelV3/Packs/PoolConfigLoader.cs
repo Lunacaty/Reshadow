@@ -163,7 +163,7 @@ public static class PoolConfigLoader
             DeckId = S(r, "deck_id") is { Length: > 0 } did ? did : Guid.NewGuid().ToString("N").Substring(0, 8),
             Name = S(r, "name") is { Length: > 0 } nm ? nm : "新建牌组",
             PoolId = S(r, "pool_id") is { Length: > 0 } pid ? pid : "standard",
-            LeaderClan = S(r, "leader_clan") is { Length: > 0 } lc ? lc : "Neutral",
+            LeaderClan = S(r, "leader_clan") is { Length: > 0 } lc ? lc : "中立",
             ChosenExtraClans = chosen,
             Cards = cards,
         };

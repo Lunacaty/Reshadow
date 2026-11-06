@@ -132,7 +132,7 @@ public static partial class Regress
         st.DestroyEntity(st.SpawnCard(3, ZoneRef.Board, 0));
 
         var rev = PlayReanimator(st, tr, vm, comp, 903, 4, new[] { 3 });
-        var departed = st.Schema.Trait("Departed");
+        var departed = st.Schema.Trait("亡者");
         bool has = rev != null && rev.Traits.Contains(departed);
         chk("re-3", has,
             "traits=[" + (rev == null ? "n/a" : string.Join(",", rev.Traits.Select(t => t.Name))) + "]");

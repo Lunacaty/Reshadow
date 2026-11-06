@@ -491,7 +491,7 @@ public partial class DeckListView : Control
                     DeckId = Guid.NewGuid().ToString("N").Substring(0, 8),
                     Name = r.TryGetProperty("name", out var n) ? (n.GetString() ?? "导入牌组") : "导入牌组",
                     PoolId = r.TryGetProperty("pool_id", out var pi) ? (pi.GetString() ?? "standard") : "standard",
-                    LeaderClan = r.TryGetProperty("leader_clan", out var lc) ? (lc.GetString() ?? "Neutral") : "Neutral",
+                    LeaderClan = r.TryGetProperty("leader_clan", out var lc) ? (lc.GetString() ?? "中立") : "中立",
                 };
                 if (r.TryGetProperty("cards", out var cs) && cs.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {

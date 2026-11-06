@@ -8,7 +8,7 @@ namespace ShadowverseFan.KernelV3.Lang;
 ///
 /// 这是整个引擎最容易踩的坑，也是唯一一条必须显式记住的约束：
 ///   <c>SymbolId&lt;T&gt;</c> 的整数 Id 由 <c>GameSchema</c> 实例在注册时分配。
-///   编译器用它自己的 Lexicon.Schema 给 "Pixie" 分配 Id 0，
+///   编译器用它自己的 Lexicon.Schema 给 "妖精" 分配 Id 0，
 ///   运行时的 BattleState 用另一个 Schema 分配 Id 1 —— 同一个兵种名字，
 ///   两个 Id，<c>Equals</c> 为 false。
 ///

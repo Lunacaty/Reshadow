@@ -32,7 +32,7 @@ public sealed class CardRawEntry
     /// <summary>true = 衍生卡（Token），不可直接放进局外构筑。</summary>
     public bool IsToken { get; init; }
 
-    public string Clan { get; init; } = "Neutral";
+    public string Clan { get; init; } = "中立";
     public List<string> Traits { get; init; } = new();
     public int Cost { get; init; }
     public int Attack { get; init; }

@@ -12,7 +12,7 @@ namespace ShadowverseFan.KernelV3.Core;
 //   · 物理法则（ZoneRef / CompareOp / CoreEvent / CoreOp）→ C# enum，写死，不可 DIY
 //   · 内容词条（兵种 / 资源 / 关键词 / 职业）→ SymbolId<T>，由 GameSchema 注册
 //
-// 为什么不用 string：玩家把 "Officer" 拼成 "Oficer" 时无法静态报错。
+// 为什么不用 string：玩家把 "士兵" 拼成 "Oficer" 时无法静态报错。
 // 为什么不用 enum：玩家无法 DIY 一个叫「高达」的新兵种。
 //
 // SymbolId<T> 两者兼得：
@@ -49,7 +49,7 @@ public readonly record struct SymbolId<T>(int Id, string Name)
     ///
     /// 理由：Id 是 GameSchema 分配的唯一身份，Name 只是给人和打印器看的标签。
     /// 同一个符号在不同 Schema 实例里可能以不同大小写首次注册
-    /// （Lexicon 用 "loot"、BattleState 用 "Loot"），Id 相同、Name 不同。
+    /// （Lexicon 用 "loot"、BattleState 用 "财宝"），Id 相同、Name 不同。
     /// 若按 default record 的「(Id, Name) 全等」比较，
     /// 一张卡身上的 trait 与条件里的 trait 会被判成两个不同的东西 ——
     /// 实测 `HasTraitExpr` 因此对明明带着 Loot 的卡恒判 false。

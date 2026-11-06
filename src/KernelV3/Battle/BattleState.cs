@@ -348,19 +348,19 @@ public sealed class BattleState : IVmWorld
                              string[] traits, string[] keywords)[] BuiltinTokenDefs =
     {
         (MagicSedimentCardId, "Magic Sediment", CardKind.Amulet, 1, 0, 0, null, null),
-        (ClueDefaultCardId, "Divine Evidence", CardKind.Amulet, 1, 0, 0, new[] { "Clue" }, null),
-        (90011110, "Fairy", CardKind.Follower, 1, 1, 1, new[] { "Pixie" }, null),
+        (ClueDefaultCardId, "Divine Evidence", CardKind.Amulet, 1, 0, 0, new[] { "证据" }, null),
+        (90011110, "Fairy", CardKind.Follower, 1, 1, 1, new[] { "妖精" }, null),
         (90051120, "Bat", CardKind.Follower, 1, 1, 1, null, null),
-        (90021110, "Knight", CardKind.Follower, 1, 1, 1, new[] { "Officer" }, null),
-        (90031120, "Guardian Golem", CardKind.Follower, 2, 2, 2, new[] { "Golem" }, new[] { "ward" }),
-        (90073110, "Ominous Artifact \u03b1", CardKind.Follower, 1, 2, 1, new[] { "Artifact" }, null),
-        (90073120, "Ominous Artifact \u03b2", CardKind.Follower, 2, 3, 2, new[] { "Artifact" }, null),
-        (90073130, "Ominous Artifact \u03b3", CardKind.Follower, 3, 5, 3, new[] { "Artifact" }, null),
-        (90024310, "Remnant of Hollowness", CardKind.Spell, 1, 0, 0, new[] { "Loot" }, null),
+        (90021110, "Knight", CardKind.Follower, 1, 1, 1, new[] { "士兵" }, null),
+        (90031120, "Guardian Golem", CardKind.Follower, 2, 2, 2, new[] { "巨像" }, new[] { "ward" }),
+        (90073110, "Ominous Artifact \u03b1", CardKind.Follower, 1, 2, 1, new[] { "创造物" }, null),
+        (90073120, "Ominous Artifact \u03b2", CardKind.Follower, 2, 3, 2, new[] { "创造物" }, null),
+        (90073130, "Ominous Artifact \u03b3", CardKind.Follower, 3, 5, 3, new[] { "创造物" }, null),
+        (90024310, "Remnant of Hollowness", CardKind.Spell, 1, 0, 0, new[] { "财宝" }, null),
         (90005150, "Kindled Blade", CardKind.Spell, 2, 0, 0, null, null),
         (90034310, "Ersatz Elimination", CardKind.Spell, 3, 0, 0, null, null),
         // Fortifier Artifact 不在测试集里，只是 Striker Artifact 分档表的另一档目标。
-        (90072120, "Fortifier Artifact", CardKind.Follower, 4, 3, 3, new[] { "Artifact" }, new[] { "ward" }),
+        (90072120, "Fortifier Artifact", CardKind.Follower, 4, 3, 3, new[] { "创造物" }, new[] { "ward" }),
         (90004110, "Silent Rider", CardKind.Follower, 6, 8, 8, null, new[] { "storm" }),
         (90004120, "Servant of Cocytus", CardKind.Follower, 1, 13, 13, null, null),
         (90004130, "Demon of Purgatory", CardKind.Follower, 4, 9, 6, null, null),
@@ -495,7 +495,7 @@ public sealed class BattleState : IVmWorld
         Schema.StackableAmulets["clues"] = new StackableAmuletSpec(
             CounterName: "clues",
             DefaultTokenCardId: ClueDefaultCardId,
-            MatchTraitName: "Clue",            // 线索按兵种认同类（换过卡面也算）
+            MatchTraitName: "证据",            // 线索按兵种认同类（换过卡面也算）
             MergePolicy: StackMergePolicy.BanishOld,
             ProtectedFromAbilities: true);
     }
@@ -899,7 +899,7 @@ public sealed class BattleState : IVmWorld
     public RuntimeEntity FindClue(int playerId)
     {
         if (playerId < 0 || playerId > 1) return null;
-        var clueTrait = Schema.Trait("Clue");
+        var clueTrait = Schema.Trait("证据");
         foreach (var e in Players[playerId].Board)
             if (e.Def != null && (e.Traits.Contains(clueTrait)
                                   || (e.Def.Traits != null && e.Def.Traits.Contains(clueTrait))))
@@ -2201,7 +2201,7 @@ public sealed class BattleState : IVmWorld
     public void TagDeparted(RuntimeEntity e)
     {
         if (e == null) return;
-        var departed = Schema.Trait("Departed");
+        var departed = Schema.Trait("亡者");
         if (!e.Traits.Contains(departed)) e.Traits.Add(departed);
 
         // 同步历史快照：EnteredThisMatch 的快照在 CreateEntity 内部就拍下了，

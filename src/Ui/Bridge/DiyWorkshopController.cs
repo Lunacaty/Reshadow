@@ -389,7 +389,7 @@ public sealed class DiyWorkshopController
                 NameChs = DeckEditorViewModel.DisplayName(CurrentDef),
                 NameEng = CurrentDef.Name ?? "",
                 Kind = CurrentDef.Kind.ToString(),
-                Clan = CurrentDef.Clan.IsValid ? CurrentDef.Clan.Name : "Neutral",
+                Clan = CurrentDef.Clan.IsValid ? CurrentDef.Clan.Name : "中立",
                 Traits = (CurrentDef.Traits ?? Array.Empty<SymbolId<TraitTag>>())
                          .Select(t => t.Name).ToList(),
                 Cost = CurrentDef.BaseCost,
@@ -413,7 +413,7 @@ public sealed class DiyWorkshopController
             Cost = CurrentDef.BaseCost,
             Attack = CurrentDef.BaseAttack,
             Life = CurrentDef.BaseLife,
-            Clan = CurrentDef.Clan.IsValid ? CurrentDef.Clan.Name : "Neutral",
+            Clan = CurrentDef.Clan.IsValid ? CurrentDef.Clan.Name : "中立",
             Traits = (CurrentDef.Traits ?? Array.Empty<SymbolId<TraitTag>>())
                      .Select(t => t.Name).ToList(),
             EngText = engText,
@@ -508,7 +508,7 @@ public sealed class DiyWorkshopController
     private SymbolId<ClanTag> ParseClanOrKeep(string clanName, SymbolId<ClanTag> keep)
     {
         if (string.IsNullOrWhiteSpace(clanName)) return keep;
-        if (string.Equals(clanName, "Neutral", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(clanName, "中立", StringComparison.OrdinalIgnoreCase))
             return SymbolId<ClanTag>.Invalid;
         return Workspace.Schema.Clan(clanName);
     }
@@ -665,34 +665,68 @@ public sealed class DiyWorkshopController
     ///   · 动作块与控制流必须落到某个事件帽的 Stacks 里。
     /// 所以：有显式插入焦点就听它；否则按 opcode 自己挑合适的落点。
     /// </summary>
-    public bool InsertBlock(string opcode, int scope = 0)
+    /// <summary>
+    /// 插入一颗新积木。
+    ///
+    /// 插入位置按**积木形状 + 当前选中**自动决定，玩家不需要先点「设为插入点」：
+    ///   · 事件帽      -> 永远追加到能力域根列表（帽子只能挂根上）
+    ///   · 构筑修正    -> 永远进 DeckModBlocks
+    ///   · 动作 / 控制流 -> 插在当前选中积木的同级正下方（连续点击就能一路往下搭）
+    ///   · 没有选中    -> 落到本域最后一顶帽子的 Stacks（没帽子就自动补一顶）
+    /// </summary>
+    public bool InsertBlock(string opcode, int scope = 0, Block selectedBlock = null)
     {
         if (BlockModel == null) return false;
         var blk = DiyBlockTree.CreateDefaultBlock(opcode);
         if (blk == null) return false;
 
-        List<Block> target = ActiveInsertList;
-        if (target == null)
+        var root = RootListOf(scope);
+        if (root == null) return false;
+
+        // 规则 1：事件帽永远挂在能力域根列表。
+        if (opcode.StartsWith("hat_"))
         {
-            var root = RootListOf(scope);
-            if (root == null) return false;
-            if (opcode.StartsWith("hat_"))
+            root.Add(blk);
+            ActiveInsertList = blk.Stacks ??= new List<Block>();
+            return CompileFromBlocks(BlockModel);
+        }
+
+        // 规则 2：构筑修正永远进 DeckModBlocks，混进事件帽会让编译报「不是事件帽」。
+        if (opcode == "act_deck_mod")
+        {
+            BlockModel.DeckModBlocks ??= new List<Block>();
+            BlockModel.DeckModBlocks.Add(blk);
+            return CompileFromBlocks(BlockModel);
+        }
+
+        // 规则 3：选中了某颗非帽积木 -> 插在它同级正下方。
+        if (selectedBlock != null && !(selectedBlock.Opcode ?? "").StartsWith("hat_"))
+        {
+            var parent = DiyBlockTree.FindParentContainer(BlockModel, selectedBlock);
+            if (parent != null)
             {
-                target = root;
-            }
-            else
-            {
-                // 动作块 / 控制流：落到这个能力域最后一顶事件帽的 Stacks。
-                // 没有帽子就自动补一顶，否则玩家点了调色盘什么都看不到。
-                if (root.Count == 0 || !(root[root.Count - 1].Opcode ?? "").StartsWith("hat_"))
-                    root.Add(DiyBlockTree.CreateDefaultBlock("hat_self_event"));
-                var hat = root[root.Count - 1];
-                hat.Stacks ??= new List<Block>();
-                target = hat.Stacks;
+                int idx = parent.IndexOf(selectedBlock);
+                if (idx >= 0) parent.Insert(idx + 1, blk);
+                else parent.Add(blk);
+                ActiveInsertList = parent;
+                return CompileFromBlocks(BlockModel);
             }
         }
 
-        target.Add(blk);
+        // 规则 4：有明确插入点就直接追加。
+        if (ActiveInsertList != null)
+        {
+            ActiveInsertList.Add(blk);
+            return CompileFromBlocks(BlockModel);
+        }
+
+        // 规则 5：兜底落到本域最后一顶帽子的 Stacks（没帽子就补一顶）。
+        if (root.Count == 0 || !(root[root.Count - 1].Opcode ?? "").StartsWith("hat_"))
+            root.Add(DiyBlockTree.CreateDefaultBlock("hat_self_event"));
+        var lastHat = root[root.Count - 1];
+        lastHat.Stacks ??= new List<Block>();
+        lastHat.Stacks.Add(blk);
+        ActiveInsertList = lastHat.Stacks;
         return CompileFromBlocks(BlockModel);
     }
 

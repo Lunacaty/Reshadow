@@ -170,7 +170,7 @@ public sealed class DeckEditorViewModel
             var allowed = CurrentProfile?.AllowedClans;
             query = query.Where(c =>
                 !c.Clan.IsValid
-                || string.Equals(c.Clan.Name, "Neutral", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Clan.Name, "中立", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(c.Clan.Name, WorkingDeck.LeaderClan, StringComparison.OrdinalIgnoreCase)
                 || (allowed != null && allowed.Contains(c.Clan.Name)));
         }

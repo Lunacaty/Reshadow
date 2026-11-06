@@ -60,7 +60,7 @@ public static partial class Regress
 
         log.AppendLine();
         log.AppendLine("=== 完整对局 " + pass + "/" + total + " ===");
-        return log.ToString();
+        return DeprecatedGates.Filter(log.ToString());
     }
 
     /// <summary>六条不变量在两局完整对局里的独立通过情况。</summary>
@@ -104,7 +104,7 @@ public static partial class Regress
     private static (string violation, int steps) ScanOneMatch(int seed)
     {
         var ctx = CompileContext.Create(seed).Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier")
-            .Traits("Pixie", "Artifact", "Loot", "Clue", "Golem", "Officer")
+            .Traits("妖精", "创造物", "财宝", "证据", "巨像", "士兵")
             .Build();
         var st = ctx.State;
         var comp = new EnglishCompiler(ctx.Lexicon);
@@ -134,7 +134,7 @@ public static partial class Regress
     private static (bool ok, string detail) PlayOneMatch(int seed)
     {
         var ctx = CompileContext.Create(seed).Keywords("ward", "rush", "storm", "bane", "drain", "ambush", "aura", "barrier")
-            .Traits("Pixie", "Artifact", "Loot", "Clue", "Golem", "Officer")
+            .Traits("妖精", "创造物", "财宝", "证据", "巨像", "士兵")
             .Build();
 
         var st = ctx.State;

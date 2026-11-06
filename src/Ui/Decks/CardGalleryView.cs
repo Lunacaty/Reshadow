@@ -145,7 +145,7 @@ public partial class CardGalleryView : Control
         SvWbTheme.StyleButton(_clanPicker); SvWbTheme.StyleOptionPopup(_clanPicker);
         _clanPicker.AddItem("全部职业", 0);
         var clans = (_store.Catalog.AllCards.Values
-            .Select(c => c.Clan.IsValid ? c.Clan.Name : "Neutral")
+            .Select(c => c.Clan.IsValid ? c.Clan.Name : "中立")
             .Distinct().OrderBy(x => x, StringComparer.Ordinal)).ToList();
         for (int i = 0; i < clans.Count; i++) _clanPicker.AddItem(clans[i], i + 1);
         _clanPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
@@ -210,7 +210,7 @@ public partial class CardGalleryView : Control
         {
             string want = _clanPicker.GetItemText(_clanPicker.Selected);
             query = query.Where(c =>
-                string.Equals(c.Clan.IsValid ? c.Clan.Name : "Neutral", want, StringComparison.OrdinalIgnoreCase));
+                string.Equals(c.Clan.IsValid ? c.Clan.Name : "中立", want, StringComparison.OrdinalIgnoreCase));
         }
 
         // 费用（下标 1..9 对应 0..8，8 是 8+）

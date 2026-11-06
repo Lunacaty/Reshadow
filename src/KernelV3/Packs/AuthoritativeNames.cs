@@ -8,7 +8,7 @@ namespace ShadowverseFan.KernelV3.Packs;
 // ============================================================================
 // 权威卡名表（英文 / 简中各一份，按卡号索引）
 //
-// 数据源：assets/cards_svwbmeta.json（官方卡库导出，982 条，含五种语言）。
+// 数据源：assets/cards.json（svwbmeta 官方导出，982 条，含五种语言）。
 //
 // 为什么需要它：
 //   卡包是编译产物，卡包里只留本地化后的显示名（中文）。
@@ -80,7 +80,7 @@ public static class AuthoritativeNames
         var dir = startDir ?? AppContext.BaseDirectory;
         for (int i = 0; i < 12 && !string.IsNullOrEmpty(dir); i++)
         {
-            foreach (var rel in new[] { Path.Combine("assets", "cards_svwbmeta.json"), Path.Combine("game", "assets", "cards_svwbmeta.json") })
+            foreach (var rel in new[] { Path.Combine("assets", "cards.json"), Path.Combine("game", "assets", "cards.json") })
             {
                 var p = Path.Combine(dir, rel);
                 if (File.Exists(p)) return p;

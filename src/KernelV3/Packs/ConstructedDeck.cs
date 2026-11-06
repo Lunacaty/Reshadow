@@ -27,8 +27,8 @@ public sealed class ConstructedDeck
     /// <summary>该构筑绑定的卡池 ID。</summary>
     public string PoolId { get; init; } = "standard";
 
-    /// <summary>主战者职业（如 "Swordcraft"、"Forestcraft"、"Neutral"）。</summary>
-    public string LeaderClan { get; init; } = "Neutral";
+    /// <summary>主战者职业（如 "皇家"、"精灵"、"中立"）。</summary>
+    public string LeaderClan { get; init; } = "中立";
 
     /// <summary>
     /// 当牌组里带有 AllowChosenClans（允许任选额外职业）的构筑卡时，
