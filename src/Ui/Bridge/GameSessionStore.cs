@@ -947,6 +947,137 @@ public sealed class GameSessionStore
         }
     }
 
+
+    /// <summary>
+    /// 把一个自定义符号（兵种 / 计数器）写进指定卡包并落盘。
+    ///
+    /// 只加内存符号不够：下一次 ReloadCatalogAndPools 重建 Catalog 时，
+    /// 没有数据支撑的符号会消失，玩家看到刚加的东西凭空不见。
+    /// </summary>
+    public bool AddPackSymbolEntry(string packId, string kind, string name,
+                                   int min, int max, out string message)
+    {
+        message = "";
+        if (string.IsNullOrWhiteSpace(packId) || string.IsNullOrWhiteSpace(name))
+        { message = "卡包或名称为空"; return false; }
+
+        try
+        {
+            string file = Path.Combine(DataRoot, "packs", packId, "pack.json");
+            if (!File.Exists(file)) { message = "找不到卡包 " + packId; return false; }
+
+            var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(file, System.Text.Encoding.UTF8))
+                       as System.Text.Json.Nodes.JsonObject;
+            if (node == null) { message = "卡包文件格式异常"; return false; }
+
+            string key = kind == "counters" ? "counters" : "traits";
+            if (node[key] is not System.Text.Json.Nodes.JsonArray arr)
+            {
+                arr = new System.Text.Json.Nodes.JsonArray();
+                node[key] = arr;
+            }
+            foreach (var e in arr)
+                if (string.Equals(e?["name"]?.GetValue<string>(), name, StringComparison.OrdinalIgnoreCase))
+                { message = "已存在：" + name; return true; }
+
+            var entry = new System.Text.Json.Nodes.JsonObject { ["name"] = name };
+            if (kind == "counters")
+            {
+                entry["min"] = min;
+                entry["max"] = max;
+            }
+            arr.Add(entry);
+
+            var opt = new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            };
+            File.WriteAllText(file, node.ToJsonString(opt) + "\n", new UTF8Encoding(false));
+            ReloadCatalogAndPools();
+            message = "已写入卡包 " + packId;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            message = "写入失败：" + ex.Message;
+            return false;
+        }
+    }
+
+
+    /// <summary>
+    /// 把卡包数据里的旧职业名换成新名。
+    ///
+    /// 改名字段本身不够：卡包的 clans 声明和卡片头部 clan= 都写着旧名，
+    /// 重载后它们会把旧名重新注册进 Schema，界面上就变成
+    /// 「旧名（未勾选）+ 新名（已勾选）」两个职业并存。
+    /// </summary>
+    public bool RenameClanInPacks(string oldName, string newName, out string message)
+    {
+        message = "";
+        if (string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName))
+        { message = "名称不能为空"; return false; }
+
+        int touched = 0;
+        try
+        {
+            string root = Path.Combine(DataRoot, "packs");
+            if (!Directory.Exists(root)) { message = "没有卡包目录"; return false; }
+
+            var opt = new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            };
+
+            foreach (var dir in Directory.GetDirectories(root))
+            {
+                string file = Path.Combine(dir, "pack.json");
+                if (!File.Exists(file)) continue;
+                string raw = File.ReadAllText(file, System.Text.Encoding.UTF8);
+                if (!raw.Contains(oldName, StringComparison.Ordinal)) continue;
+
+                var node = System.Text.Json.Nodes.JsonNode.Parse(raw) as System.Text.Json.Nodes.JsonObject;
+                if (node == null) continue;
+
+                // clans 声明
+                if (node["clans"] is System.Text.Json.Nodes.JsonArray arr)
+                    foreach (var e in arr)
+                        if (e is System.Text.Json.Nodes.JsonObject o &&
+                            string.Equals(o["name"]?.GetValue<string>(), oldName, StringComparison.Ordinal))
+                            o["name"] = newName;
+
+                // 卡片头部 clan=
+                if (node["cards"] is System.Text.Json.Nodes.JsonArray cards)
+                    foreach (var e in cards)
+                    {
+                        if (e is not System.Text.Json.Nodes.JsonObject c) continue;
+                        string cl = c["clan"]?.GetValue<string>();
+                        if (string.Equals(cl, oldName, StringComparison.Ordinal))
+                        {
+                            c["clan"] = newName;
+                            string txt = c["text"]?.GetValue<string>();
+                            if (!string.IsNullOrEmpty(txt))
+                                c["text"] = txt.Replace("clan=" + oldName, "clan=" + newName);
+                            touched++;
+                        }
+                    }
+
+                File.WriteAllText(file, node.ToJsonString(opt) + "\n", new UTF8Encoding(false));
+            }
+
+            ReloadCatalogAndPools();
+            message = "已把卡包里的「" + oldName + "」改为「" + newName + "」（" + touched + " 张卡）";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            message = "改名失败：" + ex.Message;
+            return false;
+        }
+    }
+
     /// <summary>删除一个卡池。标准卡池不可删。</summary>
     public bool DeletePool(string poolId, out string message)
     {

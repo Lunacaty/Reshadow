@@ -802,14 +802,14 @@ public static class RegressBattleUi
         string counterEng = "probe_counter";
         string clanEng = "ProbeCraft";
 
-        ctrl.DefineCustomTrait(traitEng, "探测机甲");
-        bool traitOk = ctrl.Workspace.Schema.Trait(traitEng).IsValid;
+        ctrl.DefineCustomTrait("探测机甲", 0, 0);
+        bool traitOk = ctrl.Workspace.Schema.Trait("探测机甲").IsValid;
 
-        ctrl.DefineCustomCounter(counterEng, "探测计数", 0, 7);
-        bool counterOk = ctrl.Workspace.Schema.Counter(counterEng) != null;
+        ctrl.DefineCustomCounter("探测计数", 0, 7);
+        bool counterOk = ctrl.Workspace.Schema.Counter("探测计数") != null;
 
-        ctrl.DefineCustomClan(clanEng, "探测职业");
-        bool clanOk = ctrl.Workspace.Schema.Clan(clanEng).IsValid;
+        ctrl.DefineCustomClan("探测职业");
+        bool clanOk = ctrl.Workspace.Schema.Clan("探测职业").IsValid;
 
         // 注册后应能真的写进卡里
         // 兵种写在**卡牌头部括号内**：traits: [A, B]。放在 body 里会报「无法识别」。

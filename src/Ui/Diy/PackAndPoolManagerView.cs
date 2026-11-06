@@ -679,8 +679,12 @@ public partial class PackAndPoolManagerView : Control
             if (at >= 0) clans[at] = zh; else clans.Add(zh);
             _store.SavePoolConfigFull(latest.PoolId, latest.Name, latest.EnabledPackIds, latest.Rules,
                                      latest.NamedDecks, out string m, clans, latest.LeaderCounters);
+            // 卡包的 clans 声明与卡片 clan= 里还写着旧名，不同步替换的话，
+            // 重载后旧名会被重新注册进 Schema，界面上变成两个职业并存。
+            _store.RenameClanInPacks(clanName, zh, out string pm);
             _store.Catalog.Schema.Clan(zh, latest.PoolId);
             _store.Catalog.Lexicon.AddClan(zh);
+            if (!string.IsNullOrEmpty(pm)) m = m + "；" + pm;
             _ruleStatus.Text = "已把职业「" + clanName + "」改名为「" + zh + "」" + (string.IsNullOrEmpty(m) ? "" : "（" + m + "）");
             RefreshPoolClans();
         };

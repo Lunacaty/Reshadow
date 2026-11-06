@@ -1,0 +1,24 @@
+fix(169): 逐段复查补漏 —— 自定义词条落盘 + 改名同步卡包
+
+## 漏做 1：DefineCustomTrait / Counter / Clan 只写内存
+  文档第 1 条要求「点击注册时同步写入当前卡池并落盘，不再只写内存」。
+  原来三个方法只调 Workspace.DefineXxx + Glossary.Add，
+  下一次 ReloadCatalogAndPools 重建 Catalog 后，刚加的词条凭空消失。
+
+  现在：
+    · DefineCustomTrait   -> 写进卡包 traits 声明（新增 GameSessionStore.AddPackSymbolEntry）
+    · DefineCustomCounter -> 写进卡包 counters 声明
+    · DefineCustomClan    -> 写进卡池 pool_clans
+  三者都只取一个名字（Name 即标识符也是显示名），与单名原则一致。
+  验证：注册「机甲职业」后重建 Store，卡池里仍在。
+
+## 漏做 2：职业改名后新旧名并存
+  改名只动 pool_clans，但卡包的 clans 声明和卡片 clan= 还写着旧名，
+  重载后旧名被重新注册进 Schema，界面上变成两个职业。
+  实测确认：改名「皇家」->「皇家X」后候选里同时出现「皇家」「皇家X」。
+
+  新增 GameSessionStore.RenameClanInPacks：同步替换卡包的 clans 声明
+  与卡片 clan= / PyAST 文本里的 clan=，再重载。
+
+## 门禁
+  全部通过，无退化。

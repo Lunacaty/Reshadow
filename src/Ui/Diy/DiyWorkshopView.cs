@@ -971,9 +971,10 @@ public partial class DiyWorkshopView : Control
         {
             switch (kind)
             {
-                case "counter": _ctrl.DefineCustomCounter(eng, chs, min, max); break;
-                case "clan":    _ctrl.DefineCustomClan(eng, chs); break;
-                default:        _ctrl.DefineCustomTrait(eng, chs); break;
+                // 名称只有一个：eng 与 chs 在弹窗里已经是同一个值。
+                case "counter": _ctrl.DefineCustomCounter(chs, min, max); break;
+                case "clan":    _ctrl.DefineCustomClan(chs); break;
+                default:        _ctrl.DefineCustomTrait(chs, min, max); break;
             }
             _statusLabel.Text = _ctrl.LastStatusMessage;
             _statusLabel.AddThemeColorOverride("font_color", SvWbTheme.StatusValid);

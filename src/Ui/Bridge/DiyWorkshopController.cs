@@ -564,30 +564,83 @@ public sealed class DiyWorkshopController
 
     // ---------------------------------------------------------------- 自定义词条
 
-    public void DefineCustomTrait(string nameEng, string nameChs)
+    // ---------------------------------------------------------------- 自定义词条
+    //
+    // 三者都只取**一个名字**：名字本身就是标识符，也是显示名。
+    // PyAST 词法器原生支持中文标识符，不需要先起个英文 ID 再配中文名。
+    //
+    // 注册必须落盘到当前卡池：只写内存的话，下一次 Reload 重建 Catalog 就没了，
+    // 玩家看到刚加的职业/兵种/计数器凭空消失。
+
+    public void DefineCustomTrait(string name, int min, int max)
     {
-        Workspace.DefineTrait(nameEng, nameChs);
-        Store.Catalog.Glossary.Add(nameEng, nameChs);
-        LastStatusMessage = "已注册新兵种：" + nameEng + "（" + nameChs + "）";
+        string n = (name ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(n)) { LastStatusMessage = "名称不能为空"; return; }
+        Workspace.DefineTrait(n, n);
+        Store.Catalog.Schema.Trait(n);
+        Store.Catalog.Lexicon.AddTrait(n);
+        PersistPackEntry("traits", n, min, max);
+        LastStatusMessage = "已注册新兵种：" + n;
         OnCardUpdated?.Invoke();
     }
 
-    public void DefineCustomCounter(string nameEng, string nameChs, int min, int max)
+    public void DefineCustomCounter(string name, int min, int max)
     {
-        Workspace.DefineCounter(nameEng, nameChs, min, max);
-        Store.Catalog.Glossary.Add(nameEng, nameChs);
-        LastStatusMessage = "已注册新计数器：" + nameEng + "（" + nameChs + "，范围 " + min + ".." + max + "）";
+        string n = (name ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(n)) { LastStatusMessage = "名称不能为空"; return; }
+        Workspace.DefineCounter(n, n, min, max);
+        Store.Catalog.Schema.Counter(n);
+        Store.Catalog.Schema.CounterLimits[n] = (min, max);
+        PersistPackEntry("counters", n, min, max);
+        LastStatusMessage = "已注册新计数器：" + n + "（范围 " + min + ".." + max + "）";
         OnCardUpdated?.Invoke();
     }
 
-    public void DefineCustomClan(string nameEng, string nameChs)
+    public void DefineCustomClan(string name)
     {
-        Workspace.DefineClan(nameEng, nameChs);
-        Store.Catalog.Glossary.Add(nameEng, nameChs);
-        LastStatusMessage = "已注册新职业：" + nameEng + "（" + nameChs + "）";
+        string n = (name ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(n)) { LastStatusMessage = "名称不能为空"; return; }
+        Workspace.DefineClan(n, n);
+        Store.Catalog.Schema.Clan(n);
+        Store.Catalog.Lexicon.AddClan(n);
+        PersistPoolClan(n);
+        LastStatusMessage = "已注册新职业：" + n;
         OnCardUpdated?.Invoke();
     }
 
+    /// <summary>把自定义兵种 / 计数器写进当前卡池的第一个启用卡包并落盘。</summary>
+    private void PersistPackEntry(string kind, string name, int min, int max)
+    {
+        try
+        {
+            if (!Store.PoolConfigs.TryGetValue(ActivePoolId ?? "", out var cfg))
+                cfg = Store.PoolConfigs.Values.FirstOrDefault();
+            string packId = cfg?.EnabledPackIds?.FirstOrDefault() ?? "testset-v2";
+            Store.AddPackSymbolEntry(packId, kind, name, min, max, out _);
+        }
+        catch (Exception) { }
+    }
+
+    /// <summary>把自定义职业写进当前卡池的 pool_clans 并落盘。</summary>
+    private void PersistPoolClan(string name)
+    {
+        try
+        {
+            // 找当前卡池；ActivePoolId 可能是个还没落盘的默认值（"standard"），
+            // 那就退到第一个真实存在的卡池，总比静默丢弃强。
+            if (!Store.PoolConfigs.TryGetValue(ActivePoolId ?? "", out var cfg))
+            {
+                cfg = Store.PoolConfigs.Values.FirstOrDefault();
+                if (cfg == null) return;
+            }
+            var clans = new System.Collections.Generic.List<string>(cfg.PoolClans ?? new System.Collections.Generic.List<string>());
+            if (clans.Contains(name, StringComparer.OrdinalIgnoreCase)) return;
+            clans.Add(name);
+            Store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds, cfg.Rules,
+                                     cfg.NamedDecks, out _, clans, cfg.LeaderCounters);
+        }
+        catch (Exception) { }
+    }
     // ---------------------------------------------------------------- 保存
 
     public bool SaveCurrentCardToPack(string packId, out string message)
