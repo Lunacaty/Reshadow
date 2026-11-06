@@ -5,6 +5,7 @@ using Godot;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Packs;
 using ShadowverseFan.Ui.Bridge;
+using ShadowverseFan.Ui.Diy;
 using ShadowverseFan.Ui.Theme;
 using ShadowverseFan.Ui.Widgets;
 
@@ -32,7 +33,9 @@ public partial class DeckBuilderView : Control
     private GridContainer _cardGrid;
 
     // 分页：一次只造当页的卡，避免上千张卡实例化卡死 UI。
-    private const int PageSize = 16;   // 4 列 × 4 行
+    // 每页 2 行。4 行时最后一排会被窗口裁掉，玩家必须滚动才看得到，
+    // 而分页存在的意义就是「一屏看全」，要滚动就失去意义了。
+    private const int PageSize = 8;    // 4 列 × 2 行
     private int _currentPage;
     private int _totalPages = 1;
     private Label _pageLabel;
@@ -233,6 +236,119 @@ public partial class DeckBuilderView : Control
         _currentPage = 0;
         search.TextChanged += t => { _vm.SearchQuery = t; RefreshCardGrid(); };
         filterRow.AddChild(search);
+
+        // ---- 牌组编辑器完整筛选栏 ----
+        // 一行放不下 12 个筛选项，用 HFlowContainer 自动折行。
+        var advRow = new HFlowContainer();
+        advRow.AddThemeConstantOverride("h_separation", 6);
+        advRow.AddThemeConstantOverride("v_separation", 4);
+        pane.AddChild(advRow);
+
+        // 兵种
+        var traitOpt = new OptionButton { CustomMinimumSize = new Vector2(120, 30) };
+        traitOpt.AddItem("兵种: 全部");
+        var traits = new List<string>();
+        try
+        {
+            foreach (var t in _store.Catalog.Schema.Traits.All.OrderBy(x => x.Name, StringComparer.Ordinal))
+                if (!string.IsNullOrWhiteSpace(t.Name)) { traits.Add(t.Name); traitOpt.AddItem(t.Name); }
+        }
+        catch (Exception) { }
+        SvWbTheme.StyleButton(traitOpt);
+        SvWbTheme.StyleOptionPopup(traitOpt);
+        traitOpt.ItemSelected += i =>
+        {
+            int k = (int)i;
+            _vm.ActiveTraitFilter = k <= 0 || k - 1 >= traits.Count ? null : traits[k - 1];
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(traitOpt);
+
+        // 关键词
+        var kwOpt = new OptionButton { CustomMinimumSize = new Vector2(130, 30) };
+        kwOpt.AddItem("关键词: 全部");
+        var kws = new List<string>();
+        try
+        {
+            foreach (var kv in DiyZh.Keywords) { kws.Add(kv.Key); kwOpt.AddItem(kv.Zh); }
+        }
+        catch (Exception) { }
+        SvWbTheme.StyleButton(kwOpt);
+        SvWbTheme.StyleOptionPopup(kwOpt);
+        kwOpt.ItemSelected += i =>
+        {
+            int k = (int)i;
+            _vm.ActiveKeywordFilter = k <= 0 || k - 1 >= kws.Count ? null : kws[k - 1];
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(kwOpt);
+
+        // 稀有度
+        var rarOpt = new OptionButton { CustomMinimumSize = new Vector2(110, 30) };
+        rarOpt.AddItem("稀有度: 全部");
+        for (int r = 1; r <= 4; r++) rarOpt.AddItem("★" + r);
+        SvWbTheme.StyleButton(rarOpt);
+        SvWbTheme.StyleOptionPopup(rarOpt);
+        rarOpt.ItemSelected += i =>
+        {
+            int k = (int)i;
+            _vm.ActiveRarityFilter = k <= 0 ? (int?)null : k;
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(rarOpt);
+
+        // 卡包
+        var packOpt = new OptionButton { CustomMinimumSize = new Vector2(130, 30) };
+        packOpt.AddItem("卡包: 全部");
+        var packs = new List<string>();
+        try
+        {
+            var poolIds = _vm.CurrentPool.EnabledPackIds != null
+                ? new List<string>(_vm.CurrentPool.EnabledPackIds)
+                : new List<string>();
+            if (poolIds.Count == 0) poolIds.AddRange(_store.Catalog.Packs.Keys);
+            foreach (var pid in poolIds.OrderBy(x => x, StringComparer.Ordinal))
+                { packs.Add(pid); packOpt.AddItem(pid); }
+        }
+        catch (Exception) { }
+        SvWbTheme.StyleButton(packOpt);
+        SvWbTheme.StyleOptionPopup(packOpt);
+        packOpt.ItemSelected += i =>
+        {
+            int k = (int)i;
+            _vm.ActivePackFilter = k <= 0 || k - 1 >= packs.Count ? null : packs[k - 1];
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(packOpt);
+
+        // 攻击力 / 生命值（8 代表 >=8）
+        advRow.AddChild(MakeNumberFilter("攻击力", v => { _vm.ActiveAtkFilter = v; _currentPage = 0; RefreshCardGrid(); }));
+        advRow.AddChild(MakeNumberFilter("生命值", v => { _vm.ActiveLifeFilter = v; _currentPage = 0; RefreshCardGrid(); }));
+
+        // 卡牌 ID
+        var idEdit = new LineEdit { PlaceholderText = "卡牌 ID", CustomMinimumSize = new Vector2(110, 30) };
+        idEdit.TextChanged += t =>
+        {
+            _vm.ActiveCardIdFilter = long.TryParse(t?.Trim(), out long id) && id > 0 ? (int)id : (int?)null;
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(idEdit);
+
+        // 重置
+        var resetBtn = new Button { Text = "重置筛选", CustomMinimumSize = new Vector2(88, 30) };
+        SvWbTheme.StyleButton(resetBtn);
+        resetBtn.Pressed += () =>
+        {
+            _vm.ActiveTraitFilter = null; _vm.ActiveKeywordFilter = null;
+            _vm.ActiveRarityFilter = null; _vm.ActivePackFilter = null;
+            _vm.ActiveAtkFilter = null; _vm.ActiveLifeFilter = null;
+            _vm.ActiveCardIdFilter = null; _vm.ActiveCostFilter = null;
+            _vm.ActiveKindFilter = null; _vm.SearchQuery = "";
+            idEdit.Text = ""; traitOpt.Selected = 0; kwOpt.Selected = 0;
+            rarOpt.Selected = 0; packOpt.Selected = 0;
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(resetBtn);
 
         // 第二行：费用圆钮
         var costRow = new HBoxContainer();
@@ -463,6 +579,23 @@ public partial class DeckBuilderView : Control
             else amulets += count;
         }
         _statsLabel.Text = $"随从: {followers}  法术: {spells}  护符: {amulets}";
+    }
+
+
+    /// <summary>攻击力 / 生命值筛选下拉：0..8，8 表示 8 以上。</summary>
+    private static OptionButton MakeNumberFilter(string label, Action<int?> onChange)
+    {
+        var opt = new OptionButton { CustomMinimumSize = new Vector2(112, 30) };
+        opt.AddItem(label + ": 全部");
+        for (int i = 0; i <= 8; i++) opt.AddItem(i < 8 ? (label + " " + i) : (label + " 8+"));
+        SvWbTheme.StyleButton(opt);
+        SvWbTheme.StyleOptionPopup(opt);
+        opt.ItemSelected += i =>
+        {
+            int k = (int)i;
+            onChange(k <= 0 ? (int?)null : k - 1);
+        };
+        return opt;
     }
 
     private void RefreshCardGrid()

@@ -5,6 +5,7 @@ using Godot;
 using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Packs;
 using ShadowverseFan.Ui.Bridge;
+using ShadowverseFan.Ui.Diy;
 using ShadowverseFan.Ui.Theme;
 
 namespace ShadowverseFan.Ui.Decks;
@@ -22,8 +23,10 @@ public partial class CardGalleryView : Control
     private GameSessionStore _store;
     private GridContainer _grid;
 
-    // 分页：千卡一次性实例化会卡死 UI。每页只造 15 张（5 列 × 3 行）。
-    private const int PageSize = 15;
+    // 分页：千卡一次性实例化会卡死 UI。
+    // 每页 2 行 —— 3 行时最后一排会被窗口裁掉，必须滚动才看得到，
+    // 而分页存在的意义就是「一屏看全」。
+    private const int PageSize = 10;   // 5 列 × 2 行
     private int _currentPage;
     private int _totalPages = 1;
     private Label _pageLabel;
@@ -131,6 +134,8 @@ public partial class CardGalleryView : Control
     private OptionButton _costPicker;
     private OptionButton _rarityPicker;
     private OptionButton _packPicker;
+    private OptionButton _traitPicker;
+    private OptionButton _keywordPicker;
     private CheckBox _altOnlyCheck;
     private CheckBox _tokenCheck;
 
@@ -178,6 +183,26 @@ public partial class CardGalleryView : Control
         _packPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
         flow.AddChild(_packPicker);
 
+        // 兵种
+        _traitPicker = new OptionButton { CustomMinimumSize = new Vector2(120, 28) };
+        SvWbTheme.StyleButton(_traitPicker); SvWbTheme.StyleOptionPopup(_traitPicker);
+        _traitPicker.AddItem("全部兵种", 0);
+        var traitNames = _store.Catalog.Schema.Traits.All
+            .Select(t => t.Name).Where(n => !string.IsNullOrWhiteSpace(n))
+            .OrderBy(x => x, StringComparer.Ordinal).ToList();
+        for (int i = 0; i < traitNames.Count; i++) _traitPicker.AddItem(traitNames[i], i + 1);
+        _traitPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
+        flow.AddChild(_traitPicker);
+
+        // 关键词
+        _keywordPicker = new OptionButton { CustomMinimumSize = new Vector2(130, 28) };
+        SvWbTheme.StyleButton(_keywordPicker); SvWbTheme.StyleOptionPopup(_keywordPicker);
+        _keywordPicker.AddItem("全部关键词", 0);
+        var kwNames = DiyZh.Keywords.ToList();
+        for (int i = 0; i < kwNames.Count; i++) _keywordPicker.AddItem(kwNames[i].Zh, i + 1);
+        _keywordPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
+        flow.AddChild(_keywordPicker);
+
         // 特殊筛选
         _altOnlyCheck = new CheckBox { Text = "★ 仅看含异画" };
         _altOnlyCheck.Toggled += _ => { _currentPage = 0; RefreshGrid(); };
@@ -188,6 +213,24 @@ public partial class CardGalleryView : Control
         flow.AddChild(_tokenCheck);
 
         return flow;
+    }
+
+
+    /// <summary>卡牌是否持有某关键词（含带参关键词，它们存在 PassiveAura 里）。</summary>
+    private static bool GalleryHasKeyword(CardDef c, string keyword)
+    {
+        if (c.InnateKeywords != null &&
+            c.InnateKeywords.Any(k => string.Equals(k.Name, keyword, StringComparison.OrdinalIgnoreCase)))
+            return true;
+        foreach (var ab in c.Abilities ?? new List<AbilityDef>())
+        {
+            if (ab?.Body == null) continue;
+            foreach (var n in ab.Body)
+                if (n is ModifyKeywordNode mk &&
+                    string.Equals(mk.Keyword.Name, keyword, StringComparison.OrdinalIgnoreCase))
+                    return true;
+        }
+        return false;
     }
 
     private void RefreshGrid()
@@ -234,6 +277,21 @@ public partial class CardGalleryView : Control
         {
             string pack = _packPicker.GetItemText(_packPicker.Selected);
             query = query.Where(c => string.Equals(c.PackId, pack, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // 兵种
+        if (_traitPicker != null && _traitPicker.Selected > 0)
+        {
+            string trait = _traitPicker.GetItemText(_traitPicker.Selected);
+            query = query.Where(c => c.Traits != null &&
+                c.Traits.Any(t => string.Equals(t.Name, trait, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        // 关键词
+        if (_keywordPicker != null && _keywordPicker.Selected > 0)
+        {
+            string kw = _keywordPicker.GetItemText(_keywordPicker.Selected);
+            query = query.Where(c => GalleryHasKeyword(c, kw));
         }
 
         // 仅看含异画

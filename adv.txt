@@ -1,0 +1,111 @@
+
+        // ---- 169：牌组编辑器完整筛选栏 ----
+        // 一行放不下 12 个筛选项，用 HFlowContainer 自动折行。
+        var advRow = new HFlowContainer();
+        advRow.AddThemeConstantOverride("h_separation", 6);
+        advRow.AddThemeConstantOverride("v_separation", 4);
+        pane.AddChild(advRow);
+
+        // 兵种
+        var traitOpt = new OptionButton { CustomMinimumSize = new Vector2(120, 30) };
+        traitOpt.AddItem("兵种: 全部");
+        var traits = new List<string>();
+        try
+        {
+            foreach (var t in _vm.CurrentPool.Schema.Traits.All.OrderBy(x => x.Name, StringComparer.Ordinal))
+                if (!string.IsNullOrWhiteSpace(t.Name)) { traits.Add(t.Name); traitOpt.AddItem(t.Name); }
+        }
+        catch (Exception) { }
+        SvWbTheme.StyleButton(traitOpt);
+        SvWbTheme.StyleOptionPopup(traitOpt);
+        traitOpt.ItemSelected += i =>
+        {
+            int k = (int)i;
+            _vm.ActiveTraitFilter = k <= 0 || k - 1 >= traits.Count ? null : traits[k - 1];
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(traitOpt);
+
+        // 关键词
+        var kwOpt = new OptionButton { CustomMinimumSize = new Vector2(130, 30) };
+        kwOpt.AddItem("关键词: 全部");
+        var kws = new List<string>();
+        try
+        {
+            foreach (var kv in DiyZh.Keywords) { kws.Add(kv.Key); kwOpt.AddItem(kv.Zh); }
+        }
+        catch (Exception) { }
+        SvWbTheme.StyleButton(kwOpt);
+        SvWbTheme.StyleOptionPopup(kwOpt);
+        kwOpt.ItemSelected += i =>
+        {
+            int k = (int)i;
+            _vm.ActiveKeywordFilter = k <= 0 || k - 1 >= kws.Count ? null : kws[k - 1];
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(kwOpt);
+
+        // 稀有度
+        var rarOpt = new OptionButton { CustomMinimumSize = new Vector2(110, 30) };
+        rarOpt.AddItem("稀有度: 全部");
+        for (int r = 1; r <= 4; r++) rarOpt.AddItem("★" + r);
+        SvWbTheme.StyleButton(rarOpt);
+        SvWbTheme.StyleOptionPopup(rarOpt);
+        rarOpt.ItemSelected += i =>
+        {
+            int k = (int)i;
+            _vm.ActiveRarityFilter = k <= 0 ? (int?)null : k;
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(rarOpt);
+
+        // 卡包
+        var packOpt = new OptionButton { CustomMinimumSize = new Vector2(130, 30) };
+        packOpt.AddItem("卡包: 全部");
+        var packs = new List<string>();
+        try
+        {
+            var poolIds = _vm.CurrentPool.EnabledPackIds ?? new List<string>();
+            foreach (var pid in (poolIds.Count > 0 ? poolIds : new List<string>(_store.Catalog.Packs.Keys))
+                                .OrderBy(x => x, StringComparer.Ordinal))
+                { packs.Add(pid); packOpt.AddItem(pid); }
+        }
+        catch (Exception) { }
+        SvWbTheme.StyleButton(packOpt);
+        SvWbTheme.StyleOptionPopup(packOpt);
+        packOpt.ItemSelected += i =>
+        {
+            int k = (int)i;
+            _vm.ActivePackFilter = k <= 0 || k - 1 >= packs.Count ? null : packs[k - 1];
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(packOpt);
+
+        // 攻击力 / 生命值（0..8+，8 代表 >=8）
+        advRow.AddChild(MakeNumberFilter("攻击力", v => { _vm.ActiveAtkFilter = v; _currentPage = 0; RefreshCardGrid(); }));
+        advRow.AddChild(MakeNumberFilter("生命值", v => { _vm.ActiveLifeFilter = v; _currentPage = 0; RefreshCardGrid(); }));
+
+        // 卡牌 ID
+        var idEdit = new LineEdit { PlaceholderText = "卡牌 ID", CustomMinimumSize = new Vector2(110, 30) };
+        idEdit.TextChanged += t =>
+        {
+            _vm.ActiveCardIdFilter = long.TryParse(t?.Trim(), out long id) && id > 0 ? (int)id : (int?)null;
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(idEdit);
+
+        // 重置
+        var resetBtn = new Button { Text = "重置筛选", CustomMinimumSize = new Vector2(88, 30) };
+        SvWbTheme.StyleButton(resetBtn);
+        resetBtn.Pressed += () =>
+        {
+            _vm.ActiveTraitFilter = null; _vm.ActiveKeywordFilter = null;
+            _vm.ActiveRarityFilter = null; _vm.ActivePackFilter = null;
+            _vm.ActiveAtkFilter = null; _vm.ActiveLifeFilter = null;
+            _vm.ActiveCardIdFilter = null; _vm.ActiveCostFilter = null;
+            _vm.ActiveKindFilter = null; _vm.SearchQuery = "";
+            idEdit.Text = ""; traitOpt.Selected = 0; kwOpt.Selected = 0;
+            rarOpt.Selected = 0; packOpt.Selected = 0;
+            _currentPage = 0; RefreshCardGrid();
+        };
+        advRow.AddChild(resetBtn);

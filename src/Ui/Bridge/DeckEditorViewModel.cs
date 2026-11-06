@@ -36,6 +36,15 @@ public sealed class DeckEditorViewModel
     public bool OnlyDeckModCards { get; set; }
     public string SearchQuery { get; set; } = "";
 
+    // ---- 牌组编辑器的完整筛选项 ----
+    public int? ActiveAtkFilter { get; set; }
+    public int? ActiveLifeFilter { get; set; }
+    public string ActiveTraitFilter { get; set; }     // 兵种
+    public string ActiveKeywordFilter { get; set; }   // 关键词
+    public int? ActiveRarityFilter { get; set; }      // 稀有度（CardDef.Rarity 是 int）
+    public string ActivePackFilter { get; set; }      // 卡包
+    public int? ActiveCardIdFilter { get; set; }      // 卡牌 ID 精确匹配
+
     public event Action OnStateChanged;
 
     public DeckEditorViewModel(GameSessionStore store, ConstructedDeck deck)
@@ -160,6 +169,31 @@ public sealed class DeckEditorViewModel
     }
 
     /// <summary>经过当前筛选器过滤后的可收藏卡列表。</summary>
+
+    /// <summary>
+    /// 卡牌是否持有某关键词。
+    ///
+    /// 要同时看 InnateKeywords 和 PassiveAura 里的 ModifyKeywordNode ——
+    /// 带参关键词（max_attacks_per_turn 之类）存不进 InnateKeywords，
+    /// 只看前者会漏掉一整类。
+    /// </summary>
+    private static bool CardHasKeyword(CardDef c, string keyword)
+    {
+        if (c.InnateKeywords != null &&
+            c.InnateKeywords.Any(k => string.Equals(k.Name, keyword, StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        foreach (var ab in c.Abilities ?? new System.Collections.Generic.List<AbilityDef>())
+        {
+            if (ab?.Body == null) continue;
+            foreach (var n in ab.Body)
+                if (n is ModifyKeywordNode mk &&
+                    string.Equals(mk.Keyword.Name, keyword, StringComparison.OrdinalIgnoreCase))
+                    return true;
+        }
+        return false;
+    }
+
     public List<CardDef> GetFilteredPoolCards()
     {
         IEnumerable<CardDef> query = CurrentPool.EnumerateCollectibleCards();
@@ -193,6 +227,34 @@ public sealed class DeckEditorViewModel
             query = query.Where(c => c.Kind == ActiveKindFilter.Value);
         if (OnlyDeckModCards)
             query = query.Where(c => c.DeckModifiers != null && c.DeckModifiers.Count > 0);
+
+        if (ActiveCardIdFilter.HasValue)
+            query = query.Where(c => c.CardId == ActiveCardIdFilter.Value);
+
+        if (!string.IsNullOrWhiteSpace(ActiveTraitFilter))
+            query = query.Where(c => c.Traits != null &&
+                c.Traits.Any(t => string.Equals(t.Name, ActiveTraitFilter, StringComparison.OrdinalIgnoreCase)));
+
+        if (!string.IsNullOrWhiteSpace(ActiveKeywordFilter))
+            query = query.Where(c => CardHasKeyword(c, ActiveKeywordFilter));
+
+        if (ActiveRarityFilter.HasValue)
+            query = query.Where(c => c.Rarity == ActiveRarityFilter.Value);
+
+        if (!string.IsNullOrWhiteSpace(ActivePackFilter))
+            query = query.Where(c => string.Equals(c.PackId, ActivePackFilter, StringComparison.OrdinalIgnoreCase));
+
+        if (ActiveAtkFilter.HasValue)
+        {
+            int af = ActiveAtkFilter.Value;
+            query = query.Where(c => af >= 8 ? c.BaseAttack >= 8 : c.BaseAttack == af);
+        }
+
+        if (ActiveLifeFilter.HasValue)
+        {
+            int lf = ActiveLifeFilter.Value;
+            query = query.Where(c => lf >= 8 ? c.BaseLife >= 8 : c.BaseLife == lf);
+        }
 
         if (!string.IsNullOrWhiteSpace(SearchQuery))
         {
