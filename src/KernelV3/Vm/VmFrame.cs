@@ -46,6 +46,16 @@ public sealed class VmFrame
     /// <summary>本帧归属的能力（用于「复刻能力」回溯）。</summary>
     public AbilityDef Ability { get; init; }
 
+    /// <summary>本帧能力的源实体（用于惰性激活时的「离场不发」校验）。</summary>
+    public RuntimeEntity OwnerEntity { get; init; }
+
+    /// <summary>
+    /// 本帧尚未做激活校验（在场存活 + 条件 + 代价）。
+    /// 帧栈是后进先出，同事件的多条能力可能互相炸死对方 ——
+    /// 必须在**轮到它执行的那一刻**才判定，提前判完会让已离场的卡诈尸执行（174 号文档 一.2）。
+    /// </summary>
+    public bool PendingActivation { get; set; }
+
     public bool IsDone => Ip >= (Code?.Count ?? 0);
 }
 

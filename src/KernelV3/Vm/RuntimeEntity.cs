@@ -352,4 +352,6 @@ public sealed class TemporaryModifier
     public bool SetLife { get; init; }
     /// <summary>Set 型：改之前的生命上限（Life 被改时同步还原）。</summary>
     public int PrevMaxLife { get; init; }
+    /// <summary>施法者编号。UntilEndOfOpponentTurn 的「对手」是相对施法者而言的。</summary>
+    public int CasterPlayerId { get; init; } = -1;
 }

@@ -168,6 +168,9 @@ public interface IVmWorld
     /// <summary>带期限的授予：期限到了要撤销。</summary>
     void GrantAbility(RuntimeEntity e, Ast.AbilityDef ability, Ast.DurationKind duration);
 
+    /// <summary>带施法者的授予：UntilEndOfOpponentTurn 的「对手」相对施法者算。</summary>
+    void GrantAbility(RuntimeEntity e, Ast.AbilityDef ability, Ast.DurationKind duration, int casterPid);
+
     /// <summary>运行时授予的能力（不写在 CardDef 上），触发器扫描时必须一并检查。</summary>
     IReadOnlyList<(RuntimeEntity e, Ast.AbilityDef ab)> GrantedAbilities { get; }
 

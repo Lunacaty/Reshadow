@@ -1430,5 +1430,7 @@ public sealed class TurnRunner
     }
 
     private static bool IsLoser(PlayerState p)
-        => (p.Leader != null && p.Leader.Life <= 0) || p.LostByDeckOut;
+        => p.LostByLifeOut
+           || (p.Leader != null && p.Leader.Life <= 0)
+           || p.LostByDeckOut;
 }

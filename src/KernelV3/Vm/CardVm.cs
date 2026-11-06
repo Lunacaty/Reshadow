@@ -128,13 +128,18 @@ public sealed partial class CardVm
     }
 
     /// <summary>压入一段动作序列（用于替代同步递归）。</summary>
-    public void PushBody(IReadOnlyList<EffectNode> body, VmScope scope)
+    public void PushBody(IReadOnlyList<EffectNode> body, VmScope scope,
+                          RuntimeEntity owner = null, AbilityDef ability = null,
+                          bool pendingActivation = false)
     {
         if (body == null || body.Count == 0) return;
         _frames.Add(new VmFrame
         {
             Scope = scope ?? new VmScope { Owner = ZoneScope.Self },
             Code = body,
+            OwnerEntity = owner,
+            Ability = ability,
+            PendingActivation = pendingActivation,
         });
     }
 
@@ -162,6 +167,7 @@ public sealed partial class CardVm
         {
             var p = bs.Players[i];
             if (p == null) continue;
+            if (p.LostByLifeOut) return true;
             if (p.Leader != null && p.Leader.Life <= 0) return true;
             if (p.LostByDeckOut) return true;
             if (p.WonByVictoryCard) return true;
@@ -237,6 +243,41 @@ public sealed partial class CardVm
                 {
                     _frames.RemoveAt(_frames.Count - 1);
                     continue;
+                }
+
+                // 惰性激活：轮到这条能力执行的那一刻才判在场存活、条件与代价。
+                // 同事件的多条能力是批量入队的，A 可能把 B 炸死或改变场面；
+                // 提前判完会让已离场的 B 诈尸执行（174 号文档 一.2）。
+                if (frame.PendingActivation && frame.Ip == 0)
+                {
+                    frame.PendingActivation = false;
+                    var owner = frame.OwnerEntity;
+                    var ab = frame.Ability;
+                    if (owner != null && !IsStillInValidZone(ab?.Trigger, frame.Scope.Event, owner))
+                    {
+                        _frames.RemoveAt(_frames.Count - 1);
+                        continue;
+                    }
+                    if (ab != null && owner != null)
+                    {
+                        if (_eval.EvalBool(ab.Condition, frame.Scope) == false)
+                        { _frames.RemoveAt(_frames.Count - 1); continue; }
+                        int pid = owner.PlayerId;
+                        var ppKey = Schema.Counter("pp");
+                        var shadowKey = Schema.Counter("shadow");
+                        var earthKey = Schema.Counter("earth_sigil");
+                        if (!CostExecutor.CanPay(_world, pid, owner, ab.Costs, ppKey, shadowKey, earthKey, ab.Body))
+                        { _frames.RemoveAt(_frames.Count - 1); continue; }
+                        CostExecutor.Pay(_world, pid, owner, ab.Costs, ppKey, shadowKey, earthKey);
+                        if (owner != null) ConsumeTriggerQuota(owner, ab);
+                        _world.EmitEvent(new VmEvent
+                        {
+                            Kind = CoreEvent.OnAbilityActivated,
+                            Subject = owner != null ? EntityRef.From(owner) : null,
+                            PlayerId = pid,
+                            ActivatedAbility = ab,
+                        });
+                    }
                 }
 
                 var node = frame.Code[frame.Ip];
@@ -653,8 +694,8 @@ public sealed partial class CardVm
         //   梯队 2（旁观监听，优先级 20+）—— 场上的「每当有随从进化时」之类。
         // 之前只有一个队列、按进场先后扫 Board，于是被动进化时后进场的随从
         // 自己的 Evolve: 会排在老随从的监听之后，与优先级定义相反。
-        var selfTier = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope)>();
-        var watchTier = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope)>();
+        var selfTier = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope, RuntimeEntity owner, Ast.AbilityDef ab)>();
+        var watchTier = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope, RuntimeEntity owner, Ast.AbilityDef ab)>();
 
         // 同一时机里同名卡只发动 1 张（76-c 6.2-8 瞬念召唤铁律）。
         // 牌组里的两张同名 Invoke 卡都会收到 TurnStart，
@@ -701,30 +742,11 @@ public sealed partial class CardVm
                 // 全卡池的 Clash: 伤害都是 0。
                 if (ev.Object != null)
                     scope.BindRefs(TargetSpec.SlotOpposing, new[] { ev.Object.Value });
-                if (_eval.EvalBool(ab.Condition, scope) == false) continue;
 
-                // 代价检查：不能支付就不能发动。
-                // 之前这里完全没有判定，所以 Enhance / Necromancy 等代价形同虚设。
-                var ppKey = Schema.Counter("pp");
-                var shadowKey = Schema.Counter("shadow");
-                var earthKey = Schema.Counter("earth_sigil");
-                // 传 body：已由 Weaver 编好分档条件树时，enhance 只作档位元数据，不再拦截。
-                if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey, ab.Body)) continue;
-                CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey);
-
-                // 条件与代价都通过了，这才是「正式发动」：
-                // 此时才消耗每回合触发额度，避免条件不成立也白扣一次。
-                ConsumeTriggerQuota(e, ab);
-
-                // 代价已付、即将压栈执行：这一刻就是「这条能力正式发动」。
-                // 前端据此在左下角弹浮窗，并把「发动了哪一句」写进对局日志。
-                _world.EmitEvent(new VmEvent
-                {
-                    Kind = CoreEvent.OnAbilityActivated,
-                    Subject = EntityRef.From(e),
-                    PlayerId = e.PlayerId,
-                    ActivatedAbility = ab,
-                });
+                // 条件 / 代价 / 触发额度 / 发动浮窗**全部不在**这里做：
+                // 同事件的多条能力是批量入队的，A 的能力可能把 B 炸死或改变场面，
+                // 提前判完会让已离场的 B 诈尸执行、或让 B 吃不到 A 产生的墓场（174 号文档 一.2）。
+                // 改由 StepUntilBlocked 在 frame.Ip == 0 时惰性激活。
 
                 // 只有「在自己卡上监听的牌库能力」(Invoke) 走同名去重。
                 // 场上两个同名随从的 Whenever 必须各触发一次，不能被这条吃掉。
@@ -758,19 +780,20 @@ public sealed partial class CardVm
                     scope.PreCommittedChoices = e.PreCommittedChoices;
                 }
 
-                (isSelfAbility ? selfTier : watchTier).Add((ab.Body, scope));
+                (isSelfAbility ? selfTier : watchTier).Add((ab.Body, scope, e, ab));
             }
         }
 
         // 先自身、后旁观。
-        var orderedToPush = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope)>();
+        var orderedToPush = new List<(IReadOnlyList<Ast.EffectNode> body, VmScope scope, RuntimeEntity owner, Ast.AbilityDef ab)>();
         orderedToPush.AddRange(selfTier);
         orderedToPush.AddRange(watchTier);
 
         // 倒序压栈 = 正序执行（_frames 是后进先出）。
         // 正序压栈会让整批能力的执行顺序反转，违反 76-c 4.1 铁律 2。
         for (int i = orderedToPush.Count - 1; i >= 0; i--)
-            PushBody(orderedToPush[i].body, orderedToPush[i].scope);
+            PushBody(orderedToPush[i].body, orderedToPush[i].scope,
+                    orderedToPush[i].owner, orderedToPush[i].ab, pendingActivation: true);
     }
 
     private static void AddCandidate(
@@ -796,6 +819,29 @@ public sealed partial class CardVm
     /// 豁免只对事件主体自身生效，且只对「它被打出」这一条 OnPlay：
     /// 手牌 / 牌组里**其它**卡的监听语义一字不改。
     /// </summary>
+    /// <summary>
+    /// 「离场不发」铁律：轮到这条能力结算时，源实体是否还留在它的监听区域。
+    /// 谢幕曲 / 离场时 / 放逐 / 弃牌 这四类必然以「已离场」为前提，直接放行。
+    /// </summary>
+    private static bool IsStillInValidZone(Ast.TriggerSpec trig, VmEvent ev, RuntimeEntity owner)
+    {
+        if (trig == null) return false;
+        if (trig.Event is CoreEvent.OnDestroy or CoreEvent.OnLeaveField
+            or CoreEvent.OnBanish or CoreEvent.OnDiscard)
+            return true;
+        if (ActsAsOnField(ev, owner)) return true;
+        // 与 MatchesTrigger 的判据保持一致：信仰 / 纹章住在纹章区，
+        // 它们的 ActiveZone 默认写 Board，但必须按 CrestArea 判。
+        var need = trig.ActiveZone switch
+        {
+            Core.ActiveZoneScope.Hand => ZoneRef.Hand,
+            Core.ActiveZoneScope.Deck => ZoneRef.Deck,
+            Core.ActiveZoneScope.ExArea => ZoneRef.ExArea,
+            _ => owner.Zone == ZoneRef.CrestArea ? ZoneRef.CrestArea : ZoneRef.Board,
+        };
+        return owner.Zone == need;
+    }
+
     private static bool ActsAsOnField(VmEvent ev, RuntimeEntity owner)
     {
         if (ev.Subject == null) return false;

@@ -251,6 +251,10 @@ public sealed class VmEvent
 
     private static int DefaultPriorityOf(CoreEvent k) => k switch
     {
+        // 5：魔力增幅 —— 必须排在法术自身效果（10）**之前**结算，
+        // 否则「打出过牌法术」会先把牌抽进手牌，再由增幅给刚抽上手的牌减费（174 号文档 一.1）。
+        CoreEvent.OnSpellboost => 5,
+
         // 10：入场曲 / 进化时 / 超进化时 / 启动
         CoreEvent.OnPlay or CoreEvent.OnEvolve or CoreEvent.OnSuperEvolve
             or CoreEvent.OnEngage or CoreEvent.OnFuse => 10,

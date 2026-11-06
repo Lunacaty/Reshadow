@@ -308,6 +308,9 @@ public sealed class MemoryWorld : IVmWorld
 
     /// <summary>带期限的授予。MemoryWorld 是测试替身，不做到期清理。</summary>
     public void GrantAbility(RuntimeEntity e, AbilityDef ability, DurationKind duration)
+        => GrantAbility(e, ability, duration, -1);
+
+    public void GrantAbility(RuntimeEntity e, AbilityDef ability, DurationKind duration, int casterPid)
         => GrantedAbilities.Add((e, ability));
 
     public readonly List<(int playerId, SymbolId<CounterTag> ctr, AbilityDef ab)> GrantedCounterAbilities = new();

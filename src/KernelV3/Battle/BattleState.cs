@@ -44,7 +44,7 @@ public sealed class BattleState : IVmWorld
     private readonly List<RuntimeEntity> _all = new();
     // 第三个字段是期限：授予能力也支持「直到回合结束」，
     // 没有它，本回合授予的能力到了下回合依然生效。
-    private readonly List<(RuntimeEntity e, AbilityDef ab, DurationKind dur)> _granted = new();
+    private readonly List<(RuntimeEntity e, AbilityDef ab, DurationKind dur, int casterPid)> _granted = new();
     private readonly List<(int playerId, SymbolId<CounterTag> ctr, AbilityDef ab)> _grantedCounters = new();
     private int _nextEntityId = 1;
 
@@ -1520,6 +1520,9 @@ public sealed class BattleState : IVmWorld
 
         bool immune = HasEffectiveKeyword(target, kwAll)
                    || (!isStatMod && HasEffectiveKeyword(target, kwXs));
+        // 主战者血量归零当场锁死：之后效果链里的回血不能再把它奶回来。
+        if (!immune && target.Zone == ZoneRef.Leader && target.Life <= 0)
+            Players[target.PlayerId].LostByLifeOut = true;
         if (!immune) return false;
 
         // 自身能力作用于自身：放行。
@@ -1644,7 +1647,7 @@ public sealed class BattleState : IVmWorld
         }
 
         // 运行时被授予的光环（挂在自己身上的）
-        foreach (var (ge, gab, _) in _granted.ToList())
+        foreach (var (ge, gab, _, _) in _granted.ToList())
         {
             if (ge == null || ge.EntityId != target.EntityId) continue;
             if (gab?.Body == null) continue;
@@ -1708,7 +1711,7 @@ public sealed class BattleState : IVmWorld
         }
 
         // 运行时被授予的光环（「使某个随从获得…」）
-        foreach (var (ge, gab, _) in _granted.ToList())
+        foreach (var (ge, gab, _, _) in _granted.ToList())
         {
             if (ge == null || ge.EntityId != target.EntityId) continue;
             if (target.IsSilenced) continue;
@@ -2302,8 +2305,8 @@ public sealed class BattleState : IVmWorld
         }
 
         // 授予能力不写在 CardDef 里（GrantAbility 单独记账），必须按实体逐条搬。
-        foreach (var (ge, gab, gdur) in _granted.ToList())
-            if (ge != null && ge.EntityId == s.EntityId) _granted.Add((e, gab, gdur));
+        foreach (var (ge, gab, gdur, gcaster) in _granted.ToList())
+            if (ge != null && ge.EntityId == s.EntityId) _granted.Add((e, gab, gdur, gcaster));
 
         // 「本回合已攻击 / 已启动」显式清掉：新实体即使默认值正确，
         // 也不该依赖默认值来表达一条规则。
@@ -2386,7 +2389,12 @@ public sealed class BattleState : IVmWorld
 
     public void GrantAbility(RuntimeEntity e, AbilityDef ability,
                              DurationKind duration = DurationKind.Permanent)
-        => _granted.Add((e, ability, duration));
+        => GrantAbility(e, ability, duration, -1);
+
+    /// <summary>带施法者的授予：UntilEndOfOpponentTurn 的「对手」要相对施法者算。</summary>
+    public void GrantAbility(RuntimeEntity e, AbilityDef ability,
+                             DurationKind duration, int casterPid)
+        => _granted.Add((e, ability, duration, casterPid));
 
     /// <summary>IVmWorld 的两参版本：永久。</summary>
     void IVmWorld.GrantAbility(RuntimeEntity e, AbilityDef ability)
@@ -2501,6 +2509,9 @@ public sealed class BattleState : IVmWorld
         int n = 0;
         foreach (var p in Players)
         {
+            // 主战者是独立字段，不在那 4 个列表里 —— 漏掉它会让贴在
+            // 主战者身上的所有限时效果（如 damage_cap）永久生效（174 号文档 BUG3）。
+            if (p.Leader != null) n += ExpireOn(p.Leader, endingPlayer);
             foreach (var list in new[] { p.Board, p.Hand, p.CrestArea, p.ExArea })
             {
                 foreach (var e in list) n += ExpireOn(e, endingPlayer);
@@ -2512,10 +2523,11 @@ public sealed class BattleState : IVmWorld
         n += _granted.RemoveAll(g =>
         {
             if (g.e == null) return true;
+            int gRef = g.casterPid >= 0 ? g.casterPid : g.e.PlayerId;
             return g.dur switch
             {
                 DurationKind.ThisTurn => true,
-                DurationKind.UntilEndOfOpponentTurn => endingPlayer != g.e.PlayerId,
+                DurationKind.UntilEndOfOpponentTurn => endingPlayer != gRef,
                 _ => false,
             };
         });
@@ -2529,11 +2541,13 @@ public sealed class BattleState : IVmWorld
         for (int i = e.TempModifiers.Count - 1; i >= 0; i--)
         {
             var m = e.TempModifiers[i];
+            // 「对手回合结束」是相对**施法者**而言的。贴在敌方随从身上的 debuff
+            // 若按目标自己的 PlayerId 判，会在我方回合结束时被立刻消掉（174 号文档 BUG3）。
+            int refOwner = m.CasterPlayerId >= 0 ? m.CasterPlayerId : e.PlayerId;
             bool due = m.Duration switch
             {
                 DurationKind.ThisTurn => true,
-                // 到对手回合结束才到期
-                DurationKind.UntilEndOfOpponentTurn => endingPlayer != e.PlayerId,
+                DurationKind.UntilEndOfOpponentTurn => endingPlayer != refOwner,
                 DurationKind.ThisMatch => false,
                 _ => false,
             };

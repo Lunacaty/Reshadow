@@ -108,6 +108,12 @@ public sealed class PlayerState
     /// <summary>牌组抽空判负。官方：牌组为 0 张时抽牌即失败。</summary>
     public bool LostByDeckOut { get; set; }
 
+    /// <summary>
+    /// 主战者血量归零的**不可逆锁存**。一旦置真，后续任何治疗都不能把它奶回来。
+    /// 与 LostByDeckOut 同性质：只靠实时判断 Life &lt;= 0 会被效果链里的回血复活（174 号文档 BUG5）。
+    /// </summary>
+    public bool LostByLifeOut { get; set; }
+
     /// <summary>牌组底部已有「胜利的卡牌」。</summary>
     public bool HasVictoryCard { get; set; }
 

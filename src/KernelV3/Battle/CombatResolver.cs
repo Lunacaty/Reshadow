@@ -432,7 +432,8 @@ public sealed class CombatResolver
     {
         if (!Has(source, "drain") || amount <= 0) return;
         var leader = _state.Players[source.PlayerId].Leader;
-        if (leader == null) return;
+        // 已阵亡的主战者不能再被虹吸奶回来（174 号文档 BUG5）。
+        if (leader == null || leader.Life <= 0 || _state.Players[source.PlayerId].LostByLifeOut) return;
         int before = leader.Life;
         leader.Life = Math.Min(leader.MaxLife, leader.Life + amount);
         int healed = leader.Life - before;

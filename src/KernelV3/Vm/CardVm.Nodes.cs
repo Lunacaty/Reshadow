@@ -436,6 +436,11 @@ public sealed partial class CardVm
         if (targets == null) return true;   // 已挂起
         foreach (var t in targets)
         {
+            // 已阵亡的主战者不能被奶回来（174 号文档 BUG5）。
+            if (t.Zone == ZoneRef.Leader
+                && (t.Life <= 0
+                    || (_world is Battle.BattleState bsL && bsL.Players[t.PlayerId].LostByLifeOut)))
+                continue;
             int before = t.Life;
             int amt = n.FullRestore ? t.MaxLife : _eval.EvalNum(n.Amount, scope);
             t.Life = Math.Min(t.MaxLife, t.Life + amt);
@@ -535,6 +540,7 @@ public sealed partial class CardVm
                     SetAttack = isSet && n.Attack != null,
                     SetLife = isSet && n.Life != null,
                     PrevMaxLife = prevMax,
+                    CasterPlayerId = scope.Controller,
                 });
         }
         return false;
@@ -571,6 +577,7 @@ public sealed partial class CardVm
                     Duration = n.Duration,
                     IsCostMod = true,
                     Cost = t.Cost - before,
+                    CasterPlayerId = scope.Controller,
                 });
             }
         }
@@ -609,6 +616,7 @@ public sealed partial class CardVm
                             Duration = n.Duration,
                             Keyword = n.Keyword,
                             IsKeywordGrant = true,
+                            CasterPlayerId = scope.Controller,
                         });
                     break;
                 case KeywordOp.Remove:
@@ -1566,7 +1574,7 @@ public sealed partial class CardVm
         foreach (var t in targets)
         {
             RecordEffect(t, scope, "赋予能力");
-            _world.GrantAbility(t, n.Granted, n.Duration);
+            _world.GrantAbility(t, n.Granted, n.Duration, scope.Controller);
         }
         return false;
     }
