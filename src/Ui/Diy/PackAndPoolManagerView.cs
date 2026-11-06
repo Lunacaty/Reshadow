@@ -421,28 +421,25 @@ public partial class PackAndPoolManagerView : Control
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
         box.AddThemeConstantOverride("separation", 6);
 
-        var nameEdit = new LineEdit { PlaceholderText = "内部 ID（英文，如 Mecha）" };
-        var showEdit = new LineEdit { PlaceholderText = "显示名（如 机甲）" };
-        box.AddChild(new Label { Text = "内部 ID" });
+        // 只填一个名字。职业名就是玩家写的那一个 ——
+        // 拆成「内部 ID + 显示名」等于存两套真相，改了名还要同步两处，
+        // 而卡包的 clan 字段本来存的也是同一个字符串。
+        var nameEdit = new LineEdit { PlaceholderText = "职业名（如 机甲）" };
+        box.AddChild(new Label { Text = "职业名" });
         box.AddChild(nameEdit);
-        box.AddChild(new Label { Text = "显示名" });
-        box.AddChild(showEdit);
         dlg.AddChild(box);
 
         dlg.Confirmed += () =>
         {
-            string id = nameEdit.Text?.Trim();
-            string show = showEdit.Text?.Trim();
-            if (string.IsNullOrEmpty(id)) { _ruleStatus.Text = "内部 ID 不能为空"; return; }
-            if (string.IsNullOrEmpty(show)) show = id;
+            string cname = nameEdit.Text?.Trim();
+            if (string.IsNullOrEmpty(cname)) { _ruleStatus.Text = "职业名不能为空"; return; }
 
-            // 注册进 Schema 与 Glossary：不注册的话效果里写 clan=Mecha 会拿到 Invalid。
-            _store.Catalog.Schema.Clan(id, cfg.PoolId);
-            _store.Catalog.Lexicon.AddClan(id);
-            _store.Catalog.Glossary.Add(id, show);
+            // 注册进 Schema：不注册的话效果里写 clan=机甲 会拿到 Invalid。
+            _store.Catalog.Schema.Clan(cname, cfg.PoolId);
+            _store.Catalog.Lexicon.AddClan(cname);
 
             var clans = new List<string>(cfg.PoolClans ?? new List<string>());
-            if (!clans.Contains(id, StringComparer.OrdinalIgnoreCase)) clans.Add(id);
+            if (!clans.Contains(cname, StringComparer.OrdinalIgnoreCase)) clans.Add(cname);
             _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds, cfg.Rules, cfg.NamedDecks,
                                      out string msg, clans, cfg.LeaderCounters);
             _ruleStatus.Text = msg;
@@ -661,19 +658,20 @@ public partial class PackAndPoolManagerView : Control
             string zh = edit.Text?.Trim();
             if (string.IsNullOrEmpty(zh)) return;
 
-            // 必须写进 .pool.json 的 pool_clan_names：
-            // 只加内存 Glossary 的话，下一次 Reload 重建 Catalog 就没了，
-            // 玩家看到「机甲」瞬间变回「Mecha」。
+            // 改名 = 直接改 pool_clans 里的那个字符串。
+            // 不存在「内部 ID + 显示名」两套：卡包的 clan 字段与本表存的是同一个值，
+            // 分两处存的话迟早对不上。
             if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var latest)) return;
-            var names = new Dictionary<string, string>(latest.PoolClanNames ?? new Dictionary<string, string>())
-            {
-                [clanName] = zh,
-            };
+            if (string.Equals(zh, clanName, StringComparison.Ordinal)) return;
+
+            var clans = new List<string>(latest.PoolClans ?? new List<string>());
+            int at = clans.FindIndex(x => string.Equals(x, clanName, StringComparison.OrdinalIgnoreCase));
+            if (at >= 0) clans[at] = zh; else clans.Add(zh);
             _store.SavePoolConfigFull(latest.PoolId, latest.Name, latest.EnabledPackIds, latest.Rules,
-                                     latest.NamedDecks, out string m, latest.PoolClans,
-                                     latest.LeaderCounters, names);
-            _store.Catalog.Glossary.Add(clanName, zh);
-            _ruleStatus.Text = "已更新职业【" + clanName + "】的显示名为「" + zh + "」" + (string.IsNullOrEmpty(m) ? "" : "（" + m + "）");
+                                     latest.NamedDecks, out string m, clans, latest.LeaderCounters);
+            _store.Catalog.Schema.Clan(zh, latest.PoolId);
+            _store.Catalog.Lexicon.AddClan(zh);
+            _ruleStatus.Text = "已把职业「" + clanName + "」改名为「" + zh + "」" + (string.IsNullOrEmpty(m) ? "" : "（" + m + "）");
             RefreshPoolClans();
         };
         dlg.Canceled += () => dlg.QueueFree();

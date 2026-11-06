@@ -111,13 +111,6 @@ public static class PoolConfigLoader
                 if (x.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(x.GetString()))
                     poolClans.Add(x.GetString()!.Trim());
 
-        // 自定义职业的中文显示名
-        var poolClanNames = new Dictionary<string, string>();
-        if (r.TryGetProperty("pool_clan_names", out var pcns) && pcns.ValueKind == JsonValueKind.Object)
-            foreach (var p in pcns.EnumerateObject())
-                if (p.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(p.Name))
-                    poolClanNames[p.Name.Trim()] = (p.Value.GetString() ?? "").Trim();
-
         var leaderCounters = new List<PoolCounterDef>();
         if (r.TryGetProperty("leader_counters", out var lcs) && lcs.ValueKind == JsonValueKind.Array)
         {
@@ -143,7 +136,6 @@ public static class PoolConfigLoader
             EnabledPackIds = enabled,
             NamedDecks = namedDecks,
             PoolClans = poolClans,
-            PoolClanNames = poolClanNames,
             LeaderCounters = leaderCounters,
         };
     }

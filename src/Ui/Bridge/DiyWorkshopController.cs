@@ -228,6 +228,11 @@ public sealed class DiyWorkshopController
     public void LoadExistingCard(CardDef def)
     {
         if (def == null) return;
+        // 记下来源：保存时要靠它判断「这是改出来的卡」并弹出
+        // 「覆盖原卡 / 另存新卡」二选一。不记的话双选框永远不出现，
+        // 玩家想留个原版时会直接把原卡改没。
+        LoadedOriginCardId = def.CardId > 0 ? def.CardId : (int?)null;
+        LoadedOriginPackId = def.PackId;
         CurrentDef = def;
         LastErrors.Clear();
         SyncAllEndpointsFromCurrentDef();

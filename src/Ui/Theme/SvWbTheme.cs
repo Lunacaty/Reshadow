@@ -55,6 +55,13 @@ public static class SvWbTheme
     /// 职业名在程序外就已本地化（卡包 clan 字段存的就是「皇家」），
     /// 这里原样返回 —— 代码里不出现任何职业中英对照表。
     /// </summary>
+    /// <summary>
+    /// 职业名的显示形式：**原样返回**。
+    ///
+    /// 职业名不是需要翻译的术语，它就是玩家在卡包里写的那个名字
+    /// （卡包 clan 字段存的就是「皇家」这种）。查询任何词表都是错的 ——
+    /// 那等于在游戏里又塞了一套词条，而玩家的自定义职业名会被覆盖。
+    /// </summary>
     public static string ClanDisplayZh(string clanName) => clanName ?? "";
 
     /// <summary>创建标准磨砂暗色面板 StyleBox。</summary>

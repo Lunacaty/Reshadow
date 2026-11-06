@@ -137,11 +137,6 @@ public sealed class GameSessionStore
                 if (string.IsNullOrWhiteSpace(cn)) continue;
                 Catalog.Schema.Clan(cn, cfg.PoolId);
                 Catalog.Lexicon.AddClan(cn);
-                // 把落盘的中文显示名注回 Glossary：不注的话重启后
-                // 「机甲」会变回「Mecha」，而玩家明明保存过。
-                if (cfg.PoolClanNames != null && cfg.PoolClanNames.TryGetValue(cn, out var zh) &&
-                    !string.IsNullOrWhiteSpace(zh))
-                    Catalog.Glossary.Add(cn, zh);
             }
             foreach (var ctr in cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>())
             {
@@ -593,13 +588,6 @@ public sealed class GameSessionStore
         // 卡池级职业与主战者计数器（165 专题二断链 A）。
         // 不写回的话，界面上勾选的职业与新增的计数器在下一次重载时全部丢失。
         sb.Append("  \"pool_clans\": ").Append(JsonArr(cfg.PoolClans ?? new List<string>())).Append(",\n");
-        // 自定义职业的中文显示名。不落盘的话，下次启动「机甲」会变回「Mecha」。
-        sb.Append("  \"pool_clan_names\": {");
-        var cnNames = cfg.PoolClanNames ?? new Dictionary<string, string>();
-        sb.Append(string.Join(", ", cnNames.Select(kv =>
-            "\"" + kv.Key.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\": \""
-            + (kv.Value ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"")));
-        sb.Append("},\n");
         sb.Append("  \"leader_counters\": [\n");
         var ctrs = (cfg.LeaderCounters ?? new List<ShadowverseFan.KernelV3.Packs.PoolCounterDef>())
             .Where(x => x != null && !x.IsBuiltin).ToList();
@@ -817,7 +805,6 @@ public sealed class GameSessionStore
             // 不传就沿用已有值：只改规则的调用方不该把它们抹掉。
             PoolClans = poolClans ?? (PoolConfigs.TryGetValue(poolId, out var prev) ? prev.PoolClans : new List<string>()),
             LeaderCounters = leaderCounters ?? (PoolConfigs.TryGetValue(poolId, out var prev2) ? prev2.LeaderCounters : new List<ShadowverseFan.KernelV3.Packs.PoolCounterDef>()),
-            PoolClanNames = poolClanNames ?? (PoolConfigs.TryGetValue(poolId, out var prev3) ? prev3.PoolClanNames : new Dictionary<string, string>()),
         };
         PoolConfigs[poolId] = updated;
         return SavePoolRules(poolId, updated.Rules, out message);
