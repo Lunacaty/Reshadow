@@ -155,3 +155,24 @@ C-5 MaxGroupSize、C-6 PrintCard(withSubDefs=false)。这些当前不影响任�
 
 **pack.json 未改动**：7 张 ctr:X 卡的运行时修复走「运行期写实体兜底」，
 编译期修复（Target=Self）只影响未来重新编译/合并的产物。
+
+## 十一、剩余条目补修（提交 e5a459c）
+
+用户指示：④⑤ 不修，其余全修。
+
+| 条目 | 处理 | 说明 |
+|---|---|---|
+| ① IsAbility 被吞 | **已修** | IsAbility 贯通 ApplyDamage → DamageSourceMask，免疫可按来源精确拦截 |
+| ② 限时 Set 撤销值记 0 | **已修** | 改前抓原值快照，ExpireOn 对 Set 型按原值还原 |
+| ③ FlushNextTrigger 硬编码 faith | **已修** | 改按计数器名匹配；信仰实体按定义持有 faith |
+| ④ SpawnCard CardName / ToOwner=Any | 跳过（用户指定） | — |
+| ⑤ TransformNode.IntoCardName | 跳过（用户指定） | — |
+| ⑥ CounterOp.Fill 等价 Set | **已修** | 三处改为 Math.Max(cur, delta) |
+| ⑦ MaxGroupSize 活体池 | **已修** | 改 ResolveRef + RefStat(StatKey.Cost) |
+| ⑧ PrintCard(withSubDefs=false) | **确认为误报** | 见下 |
+
+### ⑧ 是误报
+
+实测：`withSubDefs=true` 往返 同构 1013 / 失真 0；`withSubDefs=false` 往返 同构 1013 / 失真 0；
+pack 原文往返 同构 1013 / 失真 0。域C 报的「87 张失真」是它自己 harness 的口径问题，
+产品无缺陷，不改。
