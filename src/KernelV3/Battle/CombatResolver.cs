@@ -209,6 +209,16 @@ public sealed class CombatResolver
 
         _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
 
+        // 第 4 步的超进化溢出伤害必须抢在「被第 2/3 步能力炸死的随从的谢幕曲」之前：
+        // 否则谢幕曲先把主战者奶回来，1 点斩杀就逃走了（174 号文档 二.5）。
+        bool overflowPaid = false;
+        if (attacker != null && attacker.Zone == ZoneRef.Board && attacker.IsSuperEvolved
+            && isFollowerTarget && defender != null && defender.Zone == ZoneRef.Cemetery)
+        {
+            OverflowDamage(attacker, defender, vm);
+            overflowPaid = true;
+        }
+
         // ── 第 4～12 步：战斗结算主体 ──
         //
         // 必须排进宿主续体：第 2/3 步的【攻撃時】/【交戦時】能力可能弹出手选目标，
@@ -216,18 +226,18 @@ public sealed class CombatResolver
         // 双方伤害就已经交换、Bane 就已经判死 —— 战斗时序被整个跳过。
         if (vm != null)
         {
-            vm.EnqueueContinuation(() => ResolveCombatBody(attacker, defender, vm, isFollowerTarget));
+            vm.EnqueueContinuation(() => ResolveCombatBody(attacker, defender, vm, isFollowerTarget, overflowPaid));
             vm.StepUntilBlocked();
         }
         else
         {
-            ResolveCombatBody(attacker, defender, vm, isFollowerTarget);
+            ResolveCombatBody(attacker, defender, vm, isFollowerTarget, overflowPaid);
         }
     }
 
     /// <summary>战斗第 4～12 步：能力溢出伤害 → 伤害交换 → Bane 判死 → 谢幕曲。</summary>
     private void ResolveCombatBody(RuntimeEntity attacker, RuntimeEntity defender, CardVm vm,
-                                   bool isFollowerTarget)
+                                   bool isFollowerTarget, bool overflowPaid = false)
     {
         if (attacker == null) return;
 
@@ -237,10 +247,10 @@ public sealed class CombatResolver
         // 溢出伤害只结算一次：第 4 步（能力击杀）与第 10 步（交战击杀）
         // 用同一个判据「defender.Zone != Board」，若不设闸门，
         // 能力击杀会在第 4 步打 1 点、第 10 步再打 1 点（实测 20→18）。
-        bool overflowPaid = false;
-
         // 4. 超进化溢出 1 点（第 2 步用能力破坏对方随从时）
-        if (attacker.IsSuperEvolved && isFollowerTarget && defender.Zone == ZoneRef.Cemetery)
+        // 若 ExecuteCombat 已经抢在谢幕曲之前结算过，这里不再重复。
+        if (!overflowPaid && attacker.IsSuperEvolved && isFollowerTarget
+            && defender.Zone == ZoneRef.Cemetery)
         {
             OverflowDamage(attacker, defender, vm);
             overflowPaid = true;
