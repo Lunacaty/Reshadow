@@ -669,7 +669,7 @@ public sealed partial class CardVm
                 // 只会触发 When/Whenever ... evolves 这类事件从句。
                 if (ab.Trigger.ManualEvolveOnly && !ev.IsManualEvolve) continue;
 
-                if (!MatchesTrigger(ab.Trigger, ev, e)) continue;
+                if (!MatchesTrigger(ab.Trigger, ev, e, ab)) continue;
 
                 // 条件与效果体必须共用同一个完整作用域。
                 // 条件里出现的「本卡」「被破坏的那个随从」全部落到 Source / Trigger 上：
@@ -830,7 +830,7 @@ public sealed partial class CardVm
         _triggerCounts[key] = _triggerCounts.GetValueOrDefault(key) + 1;
     }
 
-    private bool MatchesTrigger(TriggerSpec trig, VmEvent ev, RuntimeEntity owner)
+    private bool MatchesTrigger(TriggerSpec trig, VmEvent ev, RuntimeEntity owner, AbilityDef ability = null)
     {
         // 1. 区域：卡必须位于它声明的监听区域
         var need = trig.ActiveZone switch
@@ -937,7 +937,9 @@ public sealed partial class CardVm
         // 确认条件与代价都通过之后做（ConsumeTriggerQuota）。
         if (trig.MaxTriggersPerTurn > 0)
         {
-            int used = _triggerCounts.GetValueOrDefault(TriggerKey(owner, null, trig));
+            // 必须与 ConsumeTriggerQuota 用同一个 ability 计键，
+            // 否则「判额度」与「扣额度」落在两个不同的桶里，永远对不上。
+            int used = _triggerCounts.GetValueOrDefault(TriggerKey(owner, ability, trig));
             if (used >= trig.MaxTriggersPerTurn) return false;
         }
 

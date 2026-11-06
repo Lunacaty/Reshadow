@@ -1,0 +1,14 @@
+fix(172): 复查纠正 —— 触发计数的「判额度」与「扣额度」必须用同一个键
+
+## 问题
+  MatchesTrigger 里判额度时传的是 null（它只拿到 TriggerSpec，没有 AbilityDef），
+  而 ConsumeTriggerQuota 传的是真实的 ab ——
+  两者算出的 TriggerKey 不同，落在两个不同的桶里，
+  等于「判的时候永远读到 0，扣的时候扣到另一个桶」，触发上限形同虚设。
+
+## 修法
+  MatchesTrigger 增加可选参数 ability，调用处传入当前的 ab，
+  与 ConsumeTriggerQuota 使用完全相同的键。
+
+## 门禁
+  全部通过，无退化。
