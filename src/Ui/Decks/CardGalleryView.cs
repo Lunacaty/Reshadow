@@ -288,9 +288,14 @@ public partial class CardGalleryView : Control
         }
 
         // 关键词
-        if (_keywordPicker != null && _keywordPicker.Selected > 0)
+        //
+        // 下拉框里显示的是中文（守护），而卡牌内部存的是内码（ward）。
+        // 直接拿 GetItemText 去比对，选任何关键词都筛不出卡 ——
+        // 与「兵种」那里的处理一样，必须回到 Key。
+        if (_keywordPicker != null && _keywordPicker.Selected > 0 &&
+            _keywordPicker.Selected <= DiyZh.Keywords.Length)
         {
-            string kw = _keywordPicker.GetItemText(_keywordPicker.Selected);
+            string kw = DiyZh.Keywords[_keywordPicker.Selected - 1].Key;
             query = query.Where(c => GalleryHasKeyword(c, kw));
         }
 
