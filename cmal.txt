@@ -1,0 +1,33 @@
+fix: 积木端中文名一律以卡面为准
+
+积木端那套词表是我自己编的，与卡面不一致。现在全部对齐到 ChineseCardPrinter。
+
+## 关键词（11 处）
+  bane 必杀->毁灭 / drain 吸血->虹吸 / ambush 潜伏->潜行 /
+  barrier 护盾->屏障 / intimidate 威吓->威慑 /
+  immune_effects_except_stats 身材除外->攻防变化除外 /
+  free_evolve 免费进化->无需进化点即可进化 /
+  free_super_evolve 免费超进化->无需超进化点即可超进化 /
+  max_attacks_per_turn 1回合可攻击N次->1回合可攻击 /
+  damage_cap 受到伤害上限N->受到伤害上限 /
+  damage_taken_bonus 受到伤害+N->受到伤害增加
+
+## 计数器（8 处）
+  combo 连击数->连击 / rally 协作数->协作 / shadow 墓场数->墓场 /
+  faith 信仰值->信仰 / crest 纹章数->纹章 / clues 线索->证据 /
+  countdown 倒计数->吟唱 / fuse_kinds 融合种类数->融合材料种类数
+
+## 事件（28 条重写）
+  全部改成卡面的触发头写法：「【入场曲】打出时」->「【入场曲】」、
+  「【谢幕曲】被破坏时」->「【谢幕曲】」等。积木里选什么词，卡面就印什么词。
+
+## 区域 / 属性
+  Banished 放逐区->消失区（卡面用「消失」）；MaxLife 生命上限->生命值上限
+
+## 表单端
+  连击 Combo(N) -> 连击 (N)、唤灵 Necromancy(N) -> 唤灵 (N)、
+  土之秘术 Earth Rite(N) -> 土之秘术 (N)、爆能强化 Enhance(N) -> 爆能强化 (N)、
+  觉醒 Overflow -> 觉醒；友方随从进场时 -> 进入战场时
+
+## 门禁
+  全部通过，无退化。

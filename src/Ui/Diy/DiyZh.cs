@@ -12,15 +12,21 @@ namespace ShadowverseFan.Ui.Diy;
 /// </summary>
 public static class DiyZh
 {
-    /// <summary>下拉项：(存进 Block 的值, 显示给玩家的中文)。</summary>
+    /// <summary>
+    /// 事件（触发时机）词表。
+    ///
+    /// **以卡面为准**（ChineseCardPrinter 的触发头写法）。积木端不另立一套叫法 ——
+    /// 同一个人在积木里选的词和最后印到卡面上的词必须是同一个，
+    /// 否则玩家选「【入场曲】打出时」而卡面印「【入场曲】」，纯属冗余。
+    /// </summary>
     public static readonly (string Key, string Zh)[] Events =
     {
-        ("OnPlay", "【入场曲】打出时"),
+        ("OnPlay", "【入场曲】"),
         ("OnEnterField", "【进入战场时】"),
-        ("OnDestroy", "【谢幕曲】被破坏时"),
+        ("OnDestroy", "【谢幕曲】"),
         ("OnLeaveField", "【离场时】"),
-        ("OnBanish", "【被消失时】"),
-        ("OnSummon", "【被召唤时】"),
+        ("OnBanish", "【消失时】"),
+        ("OnSummon", "【召唤时】"),
         ("OnDraw", "【抽牌时】"),
         ("OnDiscard", "【被舍弃时】"),
         ("OnReturnToHand", "【返回手牌时】"),
@@ -28,21 +34,23 @@ public static class DiyZh
         ("OnAttack", "【攻击时】"),
         ("OnClash", "【交战时】"),
         ("OnDamaged", "【受到伤害时】"),
-        ("OnHealed", "【回复生命时】"),
+        ("OnHealed", "【回复时】"),
         ("OnEvolve", "【进化时】"),
         ("OnSuperEvolve", "【超进化时】"),
         ("OnTransform", "【变身时】"),
-        ("OnEngage", "【启动能力时】"),
+        ("OnEngage", "【启动】"),
         ("OnFuse", "【融合时】"),
         ("OnSpellboost", "【魔力增幅时】"),
-        ("OnCountdownExpire", "【吟唱结束时】"),
+        ("OnCountdownExpire", "【吟唱归零时】"),
         ("OnSelectMode", "【选择模式时】"),
         ("OnEarthRite", "【土之秘术时】"),
-        ("OnDeckOut", "【牌组耗尽时】"),
+        ("OnCounterChange", "【计数器变化时】"),
+        ("OnDeckOut", "【牌组抽空时】"),
         ("TurnStart", "【回合开始时】"),
         ("TurnEnd", "【回合结束时】"),
-        ("BattleStart", "【战斗开始时】"),
+        ("BattleStart", "【对战开始时】"),
         ("PassiveAura", "【常驻光环】"),
+        ("OnWatchEvent", "【旁观监听】"),
     };
 
     /// <summary>目标槽位（tgt_slot 的 Text 字段）。</summary>
@@ -69,7 +77,7 @@ public static class DiyZh
         ("Hand", "手牌"),
         ("Deck", "牌组"),
         ("Cemetery", "墓场"),
-        ("Banished", "放逐区"),
+        ("Banished", "消失区"),
         ("Leader", "主战者"),
         ("CrestArea", "纹章区"),
         ("ExArea", "额外区"),
@@ -104,23 +112,23 @@ public static class DiyZh
     public static readonly (string Key, string Zh)[] Keywords =
     {
         ("ward", "守护"),
-        ("bane", "必杀"),
-        ("drain", "吸血"),
+        ("bane", "毁灭"),
+        ("drain", "虹吸"),
         ("rush", "突进"),
         ("storm", "疾驰"),
-        ("ambush", "潜伏"),
-        ("barrier", "护盾"),
+        ("ambush", "潜行"),
+        ("barrier", "屏障"),
         ("immune_effects", "不受能力影响"),
-        ("immune_effects_except_stats", "不受能力影响（身材除外）"),
-        ("free_evolve", "免费进化"),
-        ("free_super_evolve", "免费超进化"),
+        ("immune_effects_except_stats", "不受能力影响（攻防变化除外）"),
+        ("free_evolve", "无需进化点即可进化"),
+        ("free_super_evolve", "无需超进化点即可超进化"),
         // 引擎侧的规范名是 max_attacks_per_turn（见 GameSchema.BuiltinKeywords
         // 与 CombatResolver.CanAttack）。写 multi_attack 会注册一个引擎不认识的关键词，
         // 卡面显示「多次攻击」但实战仍然只能攻击 1 次。
-        ("max_attacks_per_turn", "1回合可攻击N次"),
-        ("damage_cap", "受到伤害上限N"),
-        ("damage_taken_bonus", "受到伤害+N"),
-        ("intimidate", "威吓"),
+        ("max_attacks_per_turn", "1回合可攻击"),
+        ("damage_cap", "受到伤害上限"),
+        ("damage_taken_bonus", "受到伤害增加"),
+        ("intimidate", "威慑"),
     };
 
     /// <summary>
@@ -137,21 +145,21 @@ public static class DiyZh
         ("max_pp", "最大能量点"),
         ("ep", "进化点"),
         ("sep", "超进化点"),
-        ("combo", "连击数"),
-        ("rally", "协作数"),
-        ("shadow", "墓场数"),
+        ("combo", "连击"),
+        ("rally", "协作"),
+        ("shadow", "墓场"),
         ("evolve_count", "进化次数"),
-        ("faith", "信仰值"),
+        ("faith", "信仰"),
         ("earth_sigil", "土之印"),
-        ("clues", "线索"),
+        ("clues", "证据"),
         ("wrath", "血怒"),
-        ("crest", "纹章数"),
-        ("countdown", "倒计数"),
+        ("crest", "纹章"),
+        ("countdown", "吟唱"),
         ("spellboost", "魔力增幅"),
         ("skybound_gauge", "奥义值"),
         ("mode_count", "可选模式数"),
         ("cards_returned_to_hand", "本回合返回手牌数"),
-        ("fuse_kinds", "融合种类数"),
+        ("fuse_kinds", "融合材料种类数"),
     };
 
     /// <summary>可读属性。顺序与 StatKey 的重要程度对齐；
@@ -164,7 +172,7 @@ public static class DiyZh
         ("BaseAttack", "基础攻击力"),
         ("BaseLife", "基础生命值"),
         ("BaseCost", "基础费用"),
-        ("MaxLife", "生命上限"),
+        ("MaxLife", "生命值上限"),
         ("Countdown", "吟唱计数"),
     };
 

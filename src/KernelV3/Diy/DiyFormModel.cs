@@ -98,7 +98,7 @@ public sealed class DiyFormCompiler
         ("OnEngage",           "启动",         "Engage"),
         ("TurnStart",          "回合开始时",   "At the start of your turn"),
         ("TurnEnd",            "回合结束时",   "At the end of your turn"),
-        ("OnEnterField",       "友方随从进场时", "Whenever an allied follower enters the field"),
+        ("OnEnterField",       "进入战场时", "Whenever an allied follower enters the field"),
         ("OnDraw",             "抽牌时",       "Whenever you draw"),
         ("OnSpellboost",       "魔力增幅时",   "On Spellboost"),
         ("OnFuse",             "融合时",       "Whenever you Fuse"),
@@ -109,11 +109,11 @@ public sealed class DiyFormCompiler
     public static readonly (string key, string labelChs)[] GateChoices =
     {
         ("None", "无"),
-        ("Combo", "连击 Combo(N)"),
-        ("Necromancy", "唤灵 Necromancy(N)"),
-        ("EarthRite", "土之秘术 Earth Rite(N)"),
-        ("Enhance", "爆能强化 Enhance(N)"),
-        ("Overflow", "觉醒 Overflow"),
+        ("Combo", "连击 (N)"),
+        ("Necromancy", "唤灵 (N)"),
+        ("EarthRite", "土之秘术 (N)"),
+        ("Enhance", "爆能强化 (N)"),
+        ("Overflow", "觉醒"),
     };
 
     // ---------------------------------------------------------------- 表单 → CardDef
