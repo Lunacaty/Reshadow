@@ -212,24 +212,28 @@ public partial class CreateDeckWizardModal : Control
         var list = new List<string>();
         try
         {
-            // 取第一个配了职业的卡池：卡组向导此时还没绑定具体卡池，
-            // 而所有卡池的职业集合在标准环境下是一致的。
+            // 先把所有卡池声明的职业并起来，再与卡包声明的职业合并。
+            //
+            // 早先只取「第一个非空 PoolClans」就 break：只要某个池子被写进了
+            // 一条自定义职业，整个向导的职业列表就只剩那一条 —— 而卡包数据里
+            // 明明声明了八大职业。合并而不是取第一个，才能容忍这种局部配置。
             foreach (var cfg in store.PoolConfigs.Values)
-            {
-                if (cfg.PoolClans is { Count: > 0 }) { list.AddRange(cfg.PoolClans); break; }
-            }
+                if (cfg.PoolClans is { Count: > 0 })
+                    foreach (var cn in cfg.PoolClans)
+                        if (!string.IsNullOrWhiteSpace(cn) && !list.Contains(cn))
+                            list.Add(cn);
         }
         catch (Exception) { }
 
-        if (list.Count == 0)
+        // 无论如何都并上总表里的职业：卡池配置只声明自定义项，
+        // 标准八大职业来自卡包数据，缺了它向导就选不到正常职业。
+        try
         {
-            try
-            {
-                foreach (var c in store.Catalog.Schema.Clans.All)
-                    if (!string.IsNullOrWhiteSpace(c.Name)) list.Add(c.Name);
-            }
-            catch (Exception) { }
+            foreach (var c in store.Catalog.Schema.Clans.All)
+                if (!string.IsNullOrWhiteSpace(c.Name) && !list.Contains(c.Name))
+                    list.Add(c.Name);
         }
+        catch (Exception) { }
 
         // 「中立」不是主战者职业：无论哪个卡池、它在不在配置里，都不该出现在选择项里。
         return list

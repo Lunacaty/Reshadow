@@ -252,7 +252,7 @@ public static partial class Regress
         var ws = DiyCtx(seed: 7, withTestset: false);
         ws.DefineTrait("Mecha", "机甲");
         ws.DefineCounter("sword_intent", "剑意", 0, 10);
-        ws.DefineClan("皇家", "皇家");
+        ws.DefineClan("皇家护卫", "皇家护卫");
 
         const int id = 910001;
         const string nameChs = "御剑机甲师";
@@ -282,7 +282,7 @@ public static partial class Regress
             {
                 CardId = id, Name = nameEng, NameChs = nameChs,
                 Kind = CardKind.Follower, Cost = 3, Attack = 2, Life = 3,
-                Clan = "皇家", Traits = new[] { "Mecha" },
+                Clan = "皇家护卫", Traits = new[] { "Mecha" },
                 EngText = text,
             }, out var errs);
             made.Add(("CNL", def, errs != null && errs.Count > 0 ? errs[0] : null));
@@ -306,7 +306,7 @@ public static partial class Regress
             var doc = new CardBlockWorkspace
             {
                 CardId = id, Name = nameChs, Kind = "Follower",
-                Cost = 3, Attack = 2, Life = 3, Clan = "皇家",
+                Cost = 3, Attack = 2, Life = 3, Clan = "皇家护卫",
                 Traits = new List<string> { "Mecha" },
                 Keywords = new List<string> { "ward" },
             };
@@ -350,7 +350,7 @@ public static partial class Regress
             var form = new CardFormModel
             {
                 CardId = id, NameChs = nameChs, NameEng = nameEng,
-                Kind = "Follower", Clan = "皇家",
+                Kind = "Follower", Clan = "皇家护卫",
                 Traits = new List<string> { "Mecha" },
                 Cost = 3, Attack = 2, Life = 3,
                 Keywords = new List<string> { "ward" },

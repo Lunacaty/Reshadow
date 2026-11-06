@@ -46,6 +46,16 @@ public partial class CardGalleryView : Control
         _store = store;
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 
+        // 三块内容（顶栏 / 筛选栏 / 卡片区）放进一个纵向容器，让 Godot 自己算高度。
+        //
+        // 早先三者各自 SetAnchorsPreset + 写死 OffsetTop（36 / 76），
+        // 而筛选栏是 HFlowContainer —— 筛选项多、窗口一窄就折成两行，
+        // 第二行直接压到从 76px 开始的卡片网格上，按钮和卡图重叠。
+        var root = new VBoxContainer();
+        root.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        root.AddThemeConstantOverride("separation", 6);
+        AddChild(root);
+
         var bar = new HBoxContainer();
         bar.AddThemeConstantOverride("separation", 8);
 
@@ -68,18 +78,12 @@ public partial class CardGalleryView : Control
         _kindPicker.ItemSelected += _ => { _currentPage = 0; RefreshGrid(); };
         bar.AddChild(_kindPicker);
 
-        AddChild(bar);
+        root.AddChild(bar);
+        root.AddChild(BuildFilterBar());
 
-        var filterBar = BuildFilterBar();
-        filterBar.SetAnchorsPreset(LayoutPreset.TopLeft);
-        filterBar.OffsetTop = 36f;
-        AddChild(filterBar);
-
-        var split = new HBoxContainer();
-        split.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        split.OffsetTop = 76f;
+        var split = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         split.AddThemeConstantOverride("separation", 12);
-        AddChild(split);
+        root.AddChild(split);
 
         // 左半屏：网格 + 底部分页栏
         var gridCol = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };

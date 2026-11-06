@@ -575,38 +575,38 @@ public sealed class DiyWorkshopController
     // 注册必须落盘到当前卡池：只写内存的话，下一次 Reload 重建 Catalog 就没了，
     // 玩家看到刚加的职业/兵种/计数器凭空消失。
 
-    public void DefineCustomTrait(string name, int min, int max)
+    public void DefineCustomTrait(string name, int min, int max, bool persist = true)
     {
         string n = (name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(n)) { LastStatusMessage = "名称不能为空"; return; }
         Workspace.DefineTrait(n, n);
         Store.Catalog.Schema.Trait(n);
         Store.Catalog.Lexicon.AddTrait(n);
-        PersistPackEntry("traits", n, min, max);
+        if (persist) PersistPackEntry("traits", n, min, max);
         LastStatusMessage = "已注册新兵种：" + n;
         OnCardUpdated?.Invoke();
     }
 
-    public void DefineCustomCounter(string name, int min, int max)
+    public void DefineCustomCounter(string name, int min, int max, bool persist = true)
     {
         string n = (name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(n)) { LastStatusMessage = "名称不能为空"; return; }
         Workspace.DefineCounter(n, n, min, max);
         Store.Catalog.Schema.Counter(n);
         Store.Catalog.Schema.CounterLimits[n] = (min, max);
-        PersistPackEntry("counters", n, min, max);
+        if (persist) PersistPackEntry("counters", n, min, max);
         LastStatusMessage = "已注册新计数器：" + n + "（范围 " + min + ".." + max + "）";
         OnCardUpdated?.Invoke();
     }
 
-    public void DefineCustomClan(string name)
+    public void DefineCustomClan(string name, bool persist = true)
     {
         string n = (name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(n)) { LastStatusMessage = "名称不能为空"; return; }
         Workspace.DefineClan(n, n);
         Store.Catalog.Schema.Clan(n);
         Store.Catalog.Lexicon.AddClan(n);
-        PersistPoolClan(n);
+        if (persist) PersistPoolClan(n);
         LastStatusMessage = "已注册新职业：" + n;
         OnCardUpdated?.Invoke();
     }

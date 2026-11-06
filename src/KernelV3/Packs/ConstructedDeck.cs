@@ -27,7 +27,7 @@ public sealed class ConstructedDeck
     /// <summary>该构筑绑定的卡池 ID。</summary>
     public string PoolId { get; init; } = "standard";
 
-    /// <summary>主战者职业（如 "皇家"、"精灵"、"中立"）。</summary>
+    /// <summary>主战者职业（如 "皇家护卫"、"精灵"、"中立"）。</summary>
     public string LeaderClan { get; init; } = "中立";
 
     /// <summary>

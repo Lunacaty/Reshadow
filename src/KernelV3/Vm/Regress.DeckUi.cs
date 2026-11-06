@@ -56,7 +56,7 @@ public static class RegressDeckUi
     private static (bool, string) CasePersistRoundTrip()
     {
         var store = NewStore();
-        var deck = store.CreateDeck("standard", "皇家", "往返测试");
+        var deck = store.CreateDeck("standard", "皇家护卫", "往返测试");
         var pool = store.GetPoolView("standard");
         var first = pool.EnumerateCollectibleCards().FirstOrDefault();
         if (first == null) return (false, "卡池无卡");
@@ -91,7 +91,7 @@ public static class RegressDeckUi
             PackId = "uipack", NativePoolId = "uipool",
             Clans = new List<SymbolRawEntry>
             {
-                new SymbolRawEntry { Name = "皇家" },
+                new SymbolRawEntry { Name = "皇家护卫" },
                 new SymbolRawEntry { Name = "巫师" },
             },
             Cards = new List<CardRawEntry>
@@ -114,7 +114,7 @@ public static class RegressDeckUi
         {
             CardId = expanderId, Name = "Expander", NameChs = "扩容者",
             Kind = CardKind.Follower, BaseCost = 3, BaseAttack = 3, BaseLife = 4,
-            PackId = "uipack", Clan = view.Catalog.Schema.Clan("皇家"),
+            PackId = "uipack", Clan = view.Catalog.Schema.Clan("皇家护卫"),
             DeckModifiers = new List<DeckBuildModifier>
             {
                 new DeckBuildModifier { Kind = DeckModKind.ModifyDeckSize, Value = 20,
@@ -127,7 +127,7 @@ public static class RegressDeckUi
         var deck = new ConstructedDeck
         {
             DeckId = "uitest2", Name = "规则联动", PoolId = "uipool",
-            LeaderClan = "皇家",
+            LeaderClan = "皇家护卫",
         };
 
         var vm = new DeckEditorViewModel(store, deck);

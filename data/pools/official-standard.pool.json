@@ -1,10 +1,12 @@
 {
   "pool_id": "standard",
   "name": "官方标准卡池",
-  "enabled_packs": ["official-sv", "testset-v2"],
-  "pool_clans": ["探测职业"],
-  "leader_counters": [
+  "enabled_packs": [
+    "official-sv",
+    "testset-v2"
   ],
+  "pool_clans": [],
+  "leader_counters": [],
   "rules": {
     "allow_cross_craft": false,
     "allow_tokens_in_constructed_deck": false,
@@ -48,20 +50,52 @@
       "deck_name": "Apocalypse Deck",
       "deck_name_chs": "启示录牌组",
       "entries": [
-        { "card_id": 0, "card_name": "沉默的魔将", "copies": 2 },
-        { "card_id": 0, "card_name": "深渊之主的仆从", "copies": 2 },
-        { "card_id": 0, "card_name": "边狱的邪祟", "copies": 3 },
-        { "card_id": 0, "card_name": "阿斯塔罗特的宣判", "copies": 3 }
+        {
+          "card_id": 0,
+          "card_name": "沉默的魔将",
+          "copies": 2
+        },
+        {
+          "card_id": 0,
+          "card_name": "深渊之主的仆从",
+          "copies": 2
+        },
+        {
+          "card_id": 0,
+          "card_name": "边狱的邪祟",
+          "copies": 3
+        },
+        {
+          "card_id": 0,
+          "card_name": "阿斯塔罗特的宣判",
+          "copies": 3
+        }
       ]
     },
     {
       "deck_name": "deck of 40 cards",
       "deck_name_chs": "40张牌的牌组",
       "entries": [
-        { "card_id": 0, "card_name": "妖精", "copies": 10 },
-        { "card_id": 0, "card_name": "蝙蝠", "copies": 10 },
-        { "card_id": 0, "card_name": "骑士", "copies": 10 },
-        { "card_id": 0, "card_name": "守护者巨像", "copies": 10 }
+        {
+          "card_id": 0,
+          "card_name": "妖精",
+          "copies": 10
+        },
+        {
+          "card_id": 0,
+          "card_name": "蝙蝠",
+          "copies": 10
+        },
+        {
+          "card_id": 0,
+          "card_name": "骑士",
+          "copies": 10
+        },
+        {
+          "card_id": 0,
+          "card_name": "守护者巨像",
+          "copies": 10
+        }
       ]
     }
   ],

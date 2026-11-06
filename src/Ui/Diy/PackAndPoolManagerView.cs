@@ -1140,15 +1140,29 @@ public partial class PackAndPoolManagerView : Control
         if (existing != null) idEdit.Editable = false;   // ID 是目录名，改了等于换包
         var nameEdit = Field("卡包名称", existing?.Name);
         var authorEdit = Field("作者", existing?.Author);
-        // 默认填当前选中的卡池：写死 "standard" 会让新包挂到标准池，
-        // 而玩家明明是在自定义卡池的界面里建的。
-        var nativeEdit = Field("所属卡池", existing?.NativePoolId ?? (_selectedPoolId ?? "standard"));
+        // 所属卡池必须是**下拉选择**、没有默认值：
+        // 卡包不能脱离卡池存在，随便填一个不存在的 ID 会让那座池当场构建失败。
+        var nativePick = new OptionButton { CustomMinimumSize = new Vector2(260, 32) };
+        var poolIds = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).ToList();
+        for (int i = 0; i < poolIds.Count; i++) nativePick.AddItem(poolIds[i], i);
+        int curPoolIdx = existing != null ? poolIds.IndexOf(existing.NativePoolId) : poolIds.IndexOf(_selectedPoolId ?? "");
+        nativePick.Selected = curPoolIdx >= 0 ? curPoolIdx : 0;
+        SvWbTheme.StyleButton(nativePick);
+        SvWbTheme.StyleOptionPopup(nativePick);
+        var nativeRow = new HBoxContainer();
+        nativeRow.AddThemeConstantOverride("separation", 8);
+        var nativeLbl = new Label { Text = "所属卡池", CustomMinimumSize = new Vector2(80, 0) };
+        nativeLbl.AddThemeFontSizeOverride("font_size", 12);
+        nativeRow.AddChild(nativeLbl);
+        nativeRow.AddChild(nativePick);
+        box.AddChild(nativeRow);
 
         dlg.Confirmed += () =>
         {
             bool ok = _store.CreateOrUpdatePack(
                 idEdit.Text?.Trim(), nameEdit.Text?.Trim(), authorEdit.Text?.Trim(),
-                nativeEdit.Text?.Trim(), out string msg);
+                nativePick.Selected >= 0 && nativePick.Selected < poolIds.Count
+                    ? poolIds[nativePick.Selected] : "", out string msg);
             _header.Text = "卡包 / 卡池管理 —— " + msg;
             // 新建卡包会改卡池的 enabled_packs，右栏勾选区必须跟着刷，
             // 否则新包已经进了卡池，玩家在界面上却看不到它被勾上。

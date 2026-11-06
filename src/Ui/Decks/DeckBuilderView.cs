@@ -54,8 +54,8 @@ public partial class DeckBuilderView : Control
 
     private static readonly string[] AllClans =
     {
-        "精灵", "皇家", "巫师", "龙族",
-        "深渊", "主教", "超越者", "中立",
+        "精灵", "皇家护卫", "巫师", "龙族",
+        "梦魇", "主教", "超越者", "中立",
     };
 
     public DeckBuilderView(GameSessionStore store, ConstructedDeck deck)

@@ -4,11 +4,54 @@
   "author": "",
   "version": "1.0.0",
   "native_pool_id": "standard",
-  "dependencies": ["official-sv"],
-  "clans": [{ "name": "中立" }, { "name": "精灵" }, { "name": "皇家" }, { "name": "巫师" }, { "name": "龙族" }, { "name": "深渊" }, { "name": "主教" }, { "name": "超越者" }],
-  "traits": [{ "name": "创造物" }, { "name": "亡者" }, { "name": "财宝" }, { "name": "士兵" }, { "name": "妖精" }, { "name": "探测机甲" }],
+  "dependencies": [
+    "official-sv"
+  ],
+  "clans": [
+    {
+      "name": "中立"
+    },
+    {
+      "name": "精灵"
+    },
+    {
+      "name": "皇家护卫"
+    },
+    {
+      "name": "巫师"
+    },
+    {
+      "name": "龙族"
+    },
+    {
+      "name": "梦魇"
+    },
+    {
+      "name": "主教"
+    },
+    {
+      "name": "超越者"
+    }
+  ],
+  "traits": [
+    {
+      "name": "创造物"
+    },
+    {
+      "name": "亡者"
+    },
+    {
+      "name": "财宝"
+    },
+    {
+      "name": "士兵"
+    },
+    {
+      "name": "妖精"
+    }
+  ],
   "keywords": [],
-  "counters": [{ "name": "探测计数", "name_chs": "", "min": 0, "max": 7 }],
+  "counters": [],
   "stackable_amulets": [],
   "named_decks": [],
   "cards": [
@@ -18,13 +61,15 @@
       "name_chs": "",
       "kind": 1,
       "is_token": false,
-      "clan": "皇家",
-      "traits": ["士兵"],
+      "clan": "皇家护卫",
+      "traits": [
+        "士兵"
+      ],
       "cost": 2,
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 81000000 \"不屈的战士\" (Follower, clan=皇家, cost=2, atk=2, life=2):\n    traits: [士兵]\n    fanfare:\n        draw 1\n    evolve:\n        select opponent:board<Follower> Choose(1)\n        deal 2 damage to $selected\n    super_evolve:\n        deal count(self:hand All) damage to opponent:board<Follower> All"
+      "text": "card 81000000 \"不屈的战士\" (Follower, clan=皇家护卫, cost=2, atk=2, life=2):\n    traits: [士兵]\n    fanfare:\n        draw 1\n    evolve:\n        select opponent:board<Follower> Choose(1)\n        deal 2 damage to $selected\n    super_evolve:\n        deal count(self:hand All) damage to opponent:board<Follower> All"
     },
     {
       "card_id": 81000001,
@@ -61,7 +106,9 @@
       "kind": 1,
       "is_token": false,
       "clan": "精灵",
-      "traits": ["妖精"],
+      "traits": [
+        "妖精"
+      ],
       "cost": 3,
       "attack": 2,
       "life": 2,
@@ -74,14 +121,20 @@
       "name_chs": "",
       "kind": 1,
       "is_token": false,
-      "clan": "深渊",
+      "clan": "梦魇",
       "traits": [],
       "cost": 5,
       "attack": 4,
       "life": 5,
       "source_format": "py_ast",
-      "alt_modes": [{ "type_eng": "Crystallize", "cost": 2, "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Testset Prostrating Coward</color></i></b>." }],
-      "text": "card 81000004 \"匍匐的懦夫\" (Follower, clan=深渊, cost=5, atk=4, life=5):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"匍匐的懦夫\" (cost=2):\n        countdown(3)\n        last_words:\n            summon 1 #10661110"
+      "alt_modes": [
+        {
+          "type_eng": "Crystallize",
+          "cost": 2,
+          "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Testset Prostrating Coward</color></i></b>."
+        }
+      ],
+      "text": "card 81000004 \"匍匐的懦夫\" (Follower, clan=梦魇, cost=5, atk=4, life=5):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"匍匐的懦夫\" (cost=2):\n        countdown(3)\n        last_words:\n            summon 1 #10661110"
     },
     {
       "card_id": 81000005,
@@ -89,14 +142,20 @@
       "name_chs": "",
       "kind": 1,
       "is_token": false,
-      "clan": "深渊",
+      "clan": "梦魇",
       "traits": [],
       "cost": 6,
       "attack": 1,
       "life": 3,
       "source_format": "py_ast",
-      "alt_modes": [{ "type_eng": "Accelerate", "cost": 2, "text_eng": "Summon a <b><i><color=Keyword>Testset Shoddy Plaything</color></i></b>." }],
-      "text": "card 81000005 \"粗劣的玩物\" (Follower, clan=深渊, cost=6, atk=1, life=3):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"粗劣的玩物\" (cost=2):\n        on_play:\n            summon 1 #10671110"
+      "alt_modes": [
+        {
+          "type_eng": "Accelerate",
+          "cost": 2,
+          "text_eng": "Summon a <b><i><color=Keyword>Testset Shoddy Plaything</color></i></b>."
+        }
+      ],
+      "text": "card 81000005 \"粗劣的玩物\" (Follower, clan=梦魇, cost=6, atk=1, life=3):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"粗劣的玩物\" (cost=2):\n        on_play:\n            summon 1 #10671110"
     },
     {
       "card_id": 81000006,
@@ -105,12 +164,20 @@
       "kind": 1,
       "is_token": false,
       "clan": "精灵",
-      "traits": ["妖精"],
+      "traits": [
+        "妖精"
+      ],
       "cost": 6,
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "alt_modes": [{ "type_eng": "Crest", "cost": 0, "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>." }],
+      "alt_modes": [
+        {
+          "type_eng": "Crest",
+          "cost": 0,
+          "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>."
+        }
+      ],
       "text": "card 81000006 \"森林淑女·艾莉雅\" (Follower, clan=精灵, cost=6, atk=4, life=4):\n    traits: [妖精]\n    fanfare:\n        gain_crest #81000006\n    evolve:\n        summon 3 #90011110\n\n    crest \"森林淑女·艾莉雅\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait 妖精):\n            grant_keyword storm to $trigger"
     },
     {
@@ -125,7 +192,13 @@
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "alt_modes": [{ "type_eng": "Faith", "cost": 0, "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <color=Keyword>Mode</color><color=Keyword>s</color>, increase this faith's value by 1." }],
+      "alt_modes": [
+        {
+          "type_eng": "Faith",
+          "cost": 0,
+          "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <color=Keyword>Mode</color><color=Keyword>s</color>, increase this faith's value by 1."
+        }
+      ],
       "text": "card 81000007 \"缠绕的继承者·杉那查\" (Follower, clan=精灵, cost=2, atk=2, life=2):\n    fanfare:\n        pay faith(10):\n            grant_counter_ability to faith:\n                aura:\n                    counter mode_count by 1\n\n    faith \"缠绕的继承者·杉那查\" (cost=0):\n        on_select_mode:\n            gain_faith 1\n        aura:\n            counter faith = 0"
     },
     {
@@ -218,13 +291,15 @@
       "name_chs": "",
       "kind": 1,
       "is_token": false,
-      "clan": "深渊",
-      "traits": ["亡者"],
+      "clan": "梦魇",
+      "traits": [
+        "亡者"
+      ],
       "cost": 1,
       "attack": 1,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 81000020 \"幽灵\" (Follower, clan=深渊, cost=1, atk=1, life=1):\n    traits: [亡者]\n    keywords: [storm]\n    on_leave on($self):\n        banish $self\n    turn_end turn=Self:\n        banish $self"
+      "text": "card 81000020 \"幽灵\" (Follower, clan=梦魇, cost=1, atk=1, life=1):\n    traits: [亡者]\n    keywords: [storm]\n    on_leave on($self):\n        banish $self\n    turn_end turn=Self:\n        banish $self"
     },
     {
       "card_id": 81000021,
@@ -232,13 +307,15 @@
       "name_chs": "",
       "kind": 1,
       "is_token": false,
-      "clan": "皇家",
-      "traits": ["财宝"],
+      "clan": "皇家护卫",
+      "traits": [
+        "财宝"
+      ],
       "cost": 6,
       "attack": 5,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 81000021 \"篡夺的继承者·辛西罗\" (Follower, clan=皇家, cost=6, atk=5, life=5):\n    traits: [财宝]\n    fuse: any:board All where has trait 财宝\n    fanfare:\n        deal ctr:fuse_kinds damage to opponent:board +leader All\n    super_evolve:\n        invoke_ability OnPlay on $self"
+      "text": "card 81000021 \"篡夺的继承者·辛西罗\" (Follower, clan=皇家护卫, cost=6, atk=5, life=5):\n    traits: [财宝]\n    fuse: any:board All where has trait 财宝\n    fanfare:\n        deal ctr:fuse_kinds damage to opponent:board +leader All\n    super_evolve:\n        invoke_ability OnPlay on $self"
     },
     {
       "card_id": 81000022,
@@ -247,7 +324,9 @@
       "kind": 1,
       "is_token": false,
       "clan": "超越者",
-      "traits": ["创造物"],
+      "traits": [
+        "创造物"
+      ],
       "cost": 3,
       "attack": 2,
       "life": 2,
@@ -330,13 +409,13 @@
       "name_chs": "",
       "kind": 2,
       "is_token": false,
-      "clan": "皇家",
+      "clan": "皇家护卫",
       "traits": [],
       "cost": 4,
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000032 \"虚无显现·奥克翠丝\" (Amulet, clan=皇家, cost=4):\n    countdown(8)\n    on_play or=OnFuse on(any:board Choose(1) where has trait 财宝):\n        advance_countdown $self by 1\n    last_words:\n        add_to_hand 1 #90024310"
+      "text": "card 81000032 \"虚无显现·奥克翠丝\" (Amulet, clan=皇家护卫, cost=4):\n    countdown(8)\n    on_play or=OnFuse on(any:board Choose(1) where has trait 财宝):\n        advance_countdown $self by 1\n    last_words:\n        add_to_hand 1 #90024310"
     },
     {
       "card_id": 81000033,
@@ -415,7 +494,9 @@
       "kind": 2,
       "is_token": false,
       "clan": "超越者",
-      "traits": ["创造物"],
+      "traits": [
+        "创造物"
+      ],
       "cost": 1,
       "attack": 0,
       "life": 0,
@@ -428,13 +509,13 @@
       "name_chs": "",
       "kind": 1,
       "is_token": false,
-      "clan": "深渊",
+      "clan": "梦魇",
       "traits": [],
       "cost": 4,
       "attack": 3,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 81000039 \"秘术猎人·尤娜\" (Follower, clan=深渊, cost=4, atk=3, life=5):\n    keywords: [ward]\n    last_words:\n        add_to_hand 1 #90051130"
+      "text": "card 81000039 \"秘术猎人·尤娜\" (Follower, clan=梦魇, cost=4, atk=3, life=5):\n    keywords: [ward]\n    last_words:\n        add_to_hand 1 #90051130"
     }
   ]
 }

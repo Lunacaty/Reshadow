@@ -709,6 +709,15 @@ public sealed class GameSessionStore
         Directory.CreateDirectory(Path.Combine(packDir, "cards"));
         var packFile = Path.Combine(packDir, "pack.json");
 
+        // 所属卡池**必须显式指定**：卡包不能凭空存在，它一定属于某个卡池。
+        // 早先这里写死回落到 "standard"，等于让新建的包默认挂到一个可能不存在的池，
+        // 而 CardPoolBuilder 有「原生池脱离就拒绝构建」的铁律 —— 整座池当场炸掉。
+        if (string.IsNullOrWhiteSpace(nativePoolId))
+        { message = "必须指定所属卡池"; return false; }
+        string nativeId = nativePoolId.Trim();
+        if (!PoolConfigs.ContainsKey(nativeId))
+        { message = "卡池 [" + nativeId + "] 不存在，无法把卡包挂上去"; return false; }
+
         CardPackDef existing = File.Exists(packFile) ? CardPackLoader.LoadFromFile(packFile) : null;
         var pack = new CardPackDef
         {
@@ -716,7 +725,7 @@ public sealed class GameSessionStore
             Name = string.IsNullOrWhiteSpace(name) ? packId : name.Trim(),
             Author = author?.Trim() ?? "",
             Version = existing?.Version ?? "1.0.0",
-            NativePoolId = string.IsNullOrWhiteSpace(nativePoolId) ? "standard" : nativePoolId.Trim(),
+            NativePoolId = nativeId,
             Dependencies = existing?.Dependencies ?? new(),
             Traits = existing?.Traits ?? new(),
             Clans = existing?.Clans ?? new(),

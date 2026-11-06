@@ -802,13 +802,13 @@ public static class RegressBattleUi
         string counterEng = "probe_counter";
         string clanEng = "ProbeCraft";
 
-        ctrl.DefineCustomTrait("探测机甲", 0, 0);
+        ctrl.DefineCustomTrait("探测机甲", 0, 0, persist: false);
         bool traitOk = ctrl.Workspace.Schema.Trait("探测机甲").IsValid;
 
-        ctrl.DefineCustomCounter("探测计数", 0, 7);
+        ctrl.DefineCustomCounter("探测计数", 0, 7, persist: false);
         bool counterOk = ctrl.Workspace.Schema.Counter("探测计数") != null;
 
-        ctrl.DefineCustomClan("探测职业");
+        ctrl.DefineCustomClan("探测职业", persist: false);
         bool clanOk = ctrl.Workspace.Schema.Clan("探测职业").IsValid;
 
         // 注册后应能真的写进卡里

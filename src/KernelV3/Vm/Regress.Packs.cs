@@ -1293,7 +1293,7 @@ public static class RegressPacks
             entries.Add(new CardRawEntry
             {
                 CardId = 791300 + i, NameEng = "OtherClan" + i, Kind = CardKind.Follower,
-                Cost = 3, Attack = 1, Life = 1, Clan = "皇家",
+                Cost = 3, Attack = 1, Life = 1, Clan = "皇家护卫",
                 Traits = new List<string> { "Mecha" },
             });
         // 干扰 C：超费
@@ -1312,7 +1312,7 @@ public static class RegressPacks
                 PackId = "target", NativePoolId = "dp",
                 Clans = new List<SymbolRawEntry>
                 {
-                    new SymbolRawEntry { Name = "巫师" }, new SymbolRawEntry { Name = "皇家" },
+                    new SymbolRawEntry { Name = "巫师" }, new SymbolRawEntry { Name = "皇家护卫" },
                 },
                 Traits = new List<SymbolRawEntry> { new SymbolRawEntry { Name = "Mecha" } },
                 Cards = entries.Take(3).ToList(),
@@ -1604,7 +1604,7 @@ public static class RegressPacks
         // 3 张 Swordcraft
         for (int i = 0; i < 3; i++)
             entries.Add(new CardRawEntry { CardId = 793100 + i, NameEng = "Sword" + i,
-                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "皇家" });
+                Kind = CardKind.Follower, Cost = 2, Attack = 1, Life = 1, Clan = "皇家护卫" });
         // 3 张 Runecraft
         for (int i = 0; i < 3; i++)
             entries.Add(new CardRawEntry { CardId = 793200 + i, NameEng = "Rune" + i,
@@ -1621,7 +1621,7 @@ public static class RegressPacks
                 PackId = "cl", NativePoolId = "cp",
                 Clans = new List<SymbolRawEntry>
                 {
-                    new SymbolRawEntry { Name = "皇家" },
+                    new SymbolRawEntry { Name = "皇家护卫" },
                     new SymbolRawEntry { Name = "巫师" },
                     new SymbolRawEntry { Name = "中立" },
                 },
@@ -1641,7 +1641,7 @@ public static class RegressPacks
         st.ActivePlayer = 0; st.TurnNumber = 3;
 
         // 把玩家 0 主战者的职业设为 Swordcraft
-        var sword = st.Schema.Clan("皇家");
+        var sword = st.Schema.Clan("皇家护卫");
         l0.Def = new CardDef
         {
             CardId = 99, Name = "L", Kind = CardKind.Leader, BaseLife = 20,
@@ -1688,7 +1688,7 @@ public static class RegressPacks
                 {
                     Clans = new List<SymbolId<ClanTag>>
                     {
-                        st.Schema.Clan("皇家"), st.Schema.Clan("巫师"),
+                        st.Schema.Clan("皇家护卫"), st.Schema.Clan("巫师"),
                     },
                     Of = TargetSpec.Item,
                 },

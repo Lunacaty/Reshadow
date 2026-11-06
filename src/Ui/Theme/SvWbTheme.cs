@@ -50,10 +50,10 @@ public static class SvWbTheme
         return k switch
         {
             "精灵" => new Color("10B981"),
-            "皇家" => new Color("EAB308"),
+            "皇家护卫" => new Color("EAB308"),
             "巫师" => new Color("6366F1"),
             "龙族" => new Color("EF4444"),
-            "深渊" => new Color("A855F7"),
+            "梦魇" => new Color("A855F7"),
             "主教" => new Color("FDE047"),
             "超越者" => new Color("06B6D4"),
             "中立" => new Color("94A3B8"),
