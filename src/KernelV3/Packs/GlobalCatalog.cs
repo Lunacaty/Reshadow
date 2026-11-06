@@ -276,6 +276,8 @@ public sealed class GlobalCatalog
         {
             CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
                 DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
+            // 立绘来源：与另外两个分支同口径。
+            ArtCardId = c.ArtCardId > 0 ? c.ArtCardId : cardId,
             BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
             Abilities = r.Abilities, Traits = traits, Clan = clan,
             // 卡包 JSON 的 keywords 与卡面原文解析出的裸关键词必须合并，

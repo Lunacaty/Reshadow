@@ -1491,6 +1491,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     {
         if (cardId > 0)
         {
+            // 先查权威卡库（官方卡）；自制卡不在里面，落到下面的 text 兜底 ——
+            // 编译期已按卡号把卡名写进了 CardName，反编译回来就是 blk.Text。
             string zh = ShadowverseFan.KernelV3.Packs.AuthoritativeNames.ChineseOf(cardId);
             if (!string.IsNullOrEmpty(zh)) return "《" + zh + "》";
         }

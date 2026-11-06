@@ -176,11 +176,22 @@ public sealed class AuthoritativeMatchHost : IDisposable
                         {
                             try
                             {
-                                // 非法牌组会在内部抛异常；能返回就说明通过。
                                 object dp = (object)State?.Pool ?? _hostPoolView;
                                 var dpool = dp as Packs.CardPool
                                         ?? (dp as Packs.CardPoolRuntime)?.ToCardPoolView();
-                                Packs.DeckRuleResolver.ResolveAndValidate(msg.Value.Deck, dpool);
+
+                                // ResolveAndValidate **不抛异常** —— 它把所有不合规项写进
+                                // profile.Errors 然后正常返回。只 try/catch 等于完全没校验：
+                                // 客机提交 10 张同名卡、跨职业混组、甚至 3 张牌的牌组都能进来。
+                                var profile = Packs.DeckRuleResolver.ResolveAndValidate(msg.Value.Deck, dpool);
+                                if (profile == null || !profile.IsValid)
+                                {
+                                    string why = profile == null
+                                        ? "无法解析牌组"
+                                        : string.Join("；", profile.Errors);
+                                    await SendLine(stream, "ERR|牌组不合法：" + why);
+                                    continue;
+                                }
                             }
                             catch (Exception ex)
                             {

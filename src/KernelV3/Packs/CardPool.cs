@@ -539,6 +539,9 @@ public static class CardPoolBuilder
                 // 关键词只写在 "keywords" 里。漏了这一行，它们上场就是白板。
                 InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => schema.Keyword(k)).ToList(),
                 PackId = pack.PackId, IsToken = c.IsToken, Rarity = c.Rarity,
+                // 立绘来源：卡包写的 art_card_id 优先，否则用卡号本身。
+                // 漏了这三行，另存新卡在**实战**里会去找不存在的 png 变黑底。
+                ArtCardId = c.ArtCardId > 0 ? c.ArtCardId : cardId,
                 SourceText = "",
             };
         }
@@ -594,6 +597,9 @@ public static class CardPoolBuilder
                 FaithDef = pyDef.FaithDef,
                 PackId = pack.PackId,
                 IsToken = c.IsToken,
+                // 立绘来源：卡包写的 art_card_id 优先，否则用卡号本身。
+                // 漏了这三行，另存新卡在**实战**里会去找不存在的 png 变黑底。
+                ArtCardId = c.ArtCardId > 0 ? c.ArtCardId : cardId,
                 Rarity = c.Rarity,
                 SourceText = c.Text,
             };
@@ -610,6 +616,8 @@ public static class CardPoolBuilder
         {
             CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = c.Kind,
                 DeckModifiers = c.DeckModifiers ?? new List<DeckBuildModifier>(),
+            // 立绘来源：与另外两个分支同口径。
+            ArtCardId = c.ArtCardId > 0 ? c.ArtCardId : cardId,
             BaseCost = c.Cost, BaseAttack = c.Attack, BaseLife = c.Life,
             Abilities = result.Abilities,
             Traits = traits, Clan = clan,

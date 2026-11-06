@@ -746,6 +746,9 @@ public sealed class ChineseCardPrinter
                 // 只看 CardName 会印出「变身为《》」。
                 string intoZh = Packs.AuthoritativeNames.ChineseOf(t.IntoCardId);
                 if (string.IsNullOrEmpty(intoZh)) intoZh = CardZh(t.IntoCardName);
+                // 变身成未命名的自定义卡时，上面两步都查不到，会印出《》。
+                if (string.IsNullOrEmpty(intoZh))
+                    intoZh = t.IntoCardId > 0 ? "#" + t.IntoCardId : "同名卡牌";
                 return "使" + PrintTarget(t.Target) + "【变身】为《" + intoZh + "》。";
 
             case EvolveNode e:
