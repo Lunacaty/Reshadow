@@ -83,34 +83,42 @@
   ],
   "keywords": [
     {
-      "name": "Ward"
+      "name": "Ward",
+      "name_chs": "守护"
     },
     {
-      "name": "Storm"
+      "name": "Storm",
+      "name_chs": "疾驰"
     },
     {
-      "name": "Rush"
+      "name": "Rush",
+      "name_chs": "突进"
     },
     {
-      "name": "Bane"
+      "name": "Bane",
+      "name_chs": "毁灭"
     },
     {
-      "name": "Drain"
+      "name": "Drain",
+      "name_chs": "虹吸"
     },
     {
-      "name": "Ambush"
+      "name": "Ambush",
+      "name_chs": "潜行"
     },
     {
-      "name": "Aura"
+      "name": "Aura",
+      "name_chs": "灵气"
     },
     {
-      "name": "Barrier"
+      "name": "Barrier",
+      "name_chs": "屏障"
     },
     {
-      "name": "Intimidate"
+      "name": "Intimidate",
+      "name_chs": "威慑"
     }
   ],
-  "counters": [],
   "cards": [
     {
       "card_id": 10001110,

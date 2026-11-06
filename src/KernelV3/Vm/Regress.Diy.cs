@@ -100,12 +100,26 @@ public static partial class Regress
             // 兜底：任何连续 3 个以上 ASCII 字母都是英文残留。
             // 之前按「已知英文语法词」列表查，带下划线的内码（cannot_be_played）
             // 与没列进表的词全都能蒙混过去 —— 白名单式检查永远漏。
-            // 卡名（《…》）豁免：DIY 卡本来就可能没有中文名。
+            //
+            // 豁免：
+            //   · 卡名《…》—— DIY 卡本来就可能没有中文名；
+            //   · 兵种名 —— 兵种是数据里的显示名，不做英中对照（数据是什么就印什么），
+            //     英文夹具里的 Pixie 印成 Pixie 是正确行为，不算洋泾浜。
+            // 兵种名一律豁免：兵种是数据里的显示名，不做英中对照。
+            // 英文夹具里的 Loot / Pixie 印成英文是**正确行为**，不是洋泾浜。
+            // 取整个 Schema 的兵种集合，而不是只取本卡的 Traits ——
+            // 效果里引用的兵种（如「融合 Loot 兵种」）不一定在本卡身上。
+            var traitWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in ws.Schema.Traits.All)
+                if (!string.IsNullOrWhiteSpace(t.Name)) traitWords.Add(t.Name);
+
             foreach (var line in zh.Split('\n'))
             {
                 if (line.Contains("《") || line.Contains("【关联")) continue;
                 var m = System.Text.RegularExpressions.Regex.Match(line, "[A-Za-z]{3,}");
-                if (m.Success) bad.Add(c.CardId + " 残留英文 \"" + m.Value + "\"");
+                if (!m.Success) continue;
+                if (traitWords.Contains(m.Value)) continue;
+                bad.Add(c.CardId + " 残留英文 \"" + m.Value + "\"");
             }
 
             // 「有中文能力标签」：任意一个【…】形式的触发头即可。

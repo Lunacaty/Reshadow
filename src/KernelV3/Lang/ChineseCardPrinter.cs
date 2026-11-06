@@ -1914,11 +1914,56 @@ public sealed class ChineseCardPrinter
         return string.IsNullOrEmpty(noun) ? null : noun;
     }
 
-    public string KeywordZh(string en) => _glossary.ToChinese(en);
+    // 关键词同样是引擎内核术语（ward / storm / cannot_be_played …），
+    // 来自官方卡效，硬编码在这里；英文内码保留给效果语句与积木端使用。
+    public string KeywordZh(string en) => (en ?? "").Trim().ToLowerInvariant() switch
+    {
+        "ward" => "守护",
+        "storm" => "疾驰",
+        "rush" => "突进",
+        "bane" => "毁灭",
+        "drain" => "虹吸",
+        "ambush" => "潜行",
+        "aura" => "灵气",
+        "barrier" => "屏障",
+        "intimidate" => "威慑",
+        "suppress_fanfare" or "suppress fanfare" => "入场曲无法发动",
+        "suppress_enhance" or "suppress enhance" => "爆能强化无法发动",
+        "cannot_be_played" => "无法打出",
+        "cannot_attack" => "无法攻击",
+        "cannot_destroy" => "无法被能力破坏",
+        "cannot_attack_leaders" => "无法攻击主战者",
+        "cannot_attack_followers" => "无法攻击随从",
+        "ignores ward" => "无视守护",
+        "targeting_restriction" => "敌方只能选择本卡牌",
+        "max_attacks_per_turn" => "1回合可攻击",
+        "damage_taken_bonus" => "受到伤害增加",
+        "damage_cap" => "受到伤害上限",
+        "free_evolve" => "无需进化点即可进化",
+        "free_super_evolve" => "无需超进化点即可超进化",
+        "immune_damage" => "不受任何伤害",
+        "immune_combat_damage" => "不受战斗伤害",
+        "immune_ability_damage" => "不受能力伤害",
+        "immune_effects" => "不受能力影响",
+        "immune_effects_except_stats" => "不受能力影响（攻防变化除外）",
+        "attack_limit" => "攻击力上限",
+        // 卡池自定义关键词直接用玩家写的中文名，原样返回。
+        _ => en ?? "",
+    };
 
-    public string CounterZh(string name) => name switch
+    // ------------------------------------------------------------------
+    // 引擎内核术语的中文名（硬编码，因为这些词语来自官方卡效本身）
+    //
+    // 注意与「兵种 / 职业 / 卡名」的区别：那些是玩家数据，只存一个中文名，
+    // 绝不做英中对照。这里的 pp / fuse_kinds / skybound_gauge 是引擎内部
+    // 计数器标识符，英文必须是它们本身（效果语句、积木端都用内码），
+    // 中文只是给玩家看的显示名。
+    // ------------------------------------------------------------------
+
+    public string CounterZh(string name) => (name ?? "").Trim() switch
     {
         "pp" => "能量点",
+        "pp_at_play" => "打出时能量点",
         "max_pp" => "最大能量点",
         "ep" => "进化点",
         "sep" => "超进化点",
@@ -1927,23 +1972,23 @@ public sealed class ChineseCardPrinter
         "rally" => "协作",
         "earth_sigil" => "土之印",
         "countdown" => "吟唱",
-        "clues" => "线索",
+        "clues" => "证据",
         "faith" => "信仰",
         "crest" => "纹章",
-        "mode_count" => "模式",
+        "mode_count" => "可选模式数",
         "spellboost" => "魔力增幅",
         "fuse_count" => "融合次数",
         "fuse_cost" => "融合材料总费用",
         "fuse_kinds" => "融合材料种类数",
-        "cards_returned_to_hand" => "返回手牌的张数",
+        "cards_returned_to_hand" => "本回合返回手牌数",
         "evolve_count" => "进化次数",
         "wrath" => "血怒",
         "damage_dealt_this_turn" => "本回合造成的伤害",
-        // 以下内码以前直接漏到卡面上（玩家看到的是 pp_at_play 这种变量名）。
-        "pp_at_play" => "打出时能量点",
         "turn_ally_attacks" => "本回合我方随从攻击次数",
         "ally_attacked_leader_last_turn" => "上回合我方随从攻击主战者次数",
         "ally_attacked_leader_this_turn" => "本回合我方随从攻击主战者次数",
+        "attacked_leader_last_turn" => "上回合攻击过主战者",
+        "attacked_follower_last_turn" => "上回合攻击过随从",
         "cards_destroyed_by_ability" => "本次能力破坏的卡牌数",
         "cards_banished_by_ability" => "本次能力消失的卡牌数",
         "cards_discarded_by_ability" => "本次能力舍弃的卡牌数",
@@ -1951,19 +1996,13 @@ public sealed class ChineseCardPrinter
         "match_play" => "本局打出次数",
         "turn_play" => "本回合打出次数",
         "skybound_gauge" => "奥义值",
-        "attacked_leader_last_turn" => "上回合攻击过主战者",
-        "attacked_follower_last_turn" => "上回合攻击过随从",
+        "ced_engage" => "本回合已启动的护符数",
         "s_max_defense" => "主战者生命上限",
         "enemy_leader" => "敌方主战者",
         "distinct_base_costs_played" => "本局打出过的不同费用数",
-        "cards_played_this_turn" => "本回合打出的张数",
-        "destroyed_followers" => "已破坏的随从数",
-        "fused_cards" => "已融合的张数",
-        "ced_engage" => "本局启动次数",
-        // 兜底：解析器曾把「the enemy leader's max defense」整句当成计数器名。
-        // 那不是计数器，这里给一个可读名，真正的修复在 ConditionCompiler/ActionParser。
-        "enemy_leader's_max_defense" => "敌方主战者生命上限",
-        _ => _glossary.ToChinese(name),
+        "X" => "X", "Y" => "Y", "Z" => "Z",
+        // 卡池自定义计数器直接用玩家写的中文名，原样返回。
+        _ => name ?? "",
     };
 
     public string StatZh(StatKey k) => k switch
@@ -2033,18 +2072,8 @@ public sealed class ChineseCardPrinter
     /// 只有英文编译器产出的英文 AST 才需要一次英文 → 中文的转换，
     /// 那种情况走 Terminology()（查 glossary.json），不影响中文卡包。
     /// </summary>
-    public string TraitZh(string en)
-    {
-        if (string.IsNullOrWhiteSpace(en)) return "";
-        string k = en.Trim();
-        // 已是中文（或任何非 ASCII 名）就原样返回：玩家自定义的兵种名不能被改写。
-        bool hasAscii = false;
-        foreach (char ch in k) if (ch < 128 && char.IsLetter(ch)) { hasAscii = true; break; }
-        if (!hasAscii) return k;
-
-        string zh = _glossary.ToChinese(k);
-        return string.IsNullOrEmpty(zh) ? k : zh;
-    }
+    /// <summary>兵种名：**原样返回**。数据里是什么就显示什么。</summary>
+    public string TraitZh(string en) => en ?? "";
 
     /// <summary>
     /// 卡名转中文。
@@ -2081,24 +2110,18 @@ public sealed class ChineseCardPrinter
         _ => "未知状态",
     };
 
-    /// <summary>
-    /// 卡名转中文。
-    ///
-    /// 代码里不存卡名对照表 —— 卡名译文由 CardPool 在加载卡包时
-    /// 从 name_eng → name_chs 注入 Glossary，与卡池、语言版本同步。
-    /// 查不到就原样返回（英文编译器的中间产物本来就该显示英文）。
-    /// </summary>
+    /// <summary>卡名：**原样返回**。数据里是什么就显示什么。</summary>
     public string CardZh(string en)
     {
         if (string.IsNullOrWhiteSpace(en)) return "";
         string key = en.Trim();
 
-        // 1) 术语表（CardPool 从卡包注入的译文）
+        // 卡名译文由 CardPool 从卡包 name_eng→name_chs 注入 Glossary。
         string zh = _glossary.ToChinese(key);
         if (!string.IsNullOrEmpty(zh) && zh != key) return zh;
 
-        // 2) 权威卡库反查：内置衍生 Token（Fairy / Knight …）的英文名
-        //    只存在于引擎常量与权威卡库里，卡包数据里没有对应条目。
+        // 内置衍生 Token（Fairy / Knight …）的英文名只在权威卡库里，
+        // 卡包数据没有对应条目，按英文名反查卡号再取中文名。
         int id = Packs.AuthoritativeNames.IdOfEnglish(key);
         if (id > 0)
         {
@@ -2106,8 +2129,7 @@ public sealed class ChineseCardPrinter
             if (!string.IsNullOrEmpty(byId)) return byId;
         }
 
-        // 3) 测试集英文夹具的卡名带 "Testset " 前缀，权威卡库里没有这一条。
-        //    去掉前缀再查一次，避免中文卡面残留英文。
+        // 测试集英文夹具的卡名带 "Testset " 前缀，去掉再查一次。
         const string testsetPrefix = "Testset ";
         if (key.StartsWith(testsetPrefix, StringComparison.OrdinalIgnoreCase))
         {
@@ -2118,18 +2140,11 @@ public sealed class ChineseCardPrinter
                 string bareZh = Packs.AuthoritativeNames.ChineseOf(bareId);
                 if (!string.IsNullOrEmpty(bareZh)) return bareZh;
             }
-            string bareGloss = _glossary.ToChinese(bare);
-            if (!string.IsNullOrEmpty(bareGloss) && bareGloss != bare) return bareGloss;
         }
 
         return key;
     }
 
-    private string DeckNameZh(string en) => en switch
-    {
-        "Apocalypse Deck" => "启示录牌组",
-        "a deck of 40 cards" => "40张牌的牌组",
-        "deck of 40 cards" => "40张牌的牌组",
-        _ => _glossary.ToChinese(en),
-    };
+    /// <summary>牌组名：**原样返回**。数据里是什么就显示什么。</summary>
+    private string DeckNameZh(string en) => en ?? "";
 }
