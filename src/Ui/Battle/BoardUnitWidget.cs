@@ -302,8 +302,7 @@ public partial class BoardUnitWidget : Control
 
         bool isAmulet = def.Kind is CardKind.Amulet or CardKind.Crest;
 
-        if (isAmulet) DrawAmuletFrame(clanCol, def);
-        else DrawFollowerArch(clanCol, def);
+        DrawCardFrame(clanCol, def);
 
         DrawArtwork(clanCol, def, isAmulet);
 
@@ -529,9 +528,30 @@ public partial class BoardUnitWidget : Control
         }
     }
 
-    private void DrawFollowerArch(Color clanCol, CardDef def)
+    /// <summary>
+    /// 随从与护符共用的卡框。
+    ///
+    /// 四层结构：外描边 → 稀有度主框 → 内描边 → 内底，再加一道顶部内高光。
+    /// 早先随从与护符各画一套（护符是米色六边形），且都只有一层纯色，
+    /// 在战场底色上几乎看不出来。现在两者共用同一套形状与配色。
+    /// </summary>
+    private void DrawCardFrame(Color clanCol, CardDef def)
     {
-        // 顶部圆拱：近似「圆拱窗」的上半弧 + 直身
+        // 1) 外描边：比主框外扩 2px 的深色边 —— 让框从战场底色里分离出来。
+        Vector2[] outer =
+        {
+            new(1f, 36f),
+            new(W * 0.22f - 2f, 6f),
+            new(W * 0.5f, 0f),
+            new(W * 0.78f + 2f, 6f),
+            new(W - 1f, 36f),
+            new(W - 1f, H - 4f),
+            new(1f, H - 4f),
+        };
+        DrawColoredPolygon(outer, new Color("0B0F1A"));
+
+        // 2) 主框：稀有度色（与手牌稀有度配色一致）。
+        // 桌面上卡很小，只染最外一圈 —— 整块铺满稀有度色会让场面花掉。
         Vector2[] frame =
         {
             new(3f, 34f),
@@ -542,10 +562,22 @@ public partial class BoardUnitWidget : Control
             new(W - 3f, H - 6f),
             new(3f, H - 6f),
         };
-        // 外框按稀有度上色。桌面上卡很小，只染最外一圈 ——
-        // 整块铺满稀有度色会让场面花掉，影响落子判断。
         DrawColoredPolygon(frame, RarityRim(def));
 
+        // 3) 内描边：比内框外扩 2px 的深色边 —— 让立绘不直接压在主框上。
+        Vector2[] bevel =
+        {
+            new(4f, 38f),
+            new(W * 0.24f - 2f, 14f),
+            new(W * 0.5f, 8f),
+            new(W * 0.76f + 2f, 14f),
+            new(W - 4f, 38f),
+            new(W - 4f, H - 7f),
+            new(4f, H - 7f),
+        };
+        DrawColoredPolygon(bevel, new Color("0B0F1A"));
+
+        // 4) 内底：深色，托住立绘。
         Vector2[] inner =
         {
             new(6f, 36f),
@@ -557,6 +589,10 @@ public partial class BoardUnitWidget : Control
             new(6f, H - 9f),
         };
         DrawColoredPolygon(inner, new Color("161228"));
+
+        // 5) 顶部内高光：沿内框上沿的一道 1px 浅线，给框一点立体感。
+        DrawPolyline(new[] { inner[1], inner[2], inner[3] },
+                     new Color(1f, 1f, 1f, 0.30f), 1f);
     }
 
     /// <summary>
@@ -572,23 +608,6 @@ public partial class BoardUnitWidget : Control
         4 => new Color("C77DFF"),
         _ => new Color("B07A4A"),
     };
-
-    private void DrawAmuletFrame(Color clanCol, CardDef def)
-    {
-        Vector2[] frame =
-        {
-            new(8f, 4f), new(W - 8f, 4f), new(W - 3f, 16f),
-            new(W - 3f, H - 6f), new(3f, H - 6f), new(3f, 16f),
-        };
-        DrawColoredPolygon(frame, new Color("D6C7B2"));
-
-        Vector2[] inner =
-        {
-            new(11f, 7f), new(W - 11f, 7f), new(W - 6f, 18f),
-            new(W - 6f, H - 9f), new(6f, H - 9f), new(6f, 18f),
-        };
-        DrawColoredPolygon(inner, new Color("161228"));
-    }
 
     /// <summary>
     /// 把立绘按棋子外轮廓逐行裁切后画出来。
@@ -714,26 +733,18 @@ public partial class BoardUnitWidget : Control
     /// </summary>
     private static Vector2[] InnerOutline(bool isAmulet)
     {
-        if (isAmulet)
-        {
-            return new Vector2[]
-            {
-                new(11f, 7f), new(W - 11f, 7f), new(W - 6f, 18f),
-                new(W - 6f, H - 9f), new(6f, H - 9f), new(6f, 18f),
-            };
-        }
-
-        // 与 DrawFollowerArch 的 inner 完全一致，再整体内缩 1px
-        // （描边有宽度，不内缩会让立绘压到描边上）。
+        // 随从与护符共用同一组内框坐标 —— 用户要求「与随从一致的卡框」。
+        // isAmulet 入参保留只为兼容现有调用点，不再区分形状。
+        _ = isAmulet;
         return new Vector2[]
         {
-            new(7f, 37f),
-            new(W * 0.24f, 13f),
-            new(W * 0.5f, 7f),
-            new(W * 0.76f, 13f),
-            new(W - 7f, 37f),
-            new(W - 7f, H - 10f),
-            new(7f, H - 10f),
+            new(6f, 36f),
+            new(W * 0.24f, 12f),
+            new(W * 0.5f, 6f),
+            new(W * 0.76f, 12f),
+            new(W - 6f, 36f),
+            new(W - 6f, H - 9f),
+            new(6f, H - 9f),
         };
     }
 
