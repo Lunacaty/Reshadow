@@ -1344,12 +1344,17 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             // 使目标变身：变谁 + 变成哪张卡
             case "act_transform":
                 BuildTargetSlotEditor(col, "使谁变身", b.Target, v => { b.Target = v; Apply(); });
-                BuildCardPicker(col, "变成（从卡池选）", b.Text, v => { b.Text = v; Apply(); });
+                // 卡牌一律按**卡 ID**指定，不认卡名 —— 卡名是可变显示文本，
+                // 玩家改了名或换了语言，按名查就查不到，效果静默失效。
+                BuildIntSpin(col, "变成（卡 ID）", b.IntB, v => { b.IntB = v; Apply(); });
                 break;
 
             // 获得纹章：纹章名 + 授予对象
             case "act_gain_crest":
-                BuildTextEditor(col, "纹章名", b.Text, v => { b.Text = v; Apply(); });
+                // 纹章是独立实体：卡 ID 非 0 时按 ID 建，否则按 Text 找。
+                // 优先 ID，卡名只作显示。
+                BuildIntSpin(col, "纹章卡 ID", b.IntB, v => { b.IntB = v; Apply(); });
+                BuildTextEditor(col, "纹章名（显示用）", b.Text, v => { b.Text = v; Apply(); });
                 BuildEnumCombo(col, "授予对象",
                     new[] { ("Self", "我方"), ("Opponent", "敌方"), ("Any", "双方") },
                     b.EnumA ?? "Self", v => { b.EnumA = v; Apply(); });
@@ -1390,7 +1395,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
 
             case "act_summon":
             case "act_add_hand":
-                BuildCardPicker(col, "卡名（从卡池选）", b.Text, v => { b.Text = v; Apply(); });
+                BuildIntSpin(col, "卡 ID", b.IntB, v => { b.IntB = v; Apply(); });
                 BuildNumberSlotEditor(col, "数量", b.Number, v => { b.Number = v; Apply(); });
                 break;
 
@@ -1424,8 +1429,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 break;
 
             default:
-                // 兜底：确实需要手填的少数积木，但也要给出中文说明。
-                BuildCardPicker(col, "卡名（从卡池选）", b.Text, v => { b.Text = v; Apply(); });
+                // 兜底：确实需要手填的少数积木。卡牌一律用卡 ID，不认卡名。
+                BuildIntSpin(col, "卡 ID", b.IntB, v => { b.IntB = v; Apply(); });
                 BuildNumberSlotEditor(col, "数值", b.Number, v => { b.Number = v; Apply(); });
                 break;
         }
@@ -1604,54 +1609,6 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         col.AddChild(row);
     }
 
-
-    /// <summary>
-    /// 卡牌选择器（167 §2.4）：从当前卡池列卡，不让玩家手敲卡名。
-    ///
-    /// 手敲卡名的失败是静默的 —— 拼错一个字母，编译器认不出这张卡，
-    /// 效果退化成「对任意卡生效」或在运行期才炸，而界面上完全正常。
-    /// </summary>
-    private void BuildCardPicker(VBoxContainer col, string label, string cur, Action<string> setter)
-    {
-        var box = new VBoxContainer();
-        box.AddThemeConstantOverride("separation", 3);
-        var head = new Label { Text = label };
-        head.AddThemeFontSizeOverride("font_size", 11);
-        head.AddThemeColorOverride("font_color", new Color("C4B5FD"));
-        box.AddChild(head);
-
-        var opt = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        SvWbTheme.StyleOptionPopup(opt);
-        opt.AddItem("（未指定）");
-
-        var cards = new List<string>();
-        try
-        {
-            var store = _ctrl?.Store;
-            var rt = _ctrl != null ? store?.GetPoolRuntime(_ctrl.ActivePoolId) : null;
-            var pool = rt?.AllCards?.Values ?? store?.Catalog?.AllCards?.Values;
-            if (pool != null)
-            {
-                foreach (var cd in pool.OrderBy(x => x.CardId))
-                {
-                    string nm = string.IsNullOrWhiteSpace(cd.NameChs) ? (cd.Name ?? "") : cd.NameChs;
-                    cards.Add(nm);
-                    opt.AddItem(cd.CardId + " " + nm);
-                }
-            }
-        }
-        catch (Exception) { }
-
-        int idx = cards.IndexOf(cur ?? "");
-        opt.Selected = idx >= 0 ? idx + 1 : 0;
-        opt.ItemSelected += s =>
-        {
-            int i = (int)s;
-            setter(i <= 0 || i - 1 >= cards.Count ? "" : cards[i - 1]);
-        };
-        box.AddChild(opt);
-        col.AddChild(box);
-    }
 
     private static void BuildInlineText(VBoxContainer col, string label, string cur, Action<string> setter)
     {
@@ -2141,8 +2098,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             case "act_restore": return "为【" + DescribeTargetShort(blk.Target) + "】回复【" + NumText(blk.Number, 2) + "】点生命";
             case "act_full_restore": return "完全回复生命";
             case "act_draw": return "抽取 " + NumText(blk.Number, 1) + " 张牌";
-            case "act_summon": return "召唤「" + (blk.Text ?? "?") + "」";
-            case "act_add_hand": return "生成「" + (blk.Text ?? "?") + "」加入手牌";
+            case "act_summon": return "召唤 #" + (blk.IntB == 0 ? "?" : blk.IntB.ToString());
+            case "act_add_hand": return "生成 #" + (blk.IntB == 0 ? "?" : blk.IntB.ToString()) + " 加入手牌";
             case "act_destroy": return "破坏【" + DescribeTargetShort(blk.Target) + "】";
             case "act_banish": return "使【" + DescribeTargetShort(blk.Target) + "】消失";
             case "act_bounce": return "将【" + DescribeTargetShort(blk.Target) + "】返回手牌";
@@ -2168,11 +2125,11 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 string ctrNum = blk.EnumA == "Fill" ? "" : NumText(blk.Number, 1);
                 return "使【" + who + "】的【" + ctrZh + "】" + ctrOp + ctrNum;
             }
-            case "act_gain_crest": return "获得纹章「" + (blk.Text ?? "?") + "」";
+            case "act_gain_crest": return "获得纹章 #" + (blk.IntB == 0 ? "?" : blk.IntB.ToString());
             case "act_copy": return "复制目标";
             case "act_discover": return "从卡池发现";
             case "act_reanimate": return "亡者召还";
-            case "act_transform": return "使目标变身为「" + (blk.Text ?? "?") + "」";
+            case "act_transform": return "使目标变身为 #" + (blk.IntB == 0 ? "?" : blk.IntB.ToString());
             case "act_replace_deck": return "替换整副牌组";
             case "act_damage_aura": return "护盾光环：使【" + DescribeTargetShort(blk.Target) + "】" + DiyZh.Zh(DiyZh.DamageAuraKinds, blk.EnumA) + "【" + NumText(blk.Number, 3) + "】";
             case "act_grant_entity_ability": return "赋予目标一段能力";
