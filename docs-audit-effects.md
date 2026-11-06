@@ -130,3 +130,28 @@ deal ctr:X 期望 4，实际 2；敌方随从 Life 12→10（伤害冻结在初�
 | 协调员复核 | `.audit/Program.cs` | 本文所有「实测」均另跑或逐条核过行号 |
 
 > 三个子代理都只在各自 `.auditX/` 下建 harness，`git status` 业务文件 0 改动、`pack.json` 未动。
+
+---
+
+## 十、修复结果（2026-11-06 提交 d3deb8a）
+
+用户确认「全修」。5 类确认失效 + 2 条规则全部落地并逐项复验：
+
+| # | 缺陷 | 修复 | 复验 |
+|---|---|---|---|
+| 1 | count() 算 0（43 张） | VmEval 的 Count/Sum/DistinctCount/MaxGroupSize 套 NormalizeZoneWhere | 10542310 count=5（改前 0） |
+| 2 | ctr:X 写侧作用域（7 张+18 条） | 编译期补 Target=Self + 运行期 X/Y/Z 写实体兜底 + OnSpellboost 手牌豁免 | 暴风破 X 2→4、ctr:X 读 4 |
+| 3 | != 印成 =（3 张） | ChineseCardPrinter 补 CompareOp.Ne => ≠ | 10331110 卡面含 ≠ |
+| 4 | prop 读快照旧值（1 张） | NumOp.Property 改用 RefStat（活体优先） | 10262310 加 buff 后 5→6 |
+| 5 | Sequence(pick=1) 全跑（2 张） | DoBranch 只取前 pick 项 + 卡面措辞同步 | 10703210 只发动第 1 项 |
+| R1 | rally 规则 | 用户确认现有补偿设计正确，未改动 | 打出随从 +1、法术不变、任意进场方式 +1 |
+| R2 | spellboost 规则 | 移到效果生效前 + 任何法术都发事件 + 不包括给自己 | 手牌卡 0→1、被打出的法术 0、事件顺序正确 |
+
+**连带修正**：测试 81000034 的期望写错（用 Sequence(pick=1) 却期望执行 2 项，
+沿用修复前行为）。官方日文「下記の能力から順に1つの能力が働く」= 1 个能力，已改为期望只发动第 1 项。
+
+**未处理的疑似失效（当前卡池 0 实例，未修）**：见第四节 6 条结构性缺口、
+C-5 MaxGroupSize、C-6 PrintCard(withSubDefs=false)。这些当前不影响任何卡。
+
+**pack.json 未改动**：7 张 ctr:X 卡的运行时修复走「运行期写实体兜底」，
+编译期修复（Target=Self）只影响未来重新编译/合并的产物。
