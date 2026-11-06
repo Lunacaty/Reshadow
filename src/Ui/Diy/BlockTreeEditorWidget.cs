@@ -1881,9 +1881,9 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         if (cur != null)
         {
             if (cur.Opcode == "tgt_slot")
-                BuildEnumCombo(box, "引用槽位", DiyZh.Slots, cur.Text ?? "$self", v => { cur.Text = v; structuralSetter(cur); });
+                BuildEnumCombo(box, "引用槽位", DiyZh.Slots, cur.Text ?? "$self", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "tgt_leader")
-                BuildEnumCombo(box, "主战者归属", DiyZh.Owners, cur.EnumA ?? "Self", v => { cur.EnumA = v; structuralSetter(cur); });
+                BuildEnumCombo(box, "主战者归属", DiyZh.Owners, cur.EnumA ?? "Self", v => { cur.EnumA = v; setter(cur); });
             else if (cur.Opcode == "tgt_query")
             {
                 // tgt_query 的 IntA 是区域码、IntB 是归属码。
@@ -1896,7 +1896,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 zoneOpt.ItemSelected += s2 =>
                 {
                     cur.IntA = Mathf.Clamp((int)s2, 0, DiyZh.Zones.Length - 1);
-                    structuralSetter(cur);
+                    setter(cur);
                 };
                 box.AddChild(zoneOpt);
 
@@ -1910,7 +1910,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 ownerOpt.ItemSelected += s3 =>
                 {
                     cur.IntB = Mathf.Clamp((int)s3, 0, DiyZh.Owners.Length - 1);
-                    structuralSetter(cur);
+                    setter(cur);
                 };
                 box.AddChild(ownerOpt);
 
@@ -1927,7 +1927,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                     int ki = (int)s4;
                     if (ki < 0 || ki >= DiyZh.Kinds.Length) return;
                     cur.Text = DiyZh.Kinds[ki].Key;
-                    structuralSetter(cur);
+                    setter(cur);
                 };
                 box.AddChild(kindOpt);
 
@@ -1944,39 +1944,39 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                     int mi = (int)s5;
                     if (mi < 0 || mi >= DiyZh.SelectModes.Length) return;
                     cur.EnumA = DiyZh.SelectModes[mi].Key;
-                    structuralSetter(cur);
+                    setter(cur);
                 };
                 box.AddChild(modeOpt);
                 var nb = new VBoxContainer();
                 box.AddChild(nb);
-                BuildNumberSlotEditor(nb, "选取数量", cur.Number, v => { cur.Number = v; structuralSetter(cur); });
+                BuildNumberSlotEditor(nb, "选取数量", cur.Number, v => { cur.Number = v; setter(cur); });
                 // 167 §3.4：暴露 tgt_query 的隐藏筛选能力。
                 // 这些字段编译器全都支持，但没有 UI 就等于不存在 ——
                 // 玩家做不出「攻击力 ≤ 3 的敌方随从」这种最基本的筛选。
 
                 // 筛选条件（Where）
                 BuildConditionSlotEditor(nb, "筛选条件 (Where)", cur.Condition,
-                                         v => { cur.Condition = v; structuralSetter(cur); });
+                                         v => { cur.Condition = v; setter(cur); });
 
                 // 常用修饰
-                BuildBoolCheck(nb, "排除本卡/触发源自身", cur.FlagA, v => { cur.FlagA = v; structuralSetter(cur); });
-                BuildBoolCheck(nb, "同时包含主战者", cur.FlagB, v => { cur.FlagB = v; structuralSetter(cur); });
-                BuildBoolCheck(nb, "不同名卡牌 (distinct)", cur.FlagE, v => { cur.FlagE = v; structuralSetter(cur); });
-                BuildBoolCheck(nb, "仅限重复卡牌", cur.FlagC, v => { cur.FlagC = v; structuralSetter(cur); });
+                BuildBoolCheck(nb, "排除本卡/触发源自身", cur.FlagA, v => { cur.FlagA = v; setter(cur); });
+                BuildBoolCheck(nb, "同时包含主战者", cur.FlagB, v => { cur.FlagB = v; setter(cur); });
+                BuildBoolCheck(nb, "不同名卡牌 (distinct)", cur.FlagE, v => { cur.FlagE = v; setter(cur); });
+                BuildBoolCheck(nb, "仅限重复卡牌", cur.FlagC, v => { cur.FlagC = v; setter(cur); });
 
                 // 历史池
                 BuildEnumCombo(nb, "取牌范围",
                     new[] { ("", "当前区域实时"), ("DestroyedThisMatch", "本局已破坏"),
                             ("DestroyedThisTurn", "本回合已破坏"), ("EnteredThisMatch", "本局已进场") },
-                    cur.EnumB ?? "", v => { cur.EnumB = string.IsNullOrEmpty(v) ? null : v; structuralSetter(cur); });
+                    cur.EnumB ?? "", v => { cur.EnumB = string.IsNullOrEmpty(v) ? null : v; setter(cur); });
 
                 // 排序与截断
                 BuildEnumCombo(nb, "排序属性",
                     new[] { ("", "不排序"), ("Attack", "攻击力"), ("Life", "生命值"),
                             ("Cost", "费用"), ("BaseCost", "基础费用") },
-                    cur.EnumC ?? "", v => { cur.EnumC = string.IsNullOrEmpty(v) ? null : v; structuralSetter(cur); });
-                BuildBoolCheck(nb, "从高到低排序", cur.FlagD, v => { cur.FlagD = v; structuralSetter(cur); });
-                BuildIntSpin(nb, "取前 N 项(0=全部)", cur.IntC, v => { cur.IntC = v; structuralSetter(cur); });
+                    cur.EnumC ?? "", v => { cur.EnumC = string.IsNullOrEmpty(v) ? null : v; setter(cur); });
+                BuildBoolCheck(nb, "从高到低排序", cur.FlagD, v => { cur.FlagD = v; setter(cur); });
+                BuildIntSpin(nb, "取前 N 项(0=全部)", cur.IntC, v => { cur.IntC = v; setter(cur); });
             }
         }
         col.AddChild(box);
@@ -2029,38 +2029,38 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         if (cur != null)
         {
             if (cur.Opcode == "num_const")
-                BuildInlineInt(box, "常量", cur.IntA, v => { cur.IntA = v; structuralSetter(cur); });
+                BuildInlineInt(box, "常量", cur.IntA, v => { cur.IntA = v; setter(cur); });
             else if (cur.Opcode == "num_rand")
             {
-                BuildInlineInt(box, "下界", cur.IntA, v => { cur.IntA = v; structuralSetter(cur); });
-                BuildInlineInt(box, "上界", cur.IntB, v => { cur.IntB = v; structuralSetter(cur); });
-                BuildInlineInt(box, "变量槽", cur.IntC, v => { cur.IntC = v; structuralSetter(cur); });
+                BuildInlineInt(box, "下界", cur.IntA, v => { cur.IntA = v; setter(cur); });
+                BuildInlineInt(box, "上界", cur.IntB, v => { cur.IntB = v; setter(cur); });
+                BuildInlineInt(box, "变量槽", cur.IntC, v => { cur.IntC = v; setter(cur); });
             }
             else if (cur.Opcode == "num_counter")
                 // 必须用 AvailableCounters()：只列 DiyZh.Counters 的话，
                 // 卡池里自定义的计数器在「读取」这一侧永远选不到 ——
                 // 能做「使电能+1」，却写不出「若电能 >= 5」。
-                BuildEnumCombo(box, "计数器", AvailableCounters(), cur.Text ?? "pp", v => { cur.Text = v; structuralSetter(cur); });
+                BuildEnumCombo(box, "计数器", AvailableCounters(), cur.Text ?? "pp", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "num_prop")
             {
-                BuildEnumCombo(box, "读取属性", DiyZh.Stats, cur.EnumA ?? "Attack", v => { cur.EnumA = v; structuralSetter(cur); });
+                BuildEnumCombo(box, "读取属性", DiyZh.Stats, cur.EnumA ?? "Attack", v => { cur.EnumA = v; setter(cur); });
                 // 167 §3.5：必须指定「读谁的属性」。
                 // 没有这个孔位，「读取攻击力」读的是谁完全由默认值决定，
                 // 玩家写「攻击力最高的随从」时永远拿到的不是他以为的那一个。
-                BuildTargetSlotEditor(box, "读取谁的属性", cur.Target, v => { cur.Target = v; structuralSetter(cur); });
+                BuildTargetSlotEditor(box, "读取谁的属性", cur.Target, v => { cur.Target = v; setter(cur); });
             }
             else if (cur.Opcode == "num_count")
             {
                 // 统计目标数量同样必须指定集合。
-                BuildTargetSlotEditor(box, "统计哪个集合", cur.Target, v => { cur.Target = v; structuralSetter(cur); });
+                BuildTargetSlotEditor(box, "统计哪个集合", cur.Target, v => { cur.Target = v; setter(cur); });
             }
             else if (cur.Opcode == "num_arith")
             {
-                BuildEnumCombo(box, "运算符", DiyZh.ArithOps, cur.EnumA ?? "Add", v => { cur.EnumA = v; structuralSetter(cur); });
+                BuildEnumCombo(box, "运算符", DiyZh.ArithOps, cur.EnumA ?? "Add", v => { cur.EnumA = v; setter(cur); });
                 var n1 = new VBoxContainer(); box.AddChild(n1);
-                BuildNumberSlotEditor(n1, "左值", cur.Number, v => { cur.Number = v; structuralSetter(cur); });
+                BuildNumberSlotEditor(n1, "左值", cur.Number, v => { cur.Number = v; setter(cur); });
                 var n2 = new VBoxContainer(); box.AddChild(n2);
-                BuildNumberSlotEditor(n2, "右值", cur.Number2, v => { cur.Number2 = v; structuralSetter(cur); });
+                BuildNumberSlotEditor(n2, "右值", cur.Number2, v => { cur.Number2 = v; setter(cur); });
             }
         }
         col.AddChild(box);
@@ -2142,32 +2142,32 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                     int ci = (int)s6;
                     if (ci < 0 || ci >= DiyZh.Compares.Length) return;
                     cur.EnumA = DiyZh.Compares[ci].Key;
-                    structuralSetter(cur);
+                    setter(cur);
                 };
                 box.AddChild(cmpOpt);
                 var n1 = new VBoxContainer(); box.AddChild(n1);
-                BuildNumberSlotEditor(n1, "左值", cur.Number, v => { cur.Number = v; structuralSetter(cur); });
+                BuildNumberSlotEditor(n1, "左值", cur.Number, v => { cur.Number = v; setter(cur); });
                 var n2 = new VBoxContainer(); box.AddChild(n2);
-                BuildNumberSlotEditor(n2, "右值", cur.Number2, v => { cur.Number2 = v; structuralSetter(cur); });
+                BuildNumberSlotEditor(n2, "右值", cur.Number2, v => { cur.Number2 = v; setter(cur); });
             }
             // 四种「拥有 X」条件字段位置各不相同，不能共用一个手填框：
             //   bool_has_kw / bool_has_trait 读 Text；
             //   bool_has_clan 读 Clan（本编辑器暂留文本）；
             //   bool_has_state 读 **EnumA**（写 Text 会静默落进默认 Damaged）。
             else if (cur.Opcode == "bool_has_kw")
-                BuildEnumCombo(box, "关键词", DiyZh.Keywords, cur.Text ?? "ward", v => { cur.Text = v; structuralSetter(cur); });
+                BuildEnumCombo(box, "关键词", DiyZh.Keywords, cur.Text ?? "ward", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "bool_has_state")
-                BuildEnumCombo(box, "状态", DiyZh.States, cur.EnumA ?? "Evolved", v => { cur.EnumA = v; structuralSetter(cur); });
+                BuildEnumCombo(box, "状态", DiyZh.States, cur.EnumA ?? "Evolved", v => { cur.EnumA = v; setter(cur); });
             else if (cur.Opcode == "bool_has_trait")
                 // 兵种走下拉，不让玩家手敲：写错一个字母就是「永远不成立」，
                 // 而界面上看不出任何异常。
-                BuildEnumCombo(box, "兵种", AvailableTraits(), cur.Text ?? "", v => { cur.Text = v; structuralSetter(cur); });
+                BuildEnumCombo(box, "兵种", AvailableTraits(), cur.Text ?? "", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "bool_has_clan")
-                BuildEnumCombo(box, "职业", AvailableClans(), cur.Text ?? "", v => { cur.Text = v; structuralSetter(cur); });
+                BuildEnumCombo(box, "职业", AvailableClans(), cur.Text ?? "", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "bool_not")
             {
                 var nb = new VBoxContainer(); box.AddChild(nb);
-                BuildConditionSlotEditor(nb, "内层条件", cur.Condition, v => { cur.Condition = v; structuralSetter(cur); });
+                BuildConditionSlotEditor(nb, "内层条件", cur.Condition, v => { cur.Condition = v; setter(cur); });
             }
             else if (cur.Opcode == "bool_and" || cur.Opcode == "bool_or")
             {
@@ -2188,6 +2188,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                     del.Pressed += () =>
                     {
                         if (idx < cur.Stacks.Count) cur.Stacks.RemoveAt(idx);
+                        // 删掉一条子条件改变了列表结构，必须重绘才看得到。
                         structuralSetter(cur);
                     };
                     rowBox.AddChild(del);
@@ -2200,6 +2201,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 {
                     cur.Stacks ??= new List<Block>();
                     cur.Stacks.Add(new Block { Opcode = "bool_true" });
+                    // 新增一条子条件同样改变结构。
                     structuralSetter(cur);
                 };
                 box.AddChild(add);
@@ -2208,9 +2210,9 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             {
                 // 167 §3.5：bool_exists 原本一个孔位都没有，
                 // 「至少存在 N 个 X」根本做不出来。
-                BuildTargetSlotEditor(box, "存在的目标集合", cur.Target, v => { cur.Target = v; structuralSetter(cur); });
+                BuildTargetSlotEditor(box, "存在的目标集合", cur.Target, v => { cur.Target = v; setter(cur); });
                 var nb = new VBoxContainer(); box.AddChild(nb);
-                BuildNumberSlotEditor(nb, "至少有几个", cur.Number, v => { cur.Number = v; structuralSetter(cur); });
+                BuildNumberSlotEditor(nb, "至少有几个", cur.Number, v => { cur.Number = v; setter(cur); });
             }
         }
         col.AddChild(box);
