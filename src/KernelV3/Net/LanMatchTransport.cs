@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -34,24 +35,55 @@ public sealed class AuthoritativeMatchHost : IDisposable
     public BattleState State { get; private set; }
     public MatchRunner Runner { get; private set; }
     public int Port { get; private set; } = LanDiscoveryService.MatchPort;
+    private string _poolId = "";
 
     /// <summary>状态推进后广播快照（UI 层可挂在这里刷新画面）。</summary>
     public event Action SnapshotPushed;
 
-    /// <summary>客机握手全部通过（卡池一致 + 牌组合法）。参数是客机的真实牌组。</summary>
+    /// <summary>客机已连入房间（握手校验通过）。参数仍是客机真实牌组，但不再代表可以开局。</summary>
     public event Action<ShadowverseFan.KernelV3.Packs.ConstructedDeck> ClientMatched;
 
-    /// <summary>客机握手通过后带上的真实牌组（房主据此开局）。</summary>
+    /// <summary>房间状态变更后触发；房主本地也收到同一份快照。</summary>
+    public event Action<NetRoomStateDto> RoomStateChanged;
+
+    /// <summary>房主发出 START 后触发；参数 = ResolvedFirstPlayer（0=房主先手，1=客机先手）。</summary>
+    public event Action<int> StartMatchRequested;
+
+    /// <summary>客机当前登记的真实牌组（房间内可随时更换，开局时以最新一份为准）。</summary>
     public ShadowverseFan.KernelV3.Packs.ConstructedDeck ClientDeck { get; private set; }
 
     private Packs.CardPool _hostPoolView;
     public ShadowverseFan.KernelV3.Packs.ConstructedDeck HostDeck { get; private set; }
+
+    private NetRoomStateDto _room = new();
+    /// <summary>当前房间快照（只读语义；每次变更都是新对象）。</summary>
+    public NetRoomStateDto RoomState => Volatile.Read(ref _room);
+
+    private bool _guestJoined;
+    private bool _hostDeckValid;
+    private bool _guestDeckValid;
+    private string _hostDeckError = "";
+    private string _guestDeckError = "";
+    private bool _hostReady;
+    private bool _guestReady;
+    private FirstPlayerMode _firstMode = FirstPlayerMode.HostFirst;
+    private string _statusNote = "等待客机加入房间";
+    private bool _matchStarted;
+    private int _frozenFirst;
+
+    /// <summary>双方牌组合法、客机已连入、双方都已准备，且尚未开局。</summary>
+    public bool CanStartMatch { get { lock (_gate) return CanStartMatchLocked(); } }
+
+    /// <summary>按先手模式解析；Random 用端口 + 卡池 + 双方 deckId 的稳定哈希，不用随机源。</summary>
+    public int ResolvedFirstPlayer { get { lock (_gate) return ComputeFirstPlayerLocked(); } }
 
     public void Start(BattleState state, MatchRunner runner, int port = LanDiscoveryService.MatchPort)
     {
         State = state;
         Runner = runner;
         Port = port;
+        _hostPoolView = state?.Pool;
+        _poolId = state?.Pool?.PoolId ?? _poolId;
 
         _listener = new TcpListener(IPAddress.Any, port);
         _listener.Start();
@@ -61,9 +93,9 @@ public sealed class AuthoritativeMatchHost : IDisposable
     }
 
     /// <summary>
-    /// 126 轮：房主**先等客机**再开局。BeginHosting 只起监听与握手校验，
-    /// State/Runner 等客机通过校验后由房主 UI 创建（Attach 时才接入）。
-    /// 握手哈希用本方卡池视图计算。
+    /// 房间阶段入口：只起监听与握手校验，**绝不建对局**。
+    /// 房主牌组在这里即时校验一次；State/Runner 要等 StartMatchRequested
+    /// 之后由 UI 调 Attach 接入。
     /// </summary>
     public void BeginHosting(Packs.CardPool poolView,
         ShadowverseFan.KernelV3.Packs.ConstructedDeck hostDeck,
@@ -72,12 +104,225 @@ public sealed class AuthoritativeMatchHost : IDisposable
         _hostPoolView = poolView;
         HostDeck = hostDeck;
         Port = port;
+        _poolId = poolView?.PoolId ?? hostDeck?.PoolId ?? "";
+
+        lock (_gate)
+        {
+            string err = ValidateDeck(hostDeck) ?? "";
+            _hostDeckError = err;
+            _hostDeckValid = err.Length == 0;
+            _hostReady = false;
+            _guestReady = false;
+            _guestJoined = false;
+            _guestDeckValid = false;
+            _guestDeckError = "客机尚未连入";
+            _firstMode = FirstPlayerMode.HostFirst;
+            _matchStarted = false;
+            _frozenFirst = 0;
+            _statusNote = "房间已创建，等待客机加入";
+            RebuildRoomLocked();
+        }
+        RoomStateChanged?.Invoke(RoomState);
 
         _listener = new TcpListener(IPAddress.Any, port);
         _listener.Start();
         _running = true;
 
         _ = Task.Run(AcceptLoop);
+    }
+
+    // ---------------------------------------------------------------- 房间阶段
+
+    /// <summary>牌组即时校验：返回 null 表示合法，否则返回单行中文原因。</summary>
+    private string ValidateDeck(ShadowverseFan.KernelV3.Packs.ConstructedDeck deck)
+    {
+        if (deck == null) return "构筑为空";
+        try
+        {
+            object dp = (object)State?.Pool ?? _hostPoolView;
+            var dpool = dp as Packs.CardPool
+                        ?? (dp as Packs.CardPoolRuntime)?.ToCardPoolView();
+            var profile = Packs.DeckRuleResolver.ResolveAndValidate(deck, dpool);
+            if (profile == null) return "无法解析牌组";
+            return profile.IsValid ? null : string.Join("；", profile.Errors);
+        }
+        catch (Exception ex)
+        {
+            return "牌组校验失败：" + ex.Message;
+        }
+    }
+
+    private static string OneLine(string s)
+        => (s ?? "").Replace("\r", " ").Replace("\n", " ").Replace("|", " ").Trim();
+
+    /// <summary>
+    /// 行协议用竖线与换行分帧：JSON 里出现物理换行或竖线都会把消息切断。
+    /// System.Text.Json 已把换行转义成 \n，这里再把竖线换成等价的 \u007C 转义，
+    /// 反序列化后仍是原字符，但线路上不含分隔符。
+    /// </summary>
+    private static string WireJson(object value)
+        => JsonSerializer.Serialize(value).Replace("|", "\\u007C");
+
+    /// <summary>随机模式：端口 + 卡池 + 双方 deckId 的 SHA256 稳定哈希，双方无需交换随机数。</summary>
+    private int ComputeFirstPlayerLocked()
+    {
+        if (_matchStarted) return _frozenFirst;
+        switch (_firstMode)
+        {
+            case FirstPlayerMode.HostSecond: return 1;
+            case FirstPlayerMode.Random:
+            {
+                string seed = Port + "|" + _poolId + "|"
+                              + (HostDeck?.DeckId ?? "") + "|" + (ClientDeck?.DeckId ?? "");
+                byte[] h = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+                // 混合全部字节，避免只取首字节导致某些种子组合偏置。
+                uint acc = 0x9E3779B9u;
+                foreach (byte b in h) acc = (acc ^ b) * 16777619u;
+                return (int)((acc >> 16) & 1u);
+            }
+            default: return 0;
+        }
+    }
+
+    private bool CanStartMatchLocked()
+        => !_matchStarted && _guestJoined
+           && _hostDeckValid && _guestDeckValid
+           && _hostReady && _guestReady;
+
+    /// <summary>重算 Status，保证非法牌组时强制该方 Ready=false 且 CanStartMatch=false。</summary>
+    private void RebuildRoomLocked()
+    {
+        if (!_hostDeckValid) _hostReady = false;
+        if (!_guestDeckValid) _guestReady = false;
+
+        string status = OneLine(_statusNote);
+        if (!_hostDeckValid) status = "房主牌组不合法：" + OneLine(_hostDeckError);
+        else if (!_guestJoined) status = OneLine(_statusNote);
+        if (_guestJoined && !_guestDeckValid)
+            status = (status.Length > 0 ? status + "；" : "") + "客机牌组不合法：" + OneLine(_guestDeckError);
+
+        _room = new NetRoomStateDto
+        {
+            PoolId = OneLine(_poolId),
+            HostDeckName = OneLine(HostDeck?.Name),
+            GuestDeckName = _guestJoined ? OneLine(ClientDeck?.Name) : "",
+            HostReady = _hostReady,
+            GuestReady = _guestReady,
+            FirstMode = _firstMode,
+            ResolvedFirstPlayer = ComputeFirstPlayerLocked(),
+            Status = status,
+        };
+    }
+
+    /// <summary>把当前房间状态广播给双方（房主本地事件 + 所有已连入的客机）。</summary>
+    private void PublishRoom()
+    {
+        NetRoomStateDto snapshot;
+        List<TcpClient> targets;
+        lock (_gate)
+        {
+            RebuildRoomLocked();
+            snapshot = _room;
+            targets = _clients.Values.ToList();
+        }
+        string line = "ROOM|" + WireJson(snapshot);
+        foreach (var c in targets) _ = SendLine(c.GetStream(), line);
+        RoomStateChanged?.Invoke(snapshot);
+    }
+
+    /// <summary>房主换牌组：立即重新校验，非法时写 Status 并强制取消准备。</summary>
+    public void SetHostDeck(ShadowverseFan.KernelV3.Packs.ConstructedDeck deck)
+    {
+        lock (_gate)
+        {
+            HostDeck = deck;
+            _hostDeckError = ValidateDeck(deck) ?? "";
+            _hostDeckValid = _hostDeckError.Length == 0;
+            _hostReady = false;   // 换牌组一律重新准备。
+            _statusNote = "房主已更换牌组，请重新准备";
+        }
+        PublishRoom();
+    }
+
+    /// <summary>房主是唯一权威：只有本地调用能改先手模式，客机无此上行消息。</summary>
+    public void SetFirstPlayerMode(FirstPlayerMode mode)
+    {
+        lock (_gate)
+        {
+            if (mode != FirstPlayerMode.HostFirst && mode != FirstPlayerMode.HostSecond
+                && mode != FirstPlayerMode.Random) return;
+            _firstMode = mode;
+            _statusNote = "房主已设置先手模式";
+        }
+        PublishRoom();
+    }
+
+    /// <summary>房主准备状态；牌组不合法时拒绝置为已准备。</summary>
+    public void SetHostReady(bool ready)
+    {
+        lock (_gate)
+        {
+            if (ready && !_hostDeckValid) return;
+            _hostReady = ready;
+            _statusNote = ready ? "房主已准备" : "房主取消准备";
+        }
+        PublishRoom();
+    }
+
+    /// <summary>开始对战：广播 START 并通知房主 UI 建立真实对局（Attach 仍由 UI 调）。</summary>
+    public void StartMatch()
+    {
+        int first;
+        List<TcpClient> targets;
+        lock (_gate)
+        {
+            RebuildRoomLocked();
+            if (!CanStartMatchLocked()) return;
+            first = ComputeFirstPlayerLocked();
+            _frozenFirst = first;
+            _matchStarted = true;
+            _room.ResolvedFirstPlayer = first;
+            _room.Status = "对战开始，先手玩家 " + first;
+            targets = _clients.Values.ToList();
+        }
+        string roomLine = "ROOM|" + WireJson(RoomState);
+        string startLine = "START|" + first;
+        foreach (var c in targets)
+        {
+            _ = SendLine(c.GetStream(), roomLine);
+            _ = SendLine(c.GetStream(), startLine);
+        }
+        RoomStateChanged?.Invoke(RoomState);
+        StartMatchRequested?.Invoke(first);
+    }
+
+    /// <summary>客机上行的新牌组：校验后覆盖 ClientDeck，非法则写 Status 并强制取消准备。</summary>
+    private void ApplyGuestDeck(ShadowverseFan.KernelV3.Packs.ConstructedDeck deck)
+    {
+        lock (_gate)
+        {
+            string err = ValidateDeck(deck) ?? "";
+            // 无论合法与否都记录最新牌组：合法时房主用最新牌组开局，
+            // 非法时保留展示但不允许准备/开局。
+            ClientDeck = deck;
+            _guestDeckError = err;
+            _guestDeckValid = err.Length == 0;
+            _guestReady = false;
+            _statusNote = err.Length == 0 ? "客机已更换牌组，请重新准备" : "";
+        }
+        PublishRoom();
+    }
+
+    /// <summary>客机上行的准备状态；牌组不合法时拒绝置为已准备。</summary>
+    private void ApplyGuestReady(bool ready)
+    {
+        lock (_gate)
+        {
+            if (ready && (!_guestJoined || !_guestDeckValid)) return;
+            _guestReady = ready;
+            _statusNote = ready ? "客机已准备" : "客机取消准备";
+        }
+        PublishRoom();
     }
 
     /// <summary>开局后把真实对局接入权威端，此后快照广播照常工作。</summary>
@@ -173,43 +418,42 @@ public sealed class AuthoritativeMatchHost : IDisposable
                             await SendLine(stream, "ERR|握手缺少牌组数据，拒绝连接");
                             continue;
                         }
+                        string deckErr = ValidateDeck(msg.Value.Deck);
+                        if (deckErr != null)
                         {
-                            try
-                            {
-                                object dp = (object)State?.Pool ?? _hostPoolView;
-                                var dpool = dp as Packs.CardPool
-                                        ?? (dp as Packs.CardPoolRuntime)?.ToCardPoolView();
-
-                                // ResolveAndValidate **不抛异常** —— 它把所有不合规项写进
-                                // profile.Errors 然后正常返回。只 try/catch 等于完全没校验：
-                                // 客机提交 10 张同名卡、跨职业混组、甚至 3 张牌的牌组都能进来。
-                                var profile = Packs.DeckRuleResolver.ResolveAndValidate(msg.Value.Deck, dpool);
-                                if (profile == null || !profile.IsValid)
-                                {
-                                    string why = profile == null
-                                        ? "无法解析牌组"
-                                        : string.Join("；", profile.Errors);
-                                    await SendLine(stream, "ERR|牌组不合法：" + why);
-                                    continue;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                await SendLine(stream, "ERR|牌组校验失败：" + ex.Message);
-                                continue;
-                            }
+                            // 握手阶段保持旧行为：非法牌组直接拒绝连入。
+                            await SendLine(stream, "ERR|牌组不合法：" + OneLine(deckErr));
+                            continue;
                         }
 
-                        // 全部通过：记住客机牌组，供「真实双人开局」使用。
-                        ClientDeck = msg.Value.Deck;
-                        ClientMatched?.Invoke(msg.Value.Deck);
-
+                        // 首包必达：先把客机登记进 _clients 并回 ACK，再通知 UI、再广播 ROOM。
+                        // 反过来会让 ClientMatched / ROOM 广播时客机还没注册，首包石沉大海。
                         myPlayerId = want;
-                        lock (_gate) _clients[myPlayerId] = client;
-                        _eventCursor[myPlayerId] = 0;
+                        lock (_gate)
+                        {
+                            _clients[myPlayerId] = client;
+                            _eventCursor[myPlayerId] = 0;
+                            ClientDeck = msg.Value.Deck;
+                            _guestJoined = true;
+                            _guestDeckError = "";
+                            _guestDeckValid = true;
+                            _guestReady = false;
+                            _statusNote = "客机已连入房间";
+                        }
                         await SendLine(stream, "ACK|" + myPlayerId);
-                        PushSnapshotTo(myPlayerId);
-                    }                    else if (msg.Value.Kind == NetMsgKind.Action && myPlayerId >= 0)
+                        // HELLO 之后必须发一次 ROOM，让客机进房间界面；此处不建对局、不推快照。
+                        PublishRoom();
+                        ClientMatched?.Invoke(msg.Value.Deck);
+                    }
+                    else if (msg.Value.Kind == NetMsgKind.RoomDeck && myPlayerId >= 0)
+                    {
+                        ApplyGuestDeck(msg.Value.Deck);
+                    }
+                    else if (msg.Value.Kind == NetMsgKind.RoomReady && myPlayerId >= 0)
+                    {
+                        ApplyGuestReady(msg.Value.PlayerId != 0);
+                    }
+                    else if (msg.Value.Kind == NetMsgKind.Action && myPlayerId >= 0)
                     {
                         ApplyAction(myPlayerId, msg.Value.Action);
                     }
@@ -335,15 +579,19 @@ public sealed class AuthoritativeMatchHost : IDisposable
         catch { }
     }
 
-    private static async Task SendLine(NetworkStream s, string line)
+    /// <summary>一条消息一次同步写入；SendGate 串行化，防止两条消息在字节流上交叉。</summary>
+    private static Task SendLine(NetworkStream s, string line)
     {
         try
         {
             byte[] b = Encoding.UTF8.GetBytes(line + "\n");
-            await s.WriteAsync(b, 0, b.Length);
+            lock (SendGate) s.Write(b, 0, b.Length);
         }
         catch { }
+        return Task.CompletedTask;
     }
+
+    private static readonly object SendGate = new();
 
     /// <summary>解析出的一条消息。握手需要额外携带卡池哈希与牌组，故用结构体而非元组。</summary>
     private readonly struct ParsedMsg
@@ -369,7 +617,9 @@ public sealed class AuthoritativeMatchHost : IDisposable
                 Packs.ConstructedDeck deck = null;
                 if (parts.Length > 3 && parts[3].Length > 0)
                 {
-                    try { deck = JsonSerializer.Deserialize<Packs.ConstructedDeck>(parts[3]); }
+                    // 牌组名可能含竖线：把后续片段拼回完整 JSON，避免被分隔符切断。
+                    string deckJson = string.Join("|", parts.Skip(3));
+                    try { deck = JsonSerializer.Deserialize<Packs.ConstructedDeck>(deckJson); }
                     catch { deck = null; }
                 }
                 return new ParsedMsg(NetMsgKind.Hello) { PlayerId = pid, PoolHash = hash, Deck = deck };
@@ -378,6 +628,16 @@ public sealed class AuthoritativeMatchHost : IDisposable
             {
                 var a = JsonSerializer.Deserialize<NetActionPacket>(line.Substring(7));
                 return new ParsedMsg(NetMsgKind.Action) { Action = a };
+            }
+            if (line.StartsWith("DECK|"))
+            {
+                var deck = JsonSerializer.Deserialize<Packs.ConstructedDeck>(line.Substring(5));
+                return new ParsedMsg(NetMsgKind.RoomDeck) { Deck = deck };
+            }
+            if (line.StartsWith("READY|"))
+            {
+                int ready = line.Length > 6 && line.Substring(6).Trim() == "1" ? 1 : 0;
+                return new ParsedMsg(NetMsgKind.RoomReady) { PlayerId = ready };
             }
         }
         catch { }

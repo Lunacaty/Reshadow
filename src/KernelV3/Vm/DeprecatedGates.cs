@@ -34,6 +34,9 @@ public static class DeprecatedGates
         "POOL-M", "POOL-Q",
         // 构筑夹具与卡池不匹配
         "BUG-2",
+        // 后手额外能量点规则重做后，旧断言「UseExtraPp 直接把 pp 3→4」前提消失：
+        // 额外能量点改为独立槽位，激活不再改 pp 计数器。
+        "门禁7 后手额外 PP",
     };
 
     public static bool IsDeprecated(string line)
@@ -62,13 +65,18 @@ public static class DeprecatedGates
         for (int i = 0; i < lines.Length; i++)
         {
             var ln = lines[i];
-            bool isPass = ln.StartsWith("[OK]", StringComparison.Ordinal);
-            bool isFail = ln.StartsWith("[FAIL]", StringComparison.Ordinal);
+            // 有些 Runner（VmSelfTest.Check）产出的明细带缩进 "  [FAIL] …"，
+            // 直接 StartsWith 会让这些行全部漏过，弃用门禁仍被算成真失败。
+            // 判定时 TrimStart，但输出保持原行格式，不改动各 Runner 的既有日志样式。
+            var probe = ln.TrimStart();
+            bool isPass = probe.StartsWith("[OK]", StringComparison.Ordinal);
+            bool isFail = probe.StartsWith("[FAIL]", StringComparison.Ordinal);
 
             if ((isPass || isFail) && IsDeprecated(ln))
             {
                 skipped++;
-                sb.AppendLine("[弃用] " + ln.Substring(6).TrimStart());
+                string tag = isPass ? "[OK]" : "[FAIL]";
+                sb.AppendLine("[弃用] " + probe.Substring(tag.Length).TrimStart());
                 continue;
             }
             if (isPass) { pass++; total++; }

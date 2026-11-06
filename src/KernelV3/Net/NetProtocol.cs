@@ -10,6 +10,35 @@ using ShadowverseFan.KernelV3.Packs;
 
 namespace ShadowverseFan.KernelV3.Net;
 
+/// <summary>先手归属的房主设置。</summary>
+public enum FirstPlayerMode
+{
+    /// <summary>房主（player0）先手。</summary>
+    HostFirst = 0,
+    /// <summary>客机（player1）先手。</summary>
+    HostSecond = 1,
+    /// <summary>由确定性种子决定，双方算出同一结果。</summary>
+    Random = 2,
+}
+
+/// <summary>
+/// 房间阶段快照：由房主单方面计算并广播，客机只读。
+/// 不含任何对局状态 —— 开局前 State / Runner 还没建立。
+/// </summary>
+public sealed class NetRoomStateDto
+{
+    public string PoolId { get; set; } = "";
+    public string HostDeckName { get; set; } = "";
+    public string GuestDeckName { get; set; } = "";
+    public bool HostReady { get; set; }
+    public bool GuestReady { get; set; }
+    public FirstPlayerMode FirstMode { get; set; } = FirstPlayerMode.HostFirst;
+    /// <summary>0=房主(player0)先手，1=客机(player1)先手。</summary>
+    public int ResolvedFirstPlayer { get; set; } = 0;
+    /// <summary>提示或校验失败原因（中文、单行）。</summary>
+    public string Status { get; set; } = "";
+}
+
 /// <summary>联机消息类型。</summary>
 public enum NetMsgKind
 {
@@ -23,6 +52,10 @@ public enum NetMsgKind
     Ping,
     Pong,
     Error,
+    RoomDeck,
+    RoomReady,
+    RoomState,
+    RoomStart,
 }
 
 /// <summary>客机可发送的操作意图。权威端只认这些，不认任何状态字段。</summary>
@@ -87,6 +120,8 @@ public sealed class NetPlayerDto
     public bool UsedEarlyExtraPp { get; set; }
     public bool UsedLateExtraPp { get; set; }
     public bool UsedExtraPpThisTurn { get; set; }
+    /// <summary>本回合已激活但尚未消耗的额外能量点槽位（后手补偿）。</summary>
+    public int BonusPp { get; set; } = 0;
     public NetEntityDto Leader { get; set; }
     public List<NetEntityDto> Board { get; set; } = new();
     public List<NetEntityDto> Crests { get; set; } = new();

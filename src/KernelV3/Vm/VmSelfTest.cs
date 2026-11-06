@@ -74,7 +74,9 @@ public static class VmSelfTest
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"=== VM 自测 {_pass}/{_pass + _fail} ===");
         foreach (var l in _log) sb.AppendLine(l);
-        return sb.ToString();
+        // 与其他回归 Runner 统一走弃用门禁过滤：前提消失的旧断言不能被当成真失败，
+        // 也不能悄悄留在通过率里充数 —— 标记成 [弃用] 并从统计里剔除。
+        return DeprecatedGates.Filter(sb.ToString());
     }
 
     // ---------- 用例 ----------

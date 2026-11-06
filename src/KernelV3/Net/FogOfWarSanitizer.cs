@@ -49,6 +49,8 @@ public static class FogOfWarSanitizer
                 UsedEarlyExtraPp = p.UsedEarlyExtraPp,
                 UsedLateExtraPp = p.UsedLateExtraPp,
                 UsedExtraPpThisTurn = p.UsedExtraPpThisTurn,
+                // 后手额外能量点独立槽位：客机镜像必须收到，否则界面显示与实际可用 PP 不符。
+                BonusPp = p.BonusPp,
                 Leader = ToDto(p.Leader, true),
             };
 

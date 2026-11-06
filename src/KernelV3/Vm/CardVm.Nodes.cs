@@ -89,7 +89,8 @@ public sealed partial class CardVm
     {
         if (spec == null) return new List<RuntimeEntity>();
 
-        if (spec.Mode == SelectMode.Choose)
+        var normalized = NormalizeZoneWhere(spec);
+        if (normalized.Mode == SelectMode.Choose)
         {
             // 只有「**本条指令**刚被玩家选完」才复用槽位。
             // 用「槽位非空」判断会串槽：同一能力里第二处 Choose 会拿到第一处的选择。
@@ -112,7 +113,7 @@ public sealed partial class CardVm
             // 新一轮选择：清掉上一次留下的同槽位结果。
             scope.Clear(slot);
 
-            var pool = _eval.ResolveRef(spec, scope);
+            var pool = _eval.ResolveRef(normalized, scope);
             // 能力选目标时要过滤对手的潜行 / 灵气：
             //   潜行(ambush)：既不能被攻击，也不能被能力选中
             //   灵气(aura)：不能被能力选中（但可以被攻击）
@@ -179,7 +180,7 @@ public sealed partial class CardVm
             return null;   // 已挂起
         }
 
-        return _eval.Resolve(spec, scope);
+        return _eval.Resolve(normalized, scope);
     }
 
     // ---------- 选择 ----------
@@ -196,7 +197,7 @@ public sealed partial class CardVm
     private bool DoDamageModifier(DamageModifierNode n, VmFrame frame)
     {
         var scope = frame.Scope;
-        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected, frame);
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), scope, TargetSpec.SlotSelected, frame);
         if (targets == null) return true;   // 已挂起等玩家选
 
         foreach (var t in targets)
@@ -226,7 +227,7 @@ public sealed partial class CardVm
 
     private bool DoReveal(RevealCardNode n, VmScope scope)
     {
-        foreach (var t in _eval.Resolve(n.Target, scope))
+        foreach (var t in _eval.Resolve(NormalizeZoneWhere(n.Target), scope))
         {
             t.IsRevealed = true;
             // 公开手牌：UI 据此在手牌区播提示光。
@@ -238,6 +239,61 @@ public sealed partial class CardVm
             });
         }
         return false;
+    }
+
+    /// <summary>
+    /// 从卡包 PyAST 读进来的「区域目标」过滤条件，主语必须落在被筛的 $item 上。
+    /// 打印器把 &lt;Follower&gt; / other 提权成区域修饰词，解析端用 DefaultSubject
+    /// 还原 Where 时以 $self 为默认主语；执行端若照单全收，
+    /// 「opponent:board&lt;Follower&gt;」会被解释成「本卡自己是随从」而恒假，
+    /// 候选池静默变空。英文编译器在 TargetParser 里写的正是 $item，
+    /// 这里在**执行时归一化**，只改本次解析所用的 spec，不写回 AST、不改卡面文本。
+    /// </summary>
+    internal static Ast.TargetSpec NormalizeZoneWhere(Ast.TargetSpec spec)
+    {
+        if (spec == null || spec.SourceKind != Ast.TargetSourceKind.Zone) return spec;
+        var w = NormalizeWhereForItem(spec.Where);
+        if (ReferenceEquals(w, spec.Where)) return spec;
+        return new Ast.TargetSpec
+        {
+            SourceKind = spec.SourceKind, Owner = spec.Owner, Zone = spec.Zone,
+            Slot = spec.Slot, CardId = spec.CardId, CardName = spec.CardName,
+            Where = w, Sort = spec.Sort, SortDescending = spec.SortDescending,
+            TopN = spec.TopN, DistinctByName = spec.DistinctByName,
+            DuplicatesOnly = spec.DuplicatesOnly, Mode = spec.Mode, Count = spec.Count,
+            History = spec.History, IncludeLeader = spec.IncludeLeader,
+            OmittedFields = spec.OmittedFields,
+        };
+    }
+
+    private static Ast.BoolExpr NormalizeWhereForItem(Ast.BoolExpr w)
+    {
+        if (w == null || w is Ast.ConstBoolExpr) return w;
+        if (w is Ast.AndExpr and)
+        {
+            bool changed = false;
+            var items = new List<Ast.BoolExpr>();
+            foreach (var it in and.Items)
+            {
+                var n = NormalizeWhereForItem(it);
+                changed |= !ReferenceEquals(n, it);
+                items.Add(n);
+            }
+            return changed ? new Ast.AndExpr(items) : w;
+        }
+        // 只有打印器能提权成区域修饰词的两类谓词会带这个 $self：
+        //   · <Follower/Amulet/Spell> -> HasKindExpr
+        //   · other                   -> NotSameEntityExpr
+        // 其余谓词写在显式 where 里，解析时 _whereDepth>0，主语本来就是 $item，
+        // 不能动（HasCardNameExpr.Of=$self 表示「与本卡同名」，是另一种语义）。
+        static bool IsSelfOnly(Ast.TargetSpec of)
+            => of != null && of.SourceKind == Ast.TargetSourceKind.Slot
+                          && of.Slot == Ast.TargetSpec.SlotSelf;
+        if (w is Ast.HasKindExpr hk && IsSelfOnly(hk.Of))
+            return new Ast.HasKindExpr { Kind = hk.Kind, Of = Ast.TargetSpec.Item };
+        if (w is Ast.NotSameEntityExpr ns && IsSelfOnly(ns.Of))
+            return new Ast.NotSameEntityExpr { ExcludeSlot = ns.ExcludeSlot, Of = Ast.TargetSpec.Item };
+        return w;
     }
 
     private bool DoSelect(SelectTargetNode n, VmFrame frame)
@@ -254,7 +310,7 @@ public sealed partial class CardVm
         // 第二次必须累加到第一次的结果上，否则只剩最后一个目标。
         if (!n.AppendToSlot) frame.Scope.Clear(n.OutSlot);
 
-        var candidates = _eval.Resolve(n.Target, frame.Scope);
+        var candidates = _eval.Resolve(NormalizeZoneWhere(n.Target), frame.Scope);
 
         // 能力选目标必须过滤对手的潜行(ambush)与灵气(aura)。
         // ResolveOrBlock 里已有同样的过滤，但 DoSelect 走的是 _eval.Resolve，
@@ -307,7 +363,7 @@ public sealed partial class CardVm
     private bool DoDamage(DealDamageNode n, VmFrame frame)
     {
         var scope = frame.Scope;
-        var targets = ResolveOrBlock(n.Target, frame.Scope, TargetSpec.SlotSelected, frame);
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), frame.Scope, TargetSpec.SlotSelected, frame);
         if (targets == null) return true;   // 已挂起
         if (targets.Count == 0) return false;
         int total = _eval.EvalNum(n.Amount, scope);
@@ -370,7 +426,7 @@ public sealed partial class CardVm
     private bool DoRestore(RestoreLifeNode n, VmFrame frame)
     {
         var scope = frame.Scope;
-        var targets = ResolveOrBlock(n.Target, frame.Scope, TargetSpec.SlotSelected, frame);
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), frame.Scope, TargetSpec.SlotSelected, frame);
         if (targets == null) return true;   // 已挂起
         foreach (var t in targets)
         {
@@ -387,7 +443,7 @@ public sealed partial class CardVm
     private bool DoModifyStats(ModifyStatsNode n, VmFrame frame)
     {
         var scope = frame.Scope;
-        var targets = ResolveOrBlock(n.Target, frame.Scope, TargetSpec.SlotSelected, frame);
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), frame.Scope, TargetSpec.SlotSelected, frame);
         if (targets == null) return true;   // 已挂起
 
         foreach (var t in targets)
@@ -465,7 +521,7 @@ public sealed partial class CardVm
 
     private bool DoModifyCost(ModifyCostNode n, VmScope scope)
     {
-        var targets = _eval.Resolve(n.Target, scope);
+        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
         int v = _eval.EvalNum(n.Value, scope);
         foreach (var t in targets)
         {
@@ -498,7 +554,7 @@ public sealed partial class CardVm
 
     private bool DoModifyKeyword(ModifyKeywordNode n, VmScope scope)
     {
-        var targets = _eval.Resolve(n.Target, scope);
+        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
         foreach (var t in targets)
         {
             RecordEffect(t, scope, n.Op + " " + n.Keyword.Name);
@@ -564,7 +620,7 @@ public sealed partial class CardVm
         // Target != null：修改每个目标实体自己的计数器
         if (n.Target != null)
         {
-            var ents = _eval.Resolve(n.Target, scope);
+            var ents = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
             foreach (var e in ents)
             {
                 int curE = _world.ReadEntityCounter(e, n.Counter);
@@ -701,7 +757,7 @@ public sealed partial class CardVm
             // 逐个目标过滤，不能整批 All() 判定 ——
             // 「把 3 个敌方随从弹回手牌」里只要有一个不免疫，
             // All() 就为假，于是免疫的那个也被一起弹走了。
-            var mvTargets = _eval.Resolve(n.Target, scope);
+            var mvTargets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
             var kept = new List<RuntimeEntity>();
             foreach (var t0 in mvTargets)
             {
@@ -1093,7 +1149,7 @@ public sealed partial class CardVm
 
     private bool DoEvolve(EvolveNode n, VmScope scope)
     {
-        var targets = _eval.Resolve(n.Target, scope);
+        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
         foreach (var t in targets)
         {
             RecordEffect(t, scope, "进化");
@@ -1151,7 +1207,7 @@ public sealed partial class CardVm
 
     private bool DoTransform(TransformNode n, VmScope scope)
     {
-        var targets = _eval.Resolve(n.Target, scope);
+        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
         if (targets.Count == 0) return false;
 
         // 变形源是具体卡名：直接变成该卡
@@ -1397,7 +1453,7 @@ public sealed partial class CardVm
 
     private bool DoGrant(GrantAbilityNode n, VmScope scope)
     {
-        var targets = _eval.Resolve(n.Target, scope);
+        var targets = _eval.Resolve(NormalizeZoneWhere(n.Target), scope);
         // Duration 必须一起传：不传就等于永久授予，
         // 「本回合赋予某能力」到了下回合依然生效。
         foreach (var t in targets)
@@ -1540,7 +1596,7 @@ public sealed partial class CardVm
         // 必须走 ResolveOrBlock：目标的选法可能是 Choose（「启动 1 个己方护符」），
         // 直接调 _eval.Resolve 在 Choose 模式下返回空列表 ——
         // 既不弹选择框、也不复刻任何东西，表现为「这张卡什么都没做」。
-        var targets = ResolveOrBlock(n.Target, scope, TargetSpec.SlotSelected, frame);
+        var targets = ResolveOrBlock(NormalizeZoneWhere(n.Target), scope, TargetSpec.SlotSelected, frame);
         if (targets == null) return true;      // 已挂起，等待玩家选目标
         foreach (var t in targets)
         {

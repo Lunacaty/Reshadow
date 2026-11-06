@@ -39,9 +39,23 @@ public sealed class PlayerState
     /// <summary>是否已到达该玩家的超进化解锁时点并发放过初始 SEP。</summary>
     public bool SepUnlocked { get; set; }
 
+    /// <summary>已「真正动用过」额外槽位：前半段（第 1~5 回合）的次数已用掉。</summary>
     public bool UsedEarlyExtraPp { get; set; }
+
+    /// <summary>已「真正动用过」额外槽位：后半段（第 6 回合起）的次数已用掉。</summary>
     public bool UsedLateExtraPp { get; set; }
+
+    /// <summary>本回合是否已「激活」过额外槽位（每回合最多激活 1 次）。</summary>
     public bool UsedExtraPpThisTurn { get; set; }
+
+    /// <summary>
+    /// 后手额外能量点的**独立槽位**（0/1），与 pp / max_pp 计数器完全分开。
+    /// 激活只写这里；扣费时普通 PP 优先，只有普通 PP 不够支付时才动用本槽位。
+    /// 真正动用过的那一刻才把 UsedEarly/UsedLateExtraPp 记为已消耗；
+    /// 此后卡牌效果恢复的 PP 不会退还本槽位。
+    /// 若本回合激活后从未动用，回合切换时清零，次数仍保留（后续回合可再激活）。
+    /// </summary>
+    public int BonusPp { get; set; }
 
     /// <summary>主战者实体（生命值、最大生命值、状态）。</summary>
     public RuntimeEntity Leader { get; set; }

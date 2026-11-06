@@ -113,6 +113,9 @@ public sealed class TurnRunner
 
         p.ManualEvolvedThisTurn = false;
         p.UsedExtraPpThisTurn = false;
+        // 额外槽位是**本回合**的临时资源；激活后未动用就清零，
+        // 但 Early/Late 次数未消耗，后续回合仍可再激活。
+        p.BonusPp = 0;
         p.EngagedEntityIdsThisTurn.Clear();
         p.FusedEntityIdsThisTurn.Clear();
         p.DestroyedThisTurn.Clear();
@@ -270,6 +273,10 @@ public sealed class TurnRunner
         // 放在能力结算之前：这些是赛制级资源，不该被本回合最后一条能力影响。
         DrivePoolCountersOnTurnEnd(playerId);
 
+        // 额外能量点独立槽位只在本回合有效；回合末能力结算前就撤掉，
+        // 免得「回合结束时」的效果白嫖到这一格。次数是否消耗已在借用时记账。
+        _state.Players[playerId].BonusPp = 0;
+
         // ── 第 1〜6 步：三类“回合结束时”能力（自己纹章 / 自己战场 / 对手纹章 / 对手战场）──
         // 实现上统一由 TurnEnd 事件驱动，VM 会按触发器的 DuringTurn 限定逐个对号入座。
         // 不再手写四次循环 —— 那样反而会把同一条能力反复排队。
@@ -288,6 +295,51 @@ public sealed class TurnRunner
         {
             _state.ExpireTemporaryModifiers(playerId);
         }
+    }
+
+    // ---------- 能量点支付（普通 PP 优先，额外槽位兜底）----------
+
+    /// <summary>
+    /// 当前可用于支付费用的能量点总数 = 普通 pp + 独立额外槽位 BonusPp。
+    /// 只用于「够不够付 / 爆能档位」的判定；真实扣费必须走 SpendPp。
+    /// </summary>
+    public int AvailablePp(int playerId)
+        => _state.ReadCounter(playerId, _schema.Counter("pp"))
+           + _state.Players[playerId].BonusPp;
+
+    /// <summary>
+    /// 扣费：普通 PP 优先，只有普通 PP 不够时才动用额外槽位。
+    /// 一旦真正借用了额外槽位，立刻把该次（Early/Late）标记为已消耗；
+    /// 之后即使卡牌效果恢复 PP，也不会把这次消耗退还（判定点是扣费那一刻）。
+    /// </summary>
+    public bool SpendPp(int playerId, int cost)
+    {
+        if (cost < 0) cost = 0;
+        var ppKey = _schema.Counter("pp");
+        int pp = _state.ReadCounter(playerId, ppKey);
+        if (pp >= cost)
+        {
+            _state.WriteCounter(playerId, ppKey, pp - cost);
+            return true;
+        }
+
+        int need = cost - pp;
+        var p = _state.Players[playerId];
+        if (p.BonusPp < need) return false;
+
+        _state.WriteCounter(playerId, ppKey, 0);
+        p.BonusPp -= need;
+        MarkExtraPpConsumed(playerId);
+        return true;
+    }
+
+    /// <summary>把当前阶段的额外能量点次数记为「真正使用掉」。</summary>
+    private void MarkExtraPpConsumed(int playerId)
+    {
+        var p = _state.Players[playerId];
+        bool early = _state.TurnNumber <= _state.Rules.ExtraPpEarlyPhaseLastTurn;
+        if (early) p.UsedEarlyExtraPp = true; else p.UsedLateExtraPp = true;
+        p.UsedExtraPpThisTurn = true;
     }
 
     // ---------- 出牌 ----------
@@ -318,8 +370,7 @@ public sealed class TurnRunner
         bool folOrAmu = card.Def.Kind == Ast.CardKind.Follower || card.Def.Kind == Ast.CardKind.Amulet;
         bool full = pp0.Board.Count >= _state.Rules.MaxBoardSize;
 
-        var k = _schema.Counter("pp");
-        int pp = _state.ReadCounter(playerId, k);
+        int pp = AvailablePp(playerId);
         int pay = card.Cost;
         int best = 0;
         foreach (var tier in EnhanceTiers(card)) if (pp >= tier && tier > best) best = tier;
@@ -387,8 +438,7 @@ public sealed class TurnRunner
                                   || card.Def.Kind == Ast.CardKind.Amulet;
         bool boardFull = p.Board.Count >= _state.Rules.MaxBoardSize;
 
-        var ppKey = _schema.Counter("pp");
-        int pp = _state.ReadCounter(playerId, ppKey);
+        int pp = AvailablePp(playerId);
 
         // ── 爆能强化强制铁律 ──
         // pp >= N 时必须按最高可支付档付费，不能选择只付原费。
@@ -441,7 +491,7 @@ public sealed class TurnRunner
         // 场上有《米路缇欧》封印爆能时更是直接绕过封印。
         // 未发动爆能就必须写 0，让所有爆能分支走 else。
         _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), isEnhanced ? bestTier : 0);
-        _state.WriteCounter(playerId, ppKey, pp - pay);
+        SpendPp(playerId, pay);
 
         // 记入本局已使用卡牌（书页「使用」页签按它统计）。
         _state.Players[playerId].PlayedThisMatch.Add(card.Def);
@@ -563,7 +613,7 @@ public sealed class TurnRunner
         if (card?.Def == null) return (HandPlayMode.Unplayable, 0);
 
         var p = _state.Players[playerId];
-        int pp = _state.ReadCounter(playerId, _schema.Counter("pp"));
+        int pp = AvailablePp(playerId);
         bool folOrAmu = card.Def.Kind is Ast.CardKind.Follower or Ast.CardKind.Amulet;
         bool boardFull = p.Board.Count >= _state.Rules.MaxBoardSize;
 
@@ -628,8 +678,7 @@ public sealed class TurnRunner
                                bool isAccelerate, CardVm vm)
     {
         var p = _state.Players[playerId];
-        var ppKey = _schema.Counter("pp");
-        int pp = _state.ReadCounter(playerId, ppKey);
+        int pp = AvailablePp(playerId);
         int cost = altDef.BaseCost;
         if (pp < cost) return false;
 
@@ -647,7 +696,7 @@ public sealed class TurnRunner
         }
 
         _state.WriteCounter(playerId, _schema.Counter("pp_at_play"), pp);
-        _state.WriteCounter(playerId, ppKey, pp - cost);
+        SpendPp(playerId, cost);
 
         // 激奏/结晶同样算「使用过这张卡」，记的仍是本体定义 ——
         // 统计页要显示「你打了几张 X」，而不是「几张激奏版 X」。
@@ -758,6 +807,9 @@ public sealed class TurnRunner
         // 带爆能 / 连击替代的指向性法术，Body 在编织后是顶层 ConditionalNode。
         // 只遍历顶层会让它绕过目标合法性预检 —— 敌方空场也能空放出去。
         // 必须按当前 PP / 连击走进**实际会走**的那个分支。
+        // 出牌瞬间这张法术仍留在手牌；法术本体的能力在结算完才进墓地。
+        // 预检必须把 $self 明确绑成这张卡，否则 other-than-itself 类目标
+        // 会因为 $self 槽位为空而退化成「不排除任何人」。
         var eval = new Vm.VmEval(_state);
         var scope = new Vm.VmScope
         {
@@ -765,6 +817,7 @@ public sealed class TurnRunner
             Controller = card.PlayerId,
             Source = Vm.EntityRef.From(card),
         };
+        scope.Bind(Ast.TargetSpec.SlotSelf, new[] { card });
 
         bool sawChoose = false;
         bool CheckNodes(IReadOnlyList<Ast.EffectNode> nodes)
@@ -852,6 +905,9 @@ public sealed class TurnRunner
     /// </summary>
     private List<RuntimeEntity> LegalTargetsOf(Ast.TargetSpec spec, RuntimeEntity source, Vm.VmScope outer)
     {
+        // 与 CardVm 执行时同一套归一化：PyAST 把 <Follower> / other 提权成区域修饰词，
+        // 解析回来的 Where 默认主语是 $self；不归一化会让「敌方随从」候选恒空。
+        spec = Vm.CardVm.NormalizeZoneWhere(spec);
         int playerId = source?.PlayerId ?? _state.ActivePlayer;
         if (spec == null || spec.Mode != SelectMode.Choose) return new List<RuntimeEntity>();
         int owner = spec.Owner switch
@@ -1011,8 +1067,7 @@ public sealed class TurnRunner
             if (c.Amount?.Op == Ast.NumOp.Const) engageCost = c.Amount.Value;
         }
 
-        var ppKey = _schema.Counter("pp");
-        return _state.ReadCounter(playerId, ppKey) >= engageCost;
+        return AvailablePp(playerId) >= engageCost;
     }
 
     /// <summary>实体（含运行时授予）身上声明的 OnEngage 能力。</summary>
@@ -1045,9 +1100,7 @@ public sealed class TurnRunner
 
     private bool EngageAmuletCore(int playerId, RuntimeEntity amulet, int cost, CardVm vm)
     {
-        var ppKey = _schema.Counter("pp");
-        if (_state.ReadCounter(playerId, ppKey) < cost) return false;
-        _state.WriteCounter(playerId, ppKey, _state.ReadCounter(playerId, ppKey) - cost);
+        if (!SpendPp(playerId, cost)) return false;
 
         amulet.EngagedThisTurn = true;
         EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnEngage, Subject = EntityRef.From(amulet) });
@@ -1178,8 +1231,9 @@ public sealed class TurnRunner
     // ---------- 后手额外能量点 ----------
 
     /// <summary>
-    /// 后手玩家使用额外能量点：本回合临时 pp + 1（不增加 max_pp）。
-    /// 一局两次，第 1~5 回合一次、第 6 回合起一次，每回合最多一次。
+    /// 后手玩家「激活」额外能量点：只写独立槽位 BonusPp，不改 pp / max_pp。
+    /// 一局两次，第 1~5 回合一次、第 6 回合起一次，每回合最多激活一次。
+    /// 是否算用掉，取决于扣费那一刻有没有真正借用到这个槽位。
     /// </summary>
     /// <summary>现在能不能按额外能量点。纯查询，与 UseExtraPp 的前置判定对齐。</summary>
     public bool CanUseExtraPp(int playerId)
@@ -1200,15 +1254,10 @@ public sealed class TurnRunner
         // 于是关掉 EnableExtraPpForSecondPlayer 后仍能直接调用加成。
         if (!CanUseExtraPp(playerId)) return false;
         var p = _state.Players[playerId];
-        bool early = _state.TurnNumber <= _state.Rules.ExtraPpEarlyPhaseLastTurn;
-        if (early && p.UsedEarlyExtraPp) return false;
-        if (!early && p.UsedLateExtraPp) return false;
-
-        if (early) p.UsedEarlyExtraPp = true; else p.UsedLateExtraPp = true;
+        // 这里只记「本回合已激活」，绝不记 Early/Late 已消耗。
+        // Early/Late 的消耗发生在 SpendPp 真正借用槽位的那一刻。
         p.UsedExtraPpThisTurn = true;
-
-        var ppKey = _schema.Counter("pp");
-        _state.WriteCounter(playerId, ppKey, _state.ReadCounter(playerId, ppKey) + 1);
+        p.BonusPp = 1;
         return true;
     }
 

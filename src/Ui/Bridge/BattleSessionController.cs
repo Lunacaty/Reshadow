@@ -144,6 +144,8 @@ public sealed class BattleSessionController
             p.UsedEarlyExtraPp = dto.UsedEarlyExtraPp;
             p.UsedLateExtraPp = dto.UsedLateExtraPp;
             p.UsedExtraPpThisTurn = dto.UsedExtraPpThisTurn;
+            // 后手额外能量点独立槽位：不还原会让客机界面的可用 PP 与权威端不一致。
+            p.BonusPp = dto.BonusPp;
 
             foreach (var kv in dto.Counters ?? new System.Collections.Generic.Dictionary<string, int>())
                 State.WriteCounter(localPid, State.Schema.Counter(kv.Key), kv.Value);

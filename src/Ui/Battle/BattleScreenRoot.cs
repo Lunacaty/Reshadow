@@ -147,15 +147,17 @@ public partial class BattleScreenRoot : Control
     /// 快照到达时把状态铺进镜像再重绘，而不是本地结算。
     /// </summary>
     public void BootRemote(GameSessionStore store, ConstructedDeck mine, ConstructedDeck foe,
-                           ShadowverseFan.Ui.Net.RemoteBattleClient client)
+                           ShadowverseFan.Ui.Net.RemoteBattleClient client, int firstPlayer = 0)
     {
         _store = store;
         _myDeck = mine;
         _foeDeck = foe;
         _remoteClient = client;
 
+        // firstPlayer 是本地视角（0=我方先手，1=敌方先手）；权威端下发的
+        // ResolvedFirstPlayer 用服务端座位号，客机换算由调用方负责，这里原样传入。
         _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
-                                            startInMulligan: false);
+                                            startInMulligan: false, firstPlayer: firstPlayer);
         BoardUnitWidget.CurrentController = _ctrl;
         _lastEventIdx = _ctrl.State.EventLog.Count;
 
@@ -182,10 +184,12 @@ public partial class BattleScreenRoot : Control
     /// 并在每次 Rebuild 后向客机推送脱敏快照。
     /// </summary>
     public void BootHost(GameSessionStore store, ConstructedDeck mine, ConstructedDeck foe,
-                         ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost host)
+                         ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost host,
+                         int firstPlayer = 0)
     {
         _authHost = host;
-        Boot(store, mine, foe);
+        // 房主就是权威端 player0：ResolvedFirstPlayer 直接用服务端编号。
+        Boot(store, mine, foe, firstPlayer);
 
         // 联机不做本地换牌遮罩：双方直接进第 1 回合。
         if (_ctrl.IsInMulligan)

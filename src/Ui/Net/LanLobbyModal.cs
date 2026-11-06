@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using Godot;
 using ShadowverseFan.KernelV3.Net;
@@ -31,6 +33,11 @@ public partial class LanLobbyModal : Control
     private VBoxContainer _ipList;
     private LineEdit _manualIp;
     private Label _status;
+
+    /// <summary>本实例是否已经建房（「本机双开」据此决定是否先建房）。</summary>
+    private bool _hostCreated;
+    /// <summary>--join-local 自动加入时使用的卡池（延迟到主线程执行）。</summary>
+    private string _autoJoinPoolId;
 
     public void Boot(GameSessionStore store)
     {
@@ -113,6 +120,12 @@ public partial class LanLobbyModal : Control
         SvWbTheme.StyleButton(hostBtn, isPrimary: true);
         hostBtn.Pressed += DoHost;
         row.AddChild(hostBtn);
+
+        var doubleBtn = new Button { Text = "🖥 本机双开", CustomMinimumSize = new Vector2(130, 32) };
+        SvWbTheme.StyleButton(doubleBtn);
+        // 一键双开：本实例先建房（若还没建），再用同一个 exe 起第二实例自动连 127.0.0.1。
+        doubleBtn.Pressed += DoLocalDoubleLaunch;
+        row.AddChild(doubleBtn);
         box.AddChild(row);
 
         _ipList = new VBoxContainer();
@@ -237,9 +250,129 @@ public partial class LanLobbyModal : Control
                          + "），正在广播等待对手加入…";
 
         // ★ 绝不能在这里 Shutdown()：那会把刚启动的广播当场停掉，
-        // 房间存活不到 1 毫秒，客机永远扫不到。广播要一直开到对手握手成功，
-        // 由 DeckManagementRoot.StartHostedBattle 关掉大厅时再停。
+        // 房间存活不到 1 毫秒，客机永远扫不到。广播一直开到客机握手成功，
+        // 由 DeckManagementRoot 在 ClientMatched 的主线程回调里关掉大厅。
+        _hostCreated = true;
         OnHostRoom?.Invoke(poolId, deck);
+    }
+
+    // ---------------------------------------------------------------- 本机双开
+
+    /// <summary>
+    /// 一键本机双开：用当前 exe 再起一个进程，带上 --join-local=&lt;卡池&gt;。
+    /// 第二实例在 MainMenuView 解析该参数，自动以 127.0.0.1 + 同卡池进入「加入」态，
+    /// 绕开 VPN 网卡广播出来的 fake-ip 无法直连的问题。
+    /// </summary>
+    private void DoLocalDoubleLaunch()
+    {
+        if (_poolPicker.Selected <= 0)
+        {
+            if (_status != null) _status.Text = "✘ 请先选择赛制卡池，再点「本机双开」";
+            return;
+        }
+        if (_deckPicker.Selected <= 0)
+        {
+            if (_status != null) _status.Text = "✘ 请选择该卡池下的出战牌组，再点「本机双开」";
+            return;
+        }
+        string poolId = _poolPicker.GetItemText(_poolPicker.Selected);
+
+        // exe 路径取不到就明确阻塞，绝不伪造一个「看起来能跑」的启动。
+        string exe = ResolveCurrentExe();
+        if (exe == null)
+        {
+            if (_status != null)
+                _status.Text = "✘ 本机双开阻塞：无法可靠取得当前可执行文件路径（OS.GetExecutablePath / Environment.ProcessPath 均不可用）";
+            return;
+        }
+
+        // 先建房：BeginHosting 是同步的，监听就绪后再起第二实例，避免连接竞态。
+        // 大厅随即被隐藏并 Swap 到房间界面，但本方法仍在同一个调用栈里继续执行。
+        if (!_hostCreated) DoHost();
+
+        try
+        {
+            var psi = new ProcessStartInfo { FileName = exe, UseShellExecute = false };
+            foreach (var a in BuildLocalLaunchArgs(poolId)) psi.ArgumentList.Add(a);
+            Process.Start(psi);
+            if (_status != null)
+                _status.Text = "✔ 已启动本机第二实例（127.0.0.1 · " + poolId + "），将自动加入房间";
+        }
+        catch (Exception ex)
+        {
+            if (_status != null) _status.Text = "✘ 本机双开失败：" + ex.Message;
+        }
+    }
+
+    /// <summary>取当前进程的可执行文件；两条可靠来源都拿不到就返回 null。</summary>
+    private static string ResolveCurrentExe()
+    {
+        string exe = null;
+        try { exe = OS.GetExecutablePath(); } catch { }
+        if (!IsUsableExe(exe))
+        {
+            try { exe = System.Environment.ProcessPath; } catch { exe = null; }
+        }
+        return IsUsableExe(exe) ? exe : null;
+    }
+
+    private static bool IsUsableExe(string path)
+        => !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+
+    /// <summary>
+    /// 第二实例参数：编辑器里运行时须带 --path 指向本项目；
+    /// 「--」之后是 Godot 透传的自定义参数，OS.GetCmdlineArgs() 与
+    /// OS.GetCmdlineUserArgs() 都能读到。导出版只需自定义参数。
+    /// </summary>
+    private static List<string> BuildLocalLaunchArgs(string poolId)
+    {
+        var args = new List<string>();
+        if (OS.HasFeature("editor"))
+        {
+            args.Add("--path");
+            args.Add(ProjectSettings.GlobalizePath("res://"));
+        }
+        args.Add("--");
+        args.Add("--join-local=" + Uri.EscapeDataString(poolId ?? ""));
+        return args;
+    }
+
+    /// <summary>第二实例入口：自动选同卡池 + 该卡池第一副合法牌组，直连 127.0.0.1。</summary>
+    public void AutoJoinLocal(string poolId)
+    {
+        _autoJoinPoolId = poolId ?? "";
+        CallDeferred(MethodName.DoAutoJoinLocal);
+    }
+
+    private void DoAutoJoinLocal()
+    {
+        int poolIdx = -1;
+        for (int i = 1; i < _poolPicker.ItemCount; i++)
+        {
+            if (string.Equals(_poolPicker.GetItemText(i), _autoJoinPoolId,
+                              StringComparison.OrdinalIgnoreCase))
+            {
+                poolIdx = i;
+                break;
+            }
+        }
+        if (poolIdx < 0)
+        {
+            if (_status != null) _status.Text = "✘ 本机双开：本机找不到卡池 [" + _autoJoinPoolId + "]";
+            return;
+        }
+
+        _poolPicker.Select(poolIdx);
+        RefreshDecks(poolIdx);
+        if (_filteredDecks.Count == 0)
+        {
+            if (_status != null) _status.Text = "✘ 本机双开：卡池 [" + _autoJoinPoolId + "] 下没有合法牌组";
+            return;
+        }
+
+        _deckPicker.Select(1);
+        if (_manualIp != null) _manualIp.Text = "127.0.0.1";
+        DoJoinManual();
     }
 
     // ---------------------------------------------------------------- 加入

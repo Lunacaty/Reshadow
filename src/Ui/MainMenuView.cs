@@ -25,7 +25,11 @@ public partial class MainMenuView : Control
     public event Action OnCardGallery;
     public event Action OnQuit;
 
+    /// <summary>启动参数 --join-local=&lt;卡池&gt;：第二实例自动以 127.0.0.1 进入加入态。</summary>
+    public event Action<string> OnAutoJoinLocal;
+
     private GameSessionStore _store;
+    private string _autoJoinPoolId;
 
     public void Boot(GameSessionStore store)
     {
@@ -35,7 +39,21 @@ public partial class MainMenuView : Control
         BuildTitle();
         BuildButtons();
         BuildFooter();
+
+        // 「本机双开」的第二实例带 --join-local=<卡池>。
+        // Godot 把命令行 "--" 之后的自定义参数原样透传，GetCmdlineArgs() 可读；
+        // 用 Uri 转义是为了卡池 id 含中文/空格时仍能在命令行里完整传递。
+        // 解析结果延迟一帧发出：上层先订阅事件，再把大厅切出来。
+        foreach (var arg in OS.GetCmdlineArgs())
+        {
+            if (!arg.StartsWith("--join-local=", StringComparison.Ordinal)) continue;
+            _autoJoinPoolId = Uri.UnescapeDataString(arg.Substring("--join-local=".Length));
+            CallDeferred(MethodName.EmitAutoJoinLocal);
+            break;
+        }
     }
+
+    private void EmitAutoJoinLocal() => OnAutoJoinLocal?.Invoke(_autoJoinPoolId);
 
     private void BuildTitle()
     {

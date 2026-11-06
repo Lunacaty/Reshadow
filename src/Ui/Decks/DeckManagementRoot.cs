@@ -58,6 +58,12 @@ public partial class DeckManagementRoot : Control
 
         menu.OnStartBattle    += () => ShowBattleSelect();
         menu.OnLanBattle      += ShowLanLobby;
+        // 本机双开第二实例：直接开大厅并自动 127.0.0.1 加入，绕开 VPN fake-ip 广播。
+        menu.OnAutoJoinLocal  += poolId =>
+        {
+            var lobby = OpenLanLobby();
+            lobby.AutoJoinLocal(poolId);
+        };
         menu.OnDeckManagement += ShowDeckList;
         menu.OnDiyWorkshop    += ShowDiyWorkshop;
         menu.OnPackManager    += ShowPackManager;
@@ -65,8 +71,11 @@ public partial class DeckManagementRoot : Control
         menu.OnQuit           += () => GetTree().Quit();
     }
 
-    /// <summary>局域网 / Radmin 联机大厅：建房或加入房间。</summary>
-    private void ShowLanLobby()
+    /// <summary>局域网 / Radmin 联机大厅：建房或加入房间，成功后进独立房间场景。</summary>
+    private void ShowLanLobby() => OpenLanLobby();
+
+    /// <summary>创建并接线大厅；返回大厅实例，供 --join-local 自动加入复用。</summary>
+    private Net.LanLobbyModal OpenLanLobby()
     {
         var lobby = new Net.LanLobbyModal();
         AddChild(lobby);
@@ -75,99 +84,126 @@ public partial class DeckManagementRoot : Control
 
         lobby.OnCancelled += () => lobby.QueueFree();
 
-        // 加入房间：连上权威端后由 RemoteBattleClient 持续接收裁剪快照，
-        // 快照铺进本地只读镜像驱动画面。客机本地改内存毫无意义。
+        // 加入成功 = 客机已连入房间，绝不在这里建对局/Attach。
         lobby.OnJoinRoom += info =>
         {
+            // 加入动作已完成，大厅是覆盖层（不在 _current 里），必须显式关掉，
+            // 否则它会盖在房间界面上。_ExitTree 会再停一次发现服务，幂等。
             lobby.QueueFree();
-            var client = new Net.RemoteBattleClient();
-            _remoteClient = client;
-
-            // 必须用大厅里选好的牌组（PendingJoinDeck），而不是随手取第一副 ——
-            // 早先取 FirstOrDefault() 会让玩家选的牌组形同虚设。
             var deck = lobby.PendingJoinDeck
                        ?? _store.SavedDecks.FirstOrDefault(d => d.PoolId == info.PoolId);
             if (deck == null) return;
 
-            // 握手要带上卡池指纹与我方牌组，供权威端校验（铁律一）。
+            var client = new Net.RemoteBattleClient();
+            _remoteClient = client;
             client.MyDeck = deck;
-            var pool = _store.GetPoolView(deck.PoolId);
-            client.PoolHash = ShadowverseFan.KernelV3.Net.PoolIntegrityHasher.ComputePoolHash(pool);
+            // 握手带上卡池指纹与我方牌组，供权威端校验（铁律一）。
+            client.PoolHash = ShadowverseFan.KernelV3.Net.PoolIntegrityHasher
+                .ComputePoolHash(_store.GetPoolView(deck.PoolId));
 
-            var view = new Battle.BattleScreenRoot();
-            Swap(view);
-            view.BootRemote(_store, deck, deck, client);
-            view.OnExitToDecks += ShowMainMenu;
-
+            var room = new Net.LanRoomView();
+            Swap(room);
+            room.BootGuestRoom(_store, info.PoolId, deck, client);
+            room.OnLeaveRoom += LeaveLanRoom;
+            room.OnStartMatchRequested += first => StartNetworkBattle(first, isHost: false);
+            // 连接发起后服务端回 ACK + 首包 ROOM，房间界面据此刷新。
             _ = client.ConnectAsync(info.Ip, info.Port, 1);
         };
 
-        // 建房：自己是房主，本地就是权威端 —— 起服务端并直接进正常对局。
+        // 建房成功 = 房主起监听并**立刻**进入房间界面，绝不建对局。
         lobby.OnHostRoom += (poolId, deck) =>
         {
-            // ★ 不要在这里 QueueFree：广播必须在等待期持续，
-            // 大厅一关广播就停，客机永远扫不到房间。
-            // 等 ClientMatched -> StartHostedBattle 时再关。
+            // ★ 不能 QueueFree 大厅：广播必须在等待客机期间持续，
+            // 销毁会触发 _ExitTree -> Shutdown()，客机永远扫不到房间。
+            // 改为隐藏但仍留在场景树里，等客机握手成功再关。
+            lobby.Visible = false;
             _pendingLobby = lobby;
-
-            // 126 轮：房主**不再先跟本地 AI 开打**。
-            // 旧流程「先 StartBattle(本地AI) 再顺手开监听」意味着客机连上时
-            // 对局早已开始，客机的牌组根本没用上 —— 那不是联机，是单机带监听。
-            // 正确顺序：先起监听等待握手，客机通过校验后用「房主牌组 + 客机牌组」开局。
-            var host = new ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost();
-            _authoritativeHost = host;
             _hostingPoolId = poolId;
             _hostingDeck = deck;
 
-            host.ClientMatched += clientDeck =>
-            {
-                // 握手已通过（卡池指纹一致 + 客机牌组合法），现在才真正开局。
-                // ClientMatched 从网络线程触发，必须切回主线程再动场景树。
-                CallDeferred(MethodName.StartHostedBattle);
-            };
-
-            // 复用 Start 的监听与握手校验：先把本方卡池与状态备好。
-            // State/Runner 在开局时才创建（StartHostedBattle 里），
-            // 所以这里给 host 一个「待开局」的挂起状态，握手哈希取自卡池视图。
+            var host = new ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost();
+            _authoritativeHost = host;
             var poolView = _store.GetPoolView(poolId);
             host.BeginHosting(poolView, deck);
+
+            // ClientMatched 只表示客机已连入房间，从网络线程触发：
+            // 切回主线程关掉广播，绝不建对局、绝不 Attach。
+            host.ClientMatched += _ => CallDeferred(MethodName.StopHostBroadcast);
+
+            var room = new Net.LanRoomView();
+            Swap(room);
+            room.BootHostRoom(_store, poolId, deck, host);
+            room.OnLeaveRoom += LeaveLanRoom;
+            room.OnStartMatchRequested += first => StartNetworkBattle(first, isHost: true);
         };
+        return lobby;
     }
 
     private Net.RemoteBattleClient _remoteClient;
     private ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost _authoritativeHost;
     private string _hostingPoolId;
     private ShadowverseFan.KernelV3.Packs.ConstructedDeck _hostingDeck;
-
-    /// <summary>客机握手通过后（主线程回调）：用双方真实牌组开局。</summary>
     private Net.LanLobbyModal _pendingLobby;
 
-    private void StartHostedBattle()
+    /// <summary>ClientMatched 主线程回调：客机已连入，广播可以停了；房间界面已在树上。</summary>
+    private void StopHostBroadcast() => ClosePendingLobby();
+
+    /// <summary>关掉隐藏的大厅（会停掉 UDP 广播），可重复调用。</summary>
+    private void ClosePendingLobby()
     {
-        var clientDeck = _authoritativeHost?.ClientDeck;
-        if (_hostingDeck == null || clientDeck == null) return;
-
-        // 对手已握手成功，这里才关掉还在广播的大厅。
         if (_pendingLobby != null && IsInstanceValid(_pendingLobby))
-        {
             _pendingLobby.QueueFree();
-            _pendingLobby = null;
-        }
+        _pendingLobby = null;
+    }
 
+    /// <summary>
+    /// 只有 START 到达才建对局。房主用 BeginHosting 期间登记的最新牌组，
+    /// 客机用自己最新提交的 MyDeck；resolvedFirstPlayer 两端来自同一条 START 消息。
+    /// </summary>
+    private void StartNetworkBattle(int firstPlayer, bool isHost)
+    {
+        // 进战斗前把可能还隐藏在树上的大厅收干净，别让广播跟着对局一直跑。
+        ClosePendingLobby();
         var view = new Battle.BattleScreenRoot();
         Swap(view);
-        view.BootHost(_store, _hostingDeck, clientDeck, _authoritativeHost);
         view.OnExitToDecks += () =>
         {
             _authoritativeHost?.Dispose();
             _authoritativeHost = null;
+            _remoteClient?.Dispose();
+            _remoteClient = null;
             ShowMainMenu();
         };
+
+        if (isHost)
+        {
+            var hostDeck = _authoritativeHost?.HostDeck ?? _hostingDeck;
+            var clientDeck = _authoritativeHost?.ClientDeck;
+            // 房主即权威端 player0，firstPlayer 直接用服务端编号；
+            // BootHost 结束后才 Attach(state, runner) 推首份快照。
+            view.BootHost(_store, hostDeck, clientDeck ?? hostDeck, _authoritativeHost, firstPlayer);
+        }
+        else
+        {
+            var deck = _remoteClient?.MyDeck ?? _hostingDeck;
+            // 客机本地 UI 以 0=我方 / 1=敌方：服务端 1（客机先手）= 本地 0，
+            // 服务端 0（房主先手）= 本地 1。换算后后手补偿才落在正确一侧。
+            int localFirst = firstPlayer == 1 ? 0 : 1;
+            view.BootRemote(_store, deck, deck, _remoteClient, localFirst);
+        }
     }
 
-    /// <summary>当前战斗界面的控制器（建房时要把它的 State 交给权威端）。</summary>
-    private ShadowverseFan.Ui.Bridge.BattleSessionController GetBattleController()
-        => (_current as Battle.BattleScreenRoot)?.Controller;
+    /// <summary>离开房间：关掉连接/监听，回主菜单。</summary>
+    private void LeaveLanRoom()
+    {
+        _authoritativeHost?.Dispose();
+        _authoritativeHost = null;
+        _remoteClient?.Dispose();
+        _remoteClient = null;
+        ClosePendingLobby();
+        _hostingDeck = null;
+        ShowMainMenu();
+    }
 
     /// <summary>卡片一览 / 图鉴：浏览全量卡池并切换原画⇄异画。</summary>
     private void ShowCardGallery()

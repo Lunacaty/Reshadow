@@ -38,8 +38,19 @@ public sealed class RemoteBattleClient : IDisposable
     /// <summary>收到新快照（UI 层据此刷新棋盘）。</summary>
     public event Action<NetStateSnapshot> SnapshotReceived;
 
-    /// <summary>握手完成。</summary>
+    /// <summary>房间状态更新（房主广播，客机只读）。</summary>
+    public event Action<NetRoomStateDto> RoomStateReceived;
+
+    /// <summary>房主发出 START；参数 = ResolvedFirstPlayer（0=房主先手，1=客机先手）。</summary>
+    public event Action<int> StartMatchReceived;
+
+    /// <summary>握手完成：拿到座位号，随后紧跟一包 ROOM。</summary>
     public event Action<int> HandshakeCompleted;
+
+    /// <summary>最近一次房间状态（引用赋值是原子的，网络线程写、UI 线程读）。</summary>
+    public NetRoomStateDto RoomState { get; private set; } = new();
+    /// <summary>最近一次房间状态（UI 侧只读别名）。</summary>
+    public NetRoomStateDto LatestRoomState => RoomState;
 
     /// <summary>被服务端拒绝或断线。</summary>
     public event Action<string> Failed;
@@ -114,6 +125,27 @@ public sealed class RemoteBattleClient : IDisposable
             Failed?.Invoke(line.Substring(4));
             return;
         }
+        if (line.StartsWith("ROOM|"))
+        {
+            try
+            {
+                var room = JsonSerializer.Deserialize<NetRoomStateDto>(line.Substring(5));
+                if (room == null) return;
+                RoomState = room;
+                RoomStateReceived?.Invoke(room);
+            }
+            catch (Exception ex)
+            {
+                Failed?.Invoke("房间状态解析失败：" + ex.Message);
+            }
+            return;
+        }
+        if (line.StartsWith("START|"))
+        {
+            int first = int.TryParse(line.Substring(6).Trim(), out var f) ? f : 0;
+            StartMatchReceived?.Invoke(first);
+            return;
+        }
         if (line.StartsWith("SNAP|"))
         {
             try
@@ -129,6 +161,19 @@ public sealed class RemoteBattleClient : IDisposable
             }
         }
     }
+
+    // ---------------------------------------------------------------- 房间阶段上行
+
+    /// <summary>切换我方牌组：交给房主即时校验，随后房主广播新的 ROOM。</summary>
+    public void SubmitDeck(ShadowverseFan.KernelV3.Packs.ConstructedDeck deck)
+    {
+        MyDeck = deck;
+        // 行协议按竖线分帧：把 JSON 里的竖线换成等价转义，线路上不出现分隔符。
+        _ = SendLine("DECK|" + JsonSerializer.Serialize(deck).Replace("|", "\\u007C"));
+    }
+
+    /// <summary>切换准备状态；先手模式只有房主能改，客机无此上行消息。</summary>
+    public void SetReady(bool ready) => _ = SendLine(ready ? "READY|1" : "READY|0");
 
     // ---------------------------------------------------------------- 上行意图
 
