@@ -312,6 +312,9 @@ public sealed class GameSessionStore
             NameChs = !string.IsNullOrWhiteSpace(card.NameChs) ? card.NameChs : card.Name,
             Kind = card.Kind,
             IsToken = card.IsToken,
+            // 立绘来源必须落盘：另存新卡的卡号变了但图仍属原卡，
+            // 不写这一行，重载后新卡去找不存在的 png，当场黑底。
+            ArtCardId = card.ArtCardId > 0 ? card.ArtCardId : (card.CardId > 0 ? card.CardId : 0),
             Clan = card.Clan.IsValid ? card.Clan.Name : "中立",
             Traits = (card.Traits ?? Array.Empty<SymbolId<TraitTag>>())
                      .Select(t => t.Name).ToList(),
@@ -384,6 +387,9 @@ public sealed class GameSessionStore
             sb.Append("      \"name_chs\": ").Append(JsonStr(c.NameChs ?? "")).Append(",\n");
             sb.Append("      \"kind\": ").Append(KindCode(c.Kind)).Append(",\n");
             sb.Append("      \"is_token\": ").Append(c.IsToken ? "true" : "false").Append(",\n");
+            // 立绘来源：另存新卡 / 改号时图仍属原卡，不写这一行重载后就是黑底。
+            if (c.ArtCardId > 0)
+                sb.Append("      \"art_card_id\": ").Append(c.ArtCardId).Append(",\n");
             sb.Append("      \"clan\": ").Append(JsonStr(c.Clan ?? "中立")).Append(",\n");
             sb.Append("      \"traits\": ").Append(JsonArr(c.Traits)).Append(",\n");
             if (c.Keywords != null && c.Keywords.Count > 0)

@@ -1486,6 +1486,18 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         }
     }
 
+    /// <summary>卡号的画布显示名：《中文名》，退回卡名，再退回 #卡号。</summary>
+    static string FormatCardTitle(int cardId, string text)
+    {
+        if (cardId > 0)
+        {
+            string zh = ShadowverseFan.KernelV3.Packs.AuthoritativeNames.ChineseOf(cardId);
+            if (!string.IsNullOrEmpty(zh)) return "《" + zh + "》";
+        }
+        if (!string.IsNullOrEmpty(text)) return "《" + text + "》";
+        return cardId > 0 ? "#" + cardId : "#?";
+    }
+
     private static string BlockZone(Block b) => string.IsNullOrEmpty(b.EnumA) ? "Board" : b.EnumA;
 
     private static void SetBlockZone(Block b, string zone) => b.EnumA = zone;
@@ -2180,9 +2192,13 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                     rowBox.AddThemeConstantOverride("separation", 4);
                     var inner = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
                     rowBox.AddChild(inner);
-                    BuildConditionSlotEditor(inner, "子条件 " + (si + 1), cur.Stacks[si],
-                                             v => { if (si < cur.Stacks.Count) { cur.Stacks[si] = v; structuralSetter(cur); } });
-                    int idx = si;
+                    // C# 的 for 索引变量在所有迭代间共享同一个位置，
+                    // 闭包直接捕获 si 的话，回调执行时 si 已等于 Count，
+                    // idx < Count 恒为 false —— 子条件怎么改都会弹回原样。
+                    int siLocal = si;
+                    BuildConditionSlotEditor(inner, "子条件 " + (siLocal + 1), cur.Stacks[siLocal],
+                                             v => { if (siLocal < cur.Stacks.Count) { cur.Stacks[siLocal] = v; structuralSetter(cur); } });
+                    int idx = siLocal;
                     var del = new Button { Text = "✕", CustomMinimumSize = new Vector2(26, 26) };
                     SvWbTheme.StyleButton(del, customAccent: SvWbTheme.StatusDanger);
                     del.Pressed += () =>
@@ -2329,8 +2345,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             case "act_restore": return "为【" + DescribeTargetShort(blk.Target) + "】回复【" + NumText(blk.Number, 2) + "】点生命";
             case "act_full_restore": return "完全回复生命";
             case "act_draw": return "抽取 " + NumText(blk.Number, 1) + " 张牌";
-            case "act_summon": return "召唤 #" + (blk.IntB == 0 ? "?" : blk.IntB.ToString());
-            case "act_add_hand": return "生成 #" + (blk.IntB == 0 ? "?" : blk.IntB.ToString()) + " 加入手牌";
+            case "act_summon": return "召唤 " + FormatCardTitle(blk.IntB, blk.Text);
+            case "act_add_hand": return "生成 " + FormatCardTitle(blk.IntB, blk.Text) + " 加入手牌";
             case "act_destroy": return "破坏【" + DescribeTargetShort(blk.Target) + "】";
             case "act_banish": return "使【" + DescribeTargetShort(blk.Target) + "】消失";
             case "act_bounce": return "将【" + DescribeTargetShort(blk.Target) + "】返回手牌";
@@ -2364,7 +2380,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             case "act_copy": return "复制目标";
             case "act_discover": return "从卡池发现";
             case "act_reanimate": return "亡者召还";
-            case "act_transform": return "使目标变身为 #" + (blk.IntB == 0 ? "?" : blk.IntB.ToString());
+            case "act_transform": return "使目标变身为 " + FormatCardTitle(blk.IntB, blk.Text);
             case "act_replace_deck": return "替换整副牌组";
             case "act_damage_aura": return "护盾光环：使【" + DescribeTargetShort(blk.Target) + "】" + DiyZh.Zh(DiyZh.DamageAuraKinds, blk.EnumA) + "【" + NumText(blk.Number, 3) + "】";
             case "act_grant_entity_ability": return "赋予目标一段能力";

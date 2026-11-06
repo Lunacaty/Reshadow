@@ -205,6 +205,8 @@ public sealed class GlobalCatalog
                 Traits = traits, Clan = clan,
                 InnateKeywords = (c.Keywords ?? new List<string>()).Select(k => Schema.Keyword(k)).ToList(),
                 PackId = pack.PackId, IsToken = c.IsToken, SourceText = "",
+                // 立绘来源：卡包里写明的 art_card_id 优先，否则用卡号本身。
+                ArtCardId = c.ArtCardId > 0 ? c.ArtCardId : cardId,
             };
         }
 
@@ -251,6 +253,8 @@ public sealed class GlobalCatalog
                 CrestDef = pyDef.CrestDef, FaithDef = pyDef.FaithDef,
                 AccelerateDef = pyDef.AccelerateDef, CrystallizeDef = pyDef.CrystallizeDef,
                 PackId = pack.PackId, IsToken = c.IsToken, SourceText = c.Text, Rarity = c.Rarity,
+                // 立绘来源：卡包写的 art_card_id 优先，否则用卡号本身。
+                ArtCardId = c.ArtCardId > 0 ? c.ArtCardId : cardId,
             };
         }
 

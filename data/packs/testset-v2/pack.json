@@ -4,76 +4,32 @@
   "author": "",
   "version": "1.0.0",
   "native_pool_id": "standard",
-  "dependencies": [
-    "official-sv"
-  ],
-  "clans": [
-    {
-      "name": "中立"
-    },
-    {
-      "name": "精灵"
-    },
-    {
-      "name": "皇家"
-    },
-    {
-      "name": "巫师"
-    },
-    {
-      "name": "龙族"
-    },
-    {
-      "name": "深渊"
-    },
-    {
-      "name": "主教"
-    },
-    {
-      "name": "超越者"
-    }
-  ],
-  "traits": [
-    {
-      "name": "创造物"
-    },
-    {
-      "name": "亡者"
-    },
-    {
-      "name": "财宝"
-    },
-    {
-      "name": "士兵"
-    },
-    {
-      "name": "妖精"
-    },
-    {
-      "name": "探测机甲"
-    }
-  ],
+  "dependencies": ["official-sv"],
+  "clans": [{ "name": "中立" }, { "name": "精灵" }, { "name": "皇家" }, { "name": "巫师" }, { "name": "龙族" }, { "name": "深渊" }, { "name": "主教" }, { "name": "超越者" }],
+  "traits": [{ "name": "创造物" }, { "name": "亡者" }, { "name": "财宝" }, { "name": "士兵" }, { "name": "妖精" }, { "name": "探测机甲" }],
   "keywords": [],
+  "counters": [{ "name": "探测计数", "name_chs": "", "min": 0, "max": 7 }],
   "stackable_amulets": [],
   "named_decks": [],
   "cards": [
     {
       "card_id": 81000000,
+      "name_eng": "不屈的战士",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "皇家",
-      "traits": [
-        "士兵"
-      ],
+      "traits": ["士兵"],
       "cost": 2,
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 81000000 \"不屈的战士\" (Follower, clan=皇家, cost=2, atk=2, life=2):\n    traits: [士兵]\n    fanfare:\n        draw 1\n    evolve:\n        select opponent:board<Follower> Choose(1)\n        deal 2 damage to $selected\n    super_evolve:\n        deal count(self:hand All) damage to opponent:board<Follower> All",
-      "name": "不屈的战士"
+      "text": "card 81000000 \"不屈的战士\" (Follower, clan=皇家, cost=2, atk=2, life=2):\n    traits: [士兵]\n    fanfare:\n        draw 1\n    evolve:\n        select opponent:board<Follower> Choose(1)\n        deal 2 damage to $selected\n    super_evolve:\n        deal count(self:hand All) damage to opponent:board<Follower> All"
     },
     {
       "card_id": 81000001,
+      "name_eng": "侦探的放大镜",
+      "name_chs": "",
       "kind": 2,
       "is_token": false,
       "clan": "主教",
@@ -82,11 +38,12 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000001 \"侦探的放大镜\" (Amulet, clan=主教, cost=2):\n    fanfare:\n        add_to_hand 1 #90011110\n    countdown(2)\n    engage [engage(0)]:\n        destroy $self\n        select self:board<Follower> Choose(1)\n        grant_keyword rush to $selected",
-      "name": "侦探的放大镜"
+      "text": "card 81000001 \"侦探的放大镜\" (Amulet, clan=主教, cost=2):\n    fanfare:\n        add_to_hand 1 #90011110\n    countdown(2)\n    engage [engage(0)]:\n        destroy $self\n        select self:board<Follower> Choose(1)\n        grant_keyword rush to $selected"
     },
     {
       "card_id": 81000002,
+      "name_eng": "漏洞警报",
+      "name_chs": "",
       "kind": 3,
       "is_token": false,
       "clan": "巫师",
@@ -95,26 +52,26 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000002 \"漏洞警报\" (Spell, clan=巫师, cost=1):\n    on_play:\n        destroy opponent:board<Follower> All where prop:Attack <= 3\n        draw 1",
-      "name": "漏洞警报"
+      "text": "card 81000002 \"漏洞警报\" (Spell, clan=巫师, cost=1):\n    on_play:\n        destroy opponent:board<Follower> All where prop:Attack <= 3\n        draw 1"
     },
     {
       "card_id": 81000003,
+      "name_eng": "原初剑士·阿玛兹",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "精灵",
-      "traits": [
-        "妖精"
-      ],
+      "traits": ["妖精"],
       "cost": 3,
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 81000003 \"原初剑士·阿玛兹\" (Follower, clan=精灵, cost=3, atk=2, life=2):\n    traits: [妖精]\n    keywords: [ward]\n    fanfare:\n        buff $self +count(self:hand<Follower> All where has trait 妖精)/+count(self:hand<Follower> All where has trait 妖精)\n    evolve:\n        repeat count(self:hand<Follower> All where has trait 妖精) times:\n            deal 1 damage to opponent:board<Follower> Random(1)",
-      "name": "原初剑士·阿玛兹"
+      "text": "card 81000003 \"原初剑士·阿玛兹\" (Follower, clan=精灵, cost=3, atk=2, life=2):\n    traits: [妖精]\n    keywords: [ward]\n    fanfare:\n        buff $self +count(self:hand<Follower> All where has trait 妖精)/+count(self:hand<Follower> All where has trait 妖精)\n    evolve:\n        repeat count(self:hand<Follower> All where has trait 妖精) times:\n            deal 1 damage to opponent:board<Follower> Random(1)"
     },
     {
       "card_id": 81000004,
+      "name_eng": "匍匐的懦夫",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "深渊",
@@ -123,18 +80,13 @@
       "attack": 4,
       "life": 5,
       "source_format": "py_ast",
-      "alt_modes": [
-        {
-          "type_eng": "Crystallize",
-          "cost": 2,
-          "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Testset Prostrating Coward</color></i></b>."
-        }
-      ],
-      "text": "card 81000004 \"匍匐的懦夫\" (Follower, clan=深渊, cost=5, atk=4, life=5):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"匍匐的懦夫\" (cost=2):\n        countdown(3)\n        last_words:\n            summon 1 #10661110",
-      "name": "匍匐的懦夫"
+      "alt_modes": [{ "type_eng": "Crystallize", "cost": 2, "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Testset Prostrating Coward</color></i></b>." }],
+      "text": "card 81000004 \"匍匐的懦夫\" (Follower, clan=深渊, cost=5, atk=4, life=5):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"匍匐的懦夫\" (cost=2):\n        countdown(3)\n        last_words:\n            summon 1 #10661110"
     },
     {
       "card_id": 81000005,
+      "name_eng": "粗劣的玩物",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "深渊",
@@ -143,40 +95,28 @@
       "attack": 1,
       "life": 3,
       "source_format": "py_ast",
-      "alt_modes": [
-        {
-          "type_eng": "Accelerate",
-          "cost": 2,
-          "text_eng": "Summon a <b><i><color=Keyword>Testset Shoddy Plaything</color></i></b>."
-        }
-      ],
-      "text": "card 81000005 \"粗劣的玩物\" (Follower, clan=深渊, cost=6, atk=1, life=3):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"粗劣的玩物\" (cost=2):\n        on_play:\n            summon 1 #10671110",
-      "name": "粗劣的玩物"
+      "alt_modes": [{ "type_eng": "Accelerate", "cost": 2, "text_eng": "Summon a <b><i><color=Keyword>Testset Shoddy Plaything</color></i></b>." }],
+      "text": "card 81000005 \"粗劣的玩物\" (Follower, clan=深渊, cost=6, atk=1, life=3):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"粗劣的玩物\" (cost=2):\n        on_play:\n            summon 1 #10671110"
     },
     {
       "card_id": 81000006,
+      "name_eng": "森林淑女·艾莉雅",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "精灵",
-      "traits": [
-        "妖精"
-      ],
+      "traits": ["妖精"],
       "cost": 6,
       "attack": 4,
       "life": 4,
       "source_format": "py_ast",
-      "alt_modes": [
-        {
-          "type_eng": "Crest",
-          "cost": 0,
-          "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>."
-        }
-      ],
-      "text": "card 81000006 \"森林淑女·艾莉雅\" (Follower, clan=精灵, cost=6, atk=4, life=4):\n    traits: [妖精]\n    fanfare:\n        gain_crest #81000006\n    evolve:\n        summon 3 #90011110\n\n    crest \"森林淑女·艾莉雅\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait 妖精):\n            grant_keyword storm to $trigger",
-      "name": "森林淑女·艾莉雅"
+      "alt_modes": [{ "type_eng": "Crest", "cost": 0, "text_eng": "Whenever an allied Pixie follower enters the field, give it <color=Keyword>Storm</color>." }],
+      "text": "card 81000006 \"森林淑女·艾莉雅\" (Follower, clan=精灵, cost=6, atk=4, life=4):\n    traits: [妖精]\n    fanfare:\n        gain_crest #81000006\n    evolve:\n        summon 3 #90011110\n\n    crest \"森林淑女·艾莉雅\" (cost=0):\n        on_enter on(self:board<Follower> All where has trait 妖精):\n            grant_keyword storm to $trigger"
     },
     {
       "card_id": 81000007,
+      "name_eng": "缠绕的继承者·杉那查",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "精灵",
@@ -185,18 +125,13 @@
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "alt_modes": [
-        {
-          "type_eng": "Faith",
-          "cost": 0,
-          "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <color=Keyword>Mode</color><color=Keyword>s</color>, increase this faith's value by 1."
-        }
-      ],
-      "text": "card 81000007 \"缠绕的继承者·杉那查\" (Follower, clan=精灵, cost=2, atk=2, life=2):\n    fanfare:\n        pay faith(10):\n            grant_counter_ability to faith:\n                aura:\n                    counter mode_count by 1\n\n    faith \"缠绕的继承者·杉那查\" (cost=0):\n        on_select_mode:\n            gain_faith 1\n        aura:\n            counter faith = 0",
-      "name": "缠绕的继承者·杉那查"
+      "alt_modes": [{ "type_eng": "Faith", "cost": 0, "text_eng": "This faith's value starts at 0.\n<hr>Whenever you select <color=Keyword>Mode</color><color=Keyword>s</color>, increase this faith's value by 1." }],
+      "text": "card 81000007 \"缠绕的继承者·杉那查\" (Follower, clan=精灵, cost=2, atk=2, life=2):\n    fanfare:\n        pay faith(10):\n            grant_counter_ability to faith:\n                aura:\n                    counter mode_count by 1\n\n    faith \"缠绕的继承者·杉那查\" (cost=0):\n        on_select_mode:\n            gain_faith 1\n        aura:\n            counter faith = 0"
     },
     {
       "card_id": 81000010,
+      "name_eng": "魔女的新酿",
+      "name_chs": "",
       "kind": 2,
       "is_token": false,
       "clan": "巫师",
@@ -205,11 +140,12 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000010 \"魔女的新酿\" (Amulet, clan=巫师, cost=3):\n    fanfare:\n        if overflow:\n            draw 2\n        else:\n            draw 1",
-      "name": "魔女的新酿"
+      "text": "card 81000010 \"魔女的新酿\" (Amulet, clan=巫师, cost=3):\n    fanfare:\n        if overflow:\n            draw 2\n        else:\n            draw 1"
     },
     {
       "card_id": 81000011,
+      "name_eng": "符文刃指挥者",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "巫师",
@@ -218,11 +154,12 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 81000011 \"符文刃指挥者\" (Follower, clan=巫师, cost=4, atk=3, life=3):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        deal ctr:combo damage to $selected",
-      "name": "符文刃指挥者"
+      "text": "card 81000011 \"符文刃指挥者\" (Follower, clan=巫师, cost=4, atk=3, life=3):\n    fanfare:\n        select opponent:board<Follower> Choose(1)\n        deal ctr:combo damage to $selected"
     },
     {
       "card_id": 81000012,
+      "name_eng": "烈焰破坏者",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "龙族",
@@ -231,11 +168,12 @@
       "attack": 6,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 81000012 \"烈焰破坏者\" (Follower, clan=龙族, cost=7, atk=6, life=6):\n    on_spellboost zone=Hand:\n        modify_cost $self by -1",
-      "name": "烈焰破坏者"
+      "text": "card 81000012 \"烈焰破坏者\" (Follower, clan=龙族, cost=7, atk=6, life=6):\n    on_spellboost zone=Hand:\n        modify_cost $self by -1"
     },
     {
       "card_id": 81000013,
+      "name_eng": "神木法杖",
+      "name_chs": "",
       "kind": 2,
       "is_token": false,
       "clan": "精灵",
@@ -244,11 +182,12 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000013 \"神木法杖\" (Amulet, clan=精灵, cost=2):\n    turn_end turn=Self [combo(3)]:\n        draw 1\n    engage [engage(0)]:\n        destroy $self\n        select self:board other Choose(1)\n        grant_keyword ward to $selected",
-      "name": "神木法杖"
+      "text": "card 81000013 \"神木法杖\" (Amulet, clan=精灵, cost=2):\n    turn_end turn=Self [combo(3)]:\n        draw 1\n    engage [engage(0)]:\n        destroy $self\n        select self:board other Choose(1)\n        grant_keyword ward to $selected"
     },
     {
       "card_id": 81000014,
+      "name_eng": "贤光守护·雪绒花",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "主教",
@@ -257,11 +196,12 @@
       "attack": 3,
       "life": 4,
       "source_format": "py_ast",
-      "text": "card 81000014 \"贤光守护·雪绒花\" (Follower, clan=主教, cost=5, atk=3, life=4):\n    fanfare [earth_rite(2)]:\n        evolve $self\n    on_evolve on($self):\n        deal 4 damage to opponent:board<Follower> Random(1)",
-      "name": "贤光守护·雪绒花"
+      "text": "card 81000014 \"贤光守护·雪绒花\" (Follower, clan=主教, cost=5, atk=3, life=4):\n    fanfare [earth_rite(2)]:\n        evolve $self\n    on_evolve on($self):\n        deal 4 damage to opponent:board<Follower> Random(1)"
     },
     {
       "card_id": 81000015,
+      "name_eng": "辉翼羽族·蕾诺",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "主教",
@@ -270,56 +210,54 @@
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 81000015 \"辉翼羽族·蕾诺\" (Follower, clan=主教, cost=3, atk=2, life=2):\n    clash:\n        deal 1 damage to opponent:leader\n    super_evolve:\n        grant_keyword max_attacks_per_turn(2) to $self",
-      "name": "辉翼羽族·蕾诺"
+      "text": "card 81000015 \"辉翼羽族·蕾诺\" (Follower, clan=主教, cost=3, atk=2, life=2):\n    clash:\n        deal 1 damage to opponent:leader\n    super_evolve:\n        grant_keyword max_attacks_per_turn(2) to $self"
     },
     {
       "card_id": 81000020,
+      "name_eng": "幽灵",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "深渊",
-      "traits": [
-        "亡者"
-      ],
+      "traits": ["亡者"],
       "cost": 1,
       "attack": 1,
       "life": 1,
       "source_format": "py_ast",
-      "text": "card 81000020 \"幽灵\" (Follower, clan=深渊, cost=1, atk=1, life=1):\n    traits: [亡者]\n    keywords: [storm]\n    on_leave on($self):\n        banish $self\n    turn_end turn=Self:\n        banish $self",
-      "name": "幽灵"
+      "text": "card 81000020 \"幽灵\" (Follower, clan=深渊, cost=1, atk=1, life=1):\n    traits: [亡者]\n    keywords: [storm]\n    on_leave on($self):\n        banish $self\n    turn_end turn=Self:\n        banish $self"
     },
     {
       "card_id": 81000021,
+      "name_eng": "篡夺的继承者·辛西罗",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "皇家",
-      "traits": [
-        "财宝"
-      ],
+      "traits": ["财宝"],
       "cost": 6,
       "attack": 5,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 81000021 \"篡夺的继承者·辛西罗\" (Follower, clan=皇家, cost=6, atk=5, life=5):\n    traits: [财宝]\n    fuse: any:board All where has trait 财宝\n    fanfare:\n        deal ctr:fuse_kinds damage to opponent:board +leader All\n    super_evolve:\n        invoke_ability OnPlay on $self",
-      "name": "篡夺的继承者·辛西罗"
+      "text": "card 81000021 \"篡夺的继承者·辛西罗\" (Follower, clan=皇家, cost=6, atk=5, life=5):\n    traits: [财宝]\n    fuse: any:board All where has trait 财宝\n    fanfare:\n        deal ctr:fuse_kinds damage to opponent:board +leader All\n    super_evolve:\n        invoke_ability OnPlay on $self"
     },
     {
       "card_id": 81000022,
+      "name_eng": "突击神器",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "超越者",
-      "traits": [
-        "创造物"
-      ],
+      "traits": ["创造物"],
       "cost": 3,
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 81000022 \"突击神器\" (Follower, clan=超越者, cost=3, atk=2, life=2):\n    traits: [创造物]\n    keywords: [rush]\n    fuse: any:board All where has trait 创造物\n    on_fuse zone=Hand on($self):\n        if (ctr:fuse_cost >= 1 and ctr:fuse_cost <= 1):\n            transform $self into #90073110\n        elif (ctr:fuse_cost >= 2 and ctr:fuse_cost <= 2):\n            transform $self into #90073120\n        elif ctr:fuse_cost >= 3:\n            transform $self into #90073130",
-      "name": "突击神器"
+      "text": "card 81000022 \"突击神器\" (Follower, clan=超越者, cost=3, atk=2, life=2):\n    traits: [创造物]\n    keywords: [rush]\n    fuse: any:board All where has trait 创造物\n    on_fuse zone=Hand on($self):\n        if (ctr:fuse_cost >= 1 and ctr:fuse_cost <= 1):\n            transform $self into #90073110\n        elif (ctr:fuse_cost >= 2 and ctr:fuse_cost <= 2):\n            transform $self into #90073120\n        elif ctr:fuse_cost >= 3:\n            transform $self into #90073130"
     },
     {
       "card_id": 81000023,
+      "name_eng": "旋转的命运之轮·斯劳斯",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "超越者",
@@ -328,11 +266,12 @@
       "attack": 3,
       "life": 3,
       "source_format": "py_ast",
-      "text": "card 81000023 \"旋转的命运之轮·斯劳斯\" (Follower, clan=超越者, cost=5, atk=3, life=3):\n    keywords: [ambush]\n    turn_end turn=Self if is Evolved:\n        gain_crest \"Testset Slaus, Revolving Wheel of Fortune\" [owner=Opponent]",
-      "name": "旋转的命运之轮·斯劳斯"
+      "text": "card 81000023 \"旋转的命运之轮·斯劳斯\" (Follower, clan=超越者, cost=5, atk=3, life=3):\n    keywords: [ambush]\n    turn_end turn=Self if is Evolved:\n        gain_crest \"Testset Slaus, Revolving Wheel of Fortune\" [owner=Opponent]"
     },
     {
       "card_id": 81000024,
+      "name_eng": "原初继承者·圣导天",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "主教",
@@ -341,11 +280,12 @@
       "attack": 5,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 81000024 \"原初继承者·圣导天\" (Follower, clan=主教, cost=8, atk=5, life=5):\n    turn_start zone=Deck turn=Self if ctr:evolve_count >= 6:\n        invoke_self",
-      "name": "原初继承者·圣导天"
+      "text": "card 81000024 \"原初继承者·圣导天\" (Follower, clan=主教, cost=8, atk=5, life=5):\n    turn_start zone=Deck turn=Self if ctr:evolve_count >= 6:\n        invoke_self"
     },
     {
       "card_id": 81000025,
+      "name_eng": "执着的实验体",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "超越者",
@@ -354,11 +294,12 @@
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 81000025 \"执着的实验体\" (Follower, clan=超越者, cost=3, atk=2, life=2):\n    on_enter on($self) if count(self:board other All) >= 5:\n        destroy opponent:board<Follower> All",
-      "name": "执着的实验体"
+      "text": "card 81000025 \"执着的实验体\" (Follower, clan=超越者, cost=3, atk=2, life=2):\n    on_enter on($self) if count(self:board other All) >= 5:\n        destroy opponent:board<Follower> All"
     },
     {
       "card_id": 81000030,
+      "name_eng": "帕斯卡尔的舞蹈",
+      "name_chs": "",
       "kind": 2,
       "is_token": false,
       "clan": "巫师",
@@ -367,11 +308,12 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000030 \"帕斯卡尔的舞蹈\" (Amulet, clan=巫师, cost=3):\n    fanfare [earth_rite(10)]:\n        set_stats self:board<Follower> Choose(1) to (prop:Attack * 2)/(prop:Life * 2)",
-      "name": "帕斯卡尔的舞蹈"
+      "text": "card 81000030 \"帕斯卡尔的舞蹈\" (Amulet, clan=巫师, cost=3):\n    fanfare [earth_rite(10)]:\n        set_stats self:board<Follower> Choose(1) to (prop:Attack * 2)/(prop:Life * 2)"
     },
     {
       "card_id": 81000031,
+      "name_eng": "伟大显现·姆耶拉班",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "中立",
@@ -380,11 +322,12 @@
       "attack": 6,
       "life": 6,
       "source_format": "py_ast",
-      "text": "card 81000031 \"伟大显现·姆耶拉班\" (Follower, clan=中立, cost=8, atk=6, life=6):\n    on_enter on($self):\n        replace_deck \"a deck of 40 cards\"",
-      "name": "伟大显现·姆耶拉班"
+      "text": "card 81000031 \"伟大显现·姆耶拉班\" (Follower, clan=中立, cost=8, atk=6, life=6):\n    on_enter on($self):\n        replace_deck \"a deck of 40 cards\""
     },
     {
       "card_id": 81000032,
+      "name_eng": "虚无显现·奥克翠丝",
+      "name_chs": "",
       "kind": 2,
       "is_token": false,
       "clan": "皇家",
@@ -393,11 +336,12 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000032 \"虚无显现·奥克翠丝\" (Amulet, clan=皇家, cost=4):\n    countdown(8)\n    on_play or=OnFuse on(any:board Choose(1) where has trait 财宝):\n        advance_countdown $self by 1\n    last_words:\n        add_to_hand 1 #90024310",
-      "name": "虚无显现·奥克翠丝"
+      "text": "card 81000032 \"虚无显现·奥克翠丝\" (Amulet, clan=皇家, cost=4):\n    countdown(8)\n    on_play or=OnFuse on(any:board Choose(1) where has trait 财宝):\n        advance_countdown $self by 1\n    last_words:\n        add_to_hand 1 #90024310"
     },
     {
       "card_id": 81000033,
+      "name_eng": "璀璨黄金",
+      "name_chs": "",
       "kind": 3,
       "is_token": false,
       "clan": "中立",
@@ -406,11 +350,12 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000033 \"璀璨黄金\" (Spell, clan=中立, cost=1):\n    on_play:\n        modes Choose(pick=1):\n            option 1:\n                draw 1\n            option 2:\n                deal 2 damage to opponent:leader\n            option 3:\n                restore 2 life to self:leader",
-      "name": "璀璨黄金"
+      "text": "card 81000033 \"璀璨黄金\" (Spell, clan=中立, cost=1):\n    on_play:\n        modes Choose(pick=1):\n            option 1:\n                draw 1\n            option 2:\n                deal 2 damage to opponent:leader\n            option 3:\n                restore 2 life to self:leader"
     },
     {
       "card_id": 81000034,
+      "name_eng": "巴别伦之城",
+      "name_chs": "",
       "kind": 2,
       "is_token": false,
       "clan": "中立",
@@ -419,11 +364,12 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000034 \"巴别伦之城\" (Amulet, clan=中立, cost=1):\n    countdown(1)\n    turn_end turn=Self:\n        modes Sequence(pick=1):\n            option 1:\n                deal 2 damage to opponent:board<Follower> Random(1)\n            option 2:\n                draw 1\n            option 3:\n                restore 2 life to self:leader",
-      "name": "巴别伦之城"
+      "text": "card 81000034 \"巴别伦之城\" (Amulet, clan=中立, cost=1):\n    countdown(1)\n    turn_end turn=Self:\n        modes Sequence(pick=1):\n            option 1:\n                deal 2 damage to opponent:board<Follower> Random(1)\n            option 2:\n                draw 1\n            option 3:\n                restore 2 life to self:leader"
     },
     {
       "card_id": 81000035,
+      "name_eng": "夜华·夏克多",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "精灵",
@@ -432,11 +378,12 @@
       "attack": 5,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 81000035 \"夜华·夏克多\" (Follower, clan=精灵, cost=7, atk=5, life=5):\n    fanfare:\n        repeat 2 times:\n            return_to_deck self:hand All\n            draw ctr:cards_returned_to_hand\n            if maxgroup(self:hand All) >= 4:\n                deal 4 damage to opponent:board +leader All\n    super_evolve:\n        invoke_ability OnPlay on $self",
-      "name": "夜华·夏克多"
+      "text": "card 81000035 \"夜华·夏克多\" (Follower, clan=精灵, cost=7, atk=5, life=5):\n    fanfare:\n        repeat 2 times:\n            return_to_deck self:hand All\n            draw ctr:cards_returned_to_hand\n            if maxgroup(self:hand All) >= 4:\n                deal 4 damage to opponent:board +leader All\n    super_evolve:\n        invoke_ability OnPlay on $self"
     },
     {
       "card_id": 81000036,
+      "name_eng": "冒险者公会",
+      "name_chs": "",
       "kind": 2,
       "is_token": false,
       "clan": "中立",
@@ -445,11 +392,12 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000036 \"冒险者公会\" (Amulet, clan=中立, cost=2):\n    fanfare:\n        tutor self:deck<Follower> Random(1)\n    engage [engage(0)]:\n        destroy $self\n        select self:board<Follower> Choose(1)\n        grant_keyword rush to $selected\n        draw 1",
-      "name": "冒险者公会"
+      "text": "card 81000036 \"冒险者公会\" (Amulet, clan=中立, cost=2):\n    fanfare:\n        tutor self:deck<Follower> Random(1)\n    engage [engage(0)]:\n        destroy $self\n        select self:board<Follower> Choose(1)\n        grant_keyword rush to $selected\n        draw 1"
     },
     {
       "card_id": 81000037,
+      "name_eng": "远古加农炮",
+      "name_chs": "",
       "kind": 2,
       "is_token": false,
       "clan": "超越者",
@@ -458,26 +406,26 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000037 \"远古加农炮\" (Amulet, clan=超越者, cost=3):\n    fanfare:\n        add_to_hand 1 #90071210\n    on_fuse:\n        deal 2 damage to opponent:board<Follower> Random(1)",
-      "name": "远古加农炮"
+      "text": "card 81000037 \"远古加农炮\" (Amulet, clan=超越者, cost=3):\n    fanfare:\n        add_to_hand 1 #90071210\n    on_fuse:\n        deal 2 damage to opponent:board<Follower> Random(1)"
     },
     {
       "card_id": 81000038,
+      "name_eng": "野心的齿轮",
+      "name_chs": "",
       "kind": 2,
       "is_token": false,
       "clan": "超越者",
-      "traits": [
-        "创造物"
-      ],
+      "traits": ["创造物"],
       "cost": 1,
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 81000038 \"野心的齿轮\" (Amulet, clan=超越者, cost=1):\n    traits: [创造物]\n    keywords: [cannot_be_played]\n    fuse: any:board<Amulet> All where has trait 创造物",
-      "name": "野心的齿轮"
+      "text": "card 81000038 \"野心的齿轮\" (Amulet, clan=超越者, cost=1):\n    traits: [创造物]\n    keywords: [cannot_be_played]\n    fuse: any:board<Amulet> All where has trait 创造物"
     },
     {
       "card_id": 81000039,
+      "name_eng": "秘术猎人·尤娜",
+      "name_chs": "",
       "kind": 1,
       "is_token": false,
       "clan": "深渊",
@@ -486,15 +434,7 @@
       "attack": 3,
       "life": 5,
       "source_format": "py_ast",
-      "text": "card 81000039 \"秘术猎人·尤娜\" (Follower, clan=深渊, cost=4, atk=3, life=5):\n    keywords: [ward]\n    last_words:\n        add_to_hand 1 #90051130",
-      "name": "秘术猎人·尤娜"
-    }
-  ],
-  "counters": [
-    {
-      "name": "探测计数",
-      "min": 0,
-      "max": 7
+      "text": "card 81000039 \"秘术猎人·尤娜\" (Follower, clan=深渊, cost=4, atk=3, life=5):\n    keywords: [ward]\n    last_words:\n        add_to_hand 1 #90051130"
     }
   ]
 }

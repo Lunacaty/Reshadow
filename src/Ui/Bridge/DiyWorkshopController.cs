@@ -1011,6 +1011,14 @@ public sealed class DiyWorkshopController
             "deckmod" => ws.DeckModBlocks,
             _ => null,
         };
+        if (cur == null) return null;
+
+        // 单层路径 = 直接插在域根（事件帽 / 构筑修正），
+        // 此时 path[0].Index 是 -1（根槽没有「第几个块」），
+        // 进下面的循环会在 bi < 0 处直接返回 null，选中焦点随之丢失。
+        if (path.Count == 1)
+            return index < cur.Count ? cur[index] : null;
+
         // path[0].Slot 是域根槽；后续元素依次是 (块下标, 该块内的子槽)
         for (int i = 0; i < path.Count; i++)
         {

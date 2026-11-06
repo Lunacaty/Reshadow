@@ -703,6 +703,10 @@ public sealed partial class CardVm
                 if (!CostExecutor.CanPay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey, ab.Body)) continue;
                 CostExecutor.Pay(_world, e.PlayerId, e, ab.Costs, ppKey, shadowKey, earthKey);
 
+                // 条件与代价都通过了，这才是「正式发动」：
+                // 此时才消耗每回合触发额度，避免条件不成立也白扣一次。
+                ConsumeTriggerQuota(e, ab);
+
                 // 代价已付、即将压栈执行：这一刻就是「这条能力正式发动」。
                 // 前端据此在左下角弹浮窗，并把「发动了哪一句」写进对局日志。
                 _world.EmitEvent(new VmEvent
@@ -805,6 +809,27 @@ public sealed partial class CardVm
     ///   SecondaryFilter     —— 事件副体过滤（Follower Strike 要求攻击目标是随从）
     ///   MaxTriggersPerTurn  —— 每回合触发上限
     /// </summary>
+    /// <summary>
+    /// 触发计数的键：同一实体上的**不同能力各自计数**。
+    ///
+    /// 只用 EntityId 会让两条限次能力互相抢额度 ——
+    /// 「每回合限一次」的两条不同能力，发一条就把另一条也堵死。
+    /// </summary>
+    private static int TriggerKey(RuntimeEntity owner, AbilityDef ab, TriggerSpec trig)
+    {
+        int baseId = owner?.EntityId ?? 0;
+        int abHash = ab?.GetHashCode() ?? (trig?.GetHashCode() ?? 0);
+        unchecked { return baseId * 397 ^ abHash; }
+    }
+
+    /// <summary>能力确认发动后累加触发次数。</summary>
+    private void ConsumeTriggerQuota(RuntimeEntity owner, AbilityDef ab)
+    {
+        if (ab?.Trigger == null || ab.Trigger.MaxTriggersPerTurn <= 0) return;
+        int key = TriggerKey(owner, ab, ab.Trigger);
+        _triggerCounts[key] = _triggerCounts.GetValueOrDefault(key) + 1;
+    }
+
     private bool MatchesTrigger(TriggerSpec trig, VmEvent ev, RuntimeEntity owner)
     {
         // 1. 区域：卡必须位于它声明的监听区域
@@ -905,13 +930,15 @@ public sealed partial class CardVm
             if (!pool.Any(r => r.EntityId == ev.Object.Value.EntityId)) return false;
         }
 
-        // 5. 每回合触发上限
+        // 5. 每回合触发上限：**只判断、不扣次数**。
+        //
+        // 这里不能累加：条件判定失败或代价付不起时能力根本没发动，
+        // 先扣次数等于白白消耗一次额度。真正的累加在调用方
+        // 确认条件与代价都通过之后做（ConsumeTriggerQuota）。
         if (trig.MaxTriggersPerTurn > 0)
         {
-            int key = owner.EntityId;
-            int used = _triggerCounts.GetValueOrDefault(key);
+            int used = _triggerCounts.GetValueOrDefault(TriggerKey(owner, null, trig));
             if (used >= trig.MaxTriggersPerTurn) return false;
-            _triggerCounts[key] = used + 1;
         }
 
         return true;

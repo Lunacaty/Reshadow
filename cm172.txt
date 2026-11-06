@@ -1,0 +1,37 @@
+feat(172): 严格落实 172 号文档 —— 2 处阻断 Bug + 2 处断链 + 2 处优化
+
+## 阻断级 Bug
+  1. 复合条件子条件无法修改（C# 闭包陷阱）：
+     for 循环的 si 在所有迭代间共享，闭包捕获它之后回调求值时
+     si 已等于 Count，si < Count 恒 false —— 子条件改了立刻弹回原样。
+     已改为捕获迭代局部的副本 siLocal。
+
+  2. 插入事件帽 / 构筑修正后选中焦点丢失：
+     这两类积木直接进域根，PathOfListIn 只记一步 [(-1, slot)]，
+     ResolveBlockAt 进循环即因 bi < 0 返回 null，LastInsertedBlock 恒空。
+     已在 ResolveBlockAt 开头对单层路径直接按 index 取回。
+
+## 数据与交互断链
+  3. 另存新卡的立绘重载后丢失：
+     CardRawEntry 没有 ArtCardId 字段，序列化层不写 art_card_id，
+     GlobalCatalog 的两个构造分支也都没传 —— 三处全断。
+     已补齐：字段声明 / 加载解析 / 保存赋值 / JSON 序列化 / 两个编译分支。
+     验证：另存 #950001 后重载，ArtCardId=10011110（继承原卡立绘）。
+
+  4. 新建卡池后职业与计数器不刷新：
+     OpenNewPoolDialog 的 if (ok) 块补 RefreshPoolClans / RefreshPoolCounters。
+
+## 体验与规则层
+  5. 召唤 / 生成 / 变身积木的画布标签改为显示《中文卡名》，
+     不再是一串裸卡号；查不到中文名时回落卡名 / #卡号。
+
+  6. 每回合触发上限的计数时机：
+     MatchesTrigger 原来在条件判定之前就扣次数 —— 条件不成立也白扣一次；
+     且只按 EntityId 计键，同一实体的两条限次能力互相抢占额度。
+     改为只判断不扣，条件与代价都通过后由 ConsumeTriggerQuota 累加，
+     键改成 (EntityId, AbilityDef) 组合。
+
+## 门禁
+  全部通过：VM 50/50、文档验收 102/102、Combat 16/16、效用 11/11(弃1)、
+  逐卡矩阵 26/26(弃6)、完整对局 7/7、DIY 3/3(弃1)、PyAST 12/12、
+  卡池 17/17(弃2)、UI 3/3、战斗 UI 25/25(弃6)。

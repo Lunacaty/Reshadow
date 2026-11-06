@@ -32,6 +32,14 @@ public sealed class CardRawEntry
     /// <summary>true = 衍生卡（Token），不可直接放进局外构筑。</summary>
     public bool IsToken { get; init; }
 
+    /// <summary>
+    /// 立绘来源卡号。0 表示用 CardId 本身。
+    ///
+    /// 另存新卡 / 卡号冲突改号时，立绘文件仍属于原卡，
+    /// 这个字段必须一路落盘，否则重载后新卡去找不存在的图片变黑底。
+    /// </summary>
+    public int ArtCardId { get; init; }
+
     public string Clan { get; init; } = "中立";
     public List<string> Traits { get; init; } = new();
     public int Cost { get; init; }

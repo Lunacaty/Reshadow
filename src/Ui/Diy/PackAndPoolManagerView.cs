@@ -1097,6 +1097,9 @@ public partial class PackAndPoolManagerView : Control
                 BuildPoolPicker();
                 RefreshRules();
                 RefreshNamedDecks();
+                // 换到新卡池后，右下角的职业与计数器必须跟着换成新池的数据。
+                RefreshPoolClans();
+                RefreshPoolCounters();
             }
             dlg.QueueFree();
         };
