@@ -306,6 +306,11 @@ public sealed class AuthoritativeMatchHost : IDisposable
     /// <summary>给每个观察者各推一份裁剪快照。</summary>
     public void BroadcastSnapshot()
     {
+        // 开局前 State / Runner 还是 null：BeginHosting 尚未 Attach，
+        // 但后台网络线程已经收到 HELLO 并调到这里。此时推快照必然
+        // 在 FogOfWarSanitizer 里空引用，异常冒到 HandleClient 的 finally
+        // 把刚收到 ACK 的客机直接踢掉。等主线程 Attach 后会自动再推一次。
+        if (State == null || Runner == null) return;
         lock (_gate)
         {
             foreach (var pid in _clients.Keys.ToList()) PushSnapshotTo(pid);
@@ -315,6 +320,7 @@ public sealed class AuthoritativeMatchHost : IDisposable
 
     private void PushSnapshotTo(int playerId)
     {
+        if (State == null || Runner == null) return;
         if (!_clients.TryGetValue(playerId, out var client) || client == null) return;
         int from = _eventCursor.TryGetValue(playerId, out var c) ? c : 0;
 

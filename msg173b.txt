@@ -1,0 +1,27 @@
+feat(173): 严格落实 173 号文档 —— 握手崩溃 + 客机动画瘫痪
+
+## 1. 【高危崩溃】房主握手瞬间 NullReferenceException 秒踢客机
+  BeginHosting 尚未 Attach，State / Runner 都是 null；
+  但后台网络线程收到 HELLO 后即调 PushSnapshotTo ->
+  FogOfWarSanitizer.BuildForViewer -> state.ActivePlayer，当场空引用，
+  异常冒到 HandleClient 的 finally { client.Close(); }，客机刚收 ACK 就被断开。
+  已在 BroadcastSnapshot 与 PushSnapshotTo 入口加 State/Runner 双重守卫；
+  开局前的快照本就不需要推，主线程 Attach 后会自动再推一次。
+  直接测试：BeginHosting 状态下调 BroadcastSnapshot 不再抛异常。
+
+## 2. 【功能断链】客机完全不播放战斗动画与飘字
+  房主端把战场事件打包进 snap.NewEvents 下发，
+  但客机 ApplyRemoteSnapshot 从头到尾没读它，本地 State.EventLog 恒空，
+  BattleScreenRoot.ConsumeNewEventsToVfx() 每次读到 0 条 ——
+  攻击冲锋 / 伤害飘字 / 受击抖动 / 死亡碎裂 / 超进化砸地全部瘫痪。
+  已在该方法末尾还原 NewEvents 并推进 EventLog：
+    · Enum.TryParse<CoreEvent> 解析事件类型
+    · MapPid 做视角归一化
+    · FindLiveRef 按 EntityId 在双方手牌/场上/主战者找回 EntityRef
+      （已离场实体返回 null，飘字等仍由 Amount/Kind 驱动）
+    · Amount / SecondaryAmount / CounterName / KnockedBackBySuperEvolve 全量带上
+
+## 门禁
+  全部通过：VM 50/50、文档验收 102/102、Combat 16/16、效用 11/11(弃1)、
+  逐卡矩阵 26/26(弃6)、完整对局 7/7、DIY 3/3(弃1)、PyAST 12/12、
+  卡池 17/17(弃2)、UI 3/3、战斗 UI 25/25(弃6)。

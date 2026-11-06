@@ -168,6 +168,53 @@ public sealed class BattleSessionController
         {
             RemotePendingChoice = null;
         }
+
+        // ---- 还原增量事件日志 ----
+        //
+        // 房主端把本回合的战场事件打包进 snap.NewEvents 下发；客机若不还原，
+        // 本地 State.EventLog 永远为空，BattleScreenRoot.ConsumeNewEventsToVfx()
+        // 每次都读到 0 条 —— 攻击冲锋、伤害飘字、受击抖动、死亡碎裂、
+        // 超进化砸地在客机端全部瘫痪，只剩属性僵硬跳变。
+        if (snap.NewEvents != null && snap.NewEvents.Count > 0)
+        {
+            foreach (var ne in snap.NewEvents)
+            {
+                if (!Enum.TryParse<CoreEvent>(ne.Kind, out var kind)) continue;
+                int mappedPid = MapPid(ne.PlayerId);
+
+                State.EventLog.Add(new VmEvent
+                {
+                    Kind = kind,
+                    PlayerId = mappedPid,
+                    Subject = FindLiveRef(ne.SubjectEntityId),
+                    Object = FindLiveRef(ne.ObjectEntityId),
+                    Amount = ne.Amount,
+                    SecondaryAmount = ne.SecondaryAmount,
+                    CounterName = ne.CounterName ?? "",
+                    KnockedBackBySuperEvolve = ne.KnockedBackBySuperEvolve,
+                });
+            }
+        }
+    }
+
+    /// <summary>
+    /// 按 EntityId 在双方的手牌/场上/主战者里找回活体引用。
+    /// 已被破坏或消失的实体找不回来，此时返回 null —— 飘字等演出仍靠
+    /// Amount / Kind 驱动，不依赖主体能否解析。
+    /// </summary>
+    private EntityRef? FindLiveRef(int entityId)
+    {
+        if (entityId < 0) return null;
+        foreach (var p in State.Players)
+        {
+            if (p == null) continue;
+            var live = p.Board.FirstOrDefault(x => x.EntityId == entityId)
+                    ?? p.Hand.FirstOrDefault(x => x.EntityId == entityId);
+            if (live != null) return EntityRef.From(live);
+            if (p.Leader != null && p.Leader.EntityId == entityId)
+                return EntityRef.From(p.Leader);
+        }
+        return null;
     }
 
     /// <summary>隐藏卡：没有卡号，用一张中性占位立绘撑住手牌张数。</summary>
