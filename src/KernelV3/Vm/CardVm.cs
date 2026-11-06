@@ -1026,7 +1026,8 @@ public sealed partial class CardVm
         if (!SubjectBelongsTo(filter.Owner, owner.PlayerId, cand)) return false;
         if (filter.CardId > 0 && (cand.Snapshot?.CardId ?? 0) != filter.CardId) return false;
         if (!string.IsNullOrEmpty(filter.CardName)
-            && !string.Equals(cand.Snapshot?.Name, filter.CardName, StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(cand.Snapshot?.Name, filter.CardName, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(cand.Snapshot?.Def?.NameChs, filter.CardName, StringComparison.OrdinalIgnoreCase))
             return false;
         if (filter.Where == null || (filter.Where is Ast.ConstBoolExpr cb && cb.Value)) return true;
         var sub = scope0.Derive();

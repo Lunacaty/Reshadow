@@ -1108,6 +1108,8 @@ public sealed class AstCanonicalParser
         // ParseTarget 会贪婪收集到行尾，把 "by 2" 一起吞掉。
         // 先找到 by 的位置，只把之前的部分交给目标解析。
         var target = ParseTarget();
+        // 兼容历史产物里的裸词 self（打印器曾印成 "spellboost self by N"）。
+        if (target == null && MatchIdent("self")) target = TargetSpec.Self;
         EatIdent("by");
         // 这里的数值是紧跟在 by 后面的裸数字，不能交给 ParseNumExpr 的宽松收集
         // （它会把行尾其它东西一起吞掉，或者在空游标上返回 1）。
@@ -1582,7 +1584,10 @@ public sealed class AstCanonicalParser
                 string kStr = TakeIdent().ToLowerInvariant();
                 var k = kStr == "spell" ? CardKind.Spell : kStr == "amulet" ? CardKind.Amulet : CardKind.Follower;
                 if (Match(PyTokKind.Gt)) { }
-                spec = spec.WithWhere(new HasKindExpr { Kind = k, Of = DefaultSubject });
+                // <Kind> 写在 where 外面，但它过滤的是**目标池里的候选卡**，
+                // 主语必须是 $item —— 用 DefaultSubject（_whereDepth==0 时是 $self）
+                // 会让纹章/护符拿「自己是不是随从」去判卡种，100% 判 false（纹章全失明）。
+                spec = spec.WithWhere(new HasKindExpr { Kind = k, Of = TargetSpec.Item });
             }
         }
         else return defaultZone.HasValue ? TargetSpec.InZone(defaultZone.Value, ZoneScope.Self) : null;
@@ -1610,7 +1615,8 @@ public sealed class AstCanonicalParser
                 spec = spec.WithWhere(new NotSameEntityExpr
                 {
                     ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf,
-                    Of = DefaultSubject,
+                    // 同上：other 排除的是候选池里的 $item，不能用 $self。
+                    Of = TargetSpec.Item,
                 });
                 continue;
             }

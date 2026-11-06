@@ -3448,6 +3448,11 @@ public sealed class ActionParser
         else if (cur.MatchPhrase("the", "count", "of") || cur.MatchPhrase("the", "counts", "of"))
             target = _target.TryParse(cur)
                 ?? throw LangException.At("目标解析", "缺少目标", cur, cur.All);
+        // "advance its count by 1" / "delay their counts by 1" ——
+        // 代词指向 $selected / $created，落回默认的 $self 会推错对象。
+        else if (cur.MatchPhrase("its", "count") || cur.MatchPhrase("their", "counts")
+              || cur.MatchPhrase("their", "count"))
+            target = _target.ResolvePronounTarget();
         else if (cur.MatchPhrase("this", "amulet's") || cur.MatchWord("count"))
         { }
 

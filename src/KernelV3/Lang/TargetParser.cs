@@ -315,9 +315,13 @@ public sealed class TargetParser
         if (cur.MatchPhrase("your", "hand"))
             return new TargetSpec { Owner = ZoneScope.Self, Zone = ZoneRef.Hand, Mode = SelectMode.All };
 
-        // "all your crests" / "all crests"
-        if (cur.MatchPhrase("all", "your", "crests") || cur.MatchPhrase("all", "crests"))
+        // "all your crests" = 我方全部纹章；"all crests" = 双方全部纹章。
+        // 早先两者共用一个分支并把 Owner 写死成 Self，于是 "Banish all crests."
+        // 只消了我方纹章（174 号文档 BUG 2）。
+        if (cur.MatchPhrase("all", "your", "crests"))
             return new TargetSpec { Owner = ZoneScope.Self, Zone = ZoneRef.CrestArea, Mode = SelectMode.All };
+        if (cur.MatchPhrase("all", "crests"))
+            return new TargetSpec { Owner = ZoneScope.Any, Zone = ZoneRef.CrestArea, Mode = SelectMode.All };
 
         // "your Crest: <Name>"
         if (cur.MatchPhrase("your", "crest"))
@@ -883,6 +887,16 @@ public sealed class TargetParser
             hasCardType = true;
             matched = true;
         }
+        // crest / crests —— 纹章不在战场上，必须切到纹章区。
+        // 漏掉这一支时 "Destroy an enemy crest" / "all enemy crests" 会解析失败或指错区域。
+        else if (cur.Current.IsAnyWord("crest", "crests"))
+        {
+            cur.Advance();
+            zone = ZoneRef.CrestArea;
+            wheres.Add(new HasKindExpr { Kind = CardKind.Crest, Of = TargetSpec.Item });
+            hasCardType = true;
+            matched = true;
+        }
         else if (cur.Current.IsAnyWord("enemies", "enemy") && !cur.Peek().IsAnyWord("follower", "followers"))
         {
             cur.Advance();
@@ -1430,7 +1444,11 @@ public sealed class TargetParser
         var resolvedZone = history == Core.HistoryScope.None ? zone
                          : history == Core.HistoryScope.EnteredThisMatch ? ZoneRef.Board
                          : ZoneRef.Cemetery;
-        var defaultOwner = (resolvedZone == ZoneRef.Board || resolvedZone == ZoneRef.Leader)
+        // 纹章区同样按「公共博弈区」处理："all crests" 这类没写归属的
+        // 说法应指向双方（与 "all followers" 一致），否则 "Banish all crests."
+        // 又会退化成只消我方。
+        var defaultOwner = (resolvedZone == ZoneRef.Board || resolvedZone == ZoneRef.Leader
+                         || resolvedZone == ZoneRef.CrestArea)
             ? ZoneScope.Any
             : ZoneScope.Self;
 

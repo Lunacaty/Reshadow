@@ -266,8 +266,11 @@ public sealed class VmEval
                     var d = RefDef(r);
                     if (d == null) return false;
                     if (hcn.CardId > 0 && d.CardId == hcn.CardId) return true;
+                    // 中英文名都要比：编译产物里 CardName 可能是英文，
+                    // 而 CardDef.Name 走的是本地化名 / NameChs 是简中（174 号文档 12）。
                     return !string.IsNullOrEmpty(hcn.CardName)
-                           && string.Equals(d.Name, hcn.CardName, StringComparison.OrdinalIgnoreCase);
+                           && (string.Equals(d.Name, hcn.CardName, StringComparison.OrdinalIgnoreCase)
+                               || string.Equals(d.NameChs, hcn.CardName, StringComparison.OrdinalIgnoreCase));
                 });
             }
             case HasPackExpr hp:

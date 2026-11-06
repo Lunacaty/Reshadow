@@ -1518,9 +1518,14 @@ public sealed class EnglishCompiler
             // 之后紧跟 "If super-evolved, restore 4 instead"）必须沿用前一句的 Trigger。
             // 否则它被默认赋成 OnPlay，InsteadWeaver.FindPartner 拿 OnPlay 去配 TurnEnd
             // 必然配不上 —— 既不合成 if/else，也不会继承 self:leader 这类目标。
+            // 同一段落内，后续分句只要没有显式事件头，就必须沿用前一句的 Trigger
+            // （174 号文档 BUG 5）：早先还要求 hasInsteadWord，于是
+            // "Last Words: ..." 后面跟一句 "Necromancy (4) - ..."（没有 instead）
+            // 会被默认赋成 OnPlay —— 谢幕曲/进化时的追加唤灵变成了入场曲。
             var mainTrig = selfOnlyRestriction
                 ? new TriggerSpec { Event = CoreEvent.PassiveAura }
-                : (!hb.EventExplicit && hasInsteadWord && currentAbility?.Trigger != null)
+                : (!hb.EventExplicit && currentAbility?.Trigger != null
+                   && currentAbility.Trigger.Event != CoreEvent.PassiveAura)
                     ? currentAbility.Trigger
                     : hb.BuildTrigger();
             var built = new AbilityDef
@@ -2786,6 +2791,23 @@ public sealed class EnglishCompiler
                 var sn = c.Current.Text.ToLowerInvariant();
                 var key = sn.StartsWith("attack") ? StatKey.Attack : StatKey.Life;
                 return NumExpr.Prop(key, TargetSpec.Previous);
+            }
+        }
+
+        // "its attack" / "their defense" —— 代词指向 $selected / $created。
+        // 漏掉这一支会掉进底部兜底，生成 ctr:its_attack 这种幽灵计数器，
+        // 运行期恒为 0（174 号文档 3.3："Deal damage equal to its attack" 打 0）。
+        if (c.Current.IsAnyWord("its", "their"))
+        {
+            c.Advance();
+            if (!c.IsAtEnd)
+            {
+                var sn = c.Current.Text.ToLowerInvariant();
+                var key = sn.StartsWith("attack") ? StatKey.Attack
+                        : (sn.StartsWith("defense") || sn.StartsWith("life")) ? StatKey.Life
+                        : sn.StartsWith("cost") ? StatKey.Cost
+                        : StatKey.Attack;
+                return NumExpr.Prop(key, _target.ResolvePronounTarget());
             }
         }
 

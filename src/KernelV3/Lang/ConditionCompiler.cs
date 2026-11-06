@@ -647,7 +647,11 @@ public static class ConditionCompiler
             // 删掉这个特判后，句子会自然落到下面的 TargetParser，
             // 解析成 count(self:hand All where (has trait Clue and is Amulet)) >= 1。
             bool atLeast = c.MatchPhrase("at", "least");
-            int n = ReadNumber(c);
+            // 必须区分「原文写了 0」和「原文没写数字（a/an 省略）」（174 号文档 3.2）：
+            // 早先统一用 `n > 0 ? n : 1`，把 "If you have 0 cards in your hand"
+            // 也编成了 >= 1。省略数字才兜底为 1，写了 0 就是 0。
+            bool hasNum = TryReadNumber(c, out int n);
+            if (!hasNum) n = 1;
 
             // "you have at least 4 cards with the same cost in your hand"
             // TargetParser 不认识 "with the same cost"，会在 "cards" 处提前收尾，
@@ -673,7 +677,7 @@ public static class ConditionCompiler
                     {
                         Left = new NumExpr { Op = NumOp.MaxGroupSize, Of = TargetSpec.InZone(zone0, owner0) },
                         Op = CompareOp.Ge,
-                        Right = NumExpr.Const(n > 0 ? n : 1),
+                        Right = NumExpr.Const(n),
                     };
                 }
                 c.Seek(sc);
@@ -686,12 +690,13 @@ public static class ConditionCompiler
                 {
                     Left = NumExpr.Ctr(resCounter.Value),
                     Op = CompareOp.Ge,
-                    Right = NumExpr.Const(n > 0 ? n : 1),
+                    Right = NumExpr.Const(n),
                 };
 
             // 「N cards or less / or fewer」：TargetParser 会在 `or` 处收尾，
             // 而且 `or less` 挡在 `in your hand` 前面，区域短语也一起丢了。
-            var cmpOp = CompareOp.Ge;
+            // 写了 "0" 时是「恰好 0」而不是「至少 0」（后者恒真，等于没有条件）。
+            var cmpOp = (hasNum && n == 0) ? CompareOp.Eq : CompareOp.Ge;
             var tgt = new TargetParser(lex).TryParse(c);
             if (c.MatchPhrase("or", "less") || c.MatchPhrase("or", "fewer"))
             {
@@ -711,7 +716,7 @@ public static class ConditionCompiler
                     // 不是让玩家从手牌里挑 1 张。
                     Left = NumExpr.CountOf(tgt.AsPoolFilter()),
                     Op = cmpOp,
-                    Right = NumExpr.Const(n > 0 ? n : 1),
+                    Right = NumExpr.Const(n),
                 };
             }
 
@@ -962,12 +967,15 @@ public static class ConditionCompiler
     }
 }
 
-    private static int ReadNumber(TokenCursor c)
+    private static int ReadNumber(TokenCursor c) => TryReadNumber(c, out int v) ? v : 0;
+
+    /// <summary>读取数字并回报「原文是否真的写了数字」。</summary>
+    private static bool TryReadNumber(TokenCursor c, out int n)
     {
-        if (c.Current.Kind != TokKind.Number) return 0;
-        int v = c.Current.Value;
+        if (c.Current.Kind != TokKind.Number) { n = 0; return false; }
+        n = c.Current.Value;
         c.Advance();
-        return v;
+        return true;
     }
 
     // ========================================================================

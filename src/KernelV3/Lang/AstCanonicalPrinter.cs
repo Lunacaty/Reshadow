@@ -777,7 +777,8 @@ public static class AstCanonicalPrinter
         // 主战者级
         string owner = ctr.Owner != ZoneScope.Self ? " [owner=" + ctr.Owner + "]" : "";
         if (name == "spellboost" && ctr.Op == CounterOp.Add)
-            return "spellboost self by " + delta + owner;
+            // 必须印 $self：ParseTarget 只认 $self / self:zone，裸词 self 解析不回来（174 号文档 3.4）。
+            return "spellboost $self by " + delta + owner;
 
         // 内置资源给一等公民动词，省掉千篇一律的 counter xxx by N。
         // 只在 Add 且增量为纯常量时启用；动态表达式与 Set/Fill 仍走 counter。
