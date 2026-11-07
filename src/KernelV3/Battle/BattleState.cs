@@ -1726,15 +1726,42 @@ public sealed class BattleState : IVmWorld
             }
         }
 
-        // 运行时被授予的光环（挂在自己身上的）
+        // 运行时被授予的常驻关键词光环。
+        //
+        // 口径与 AuraStatBonus / QueryDamageModifiers 完全统一（182 号文档问题 1）：
+        //   · 宿主必须存活、未被沉默、且在战场或纹章区；
+        //   · 必须满足 DuringTurn 回合限制与 gab.Condition；
+        //   · 目标是否受光环影响交给 AuraTargets 判定，
+        //     **不能**写死「只能作用于宿主自己」—— 否则
+        //     「赋予 A 一条：使你的其他随从获得守护」永远不生效。
+        var evalKw = new Vm.VmEval(this);
         foreach (var (ge, gab, _, _) in _granted.ToList())
         {
-            if (ge == null || ge.EntityId != target.EntityId) continue;
-            if (gab?.Body == null) continue;
+            if (ge == null || ge.IsSilenced) continue;
+            if (ge.Zone != ZoneRef.Board && ge.Zone != ZoneRef.CrestArea) continue;
+            if (gab?.Trigger == null || gab.Trigger.Event != CoreEvent.PassiveAura) continue;
+            if (gab.Body == null) continue;
+            if (gab.Trigger.DuringTurn == Core.TurnOwnerScope.Self && ge.PlayerId != ActivePlayer) continue;
+            if (gab.Trigger.DuringTurn == Core.TurnOwnerScope.Opponent && ge.PlayerId == ActivePlayer) continue;
+
+            var gscope = new Vm.VmScope
+            {
+                Owner = ZoneScope.Self,
+                Controller = ge.PlayerId,
+                Source = Vm.EntityRef.From(ge),
+                SourceAbility = gab,
+            };
+            bool condOk;
+            try { condOk = gab.Condition == null || evalKw.EvalBool(gab.Condition, gscope); }
+            catch { condOk = true; }
+            if (!condOk) continue;
+
             foreach (var n in gab.Body)
                 if (n is Ast.ModifyKeywordNode mk2
                     && mk2.Op == Ast.KeywordOp.Grant && mk2.Keyword.Equals(kw))
-                    return true;
+                {
+                    if (AuraTargets(evalKw, mk2.Target, gscope, target)) return true;
+                }
         }
 
         return false;
@@ -1790,23 +1817,39 @@ public sealed class BattleState : IVmWorld
             }
         }
 
-        // 运行时被授予的光环（「使某个随从获得…」）
+        // 运行时被授予的伤害修正光环。
+        //
+        // 口径与 AuraStatBonus / HasEffectiveKeyword 完全统一（182 号文档问题 1）：
+        //   · 宿主存活 / 未沉默 / 在战场或纹章区；
+        //   · 满足 DuringTurn 与 gab.Condition；
+        //   · 目标由 AuraTargets 判定，去掉「只能作用于宿主自己」的死限制 ——
+        //     否则「赋予 A：使你的主战者受到的伤害 -1」永远不生效。
+        // scope 的 Source/Controller 也必须指向**宿主 ge**，
+        // 早先写成 target 会让条件里的 $self 读错实体。
         foreach (var (ge, gab, _, _) in _granted.ToList())
         {
-            if (ge == null || ge.EntityId != target.EntityId) continue;
-            if (target.IsSilenced) continue;
+            if (ge == null || ge.IsSilenced) continue;
+            if (ge.Zone != ZoneRef.Board && ge.Zone != ZoneRef.CrestArea) continue;
             if (gab?.Trigger == null || gab.Trigger.Event != CoreEvent.PassiveAura) continue;
             if (gab.Body == null) continue;
+            if (gab.Trigger.DuringTurn == Core.TurnOwnerScope.Self && ge.PlayerId != ActivePlayer) continue;
+            if (gab.Trigger.DuringTurn == Core.TurnOwnerScope.Opponent && ge.PlayerId == ActivePlayer) continue;
 
-            var scope = new Vm.VmScope
+            var gscope = new Vm.VmScope
             {
                 Owner = ZoneScope.Self,
-                Controller = target.PlayerId,
-                Source = Vm.EntityRef.From(target),
+                Controller = ge.PlayerId,
+                Source = Vm.EntityRef.From(ge),
+                SourceAbility = gab,
             };
+            bool condOk;
+            try { condOk = gab.Condition == null || eval.EvalBool(gab.Condition, gscope); }
+            catch { condOk = true; }
+            if (!condOk) continue;
+
             foreach (var n in gab.Body)
-                if (n is Ast.DamageModifierNode dm2 && AuraTargets(eval, dm2.Target, scope, target))
-                    yield return (dm2, scope);
+                if (n is Ast.DamageModifierNode dm2 && AuraTargets(eval, dm2.Target, gscope, target))
+                    yield return (dm2, gscope);
         }
     }
 
@@ -1861,7 +1904,11 @@ public sealed class BattleState : IVmWorld
     /// </summary>
     public int ApplyTakenDelta(RuntimeEntity target, int amount, Ast.DamageSourceMask source)
     {
-        if (target == null || amount <= 0) return amount;
+        // 只拦 target 为空，**不能**拦 amount <= 0（181/182 号文档问题 2）：
+        // 上一阶段 ApplyDealtDelta 可能已把伤害减成 -1 或 0，
+        // 若在这里直接返回，目标身上的「受到的伤害 +3」永远加不回来。
+        // 原始伤害 <= 0 的情况在 CombatResolver.ApplyDamage 入口就已拦截。
+        if (target == null) return amount;
         var eval = new Vm.VmEval(this);
         int dealt = amount;
 
