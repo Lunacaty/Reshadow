@@ -50,6 +50,9 @@ public sealed class AuthoritativeMatchHost : IDisposable
     /// <summary>房主发出 START 后触发；参数 = ResolvedFirstPlayer（0=房主先手，1=客机先手）。</summary>
     public event Action<int> StartMatchRequested;
 
+    /// <summary>对局进行中或房间内客机断开连接时触发（176 号文档 三.3）。</summary>
+    public event Action<int> ClientDisconnected;
+
     /// <summary>客机当前登记的真实牌组（房间内可随时更换，开局时以最新一份为准）。</summary>
     public ShadowverseFan.KernelV3.Packs.ConstructedDeck ClientDeck { get; private set; }
 
@@ -480,6 +483,7 @@ public sealed class AuthoritativeMatchHost : IDisposable
                     _statusNote = "客机已离开房间";
                 }
                 PublishRoom();
+                ClientDisconnected?.Invoke(myPlayerId);
             }
         }
     }

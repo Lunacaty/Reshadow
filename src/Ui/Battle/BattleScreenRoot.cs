@@ -171,7 +171,11 @@ public partial class BattleScreenRoot : Control
             _remoteClient.SnapshotReceived += OnRemoteSnapshot;
             if (_pending != null)
                 _pending.RemoteSubmit = (cid, sel) => RemoteSubmitChoice(cid, sel);
-            _remoteClient.Failed += msg => System.Console.WriteLine("[联机] " + msg);
+            _remoteClient.Failed += msg =>
+            {
+                System.Console.WriteLine("[联机] " + msg);
+                CallDeferred(MethodName.ShowDisconnectNotification, msg);
+            };
         }
     }
 
@@ -201,11 +205,42 @@ public partial class BattleScreenRoot : Control
         {
             // 客机指令在后台线程改了 State，必须切回主线程再动场景树。
             _authHost.SnapshotPushed += () => CallDeferred(MethodName.RebuildFromHost);
+            _authHost.ClientDisconnected += pid => CallDeferred(MethodName.ShowDisconnectNotification, "客机已断开连接");
         }
         Rebuild();
     }
 
     private void RebuildFromHost() => Rebuild();
+
+    private void ShowDisconnectNotification(string message)
+    {
+        if (IsInstanceValid(_result)) return;
+        var panel = new PanelContainer();
+        _overlayLayer.AddChild(panel);
+        SvWbTheme.KeepCentered(this, panel, new Vector2(460, 200));
+        panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
+            new Color(0.12f, 0.04f, 0.05f, 0.96f), new Color("DC2626"), 14, 2, 20));
+
+        var v = new VBoxContainer();
+        v.AddThemeConstantOverride("separation", 14);
+        v.Alignment = BoxContainer.AlignmentMode.Center;
+        panel.AddChild(v);
+
+        var title = new Label { Text = "⚠ 联机对局中断", HorizontalAlignment = HorizontalAlignment.Center };
+        title.AddThemeFontSizeOverride("font_size", 20);
+        title.AddThemeColorOverride("font_color", new Color("DC2626"));
+        v.AddChild(title);
+
+        var note = new Label { Text = message ?? "网络连接已中断", HorizontalAlignment = HorizontalAlignment.Center };
+        note.AddThemeFontSizeOverride("font_size", 14);
+        note.AddThemeColorOverride("font_color", SvWbTheme.TextSecondary);
+        v.AddChild(note);
+
+        var backBtn = new Button { Text = "← 返回牌组与大厅", CustomMinimumSize = new Vector2(180, 40) };
+        SvWbTheme.StyleButton(backBtn, isPrimary: true, customAccent: new Color("DC2626"));
+        backBtn.Pressed += () => OnExitToDecks?.Invoke();
+        v.AddChild(backBtn);
+    }
 
     private ShadowverseFan.Ui.Net.RemoteBattleClient _remoteClient;
 
@@ -346,9 +381,9 @@ public partial class BattleScreenRoot : Control
             if (IsInputBlocked) return;
             var target = _actionPanel.BoundEntity;
             if (target == null) return;
-            if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
             // 进入预选后收起左上角详情面板：否则它会挡在画面左侧（174 号文档 BUG4）。
             _actionPanel.HidePanel();
+            if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
             if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
         };
         _foeLeader.OnEvolveOrbClicked += isSuper =>
@@ -356,8 +391,8 @@ public partial class BattleScreenRoot : Control
             if (IsInputBlocked) return;
             var target = _actionPanel.BoundEntity;
             if (target == null) return;
-            if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
             _actionPanel.HidePanel();
+            if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
             if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
         };
         AddChild(_allyLeader);
