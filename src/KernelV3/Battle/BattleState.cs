@@ -1902,7 +1902,15 @@ public sealed class BattleState : IVmWorld
         return Math.Max(0, dealt);
     }
 
-    /// <summary>兼容旧调用点：增减后接上限（供尚未拆分的路径使用）。</summary>
+    /// <summary>
+    /// 兼容包装：先增减、再上限，一次算完「受到伤害」侧。
+    ///
+    /// 注意：它把两阶段压成一步，不符合 76-c 4.2「先汇总全部增减、
+    /// 再汇总全部上限」的要求 —— 若目标同时有易伤和上限，
+    /// 易伤会先被上限截掉。统一伤害管线 CombatResolver.ApplyDamage
+    /// 已经改用 ApplyTakenDelta / ApplyTakenCap 两段式，
+    /// 这个包装只留给尚未拆分的旧路径，新代码不要用。
+    /// </summary>
     public int ApplyTakenModifiers(RuntimeEntity target, int amount, Ast.DamageSourceMask source)
         => ApplyTakenCap(target, ApplyTakenDelta(target, amount, source), source);
 
@@ -1924,6 +1932,12 @@ public sealed class BattleState : IVmWorld
         new CombatResolver(this, Schema).ApplyDamage(target, amount, sourcePlayerId, source: source, sourceEntity: sourceEntity);
     }
 
+    /// <summary>
+    /// 兼容包装：一次算完「造成伤害」侧（含增减与上限）。
+    ///
+    /// 注意：同 ApplyTakenModifiers，两阶段压成一步不符合 76-c 4.2。
+    /// 统一管线已改用 ApplyDealtDelta / ApplyDealtCap，新代码不要用。
+    /// </summary>
     public int ApplyDealtModifiers(int sourcePlayerId, RuntimeEntity sourceEntity,
                                    int amount, Ast.DamageSourceMask source)
     {
@@ -1953,7 +1967,10 @@ public sealed class BattleState : IVmWorld
             if (dm.Kind == Ast.DamageAuraKind.DealtDelta)
             {
                 dealt = dm.IsReduction ? dealt - x : dealt + x;
-                if (dealt <= 0) return 0;
+                // 同 ApplyTakenDelta：绝不在这里提前截断（181 号文档 1）。
+                // 「造成 -1」与「造成 +1」并存时，第一轮算到 0 就 return
+                // 会把后面的 +1 吞掉；1-2=-1 被提前钳成 0 再加 1 又会变成
+                // 1 伤而不是 0 伤。全部汇总完再统一截断。
             }
             else if (dm.Kind == Ast.DamageAuraKind.DealtCap)
             {
@@ -1962,6 +1979,8 @@ public sealed class BattleState : IVmWorld
             }
         }
 
+        // 增减阶段保留带符号值（可能为负），上限阶段才钳到 0。
+        // 最终的统一截断由 CombatResolver.ApplyDamage 负责。
         return Math.Max(0, dealt);
     }
 
