@@ -32,6 +32,7 @@ public partial class LanRoomView : Control
     private ConstructedDeck _initialDeck;
     private bool _swappedToBattle;
     private int _startFirstPlayer;
+    private LanDiscoveryService _discovery;
 
     /// <summary>下拉框下标对应的合法牌组缓存；下标 0 是占位提示。</summary>
     private readonly List<ConstructedDeck> _decks = new();
@@ -63,6 +64,12 @@ public partial class LanRoomView : Control
         BuildUi(isHost: true);
 
         // 房主本地也要刷新：SetHostDeck / SetHostReady 等都会重新 PublishRoom。
+        // 房主在房间等待期间直接广播，无需将大厅隐藏挂在后台（176 号文档 二.3）
+        var poolView = _store.GetPoolView(_poolId);
+        string poolHash = poolView != null ? PoolIntegrityHasher.ComputePoolHash(poolView) : "";
+        _discovery = new LanDiscoveryService();
+        _discovery.StartBroadcast("Reshadow", LanDiscoveryService.MatchPort, _poolId, poolHash);
+
         _host.RoomStateChanged += OnRoomState;
         _host.StartMatchRequested += OnStartMatch;
         RefreshFromRoom(_host.RoomState);
@@ -81,6 +88,16 @@ public partial class LanRoomView : Control
         _client.RoomStateReceived += OnRoomState;
         _client.StartMatchReceived += OnStartMatch;
         _client.Failed += OnClientFailed;
+
+        // 客机连接态锁死：首包 ROOM 到达前禁用准备与牌组选择（176 号文档 二.3）
+        if (_readyBtn != null) _readyBtn.Disabled = true;
+        if (_deckPicker != null) _deckPicker.Disabled = true;
+        if (_status != null)
+        {
+            _status.Text = "⏳ 正在连接房主并校验卡池指纹…";
+            _status.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
+        }
+
         RefreshFromRoom(_client.LatestRoomState);
     }
 
@@ -113,6 +130,38 @@ public partial class LanRoomView : Control
         _poolLabel.AddThemeFontSizeOverride("font_size", 14);
         _poolLabel.AddThemeColorOverride("font_color", SvWbTheme.TextSecondary);
         root.AddChild(_poolLabel);
+
+        if (isHost)
+        {
+            var ips = LanNetworkHelper.GetLocalIpv4Addresses();
+            if (ips.Count > 0)
+            {
+                var ipRow = new HBoxContainer();
+                ipRow.AddThemeConstantOverride("separation", 8);
+                var ipHint = new Label { Text = "本机直连 IP：", CustomMinimumSize = new Vector2(100, 28) };
+                ipHint.AddThemeFontSizeOverride("font_size", 13);
+                ipHint.AddThemeColorOverride("font_color", SvWbTheme.TextSecondary);
+                ipRow.AddChild(ipHint);
+
+                var ipFlow = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                ipFlow.AddThemeConstantOverride("h_separation", 6);
+                ipFlow.AddThemeConstantOverride("v_separation", 4);
+                foreach (var item in ips)
+                {
+                    string targetIp = item.Ip;
+                    var btn = new Button { Text = $"📋 {targetIp} ({item.Tag})" };
+                    SvWbTheme.StyleButton(btn);
+                    btn.Pressed += () =>
+                    {
+                        DisplayServer.ClipboardSet(targetIp);
+                        if (_status != null) _status.Text = $"✔ 已复制 {targetIp} 到剪贴板";
+                    };
+                    ipFlow.AddChild(btn);
+                }
+                ipRow.AddChild(ipFlow);
+                root.AddChild(ipRow);
+            }
+        }
 
         root.AddChild(new HSeparator());
 
@@ -181,7 +230,11 @@ public partial class LanRoomView : Control
 
         var leave = new Button { Text = "← 离开房间", CustomMinimumSize = new Vector2(160, 38) };
         SvWbTheme.StyleButton(leave);
-        leave.Pressed += () => OnLeaveRoom?.Invoke();
+        leave.Pressed += () =>
+        {
+            _discovery?.Stop();
+            OnLeaveRoom?.Invoke();
+        };
         actionRow.AddChild(leave);
         root.AddChild(actionRow);
 
@@ -297,6 +350,7 @@ public partial class LanRoomView : Control
     {
         if (_swappedToBattle) return;
         _swappedToBattle = true;
+        _discovery?.Stop();
         OnStartMatchRequested?.Invoke(_startFirstPlayer);
     }
 
@@ -310,7 +364,13 @@ public partial class LanRoomView : Control
 
     private void ApplyFailureOnMainThread()
     {
-        if (_status != null) _status.Text = "✘ " + (_failedMessage ?? "连接中断");
+        if (_status != null)
+        {
+            _status.Text = "✘ " + (_failedMessage ?? "连接中断或卡池指纹校验失败");
+            _status.AddThemeColorOverride("font_color", new Color("DC2626"));
+        }
+        if (_readyBtn != null) _readyBtn.Disabled = true;
+        if (_deckPicker != null) _deckPicker.Disabled = true;
     }
 
     /// <summary>按房间快照刷新全部只读信息与按钮可用性。</summary>
@@ -318,7 +378,8 @@ public partial class LanRoomView : Control
     {
         if (room == null || _swappedToBattle) return;
         _latestRoom = room;
-        if (_poolLabel != null) _poolLabel.Text = "赛制卡池：" + room.PoolId;
+        if (_poolLabel != null && !string.IsNullOrEmpty(room.PoolId))
+            _poolLabel.Text = "赛制卡池：" + room.PoolId;
 
         bool isHost = _host != null;
         string mine = isHost ? room.HostDeckName : room.GuestDeckName;
@@ -333,6 +394,24 @@ public partial class LanRoomView : Control
 
         _localReady = isHost ? room.HostReady : room.GuestReady;
         UpdateReadyButton();
+
+        // 客机握手并收到有效房间数据后解锁
+        if (!isHost && !string.IsNullOrEmpty(room.PoolId) && string.IsNullOrEmpty(_failedMessage))
+        {
+            if (_readyBtn != null) _readyBtn.Disabled = false;
+            if (_deckPicker != null) _deckPicker.Disabled = false;
+        }
+
+        if (isHost && _discovery != null)
+        {
+            if (room.GuestJoined) _discovery.Stop();
+            else
+            {
+                var pv = _store?.GetPoolView(_poolId);
+                string ph = pv != null ? PoolIntegrityHasher.ComputePoolHash(pv) : "";
+                _discovery.StartBroadcast("Reshadow", LanDiscoveryService.MatchPort, _poolId, ph);
+            }
+        }
 
         // 客机换算成自己的视角：房主先手=我方后手，客机先手=我方先手，随机按解析结果。
         if (_firstPlayerLabel != null)
@@ -371,6 +450,9 @@ public partial class LanRoomView : Control
 
     public override void _ExitTree()
     {
+        _discovery?.Stop();
+        _discovery?.Dispose();
+        _discovery = null;
         if (_host != null)
         {
             _host.RoomStateChanged -= OnRoomState;

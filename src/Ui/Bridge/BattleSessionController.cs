@@ -75,8 +75,14 @@ public sealed class BattleSessionController
     /// 隐藏卡（IsHidden / CardId == -1）用一张占位卡面填充：
     /// 客机的内存里根本不存在对手的真实卡号，这是防读牌的最后一道。
     /// </summary>
+    /// <summary>注入 RemoteClient，统一拦截所有主动操作入口（176 号文档 二.1）。</summary>
+    public ShadowverseFan.Ui.Net.RemoteBattleClient RemoteClient { get; set; }
+    public bool IsRemote => RemoteClient != null;
+
     /// <summary>远端权威端推过来的挂起选择（客机模式专用）。</summary>
     public PendingChoice RemotePendingChoice { get; private set; }
+    public int RemotePendingChoiceSourceEntityId { get; private set; } = -1;
+    public int RemotePendingChoiceSourceCardId { get; private set; } = 0;
 
     /// <summary>
     /// 当前生效的挂起选择：客机优先读远端快照带来的那一份。
@@ -85,10 +91,20 @@ public sealed class BattleSessionController
     /// </summary>
     public PendingChoice EffectivePendingChoice => RemotePendingChoice ?? Runner.PendingChoice;
 
+    public MatchPhase? RemotePhase { get; private set; }
+    public int? RemoteWinner { get; private set; }
 
     public void ApplyRemoteSnapshot(ShadowverseFan.KernelV3.Net.NetStateSnapshot snap)
     {
         if (snap == null || State == null) return;
+
+        // 在清空旧的 Board/Hand 之前，拍下上一帧所有存活实体的快照索引，
+        // 供后续事件还原（阵亡、打出、被破坏的随从动画不至于丢失主体，176 号文档 一.3）。
+        var prevEntities = State.Players
+            .SelectMany(pl => pl.Board.Concat(pl.Hand).Concat(pl.CrestArea)
+                                .Append(pl.Leader).Where(x => x != null))
+            .GroupBy(x => x.EntityId)
+            .ToDictionary(g => g.Key, g => EntityRef.From(g.First()));
 
         // ★ 视角归一化：本地 UI 永远以 0 = 我方（屏幕下方）、1 = 敌方（屏幕上方）。
         // 本机在权威端若是 Player 1（客机），则把权威端的 1 映射到本地 0。
@@ -96,8 +112,14 @@ public sealed class BattleSessionController
         int me = snap.ViewerPlayerId is 0 or 1 ? snap.ViewerPlayerId : 0;
         int MapPid(int serverPid) => serverPid < 0 ? serverPid : (serverPid == me ? 0 : 1);
 
+        // 映射先后手与当前活跃玩家（176 号文档 二.2）
+        State.FirstPlayer = MapPid(snap.FirstPlayer);
         State.ActivePlayer = MapPid(snap.ActivePlayer);
         State.TurnNumber = snap.TurnNumber;
+
+        // 终局状态同步（176 号文档 一.4）
+        if (Enum.TryParse<MatchPhase>(snap.Phase, out var ph)) RemotePhase = ph;
+        RemoteWinner = snap.Winner is 0 or 1 ? MapPid(snap.Winner) : snap.Winner;
 
         for (int serverPid = 0; serverPid < 2 && serverPid < snap.Players.Length; serverPid++)
         {
@@ -147,14 +169,23 @@ public sealed class BattleSessionController
             // 后手额外能量点独立槽位：不还原会让客机界面的可用 PP 与权威端不一致。
             p.BonusPp = dto.BonusPp;
 
+            // 客机纯镜像写入，不走 WriteCounter 业务副作用（土印/线索召唤破坏、进化点覆写等，176 号文档 一.2）
+            p.Counters.Clear();
             foreach (var kv in dto.Counters ?? new System.Collections.Generic.Dictionary<string, int>())
-                State.WriteCounter(localPid, State.Schema.Counter(kv.Key), kv.Value);
+            {
+                var key = State.Schema.Counter(kv.Key);
+                p.Counters[key.Id] = kv.Value;
+                if (kv.Key == "faith" && State.FindFaith(localPid) is { } faith)
+                    faith.Counters[key] = kv.Value;
+            }
         }
 
         // 还原挂起选择：客机打出一张需要选目标/选模式/发现的牌时，
         // 权威端把 Pending 发过来，不还原就永远弹不出选择框。
         if (snap.Pending != null)
         {
+            RemotePendingChoiceSourceEntityId = snap.Pending.SourceEntityId;
+            RemotePendingChoiceSourceCardId = snap.Pending.SourceCardId;
             System.Enum.TryParse<ChoiceKind>(snap.Pending.Kind, true, out var ck);
             RemotePendingChoice = new PendingChoice
             {
@@ -171,6 +202,8 @@ public sealed class BattleSessionController
         else
         {
             RemotePendingChoice = null;
+            RemotePendingChoiceSourceEntityId = -1;
+            RemotePendingChoiceSourceCardId = 0;
         }
 
         // ---- 还原增量事件日志 ----
@@ -179,23 +212,52 @@ public sealed class BattleSessionController
         // 本地 State.EventLog 永远为空，BattleScreenRoot.ConsumeNewEventsToVfx()
         // 每次都读到 0 条 —— 攻击冲锋、伤害飘字、受击抖动、死亡碎裂、
         // 超进化砸地在客机端全部瘫痪，只剩属性僵硬跳变。
+        EntityRef? ResolveEventRef(int entityId, int cardId, int mappedPid, string zoneStr)
+        {
+            if (entityId < 0) return null;
+            if (FindLiveRef(entityId) is { } live) return live;
+            if (prevEntities.TryGetValue(entityId, out var prev)) return prev;
+            var def = cardId > 0 ? State.CardDefOf(cardId) : null;
+            if (def == null) return null;
+            Enum.TryParse<ZoneRef>(zoneStr, out var z);
+            return new EntityRef(entityId, 1, new EntitySnapshot
+            {
+                EntityId = entityId,
+                CardId = cardId,
+                Def = def,
+                Name = def.Name,
+                Kind = def.Kind,
+                PlayerId = mappedPid,
+                Zone = z == ZoneRef.None ? ZoneRef.Board : z,
+            });
+        }
+
         if (snap.NewEvents != null && snap.NewEvents.Count > 0)
         {
             foreach (var ne in snap.NewEvents)
             {
                 if (!Enum.TryParse<CoreEvent>(ne.Kind, out var kind)) continue;
                 int mappedPid = MapPid(ne.PlayerId);
+                var subj = ResolveEventRef(ne.SubjectEntityId, ne.SubjectCardId, mappedPid, ne.SubjectZone);
+                var obj = ResolveEventRef(ne.ObjectEntityId, 0, 1 - mappedPid, "");
+
+                AbilityDef activatedAb = null;
+                if (ne.AbilityIndex >= 0 && (subj?.Snapshot?.Def?.Abilities?.Count > ne.AbilityIndex))
+                {
+                    activatedAb = subj.Value.Snapshot.Def.Abilities[ne.AbilityIndex];
+                }
 
                 State.EventLog.Add(new VmEvent
                 {
                     Kind = kind,
                     PlayerId = mappedPid,
-                    Subject = FindLiveRef(ne.SubjectEntityId),
-                    Object = FindLiveRef(ne.ObjectEntityId),
+                    Subject = subj,
+                    Object = obj,
                     Amount = ne.Amount,
                     SecondaryAmount = ne.SecondaryAmount,
                     CounterName = ne.CounterName ?? "",
                     KnockedBackBySuperEvolve = ne.KnockedBackBySuperEvolve,
+                    ActivatedAbility = activatedAb,
                 });
             }
         }
@@ -244,6 +306,34 @@ public sealed class BattleSessionController
         if (d.IsHidden || d.CardId <= 0) return PlaceholderEntity(playerId, zone);
 
         var def = State.CardDefOf(d.CardId);
+        // 纹章/信仰在权威端是动态合成号，客机本地字典原本没有；通过 ArtCardId 溯源母卡补注册（176 号文档 一.4）
+        if (def == null && d.ArtCardId > 0)
+        {
+            var hostDef = State.CardDefOf(d.ArtCardId);
+            if (hostDef != null)
+            {
+                var sub = hostDef.CrestDef ?? hostDef.FaithDef;
+                if (sub != null)
+                {
+                    def = new CardDef
+                    {
+                        CardId = d.CardId,
+                        ArtCardId = d.ArtCardId,
+                        Name = sub.Name,
+                        Kind = sub.Kind,
+                        BaseCost = sub.BaseCost,
+                        BaseAttack = sub.BaseAttack,
+                        BaseLife = sub.BaseLife,
+                        Abilities = sub.Abilities,
+                        InnateKeywords = sub.InnateKeywords,
+                        InnateCounters = sub.InnateCounters,
+                        Traits = sub.Traits,
+                        Clan = sub.Clan,
+                    };
+                    State.RegisterCard(def);
+                }
+            }
+        }
         if (def == null) return PlaceholderEntity(playerId, zone);
 
         var e = new RuntimeEntity
@@ -273,6 +363,8 @@ public sealed class BattleSessionController
         // 客机画面上看不到守护外框、必杀图标，也看不到护符的吟唱倒计时。
         foreach (var kw in d.Keywords ?? new System.Collections.Generic.List<string>())
             if (!string.IsNullOrEmpty(kw)) e.Keywords.Add(State.Schema.Keyword(kw));
+        foreach (var kv in d.KeywordValues ?? new System.Collections.Generic.Dictionary<string, int>())
+            if (!string.IsNullOrEmpty(kv.Key)) e.KeywordValues[State.Schema.Keyword(kv.Key)] = kv.Value;
         foreach (var tr in d.Traits ?? new System.Collections.Generic.List<string>())
             if (!string.IsNullOrEmpty(tr)) e.Traits.Add(State.Schema.Trait(tr));
         foreach (var kv in d.Counters ?? new System.Collections.Generic.Dictionary<string, int>())
@@ -326,6 +418,20 @@ public sealed class BattleSessionController
     public BranchModeNode GetPendingBranchModeNode()
     {
         if (EffectivePendingChoice?.Kind != ChoiceKind.SelectMode) return null;
+
+        // 客机模式：从权威端下发的 SourceCardId 里反查 BranchModeNode（176 号文档 一.5）
+        if (RemotePendingChoice != null && RemotePendingChoiceSourceCardId > 0)
+        {
+            var cardDef = State.CardDefOf(RemotePendingChoiceSourceCardId);
+            if (cardDef?.Abilities != null)
+            {
+                foreach (var ab in cardDef.Abilities)
+                {
+                    var found = FindBranchModeRecursive(ab.Body);
+                    if (found != null) return found;
+                }
+            }
+        }
 
         // 发动前预选阶段 VM 还没开始跑、没有任何帧，
         // 此时要从这张卡的 AST 里把那个 BranchModeNode 找回来。
@@ -388,6 +494,22 @@ public sealed class BattleSessionController
 
     public RuntimeEntity GetPendingSourceEntity()
     {
+        // 客机模式：从权威端下发的 SourceEntityId / SourceCardId 提取来源（176 号文档 一.5）
+        if (RemotePendingChoice != null)
+        {
+            if (RemotePendingChoiceSourceEntityId >= 0)
+            {
+                var ent = State.Players.SelectMany(p => p.Board.Concat(p.Hand).Concat(p.CrestArea).Append(p.Leader))
+                                       .FirstOrDefault(e => e?.EntityId == RemotePendingChoiceSourceEntityId);
+                if (ent != null) return ent;
+            }
+            if (RemotePendingChoiceSourceCardId > 0)
+            {
+                var def = State.CardDefOf(RemotePendingChoiceSourceCardId);
+                if (def != null) return new RuntimeEntity { Def = def, EntityId = RemotePendingChoiceSourceEntityId };
+            }
+        }
+
         // 预选阶段 VM 还没有帧，来源就是 PreAction.Subject
         if (Runner.PreAction?.Subject != null) return Runner.PreAction.Subject;
 
@@ -435,8 +557,8 @@ public sealed class BattleSessionController
     // 客机模式本地不跑 VM，Runner 里永远不是「等待输入」；
     // 真正在等选目标是权威端，靠远端快照的 Pending 体现。
     public bool IsWaitingForInput => RemotePendingChoice != null || Runner.IsWaitingForInput;
-    public bool IsFinished => Runner.Phase == MatchPhase.Finished;
-    public int Winner => Runner.Winner();
+    public bool IsFinished => (RemotePhase ?? Runner.Phase) == MatchPhase.Finished;
+    public int Winner => RemoteWinner ?? Runner.Winner();
 
     // ---------------------------------------------------------------- 计数读取
 
@@ -473,6 +595,7 @@ public sealed class BattleSessionController
     {
         reason = "";
         if (card == null) { reason = "卡不存在"; return false; }
+        if (IsRemote) { _ = RemoteClient.PlayCard(card.EntityId); return true; }
         if (!Runner.PlayCard(card))
         {
             reason = "无法打出（费用不足、时机不对或该卡不可用）";
@@ -497,6 +620,7 @@ public sealed class BattleSessionController
     {
         reason = "";
         if (attacker == null || defender == null) { reason = "目标无效"; return false; }
+        if (IsRemote) { _ = RemoteClient.Attack(attacker.EntityId, defender.EntityId); return true; }
         // Attack 是 void：先确认「这一对 (attacker, defender) 在合法动作里」，
         // 再调用。否则调用会被内部守卫静默吞掉，UI 却以为打出去了。
         bool legal = GetLegalActionsCached().Any(a =>
@@ -555,6 +679,7 @@ public sealed class BattleSessionController
     public bool TryEvolve(RuntimeEntity e, bool super)
     {
         if (e == null) return false;
+        if (IsRemote) { _ = RemoteClient.Evolve(e.EntityId, super); return true; }
         bool ok = Runner.Evolve(e, super);
         if (ok) { InvalidateLegalActions(); ResolveAiPendingIfAny(); }
         return ok;
@@ -573,6 +698,7 @@ public sealed class BattleSessionController
     public bool TryEngage(RuntimeEntity e)
     {
         if (e == null) return false;
+        if (IsRemote) { _ = RemoteClient.EngageAmulet(e.EntityId); return true; }
         bool ok = Runner.EngageAmulet(e);
         if (ok) { InvalidateLegalActions(); ResolveAiPendingIfAny(); }
         return ok;
@@ -609,7 +735,13 @@ public sealed class BattleSessionController
 
     public bool ConfirmFuse()
     {
-        if (!IsInFuseMode || FuseBaseCard == null) return false;
+        if (!IsInFuseMode || FuseBaseCard == null || SelectedFuseMaterials.Count == 0) return false;
+        if (IsRemote)
+        {
+            _ = RemoteClient.Fuse(FuseBaseCard.EntityId, SelectedFuseMaterials.Select(m => m.EntityId));
+            CancelFuseMode();
+            return true;
+        }
         bool ok = Runner.FuseCards(FuseBaseCard, SelectedFuseMaterials.ToList());
         if (ok) { CancelFuseMode(); ResolveAiPendingIfAny(); }
         return ok;

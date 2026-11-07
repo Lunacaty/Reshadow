@@ -14,7 +14,7 @@ public partial class MatchResultOverlay : Control
     public event Action OnRematch;
     public event Action OnBackToDecks;
 
-    public void Setup(bool isVictory, int turnCount)
+    public void Setup(bool isVictory, int turnCount, bool isNetworkMatch = false)
     {
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Stop;
@@ -75,7 +75,7 @@ public partial class MatchResultOverlay : Control
         row.AddThemeConstantOverride("separation", 16);
         v.AddChild(row);
 
-        var rematch = new Button { Text = "⚔ 再战一局", CustomMinimumSize = new Vector2(200, 48) };
+        var rematch = new Button { Text = isNetworkMatch ? "🏠 返回联机房间" : "⚔ 再战一局", CustomMinimumSize = new Vector2(200, 48) };
         SvWbTheme.StyleButton(rematch, isPrimary: true, customAccent: accent);
         rematch.Pressed += () => OnRematch?.Invoke();
         row.AddChild(rematch);

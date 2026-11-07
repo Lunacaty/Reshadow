@@ -158,6 +158,7 @@ public partial class BattleScreenRoot : Control
         // ResolvedFirstPlayer 用服务端座位号，客机换算由调用方负责，这里原样传入。
         _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
                                             startInMulligan: false, firstPlayer: firstPlayer);
+        _ctrl.RemoteClient = client;
         BoardUnitWidget.CurrentController = _ctrl;
         _lastEventIdx = _ctrl.State.EventLog.Count;
 
@@ -272,11 +273,20 @@ public partial class BattleScreenRoot : Control
             {
                 int winner = _ctrl.Winner;
                 bool victory = winner == _ctrl.MyPlayerId;
+                bool isNet = IsRemote || _authHost != null;
                 _result = new MatchResultOverlay();
                 AddChild(_result);
-                _result.Setup(victory, _ctrl.State.TurnNumber);
-                _result.OnRematch += () => RestartMatch();
-                _result.OnBackToDecks += () => OnExitToDecks?.Invoke();
+                _result.Setup(victory, _ctrl.State.TurnNumber, isNet);
+                if (isNet)
+                {
+                    _result.OnRematch += () => OnExitToDecks?.Invoke();
+                    _result.OnBackToDecks += () => OnExitToDecks?.Invoke();
+                }
+                else
+                {
+                    _result.OnRematch += () => RestartMatch();
+                    _result.OnBackToDecks += () => OnExitToDecks?.Invoke();
+                } 
             }
             return;
         }
@@ -431,6 +441,9 @@ public partial class BattleScreenRoot : Control
     public override void _Process(double delta)
     {
         float dt = (float)delta;
+
+        // 房主端：主线程单线程出队执行客机网络指令，杜绝并发竞态（176 号文档 一.1）
+        _authHost?.PumpActionsOnMainThread();
 
         if (_draggingPlay && _draggingCard != null)
         {

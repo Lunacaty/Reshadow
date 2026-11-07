@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ShadowverseFan.KernelV3.Battle;
+using ShadowverseFan.KernelV3.Ast;
 using ShadowverseFan.KernelV3.Core;
 using ShadowverseFan.KernelV3.Vm;
 
@@ -56,6 +57,9 @@ public static class FogOfWarSanitizer
 
             foreach (var (name, _, _) in GameSchema.BuiltinCounterDefs)
                 dto.Counters[name] = state.ReadCounter(pid, state.Schema.Counter(name));
+            foreach (var pc in state.PoolCounterDefs ?? Array.Empty<Packs.PoolCounterDef>())
+                if (!string.IsNullOrWhiteSpace(pc?.Name))
+                    dto.Counters[pc.Name] = state.ReadCounter(pid, state.Schema.Counter(pc.Name));
 
             foreach (var e in p.Board) dto.Board.Add(ToDto(e, true));
             foreach (var e in p.CrestArea) dto.Crests.Add(ToDto(e, true));
@@ -82,6 +86,11 @@ public static class FogOfWarSanitizer
                 PlayerId = ev.PlayerId,
                 SubjectEntityId = ev.Subject?.EntityId ?? -1,
                 SubjectCardId = hideSubj ? -1 : (ev.Subject?.Snapshot?.CardId ?? 0),
+                SubjectPlayerId = ev.Subject?.Snapshot?.PlayerId ?? -1,
+                SubjectZone = ev.Subject?.Snapshot?.Zone.ToString() ?? "",
+                AbilityIndex = (ev.ActivatedAbility != null && ev.Subject?.Snapshot?.Def?.Abilities != null)
+                    ? GetAbilityIndex(ev.Subject.Value.Snapshot.Def.Abilities, ev.ActivatedAbility)
+                    : -1,
                 ObjectEntityId = ev.Object?.EntityId ?? -1,
                 Amount = ev.Amount,
                 SecondaryAmount = ev.SecondaryAmount,
@@ -99,6 +108,10 @@ public static class FogOfWarSanitizer
             {
                 ChoiceId = pending.ChoiceId,
                 PlayerId = pending.PlayerId,
+                SourceEntityId = runner.PreAction?.Subject?.EntityId
+                    ?? runner.Vm?.Frames?.LastOrDefault()?.Scope?.Source?.EntityId ?? -1,
+                SourceCardId = runner.PreAction?.Subject?.Def?.CardId
+                    ?? runner.Vm?.Frames?.LastOrDefault()?.Scope?.Source?.Snapshot?.CardId ?? 0,
                 Kind = pending.Kind.ToString(),
                 MinSelect = pending.MinSelect,
                 MaxSelect = pending.MaxSelect,
@@ -109,6 +122,14 @@ public static class FogOfWarSanitizer
         }
 
         return snap;
+    }
+
+    private static int GetAbilityIndex(IReadOnlyList<AbilityDef> list, AbilityDef item)
+    {
+        if (list == null || item == null) return -1;
+        for (int i = 0; i < list.Count; i++)
+            if (ReferenceEquals(list[i], item)) return i;
+        return -1;
     }
 
     private static NetEntityDto ToDto(RuntimeEntity e, bool revealSecret)
@@ -136,6 +157,7 @@ public static class FogOfWarSanitizer
             PlayerId = e.PlayerId,
             Zone = e.Zone.ToString(),
             CardId = e.Def?.CardId ?? 0,
+            ArtCardId = e.Def?.ArtCardId ?? 0,
             Cost = e.Cost,
             Attack = e.Attack,
             Life = e.Life,
@@ -151,6 +173,7 @@ public static class FogOfWarSanitizer
             FusedThisTurn = e.FusedThisTurn,
             IsFaith = e.IsFaith,
             Keywords = e.Keywords.Select(k => k.Name).ToList(),
+            KeywordValues = e.KeywordValues.ToDictionary(kv => kv.Key.Name, kv => kv.Value),
             Traits = e.Traits.Select(t => t.Name).ToList(),
             Counters = e.Counters.ToDictionary(kv => kv.Key.Name, kv => kv.Value),
         };

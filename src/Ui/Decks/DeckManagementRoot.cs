@@ -110,14 +110,10 @@ public partial class DeckManagementRoot : Control
             _ = client.ConnectAsync(info.Ip, info.Port, 1);
         };
 
-        // 建房成功 = 房主起监听并**立刻**进入房间界面，绝不建对局。
+        // 建房成功 = 房主起监听并**立刻**进入房间界面，大厅生命周期结束，广播由房间接管（176 号文档 二.3）。
         lobby.OnHostRoom += (poolId, deck) =>
         {
-            // ★ 不能 QueueFree 大厅：广播必须在等待客机期间持续，
-            // 销毁会触发 _ExitTree -> Shutdown()，客机永远扫不到房间。
-            // 改为隐藏但仍留在场景树里，等客机握手成功再关。
-            lobby.Visible = false;
-            _pendingLobby = lobby;
+            lobby.QueueFree();
             _hostingPoolId = poolId;
             _hostingDeck = deck;
 
@@ -125,10 +121,6 @@ public partial class DeckManagementRoot : Control
             _authoritativeHost = host;
             var poolView = _store.GetPoolView(poolId);
             host.BeginHosting(poolView, deck);
-
-            // ClientMatched 只表示客机已连入房间，从网络线程触发：
-            // 切回主线程关掉广播，绝不建对局、绝不 Attach。
-            host.ClientMatched += _ => CallDeferred(MethodName.StopHostBroadcast);
 
             var room = new Net.LanRoomView();
             Swap(room);

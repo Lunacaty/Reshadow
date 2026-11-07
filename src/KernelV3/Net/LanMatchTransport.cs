@@ -30,6 +30,7 @@ public sealed class AuthoritativeMatchHost : IDisposable
     private readonly Dictionary<int, TcpClient> _clients = new();   // playerId -> client
     private readonly Dictionary<int, int> _eventCursor = new();
     private readonly object _gate = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(int PlayerId, NetActionPacket Action)> _inbox = new();
     private bool _running;
 
     public BattleState State { get; private set; }
@@ -206,6 +207,7 @@ public sealed class AuthoritativeMatchHost : IDisposable
             PoolId = OneLine(_poolId),
             HostDeckName = OneLine(HostDeck?.Name),
             GuestDeckName = _guestJoined ? OneLine(ClientDeck?.Name) : "",
+            GuestJoined = _guestJoined,
             HostReady = _hostReady,
             GuestReady = _guestReady,
             FirstMode = _firstMode,
@@ -455,7 +457,7 @@ public sealed class AuthoritativeMatchHost : IDisposable
                     }
                     else if (msg.Value.Kind == NetMsgKind.Action && myPlayerId >= 0)
                     {
-                        ApplyAction(myPlayerId, msg.Value.Action);
+                        _inbox.Enqueue((myPlayerId, msg.Value.Action));
                     }
                 }
             }
@@ -466,10 +468,27 @@ public sealed class AuthoritativeMatchHost : IDisposable
             try { client.Close(); } catch { }
             if (myPlayerId >= 0)
             {
-                lock (_gate) _clients.Remove(myPlayerId);
-                _eventCursor.Remove(myPlayerId);
+                lock (_gate)
+                {
+                    _clients.Remove(myPlayerId);
+                    _eventCursor.Remove(myPlayerId);
+                    _guestJoined = false;
+                    _guestReady = false;
+                    _guestDeckValid = false;
+                    _guestDeckError = "客机已断开连接";
+                    ClientDeck = null;
+                    _statusNote = "客机已离开房间";
+                }
+                PublishRoom();
             }
         }
+    }
+
+    /// <summary>由房主主线程在 _Process 中轮询调用：主线程单线程执行指令并广播快照，杜绝跨线程并发竞态（176 号文档 一.1）。</summary>
+    public void PumpActionsOnMainThread()
+    {
+        while (_inbox.TryDequeue(out var item))
+            ApplyAction(item.PlayerId, item.Action);
     }
 
     /// <summary>权威端执行一条意图。合法性由 MatchRunner 判定，不信任客机自报。</summary>
@@ -519,6 +538,19 @@ public sealed class AuthoritativeMatchHost : IDisposable
             case NetActionKind.EndTurn:
                 Runner.EndTurn();
                 break;
+            case NetActionKind.FuseCards:
+            {
+                if (a.EntityId >= 0 && a.Selected != null && a.Selected.Length > 0)
+                {
+                    var baseCard = FindEntity(playerId, a.EntityId);
+                    if (baseCard != null && baseCard.PlayerId == playerId)
+                    {
+                        var mats = a.Selected.Select(id => FindEntity(playerId, id)).Where(m => m != null).ToList();
+                        Runner.FuseCards(baseCard, mats);
+                    }
+                }
+                break;
+            }
         }
 
         BroadcastSnapshot();

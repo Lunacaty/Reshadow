@@ -203,6 +203,9 @@ public sealed class RemoteBattleClient : IDisposable
     public Task SubmitChoice(int choiceId, params int[] selected)
         => SendAction(new NetActionPacket { Kind = NetActionKind.SubmitChoice, ChoiceId = choiceId, Selected = selected });
 
+    public Task Fuse(int baseEntityId, IEnumerable<int> materialIds)
+        => SendAction(new NetActionPacket { Kind = NetActionKind.FuseCards, EntityId = baseEntityId, Selected = materialIds?.ToArray() ?? Array.Empty<int>() });
+
     private async Task SendLine(string line)
     {
         if (_stream == null) return;

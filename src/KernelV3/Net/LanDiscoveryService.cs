@@ -95,14 +95,50 @@ public sealed class LanDiscoveryService : IDisposable
 
             string payload = BuildPacket(hostName, port, poolId, poolHash);
             byte[] bytes = Encoding.UTF8.GetBytes(payload);
-            var ep = new IPEndPoint(IPAddress.Broadcast, DiscoveryPort);
+            var eps = GetBroadcastEndpoints(DiscoveryPort);
 
             _timer = new System.Threading.Timer(_ =>
             {
-                try { if (_udp != null) _udp.Send(bytes, bytes.Length, ep); } catch { }
+                try
+                {
+                    if (_udp != null)
+                    {
+                        foreach (var ep in eps)
+                        {
+                            try { _udp.Send(bytes, bytes.Length, ep); } catch { }
+                        }
+                    }
+                }
+                catch { }
             }, null, 0, 1000);
         }
         catch { Stop(); }
+    }
+
+    /// <summary>获取所有活动网卡（物理、Wi-Fi、Radmin VPN、虚拟交换机）的定向子网广播终结点，杜绝多网卡环境下广播丢失（176 号文档 二.5）。</summary>
+    private static List<IPEndPoint> GetBroadcastEndpoints(int port)
+    {
+        var eps = new List<IPEndPoint> { new(IPAddress.Broadcast, port) };
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up ||
+                    ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily != AddressFamily.InterNetwork || ua.IPv4Mask == null) continue;
+                    byte[] ip = ua.Address.GetAddressBytes();
+                    byte[] mask = ua.IPv4Mask.GetAddressBytes();
+                    byte[] bcast = new byte[4];
+                    for (int i = 0; i < 4; i++) bcast[i] = (byte)(ip[i] | ~mask[i]);
+                    var ep = new IPEndPoint(new IPAddress(bcast), port);
+                    if (!eps.Contains(ep)) eps.Add(ep);
+                }
+            }
+        }
+        catch { }
+        return eps;
     }
 
     /// <summary>作为客机开始监听房间。</summary>

@@ -30,6 +30,7 @@ public sealed class NetRoomStateDto
     public string PoolId { get; set; } = "";
     public string HostDeckName { get; set; } = "";
     public string GuestDeckName { get; set; } = "";
+    public bool GuestJoined { get; set; }
     public bool HostReady { get; set; }
     public bool GuestReady { get; set; }
     public FirstPlayerMode FirstMode { get; set; } = FirstPlayerMode.HostFirst;
@@ -69,6 +70,7 @@ public enum NetActionKind
     SubmitChoice,
     CancelPending,
     EndTurn,
+    FuseCards,
 }
 
 public sealed class NetActionPacket
@@ -103,7 +105,9 @@ public sealed class NetEntityDto
     public bool EngagedThisTurn { get; set; }
     public bool FusedThisTurn { get; set; }
     public bool IsFaith { get; set; }
+    public int ArtCardId { get; set; }
     public List<string> Keywords { get; set; } = new();
+    public Dictionary<string, int> KeywordValues { get; set; } = new();
     public List<string> Traits { get; set; } = new();
     public Dictionary<string, int> Counters { get; set; } = new();
 }
@@ -135,6 +139,9 @@ public sealed class NetEventDto
     public int PlayerId { get; set; }
     public int SubjectEntityId { get; set; } = -1;
     public int SubjectCardId { get; set; }
+    public int SubjectPlayerId { get; set; } = -1;
+    public string SubjectZone { get; set; } = "";
+    public int AbilityIndex { get; set; } = -1;
     public int ObjectEntityId { get; set; } = -1;
     public int Amount { get; set; }
     public int SecondaryAmount { get; set; }
@@ -146,6 +153,8 @@ public sealed class NetPendingChoiceDto
 {
     public int ChoiceId { get; set; }
     public int PlayerId { get; set; }
+    public int SourceEntityId { get; set; } = -1;
+    public int SourceCardId { get; set; } = 0;
     public string Kind { get; set; } = "";
     public int MinSelect { get; set; }
     public int MaxSelect { get; set; }
@@ -207,12 +216,17 @@ public static class PoolIntegrityHasher
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
     }
 
-    /// <summary>旧签名：普通 CardPool 视图。保留给非对局路径（DIY 预览等）。</summary>
+    /// <summary>普通 CardPool 视图：与 CardPoolRuntime 保持完全相同的卡包过滤与哈希算法。</summary>
     public static string ComputePoolHash(CardPool pool)
     {
         if (pool == null) return "";
         var sb = new StringBuilder();
         sb.Append("pool:").Append(pool.PoolId).Append('\n');
+        sb.Append("packs:")
+          .Append(string.Join(",",
+              (pool.EnabledPackIds ?? new HashSet<string>())
+                  .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)))
+          .Append('\n');
 
         var rules = pool.BaseRules ?? MatchRules.CreateStandard();
         foreach (var prop in typeof(MatchRules).GetProperties()
@@ -223,7 +237,9 @@ public static class PoolIntegrityHasher
         }
         sb.Append('\n');
 
-        AppendCards(sb, pool.Catalog?.AllCards?.Values);
+        var enabledCards = pool.Catalog?.AllCards?.Values?
+            .Where(c => pool.EnabledPackIds != null && pool.EnabledPackIds.Contains(c.PackId));
+        AppendCards(sb, enabledCards);
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
     }
 
