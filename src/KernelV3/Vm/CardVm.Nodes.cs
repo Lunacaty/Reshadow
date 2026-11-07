@@ -220,7 +220,9 @@ public sealed partial class CardVm
                     },
                 },
             };
-            _world.GrantAbility(t, auraAb, n.Duration);
+            // 必须带上施法者：否则「直到敌方回合结束伤害 -2」贴到敌方单位后，
+            // UntilEndOfOpponentTurn 会按目标自己的回合算，我方回合结束就被消掉（175 号第二部分 3-1）。
+            _world.GrantAbility(t, auraAb, n.Duration, scope.Controller);
         }
         return false;
     }
@@ -998,6 +1000,11 @@ public sealed partial class CardVm
         // 回到手牌就是「一张普通手牌」：之前受过什么影响不该继续挂着，
         // 否则溯源面板会显示早已失效的来源。
         t.EffectHistory.Clear();
+
+        // 光环加成记录必须清零：回手后面板已还原成印刷值，
+        // 若保留旧记录，下次上场时 SBA 会先按旧值倒扣一次（175 号第二部分 3-2）。
+        t.AppliedAuraAtk = 0;
+        t.AppliedAuraLife = 0;
 
         var def = t.Def;
         t.Attack = def?.BaseAttack ?? t.Attack;

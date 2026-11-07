@@ -414,6 +414,20 @@ public sealed class CombatResolver
 
         target.Life -= amount;
 
+        // 主战者血量归零当场锁死：之后效果链里的回血不能再把它奶回来
+        // （174 号文档 BUG5；锁存必须写在真正的扣血点）。
+        if (target.Zone == ZoneRef.Leader && target.Life <= 0)
+            _state.Players[target.PlayerId].LostByLifeOut = true;
+
+        // 本回合造成的伤害累加：StatKey.DamageDealtThisTurn 读的就是它。
+        // 漏了这行，该属性恒为 0（175 号第二部分 4-1）。
+        if (sourcePlayerId is 0 or 1 && amount > 0)
+        {
+            var dmgKey = _schema.Counter("damage_dealt_this_turn");
+            _state.WriteCounter(sourcePlayerId, dmgKey,
+                _state.ReadCounter(sourcePlayerId, dmgKey) + amount);
+        }
+
         // 血怒（Wrath）：我方**主战者**每受到一次伤害就 +1。
         // 随从受伤不计 —— 卡面写的是「your leader」受到伤害的次数。
         if (target.Zone == ZoneRef.Leader)

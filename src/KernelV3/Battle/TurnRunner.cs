@@ -188,6 +188,11 @@ public sealed class TurnRunner
                 _state.DrawCards(playerId, drawCount);
             }
         }
+
+        // 回合易主后立即刷新常驻光环面板：
+        // 「在你的回合中，本随从 +2/+0」这类 aura 的条件随 ActivePlayer 变化，
+        // 不在这里重算就会一直停在上一个回合的数值（175 号第二部分 3-2）。
+        _state.ProcessStateBasedActions();
     }
 
     /// <summary>本回合该不该常规抽牌（先手第 1 回合按规则可开关）。</summary>
@@ -302,6 +307,9 @@ public sealed class TurnRunner
         {
             _state.ExpireTemporaryModifiers(playerId);
         }
+
+        // 限时属性撤销后重算常驻光环面板（175 号第二部分 3-2）。
+        _state.ProcessStateBasedActions();
     }
 
     // ---------- 能量点支付（普通 PP 优先，额外槽位兜底）----------

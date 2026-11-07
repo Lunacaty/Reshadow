@@ -253,7 +253,7 @@ public sealed partial class CardVm
                     frame.PendingActivation = false;
                     var owner = frame.OwnerEntity;
                     var ab = frame.Ability;
-                    if (owner != null && !IsStillInValidZone(ab?.Trigger, frame.Scope.Event, owner))
+                    if (owner != null && !IsStillInValidZone(ab?.Trigger, frame.Scope, owner))
                     {
                         _frames.RemoveAt(_frames.Count - 1);
                         continue;
@@ -836,13 +836,25 @@ public sealed partial class CardVm
     /// 「离场不发」铁律：轮到这条能力结算时，源实体是否还留在它的监听区域。
     /// 谢幕曲 / 离场时 / 放逐 / 弃牌 这四类必然以「已离场」为前提，直接放行。
     /// </summary>
-    private static bool IsStillInValidZone(Ast.TriggerSpec trig, VmEvent ev, RuntimeEntity owner)
+    private static bool IsStillInValidZone(Ast.TriggerSpec trig, VmScope scope, RuntimeEntity owner)
     {
-        if (trig == null) return false;
+        if (trig == null || owner == null) return false;
+        var ev = scope?.Event;
+
+        // 流水号校验：实体若在等待期间换过区又回来，旧生命周期的能力必须作废。
+        // 离场/谢幕曲四类本来就以「已换区」为前提，跳过这条。
+        if (scope?.Source != null && scope.Source.Value.EntrySerial != owner.EntrySerial
+            && trig.Event is not (CoreEvent.OnDestroy or CoreEvent.OnLeaveField
+                               or CoreEvent.OnBanish or CoreEvent.OnDiscard))
+            return false;
+
         if (trig.Event is CoreEvent.OnDestroy or CoreEvent.OnLeaveField
             or CoreEvent.OnBanish or CoreEvent.OnDiscard)
             return true;
-        if (ActsAsOnField(ev, owner)) return true;
+        if (ev != null && ActsAsOnField(ev, owner)) return true;
+        // 【魔力增幅】的卡住在**手牌**，但编译期 ActiveZone 默认写 Board。
+        // 漏了这条豁免，全游戏的增幅能力会在惰性激活时被当成「已离场」整帧丢弃（175 号回归 1）。
+        if (trig.Event == CoreEvent.OnSpellboost && owner.Zone == ZoneRef.Hand) return true;
         // 与 MatchesTrigger 的判据保持一致：信仰 / 纹章住在纹章区，
         // 它们的 ActiveZone 默认写 Board，但必须按 CrestArea 判。
         var need = trig.ActiveZone switch

@@ -152,10 +152,22 @@ public static class PreChoiceInspector
     {
         foreach (var node in body)
         {
-            // 预选阶段**什么都还没执行**：前置的抽牌 / 随机 / 循环不该阻断
-            // 同能力内 BranchModeNode(Choose) 的预选（174 号文档 BUG4）。
-            // 直接 return null 会让「进化时：抽 1 张牌，然后选模式」永远弹不出模式框。
-            if (IsIrreversible(node)) continue;
+            // 不可逆节点（抽牌 / 发现 / 随机 / 循环）之后能不能预选，要分两种：
+            //
+            //   · 模式抉择（BranchModeNode Choose）—— **可以**跨越。
+            //     选项列表与前置动作的结果无关，玩家在声明打出/进化时就该先选好
+            //     （174 号文档 BUG 4 要的正是这一点：不能因为前面有抽牌就放弃预选）。
+            //
+            //   · 目标选择（Select / Choose 目标）—— **不可以**跨越。
+            //     候选池取决于抽到了什么、随机打死了谁；越过前置节点替他选等于盲选。
+            //     更糟的是循环里的 Select 会把预选答案偷吃掉，整个队列错位（175 号回归 4）。
+            if (IsIrreversible(node))
+            {
+                var modeAhead = FindModeChoiceAhead(body, node);
+                return modeAhead != null
+                    ? NewModePrompt(state, card, modeAhead)
+                    : null;
+            }
 
             switch (node)
             {
@@ -174,7 +186,6 @@ public static class PreChoiceInspector
                     int n = bm.Options?.Count ?? 0;
                     if (n == 0) continue;
 
-                    var cands = Enumerable.Range(0, n).ToList();
                     if (consumed < answers.Count)
                     {
                         consumed++;
@@ -188,26 +199,7 @@ public static class PreChoiceInspector
                         continue;
                     }
 
-                    int pick = 1;
-                    if (bm.PickCount != null)
-                    {
-                        try { pick = new VmEval(state).EvalNum(bm.PickCount, ScopeOf(card)); }
-                        catch { pick = 1; }
-                    }
-
-                    // 加上「Increase the number of Modes you can select by 1」的玩家光环值。
-                    // 漏了它，获得该增益后预选弹窗的 MaxSelect 仍是 1，
-                    // 玩家在界面上根本没法选第 2 个模式。
-                    int bonus = 0;
-                    try { bonus = state.ReadCounter(card.PlayerId, state.Schema.Counter("mode_count")); }
-                    catch { bonus = 0; }
-                    int actualPick = Math.Clamp(pick + Math.Max(0, bonus), 1, n);
-
-                    // MinSelect 必须等于 MaxSelect：
-                    // 要求选 N 个模式时，玩家必须选满 N 个（除非总选项数不足），
-                    // 写死 1 会让默认策略只选 1 个。
-                    return NewPrompt(card, ChoiceKind.SelectMode, cands, actualPick,
-                                     actualPick, "$mode", "选择模式");
+                    return NewModePrompt(state, card, bm);
                 }
 
                 default:
@@ -251,6 +243,61 @@ public static class PreChoiceInspector
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// 在 body 里从 after 之后向前找第一个「模式抉择」节点。
+    /// 只用于跨越不可逆节点时的模式预选 —— 目标选择不在此列。
+    /// </summary>
+    private static BranchModeNode FindModeChoiceAhead(IReadOnlyList<EffectNode> body, EffectNode after)
+    {
+        bool seen = false;
+        foreach (var n in body)
+        {
+            if (!seen) { if (ReferenceEquals(n, after)) seen = true; continue; }
+            var found = FindModeIn(n);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static BranchModeNode FindModeIn(EffectNode n)
+    {
+        if (n is BranchModeNode bm0 && bm0.Kind == ModeDispatchKind.Choose) return bm0;
+        if (n is ConditionalNode c)
+        {
+            foreach (var x in c.Then ?? Array.Empty<EffectNode>())
+            { var r = FindModeIn(x); if (r != null) return r; }
+            foreach (var x in c.Else ?? Array.Empty<EffectNode>())
+            { var r = FindModeIn(x); if (r != null) return r; }
+        }
+        return null;
+    }
+
+    /// <summary>构造模式抉择的预选提示（含「可选模式数 +1」光环）。</summary>
+    private static PendingChoice NewModePrompt(BattleState state, RuntimeEntity card, BranchModeNode bm)
+    {
+        int n = bm.Options?.Count ?? 0;
+        if (n == 0) return null;
+        var cands = Enumerable.Range(0, n).ToList();
+
+        int pick = 1;
+        if (bm.PickCount != null)
+        {
+            try { pick = new VmEval(state).EvalNum(bm.PickCount, ScopeOf(card)); }
+            catch { pick = 1; }
+        }
+
+        // 加上「Increase the number of Modes you can select by 1」的玩家光环值。
+        // 漏了它，获得该增益后预选弹窗的 MaxSelect 仍是 1，玩家根本没法选第 2 个模式。
+        int bonus = 0;
+        try { bonus = state.ReadCounter(card.PlayerId, state.Schema.Counter("mode_count")); }
+        catch { bonus = 0; }
+        int actualPick = Math.Clamp(pick + Math.Max(0, bonus), 1, n);
+
+        // MinSelect 必须等于 MaxSelect：要求选 N 个模式时玩家必须选满 N 个。
+        return NewPrompt(card, ChoiceKind.SelectMode, cands, actualPick,
+                         actualPick, "$mode", "选择模式");
     }
 
     /// <summary>把玩家选好的实体 id 绑定进探针作用域，供后续条件求值使用。</summary>

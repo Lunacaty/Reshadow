@@ -163,25 +163,27 @@ public static class AstCanonicalPrinter
         if (card.Abilities is { Count: > 0 })
             sb.Append(PrintAbilities(card.Abilities, 0));
 
-        AppendSub(sb, "crest", card.CrestDef);
-        AppendSub(sb, "faith", card.FaithDef);
-        AppendSub(sb, "accelerate", card.AccelerateDef);
-        AppendSub(sb, "crystallize", card.CrystallizeDef);
+        // 本方法**没有 card 头**，主卡能力在 0 缩进，所以子卡段也必须是 0 缩进。
+        // 若沿用 Pad(1)，crest 会缩进在 fanfare: 内部，被当成动作指令报「未知动作：crest」（175 号回归 2）。
+        AppendSub(sb, "crest", card.CrestDef, 0);
+        AppendSub(sb, "faith", card.FaithDef, 0);
+        AppendSub(sb, "accelerate", card.AccelerateDef, 0);
+        AppendSub(sb, "crystallize", card.CrystallizeDef, 0);
         return sb.ToString().TrimStart('\n');
     }
 
-    private static void AppendSub(StringBuilder sb, string label, Ast.CardDef sub)
+    private static void AppendSub(StringBuilder sb, string label, Ast.CardDef sub, int indent = 1)
     {
         if (sub == null) return;
-        sb.Append('\n').Append('\n').Append(Pad(1))
+        sb.Append('\n').Append('\n').Append(Pad(indent))
           .Append(label).Append(" \"").Append(sub.Name ?? "").Append("\" (cost=").Append(sub.BaseCost).Append("):");
         if (sub.Abilities != null && sub.Abilities.Count > 0)
         {
-            sb.Append('\n').Append(PrintAbilities(sub.Abilities, 2));
+            sb.Append('\n').Append(PrintAbilities(sub.Abilities, indent + 1));
         }
         else
         {
-            sb.Append('\n').Append(Pad(2)).Append("pass");
+            sb.Append('\n').Append(Pad(indent + 1)).Append("pass");
         }
     }
 

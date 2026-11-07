@@ -341,7 +341,10 @@ public sealed class BattleSessionController
                 bool match = kind switch
                 {
                     PlayerActionKind.Evolve => ab.Trigger.Event == CoreEvent.OnEvolve,
-                    PlayerActionKind.SuperEvolve => ab.Trigger.Event == CoreEvent.OnSuperEvolve,
+                    // 手动超进化会同时触发 Evolve: 与 Super-Evolve: 两个头，
+                    // 只认 OnSuperEvolve 会让 Evolve: 下的模式抉择拿不到节点，
+                    // 选项文字退化成空白占位符（175 号第二部分 4-4）。
+                    PlayerActionKind.SuperEvolve => ab.Trigger.Event is CoreEvent.OnEvolve or CoreEvent.OnSuperEvolve,
                     PlayerActionKind.EngageAmulet => ab.Trigger.Event == CoreEvent.OnEngage,
                     _ => ab.Trigger.Event == CoreEvent.OnPlay,
                 };

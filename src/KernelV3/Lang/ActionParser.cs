@@ -1590,9 +1590,11 @@ public sealed class ActionParser
                     CopyFrom = eachSrc,
                     ToZone = destEach ?? toZone,
                     ToOwner = isEnemyCopy ? ZoneScope.Opponent : ZoneScope.Self,
-                    // 按所选张数复制：10172320 选 2 张 → 2 个复制体，10174130 选 3 张 → 3 个。
-                    // 沿用 copyCount 会恒为 1，选多少都只复制 1 个。
-                    Count = _lastSelectCount ?? copyCount,
+                    // "an exact copy of **each**" 的语义是「每个所选目标各 1 份」：
+                    // 份数由运行期遍历 refs 决定，Count 必须是 1。
+                    // 早先把它设成所选张数（_lastSelectCount），运行期 refs×Count
+                    // 就成了 N×N 个复制体（选 2 张 → 4 个，选 3 张 → 9 个，175 号回归 3）。
+                    Count = copyCount,
                     IsExactCopy = isExact,
                 });
                 return nodes;

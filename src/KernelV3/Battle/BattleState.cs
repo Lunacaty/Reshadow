@@ -1527,9 +1527,9 @@ public sealed class BattleState : IVmWorld
 
         bool immune = HasEffectiveKeyword(target, kwAll)
                    || (!isStatMod && HasEffectiveKeyword(target, kwXs));
-        // 主战者血量归零当场锁死：之后效果链里的回血不能再把它奶回来。
-        if (!immune && target.Zone == ZoneRef.Leader && target.Life <= 0)
-            Players[target.PlayerId].LostByLifeOut = true;
+        // 这是**只读查询**函数，绝不能改状态。
+        // 致死锁存放在真正的扣血点（CombatResolver.ApplyDamage / DoModifyStats）——
+        // 塞在这里既不会被调用，又污染语义（175 号第二部分 1）。
         if (!immune) return false;
 
         // 自身能力作用于自身：放行。
@@ -1593,8 +1593,17 @@ public sealed class BattleState : IVmWorld
                         if (n is not Ast.ModifyStatsNode ms || ms.Op != Ast.StatModOp.Add) continue;
                         if (ms.Attack == null && ms.Life == null) continue;
                         if (!AuraTargets(eval, ms.Target, scope, target)) continue;
-                        if (ms.Attack?.Op == Ast.NumOp.Const) atk += ms.Attack.Value;
-                        if (ms.Life?.Op == Ast.NumOp.Const) life += ms.Life.Value;
+                        // 必须用 EvalNum 而不是只认 Const：
+                        // 「本随从获得 +X/+0，X 为我方墓场数」这类动态光环
+                        // 在只认常量时加成恒为 0（175 号第二部分 3-2）。
+                        if (ms.Attack != null)
+                        {
+                            try { atk += eval.EvalNum(ms.Attack, scope); } catch { }
+                        }
+                        if (ms.Life != null)
+                        {
+                            try { life += eval.EvalNum(ms.Life, scope); } catch { }
+                        }
                     }
                 }
             }
@@ -2224,7 +2233,9 @@ public sealed class BattleState : IVmWorld
     {
         if (!_deferRallyFor.Remove(entityId)) return;
         var e = _all.FirstOrDefault(x => x.EntityId == entityId);
-        if (e == null || e.Zone != ZoneRef.Board || e.Def?.Kind != Ast.CardKind.Follower) return;
+        // 只要它是随从就算「进入过战场」—— 入场曲把自己破坏 / 弹回手牌的随从
+        // 同样要让 rally +1，不能因为结算完已不在战场上就跳过（175 号第二部分 4-3）。
+        if (e == null || e.Def?.Kind != Ast.CardKind.Follower) return;
         var rallyKey = Schema.Counter("rally");
         WriteCounter(e.PlayerId, rallyKey, ReadCounter(e.PlayerId, rallyKey) + 1);
     }
@@ -2233,7 +2244,8 @@ public sealed class BattleState : IVmWorld
     {
         if (e == null) return;
         _deferRallyFor.Remove(e.EntityId);
-        if (e.Zone != ZoneRef.Board || e.Def?.Kind != Ast.CardKind.Follower) return;
+        // 同上：不检查 Zone，入场曲自毁/自回手的随从照样计数。
+        if (e.Def?.Kind != Ast.CardKind.Follower) return;
         var rallyKey = Schema.Counter("rally");
         WriteCounter(e.PlayerId, rallyKey, ReadCounter(e.PlayerId, rallyKey) + 1);
     }
@@ -2425,6 +2437,10 @@ public sealed class BattleState : IVmWorld
         e.AttacksThisTurn = 0;
         e.AttackedThisTurn = false;
         e.CurrentAttackHitLeader = false;
+        // 光环加成已随面板一起重算，记录必须清零，否则下一轮 SBA
+        // 会按旧值倒扣，变身后的随从面板被多减一次（175 号第二部分 3-2）。
+        e.AppliedAuraAtk = 0;
+        e.AppliedAuraLife = 0;
 
         // 变身清空一切已获得的授予能力与「谢幕曲已移除」标记（76-c 第 5 章）。
         // 只清 Keywords 不清 _granted，会让授予的 Ward 在变身之后依然生效。

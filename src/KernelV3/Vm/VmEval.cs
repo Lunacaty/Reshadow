@@ -265,7 +265,9 @@ public sealed class VmEval
                 {
                     var d = RefDef(r);
                     if (d == null) return false;
-                    if (hcn.CardId > 0 && d.CardId == hcn.CardId) return true;
+                    // 纹章生成时 CardId 被改写成 400xxxxxx 合成号，原卡号存在 ArtCardId 里，
+                    // 只比 CardId 会让 `where named #10444110` 查不到纹章（175 号第二部分 4-2）。
+                    if (hcn.CardId > 0 && (d.CardId == hcn.CardId || d.ArtCardId == hcn.CardId)) return true;
                     // 中英文名都要比：编译产物里 CardName 可能是英文，
                     // 而 CardDef.Name 走的是本地化名 / NameChs 是简中（174 号文档 12）。
                     return !string.IsNullOrEmpty(hcn.CardName)

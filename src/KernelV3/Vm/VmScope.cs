@@ -95,7 +95,9 @@ public sealed class VmScope
     public void BindRefs(string slot, IEnumerable<EntityRef> refs)
     {
         if (string.IsNullOrEmpty(slot)) return;
-        Registers[slot] = refs?.ToList() ?? new List<EntityRef>();
+        // 必须走 SetSlot：向父帧传播，否则 if/else、modes、repeat 块内
+        // 生成的 $created 传不出块外（175 号第二部分 2）。
+        SetSlot(slot, refs?.ToList() ?? new List<EntityRef>());
     }
 
     /// <summary>本能力域内已执行过多少次 Select（供 $choose1..$chooseN 分槽）。</summary>
@@ -114,21 +116,27 @@ public sealed class VmScope
     public void BindSelection(string outSlot, IEnumerable<EntityRef> refs, bool append)
     {
         var list = refs?.ToList() ?? new List<EntityRef>();
-        int idx = ++SelectSequence;
-        Registers[Ast.TargetSpec.SlotChoose(idx)] = list;
+        // 序数编号必须由**根作用域**统一分配：子帧各自 ++ 会让
+        // 「第 1 次 / 第 2 次 Select」在父子帧里撞号，$choose1 被覆盖。
+        int idx = NextSelectIndex();
+        SetSlot(Ast.TargetSpec.SlotChoose(idx), list);
 
         string slot = string.IsNullOrEmpty(outSlot) ? Ast.TargetSpec.SlotSelected : outSlot;
         if (append)
         {
             var merged = Read(slot).ToList();
             merged.AddRange(list);
-            Registers[slot] = merged;
+            SetSlot(slot, merged);
         }
         else
         {
-            Registers[slot] = list;
+            SetSlot(slot, list);
         }
     }
+
+    /// <summary>在根作用域递增 Select 序号（子帧向上递归）。</summary>
+    private int NextSelectIndex()
+        => Parent != null ? Parent.NextSelectIndex() : ++SelectSequence;
 
     public IReadOnlyList<EntityRef> Read(string slot)
         => slot != null && Registers.TryGetValue(slot, out var list)
