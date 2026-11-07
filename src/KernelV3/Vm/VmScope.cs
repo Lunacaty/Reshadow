@@ -149,9 +149,15 @@ public sealed class VmScope
         }
     }
 
-    /// <summary>在根作用域递增 Select 序号（子帧向上递归）。</summary>
+    /// <summary>
+    /// 在根作用域递增 Select 序号，并把结果同步回**当前子帧**。
+    ///
+    /// 只返回根序号而不回写，会让子帧自己的 SelectSequence 停在 0；
+    /// CardVm.SubmitChoice 备份跨时机 LastChooseRefs 时按
+    /// frame.Scope.SelectSequence 循环，于是少备份一次（175 号后续 2）。
+    /// </summary>
     private int NextSelectIndex()
-        => Parent != null ? Parent.NextSelectIndex() : ++SelectSequence;
+        => SelectSequence = (Parent != null ? Parent.NextSelectIndex() : SelectSequence + 1);
 
     public IReadOnlyList<EntityRef> Read(string slot)
         => slot != null && Registers.TryGetValue(slot, out var list)

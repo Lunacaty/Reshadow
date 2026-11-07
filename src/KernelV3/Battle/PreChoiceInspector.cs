@@ -148,7 +148,8 @@ public static class PreChoiceInspector
         BattleState state, RuntimeEntity card, VmScope scope,
         IReadOnlyList<EffectNode> body,
         IReadOnlyList<IReadOnlyList<int>> answers,
-        ref int consumed)
+        ref int consumed,
+        bool afterIrreversible = false)
     {
         foreach (var node in body)
         {
@@ -160,13 +161,16 @@ public static class PreChoiceInspector
             //
             //   · 目标选择（Select / Choose 目标）—— **不可以**跨越。
             //     候选池取决于抽到了什么、随机打死了谁；越过前置节点替他选等于盲选。
-            //     更糟的是循环里的 Select 会把预选答案偷吃掉，整个队列错位（175 号回归 4）。
+            //
+            // 这里**不能**提前截胡返回提示：SubmitPreActionChoice 每收一个答案都会
+            // 从头重跑 Inspect，提前返回的分支若不消费 answers / 不递增 consumed，
+            // 就会把同一个弹窗无限重弹（UI 点一次弹一次，自动预选跑满 500 次抛异常）。
+            // 正确做法是打标记继续往后走，让模式分支自己走正常的答案消费逻辑。
             if (IsIrreversible(node))
             {
-                var modeAhead = FindModeChoiceAhead(body, node);
-                return modeAhead != null
-                    ? NewModePrompt(state, card, modeAhead)
-                    : null;
+                if (node is LoopNode) return null;   // 循环体内外无法在预选期静态展开
+                afterIrreversible = true;
+                continue;
             }
 
             switch (node)
@@ -176,7 +180,7 @@ public static class PreChoiceInspector
                     bool take = EvalCond(state, card, cond.Condition, scope);
                     var branch = take ? cond.Then : cond.Else;
                     if (branch == null || branch.Count == 0) continue;
-                    var sub = Walk(state, card, scope, branch, answers, ref consumed);
+                    var sub = Walk(state, card, scope, branch, answers, ref consumed, afterIrreversible);
                     if (sub != null) return sub;
                     continue;
                 }
@@ -193,7 +197,7 @@ public static class PreChoiceInspector
                         foreach (var idx in picked)
                         {
                             if (idx < 0 || idx >= n) continue;
-                            var sub = Walk(state, card, scope, bm.Options[idx], answers, ref consumed);
+                            var sub = Walk(state, card, scope, bm.Options[idx], answers, ref consumed, afterIrreversible);
                             if (sub != null) return sub;
                         }
                         continue;
@@ -210,6 +214,10 @@ public static class PreChoiceInspector
                     var spec = ChooseTargetOf(node);
                     if (spec == null || spec.Mode != SelectMode.Choose) continue;
                     if (spec.SourceKind == TargetSourceKind.Slot) continue;
+
+                    // 抽牌 / 随机伤害之后的选目标不能预选：候选池取决于
+                    // 前置动作的结果，必须留到运行期结算完再弹窗。
+                    if (afterIrreversible) return null;
 
                     var ids = ResolveCands(state, card, spec, scope);
                     if (ids.Count == 0) continue;   // 无合法目标：运行时也直接跳过
@@ -242,35 +250,6 @@ public static class PreChoiceInspector
             }
         }
 
-        return null;
-    }
-
-    /// <summary>
-    /// 在 body 里从 after 之后向前找第一个「模式抉择」节点。
-    /// 只用于跨越不可逆节点时的模式预选 —— 目标选择不在此列。
-    /// </summary>
-    private static BranchModeNode FindModeChoiceAhead(IReadOnlyList<EffectNode> body, EffectNode after)
-    {
-        bool seen = false;
-        foreach (var n in body)
-        {
-            if (!seen) { if (ReferenceEquals(n, after)) seen = true; continue; }
-            var found = FindModeIn(n);
-            if (found != null) return found;
-        }
-        return null;
-    }
-
-    private static BranchModeNode FindModeIn(EffectNode n)
-    {
-        if (n is BranchModeNode bm0 && bm0.Kind == ModeDispatchKind.Choose) return bm0;
-        if (n is ConditionalNode c)
-        {
-            foreach (var x in c.Then ?? Array.Empty<EffectNode>())
-            { var r = FindModeIn(x); if (r != null) return r; }
-            foreach (var x in c.Else ?? Array.Empty<EffectNode>())
-            { var r = FindModeIn(x); if (r != null) return r; }
-        }
         return null;
     }
 
