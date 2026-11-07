@@ -233,8 +233,7 @@ public partial class DeckBuilderView : Control
             PlaceholderText = "搜索卡名 / 兵种 / 效果文本",
             CustomMinimumSize = new Vector2(240, 32),
         };
-        _currentPage = 0;
-        search.TextChanged += t => { _vm.SearchQuery = t; RefreshCardGrid(); };
+        search.TextChanged += t => { _vm.SearchQuery = t; _currentPage = 0; RefreshCardGrid(); };
         filterRow.AddChild(search);
 
         // ---- 牌组编辑器完整筛选栏 ----
@@ -357,8 +356,7 @@ public partial class DeckBuilderView : Control
 
         var allBtn = new Button { Text = "全部" };
         SvWbTheme.StyleButton(allBtn);
-        _currentPage = 0;
-        allBtn.Pressed += () => { _vm.ActiveCostFilter = null; RefreshCardGrid(); };
+        allBtn.Pressed += () => { _vm.ActiveCostFilter = null; _currentPage = 0; RefreshCardGrid(); };
         costRow.AddChild(allBtn);
 
         for (int i = 0; i <= 8; i++)
@@ -429,8 +427,7 @@ public partial class DeckBuilderView : Control
     {
         var b = new Button { Text = caption };
         SvWbTheme.StyleButton(b);
-        _currentPage = 0;
-        b.Pressed += () => { _vm.ActiveClanFilter = filter; RefreshCardGrid(); };
+        b.Pressed += () => { _vm.ActiveClanFilter = filter; _currentPage = 0; RefreshCardGrid(); };
         row.AddChild(b);
     }
 
@@ -600,6 +597,7 @@ public partial class DeckBuilderView : Control
 
     private void RefreshCardGrid()
     {
+        _tooltip?.HideTooltip();
         foreach (var c in _cardGrid.GetChildren()) c.QueueFree();
         _gridWidgets.Clear();
 
@@ -647,6 +645,7 @@ public partial class DeckBuilderView : Control
 
     private void RefreshDeckList()
     {
+        _tooltip?.HideTooltip();
         foreach (var c in _deckList.GetChildren()) c.QueueFree();
 
         foreach (var (def, count, limit) in _vm.GetDeckEntries())

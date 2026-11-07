@@ -300,6 +300,16 @@ public sealed class ActionParser
 
         switch (w)
         {
+            case "this":
+            {
+                int svThis = cur.Position;
+                cur.Advance();
+                cur.TryMatchAnyWord("follower", "card", "amulet", "crest");
+                if (cur.Current.IsAnyWord("can't", "cant", "can", "cannot"))
+                    return ParseOne(cur);
+                cur.Seek(svThis);
+                return null;
+            }
             case "deal": return ParseDeal(cur);
             case "draw": return ParseDraw(cur);
             case "restore": return ParseRestore(cur);
@@ -577,48 +587,52 @@ public sealed class ActionParser
                 }
                 var j = string.Join(" ", words);
 
-                // 带参关键词必须把数值带上，否则运行时无法区分「最多受 0 点」和「最多受 3 点」
+                bool isNegative = words.Any(w => w is "can't" or "cant" or "cannot") || j.Contains("can't") || j.Contains("cannot");
                 string kw;
                 NumExpr kwVal = null;
-                // 「Can't attack leaders」只禁主战者，随从照打；
-                // 「Can't attack followers or leaders」或裸「Can't attack」才是全面禁止。
-                //
-                // 判据必须按**词**而不是按连续子串：
-                //   "Can't attack followers or leaders" 里没有 "attack leaders" 这个连续串
-                //   （中间隔了 "followers or"），旧实现于是命中 cannot_attack_followers，
-                //   变成「只禁随从、可以打脸」—— 与卡面完全相反。
-                bool mentionsFollowers = j.Contains("attack followers")
-                                         || (j.Contains("attack") && j.Contains("followers"));
-                bool mentionsLeaders = j.Contains("attack leaders")
-                                       || (j.Contains("attack") && j.Contains("leaders"));
-                if (mentionsFollowers && mentionsLeaders)
-                    kw = "cannot_attack";
-                else if (mentionsLeaders)
-                    kw = "cannot_attack_leaders";
-                else if (mentionsFollowers)
-                    kw = "cannot_attack_followers";
-                else if (j.Contains("be destroyed"))
-                    kw = "cannot_destroy";
-                // "Can't be played"是「这张卡不能从手牌打出」，与「不能攻击」完全不同。
-                // 旧实现落进兜底分支变成 cannot_attack，会让这张卡仍可以打出。
-                else if (j.Contains("be played"))
-                    kw = "cannot_be_played";
-                // "Can attack 2 times per turn" 与 "Can attack twice per turn" 是同一件事。
-                // 后者里 twice 已被词法层读成数字，words 里拿不到 "time"，
-                // 只按 time 判会让这句整条被静默丢弃。
-                else if (j.Contains("attack")
-                         && (j.Contains("time") || j.Contains("once") || j.Contains("twice") || j.Contains("thrice")))
-                {
-                    kw = "max_attacks_per_turn";
-                    // 有表达式就用表达式（X / Y / count(...)），否则退到常数。
-                    kwVal = numExpr ?? NumExpr.Const(numInClause ?? 1);
-                }
+
+                if (!isNegative && (j.Contains("super-evolve") || j.Contains("super evolve")) && (j.Contains("0") || j.Contains("zero") || j.Contains("without")))
+                    kw = "free_super_evolve";
+                else if (!isNegative && j.Contains("evolve") && (j.Contains("0") || j.Contains("zero") || j.Contains("without")))
+                    kw = "free_evolve";
                 else if (j.Contains("take more than"))
                 {
                     kw = "damage_cap";
                     kwVal = numExpr ?? NumExpr.Const(numInClause ?? 0);
                 }
-                else kw = "cannot_attack";
+                else if (j.Contains("attack")
+                         && (j.Contains("time") || j.Contains("once") || j.Contains("twice") || j.Contains("thrice")))
+                {
+                    kw = "max_attacks_per_turn";
+                    kwVal = numExpr ?? NumExpr.Const(numInClause ?? 1);
+                }
+                else if (j.Contains("be destroyed"))
+                    kw = "cannot_destroy";
+                else if (j.Contains("be played"))
+                    kw = "cannot_be_played";
+                else if (isNegative && (j.Contains("be attacked") || j.Contains("be target of attack")))
+                    kw = "intimidate";
+                else if (isNegative && (j.Contains("be targeted") || j.Contains("be selected")))
+                    kw = "aura";
+                else
+                {
+                    bool mentionsFollowers = j.Contains("attack followers")
+                                             || (j.Contains("attack") && j.Contains("followers"));
+                    bool mentionsLeaders = j.Contains("attack leaders")
+                                           || (j.Contains("attack") && j.Contains("leaders"));
+                    if (mentionsFollowers && mentionsLeaders)
+                        kw = "cannot_attack";
+                    else if (mentionsLeaders)
+                        kw = "cannot_attack_leaders";
+                    else if (mentionsFollowers)
+                        kw = "cannot_attack_followers";
+                    else if (isNegative && j.Contains("attack"))
+                        kw = "cannot_attack";
+                    else if (isNegative)
+                        kw = "cannot_attack";
+                    else
+                        throw new LangException($"未识别的 Can/Can't 能力限制描述: [{j}]");
+                }
 
                 return new List<EffectNode>
                 {
@@ -712,13 +726,15 @@ public sealed class ActionParser
         var extraDmg = new List<EffectNode>();
 
         // 形态 A: deal N damage to <target>
-        // 形态 B: deal it N damage          （it 指代上一条动作的目标）
+        // 形态 B: deal it N damage          （it 指代上一条动作的目标，支持省略数值返回 -1 哨兵）
         TargetSpec target;
         NumExpr amount;
         if (cur.Current.IsAnyWord("it", "them"))
         {
             cur.Advance();
-            amount = ParseNumExpr(cur);
+            amount = cur.Current.IsAnyWord("damage", "damage,")
+                ? NumExpr.Const(-1)
+                : ParseNumExpr(cur);
             cur.TryMatchAnyWord("damage", "damage,");
             target = _target.ResolvePronounTarget();
         }
@@ -1067,6 +1083,7 @@ public sealed class ActionParser
         // 外层循环：支持 "Give <T1> <G1> and <T2> <G2>"（第二组省略 give）
         while (!cur.IsAtEnd)
         {
+            int roundStart = result.Count;
             // 0. "give your faith "..."" —— 给**资源计数器**挂能力，必须在目标解析之前判断
             if (cur.Current.IsWord("your") && cur.Peek().IsAnyWord("faith", "crest"))
             {
@@ -1264,12 +1281,12 @@ public sealed class ActionParser
                 throw new LangException("Give 在目标之后未找到可授予的内容，停在 " + cur.Current);
 
             // 4. 可选持续时间：until the end of ... turn
-            // 授予节点已经生成了，只能回填 —— 用 ChangeDuration 重建带持续时间的副本。
+            // 授予节点已经生成了，只能回填 —— 仅回填本轮且尚未指定特殊时限的节点
             var giveDur = ConsumeDuration(cur);
             if (giveDur != DurationKind.Permanent)
             {
-                for (int gi = 0; gi < result.Count; gi++)
-                    result[gi] = WithDuration(result[gi], giveDur);
+                for (int gi = roundStart; gi < result.Count; gi++)
+                    result[gi] = WithDurationIfPermanent(result[gi], giveDur);
             }
 
             // 5. 是否还有第二组 "<T2> <G2>"
@@ -2890,16 +2907,23 @@ public sealed class ActionParser
     private List<EffectNode> ParseSpellboost(TokenCursor cur)
     {
         cur.ExpectWord("spellboost");
-        var target = TargetSpec.Self;
+        // 规则圣经 2.3.A：魔力增幅默认作用于我方全部手牌，绝不是场上的 $self！
+        var target = new TargetSpec
+        {
+            SourceKind = TargetSourceKind.Zone,
+            Owner = ZoneScope.Self,
+            Zone = ZoneRef.Hand,
+            Mode = SelectMode.All
+        };
 
-        if (cur.MatchPhrase("your", "hand"))
-            target = new TargetSpec { SourceKind = TargetSourceKind.Zone, Owner = ZoneScope.Self, Zone = ZoneRef.Hand, Mode = SelectMode.All };
+        if (cur.MatchPhrase("your", "hand")) { /* 保持手牌全体 */ }
         else if (cur.Current.IsAnyWord("it", "them"))
         {
             cur.Advance();
             target = _target.ResolvePronounTarget();
         }
-        else
+        else if (!(cur.Current.Kind == TokKind.Number && cur.Peek().IsAnyWord("time", "times"))
+              && !(cur.Current.IsAnyWord("x", "y", "z") && cur.Peek().IsAnyWord("time", "times")))
         {
             var t = _target.TryParse(cur);
             if (t != null) target = t;
@@ -3731,6 +3755,20 @@ public sealed class ActionParser
     /// 之前返回 void，把 "until the end of the turn" 吃进垃圾桶，
     /// 导致所有限时效果都被编译成 Permanent（本回合 +1/+0 变成永久 +1/+0）。
     /// </summary>
+    /// <summary>仅在节点当前为永久持续（Permanent）时，才回填新的持续时间。</summary>
+    private static EffectNode WithDurationIfPermanent(EffectNode node, DurationKind dur)
+    {
+        if (node is ModifyStatsNode ms && ms.Duration == DurationKind.Permanent)
+            return WithDuration(ms, dur);
+        if (node is ModifyKeywordNode mk && mk.Duration == DurationKind.Permanent)
+            return WithDuration(mk, dur);
+        if (node is ModifyCostNode mc && mc.Duration == DurationKind.Permanent)
+            return WithDuration(mc, dur);
+        if (node is GrantAbilityNode ga && ga.Duration == DurationKind.Permanent)
+            return WithDuration(ga, dur);
+        return node;
+    }
+
     /// <summary>
     /// 给已经生成的节点补上持续时间。
     /// 持续时间短语出现在授予项之后（"give it +1/+0 until the end of the turn"），

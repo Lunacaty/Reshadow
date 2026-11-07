@@ -1295,24 +1295,24 @@ public sealed class ChineseCardPrinter
     {
         if (t == null) return "目标";
 
-        // 槽位代词
+        // 槽位代词（保留 Where 定语，178 号文档 12）
         if (t.SourceKind == TargetSourceKind.Slot)
         {
-            switch (t.Slot)
+            string basePronoun = t.Slot switch
             {
-                case TargetSpec.SlotSelf: return "本卡牌";
-                case TargetSpec.SlotSelected: return "该目标";
-                case TargetSpec.SlotCreated: return "该卡牌";
-                case TargetSpec.SlotTrigger: return "该卡牌";
-                case TargetSpec.SlotOpposing: return "交战的敌方随从";
-                case TargetSpec.SlotItem: return "该卡牌";
-                case TargetSpec.SlotCounter: return "该计数器";
-                // 序数槽位："the second selected follower" -> "第2个所选目标"。
-                // 不认它会落到 default，把「第 2 个」渲染成「该目标」，与第 1 个完全同形。
-                case var s when TargetSpec.TryParseChooseSlotIndex(s, out int ci):
-                    return "第" + ci + "个所选目标";
-                default: return "该目标";
-            }
+                TargetSpec.SlotSelf => "本卡牌",
+                TargetSpec.SlotSelected => "该目标",
+                TargetSpec.SlotCreated or TargetSpec.SlotTrigger or TargetSpec.SlotItem => "该卡牌",
+                TargetSpec.SlotOpposing => "交战的敌方随从",
+                TargetSpec.SlotCounter => "该计数器",
+                var s when TargetSpec.TryParseChooseSlotIndex(s, out int ci) => "第" + ci + "个所选目标",
+                _ => "该目标",
+            };
+            string slotWhere = PrintTargetWhere(t.Where, t);
+            string slotNoun = CoreNoun(t, slotWhere.Length > 0);
+            if (!string.IsNullOrEmpty(slotWhere) || (t.Where is HasKindExpr))
+                return slotWhere + (slotNoun == "卡牌" ? basePronoun : slotNoun);
+            return basePronoun;
         }
 
         // 具名卡池不能提前返回：它还带着 History（本局已进入战场的）与 Where（其他的）。

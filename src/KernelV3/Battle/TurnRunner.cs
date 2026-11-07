@@ -143,51 +143,31 @@ public sealed class TurnRunner
         // 必须排在吟唱递减**之前**：Countdown=1 的护符/纹章在最后一回合的
         // 「回合开始时」能力要还能触发，然后才归零进场（174 号文档 二.6）。
         // 早先把 TurnStart 放在递减之后，等于先把卡送进墓地再广播事件。
+        // ── 第 2 步：触发回合开始 TurnStart 能力 ──
         EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.TurnStart, PlayerId = playerId, Priority = 15 });
-        vm?.StepUntilBlocked();
 
-        // ── 第 3 步：我方纹章（吟唱推进） ──
-        StepCrestArea(playerId, vm, ownTurn: true);
-
-        // ── 第 4 步：我方战场（护符吟唱推进） ──
-        StepBoardCountdown(playerId, vm);
-
-        // ── 第 5 步：对手纹章响应（“对手回合开始时”） ──
-        StepCrestArea(1 - playerId, vm, ownTurn: false);
-
-        // ── 第 5 步补充：对手战场响应 ──
-        // （对手护符不推进吟唱 —— 吟唱只在持有者自己的回合推进）
-        // （当前无独立的“对手回合开始”事件，留待下一步扩展）
-
-        // ── 第 6 步：直接召唤（Invoke）（R-6.2） ──
-        //
-        // 这里**不再手写搬卡**。Invoke 卡的能力体本身就是 `move $self to Board`，
-        // 第 7 步的 TurnStart 事件会让它以 ActiveZone=Deck 的身份入列并自行上场。
-        // 两处都做会把同名卡抬上场两次（实测牌组 2 张同名 → 上场 2 张）。
-        //
-        // 「满场不发动」由 MoveEntity 的满场拦截负责（牌库→战场被拒时原地不动）；
-        // 「同一时机同名只 1 张」由 CardVm.FlushNextTrigger 的按 (CardId, 事件) 去重负责。
-
-        // ── 第 8 步：常规抽牌（先手第一回合也抽） ──
-        // 必须等第 2～7 步的回合初能力**彻底结算完**（含玩家完成所有选择）再抽。
-        // 直接写在 StepUntilBlocked() 后面会让抽牌抢在挂起的回合初能力之前。
-        int drawCount = ShouldDrawThisTurn(playerId) ? rules.CardsDrawnPerTurn : 0;
-        if (drawCount > 0)
+        void PostTurnStartSteps()
         {
-            if (vm != null)
-            {
-                vm.EnqueueContinuation(() =>
-                {
-                    _state.DrawCards(playerId, drawCount);
-                    vm.StepUntilBlocked();
-                });
-                vm.StepUntilBlocked();
-            }
-            else
+            StepCrestArea(playerId, vm, ownTurn: true);
+            StepBoardCountdown(playerId, vm);
+            StepCrestArea(1 - playerId, vm, ownTurn: false);
+            vm?.StepUntilBlocked();
+
+            int drawCount = ShouldDrawThisTurn(playerId) ? rules.CardsDrawnPerTurn : 0;
+            if (drawCount > 0)
             {
                 _state.DrawCards(playerId, drawCount);
+                vm?.StepUntilBlocked();
             }
+            _state.ProcessStateBasedActions();
         }
+
+        if (vm != null)
+        {
+            vm.EnqueueContinuation(() => { PostTurnStartSteps(); vm.StepUntilBlocked(); });
+            vm.StepUntilBlocked();
+        }
+        else PostTurnStartSteps();
 
         // 回合易主后立即刷新常驻光环面板：
         // 「在你的回合中，本随从 +2/+0」这类 aura 的条件随 ActivePlayer 变化，

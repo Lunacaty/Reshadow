@@ -146,6 +146,7 @@ public static class DiyBlockModel
         // ---- 控制流 ----
         ["c_if_else"] = BlockShape.C,
         ["c_repeat"] = BlockShape.C,
+        ["c_repeat_until"] = BlockShape.C,
         ["c_mode"] = BlockShape.C,
         ["c_for_each"] = BlockShape.C,
 
@@ -217,6 +218,11 @@ public static class DiyBlockModel
         ["num_count"] = BlockShape.Pill,
         ["num_max_group"] = BlockShape.Pill,
         ["num_arith"] = BlockShape.Hex,
+        ["num_sum"] = BlockShape.Pill,
+        ["num_distinct"] = BlockShape.Pill,
+        ["num_cond"] = BlockShape.Pill,
+        ["num_extreme"] = BlockShape.Pill,
+        ["act_mark_victory"] = BlockShape.Stack,
     };
 
     public static BlockShape ShapeOf(string opcode)
@@ -609,9 +615,16 @@ public sealed class DiyBlockCompiler
                 {
                     Kind = LoopKind.Times,
                     Count = n ?? NumExpr.Const(1),
-                    // MaxIterations 是「防止无限循环的安全上限」，不是循环次数。
-                    // 早先错把它设成 Count，导致同一张卡在积木端重建后
-                    // 打印成「repeat 2 times (max=2)」，与原 AST 的默认 30 不等价。
+                    Body = CompileStackList(b.Stacks),
+                };
+            }
+            case "c_repeat_until":
+            {
+                var cond = CompileCond(b.Condition);
+                return new LoopNode
+                {
+                    Kind = LoopKind.RepeatUntil,
+                    Until = cond ?? BoolExpr.True,
                     Body = CompileStackList(b.Stacks),
                 };
             }
@@ -1266,6 +1279,28 @@ public sealed class DiyBlockCompiler
                     _ => NumExpr.Add(l, r),
                 };
             }
+            case "num_sum":
+            {
+                var sk = Enum.TryParse<StatKey>(b.EnumA, true, out var parsedSk) ? parsedSk : StatKey.Cost;
+                return NumExpr.SumOf(CompileTarget(b.Target) ?? TargetSpec.Self, sk);
+            }
+            case "num_distinct":
+                return new NumExpr { Op = NumOp.DistinctCount, Of = CompileTarget(b.Target) ?? TargetSpec.Self };
+            case "num_cond":
+                return new NumExpr
+                {
+                    Op = NumOp.Cond,
+                    Cond = CompileCond(b.Condition),
+                    Then = CompileNumber(b.Number),
+                    Else = CompileNumber(b.Number2),
+                };
+            case "num_extreme":
+            {
+                bool takeMax = b.EnumA == "Max";
+                var l = CompileNumber(b.Number) ?? NumExpr.Const(0);
+                var r = CompileNumber(b.Number2) ?? NumExpr.Const(0);
+                return new NumExpr { Op = NumOp.Extreme, TakeMax = takeMax, Args = new[] { l, r } };
+            }
             default:
                 _res.Fail(b, "不是数值积木");
                 return null;
@@ -1537,6 +1572,22 @@ public sealed class DiyBlockDecompiler
 
     private Block Stack(EffectNode n)
     {
+        var blk = StackRaw(n);
+        // 节点级条件（@if / EffectNode.If）还原为单分支 c_if_else 积木（178 号文档 二.2）
+        if (blk != null && n?.If != null)
+        {
+            return new Block
+            {
+                Opcode = "c_if_else",
+                Condition = Cond(n.If),
+                Stacks = new List<Block> { blk },
+            };
+        }
+        return blk;
+    }
+
+    private Block StackRaw(EffectNode n)
+    {
         switch (n)
         {
             case RevealCardNode rv:
@@ -1713,6 +1764,8 @@ public sealed class DiyBlockDecompiler
             case LoopNode lp:
                 if (lp.Kind == LoopKind.ForEach)
                     return new Block { Opcode = "c_for_each", Target = Target(lp.Collection), Stacks = Stacks(lp.Body) };
+                if (lp.Kind == LoopKind.RepeatUntil)
+                    return new Block { Opcode = "c_repeat_until", Condition = Cond(lp.Until), Stacks = Stacks(lp.Body) };
                 return new Block { Opcode = "c_repeat", Number = Num(lp.Count), Stacks = Stacks(lp.Body) };
 
             case BranchModeNode bm:
@@ -2004,6 +2057,14 @@ public sealed class DiyBlockDecompiler
                     Number = Num(e.Args[0]), Number2 = Num(e.Args[1]),
                 };
             }
+            case NumOp.Sum:
+                return new Block { Opcode = "num_sum", Target = Target(e.Of), EnumA = e.Stat.ToString() };
+            case NumOp.DistinctCount:
+                return new Block { Opcode = "num_distinct", Target = Target(e.Of) };
+            case NumOp.Cond:
+                return new Block { Opcode = "num_cond", Condition = Cond(e.Cond), Number = Num(e.Then), Number2 = Num(e.Else) };
+            case NumOp.Extreme:
+                return new Block { Opcode = "num_extreme", EnumA = e.TakeMax ? "Max" : "Min", Number = Num(e.Args.ElementAtOrDefault(0)), Number2 = Num(e.Args.ElementAtOrDefault(1)) };
             default:
                 Errors.Add("积木不支持数值：" + e.Op);
                 return null;

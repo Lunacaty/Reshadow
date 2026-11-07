@@ -91,6 +91,12 @@ public sealed class BattleSessionController
     /// </summary>
     public PendingChoice EffectivePendingChoice => RemotePendingChoice ?? Runner.PendingChoice;
 
+    /// <summary>是否为真人联机对战（房主或客机）。真人对战下彻底禁用 AI 代选与自动换牌逻辑（178 号文档 2.1）。</summary>
+    public bool IsPvpMatch { get; set; }
+
+    /// <summary>清空客机本地保存的远端挂起对象（乐观清理，避免弹窗重绘闪烁，178 号文档 2.2）。</summary>
+    public void ClearRemotePendingChoice() => RemotePendingChoice = null;
+
     public MatchPhase? RemotePhase { get; private set; }
     public int? RemoteWinner { get; private set; }
 
@@ -438,11 +444,14 @@ public sealed class BattleSessionController
         if (myReturningCards != null && myReturningCards.Count > 0)
             Runner.Mulligan(MyPlayerId, myReturningCards);
 
-        // AI 的简单策略：换掉费用 >= 5 的卡。
-        int foeId = 1 - MyPlayerId;
-        var foeReturn = Hand(foeId).Where(c => c.Cost >= 5).ToList();
-        if (foeReturn.Count > 0)
-            Runner.Mulligan(foeId, foeReturn);
+        // 仅在单机 AI 模式下替对手换牌；真人对战绝不篡改对手手牌（178 号文档 2.1）
+        if (!IsPvpMatch && !IsRemote)
+        {
+            int foeId = 1 - MyPlayerId;
+            var foeReturn = Hand(foeId).Where(c => c.Cost >= 5).ToList();
+            if (foeReturn.Count > 0)
+                Runner.Mulligan(foeId, foeReturn);
+        }
 
         Runner.ConfirmMulligan();
         ResolveAiPendingIfAny();
@@ -450,10 +459,11 @@ public sealed class BattleSessionController
 
     /// <summary>
     /// 若当前挂起的选择属于 AI 对手，自动替它完成；
-    /// 属于我方则**保持挂起**，交给 UI。
+    /// 属于我方或处于真人联机时**保持挂起**，交给 UI / 网络。
     /// </summary>
     public void ResolveAiPendingIfAny()
     {
+        if (IsPvpMatch || IsRemote) return; // 真人联机严禁 AI 接管对手的选择！（178 号文档 2.1）
         int guard = 0;
         while (Runner.IsWaitingForInput && Runner.PendingChoice != null)
         {
@@ -786,9 +796,16 @@ public sealed class BattleSessionController
         SelectedFuseMaterials.Clear();
     }
 
+    public bool CanUseAsFuseMaterial(RuntimeEntity mat)
+    {
+        if (!IsInFuseMode || FuseBaseCard == null || mat == null) return false;
+        if (mat.Zone != ZoneRef.Hand || ReferenceEquals(mat, FuseBaseCard)) return false;
+        return Runner.Turns.CanFuseCards(MyPlayerId, FuseBaseCard, new[] { mat }, out _);
+    }
+
     public void ToggleFuseMaterial(RuntimeEntity mat)
     {
-        if (!IsInFuseMode || mat == null || ReferenceEquals(mat, FuseBaseCard)) return;
+        if (!CanUseAsFuseMaterial(mat)) return;
         if (SelectedFuseMaterials.Any(m => m.EntityId == mat.EntityId))
             SelectedFuseMaterials.RemoveAll(m => m.EntityId == mat.EntityId);
         else
@@ -909,6 +926,7 @@ public sealed class BattleSessionController
         if (!IsSecondPlayer(playerId)) return false;
 
         var p = State.Players[playerId];
+        if (p.UsedExtraPpThisTurn) return false;
         bool early = State.TurnNumber <= State.Rules.ExtraPpEarlyPhaseLastTurn;
         return early ? !p.UsedEarlyExtraPp : !p.UsedLateExtraPp;
     }

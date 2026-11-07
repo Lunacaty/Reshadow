@@ -381,6 +381,10 @@ public sealed class DiyWorkshopController
         CurrentDef = new CardDef
         {
             CardId = head.CardId,
+            ArtCardId = head.ArtCardId,
+            PackId = head.PackId,
+            Rarity = head.Rarity,
+            IsToken = head.IsToken,
             Name = head.Name,
             NameChs = head.NameChs,
             Kind = head.Kind,
@@ -393,12 +397,11 @@ public sealed class DiyWorkshopController
             DeckModifiers = head.DeckModifiers,
             HasFuse = head.HasFuse,
             FuseMaterialFilter = head.FuseMaterialFilter,
-            // 用户在 ③ 端手写了子卡段就用解析结果，否则沿用原卡的。
-            CrestDef = parsedCrest ?? head.CrestDef,
-            FaithDef = parsedFaith ?? head.FaithDef,
-            AccelerateDef = parsedAccel ?? head.AccelerateDef,
-            CrystallizeDef = parsedCryst ?? head.CrystallizeDef,
-            IsToken = head.IsToken,
+            // 允许删除子卡，直接使用解析结果；元属性完整保留（178 号文档 5.1 & 二.1）
+            CrestDef = parsedCrest,
+            FaithDef = parsedFaith,
+            AccelerateDef = parsedAccel,
+            CrystallizeDef = parsedCryst,
             Abilities = abilities,
             SourceText = head.SourceText,
         };
@@ -789,16 +792,19 @@ public sealed class DiyWorkshopController
         return names.Select(n => Workspace.Schema.Trait(n)).ToList();
     }
 
-    private static CardDef PreserveChineseName(CardDef d, string nameChs)
+    private CardDef PreserveChineseName(CardDef d, string nameChs)
     {
         if (d == null) return null;
+        var prev = CurrentDef;
         return new CardDef
         {
-            CardId = d.CardId,
-            PackId = d.PackId,
-            IsToken = d.IsToken,
+            CardId = d.CardId > 0 ? d.CardId : (prev?.CardId ?? 0),
+            ArtCardId = d.ArtCardId > 0 ? d.ArtCardId : (prev?.ArtCardId ?? 0),
+            PackId = !string.IsNullOrEmpty(d.PackId) ? d.PackId : (prev?.PackId ?? ""),
+            Rarity = d.Rarity > 0 ? d.Rarity : (prev?.Rarity ?? 0),
+            IsToken = d.IsToken || (prev?.IsToken ?? false),
             Name = d.Name,
-            NameChs = !string.IsNullOrWhiteSpace(nameChs) ? nameChs : d.NameChs,
+            NameChs = !string.IsNullOrWhiteSpace(nameChs) ? nameChs : (d.NameChs ?? prev?.NameChs),
             Kind = d.Kind,
             Clan = d.Clan,
             Traits = d.Traits,

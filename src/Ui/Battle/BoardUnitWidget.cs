@@ -182,6 +182,19 @@ public partial class BoardUnitWidget : Control
 
     private int _visualLifeOffset;
 
+    public int VisualAttackOffset
+    {
+        get => _visualAttackOffset;
+        set
+        {
+            if (_visualAttackOffset == value) return;
+            _visualAttackOffset = value;
+            QueueRedraw();
+        }
+    }
+
+    private int _visualAttackOffset;
+
     /// <summary>
     /// 视觉进化延迟：后端已进化、但进化翻面动画还在队列里没播时，
     /// 暂不显示金框与进化身材加成。
@@ -323,7 +336,7 @@ public partial class BoardUnitWidget : Control
                     : (rules?.EvolveBonusLife ?? 2);
             }
 
-            int shownAtk = Math.Max(0, Entity.Attack - evoAtk);
+            int shownAtk = Math.Max(0, Entity.Attack + VisualAttackOffset - evoAtk);
             // VisualLifeOffset 是**已扣但未播**的伤害，符号为正表示「补回去」。
             int shownLife = Math.Max(0, Entity.Life + VisualLifeOffset - evoLife);
 

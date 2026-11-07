@@ -1929,18 +1929,17 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 box.AddChild(ownerOpt);
 
                 var kindOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-
-                // OptionButton 默认 FitToLongestItem=true，长条目会把整栏撑破屏幕右缘。
-
                 SvWbTheme.StyleOptionPopup(kindOpt);
-                for (int ki = 0; ki < DiyZh.Kinds.Length; ki++) kindOpt.AddItem(DiyZh.Kinds[ki].Zh, ki);
+                // 增加“不限卡种”选项（178 号文档 5.2）
+                kindOpt.AddItem("（不限卡种）", 0);
+                for (int ki = 0; ki < DiyZh.Kinds.Length; ki++) kindOpt.AddItem(DiyZh.Kinds[ki].Zh, ki + 1);
+
                 int kIdx = DiyZh.IndexOf(DiyZh.Kinds, cur.Text);
-                if (kIdx >= 0) kindOpt.Selected = kIdx;
+                kindOpt.Selected = kIdx >= 0 ? kIdx + 1 : 0;
                 kindOpt.ItemSelected += s4 =>
                 {
-                    int ki = (int)s4;
-                    if (ki < 0 || ki >= DiyZh.Kinds.Length) return;
-                    cur.Text = DiyZh.Kinds[ki].Key;
+                    int ki = (int)s4 - 1;
+                    cur.Text = (ki >= 0 && ki < DiyZh.Kinds.Length) ? DiyZh.Kinds[ki].Key : null;
                     setter(cur);
                 };
                 box.AddChild(kindOpt);

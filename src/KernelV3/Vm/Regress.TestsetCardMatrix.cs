@@ -125,7 +125,7 @@ public static partial class Regress
     // ---------------------------------------------------------------- 夹具
 
     /// <summary>一套装好 30 张真卡的试验台。</summary>
-    private sealed class MatrixEnv
+    internal sealed class MatrixEnv
     {
         public CompileContext Ctx { get; private set; }
         public BattleState St { get; private set; }
@@ -331,6 +331,7 @@ _ = (sep, superAoE);
 
     private static (bool, string) MatrixCoward(MatrixEnv e)
     {
+        e.FillDeck(6);
         var c = e.Put(81000004, ZoneRef.Hand);
         e.St.WriteCounter(0, e.St.Schema.Counter("pp"), 2);
         bool played = e.Play(c);
@@ -343,6 +344,9 @@ _ = (sep, superAoE);
         e.St.Players[0].Leader.Life = 15;
         e.St.Players[0].Leader.MaxLife = 20;
         int leader0 = e.St.Players[0].Leader.Life;
+        Console.WriteLine("[DEBUG ABILITIES] Count=" + c.Def?.Abilities?.Count);
+        foreach (var a in c.Def?.Abilities ?? new List<AbilityDef>())
+            Console.WriteLine("  ab ev=" + a.Trigger?.Event + " body=" + a.Body?.Count + " nodes=" + string.Join(",", a.Body?.Select(n => n.GetType().Name) ?? Array.Empty<string>()));
         c.Counters[e.St.Schema.Counter("countdown")] = 1;
         e.Vm.DropPendingTriggers();
         e.Tr.StartTurn(0, e.Vm);

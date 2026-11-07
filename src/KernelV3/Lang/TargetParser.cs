@@ -183,6 +183,15 @@ public sealed class TargetParser
         };
     }
 
+    private static bool IsFollowedByNominal(Token tk)
+    {
+        if (tk == null || tk.Kind == TokKind.Eof || tk.Kind is TokKind.Period or TokKind.Comma or TokKind.Colon)
+            return false;
+        if (tk.IsAnyWord("on", "in", "from", "with", "that", "and", "or", "split", "to", "instead", "this", "by"))
+            return false;
+        return true;
+    }
+
     public TargetSpec TryParse(TokenCursor cur)
     {
         SawAlliedAndEnemy = false;
@@ -655,14 +664,14 @@ public sealed class TargetParser
                 owner = ZoneScope.Self; ownerSet = true; SawAlliedAndEnemy = true;
                 matched = true; continue;
             }
-            if (cur.Current.IsAnyWord("enemy"))
+            if (cur.Current.IsAnyWord("enemy") && IsFollowedByNominal(cur.Peek()))
             {
                 cur.Advance();
                 owner = ZoneScope.Opponent; ownerSet = true; matched = true;
                 while (cur.Current.IsAnyWord("a", "an")) cur.Advance();
                 continue;
             }
-            if (cur.Current.IsAnyWord("allied"))
+            if (cur.Current.IsAnyWord("allied") && IsFollowedByNominal(cur.Peek()))
             {
                 cur.Advance();
                 owner = ZoneScope.Self; ownerSet = true; matched = true;
@@ -902,6 +911,8 @@ public sealed class TargetParser
             cur.Advance();
             if (!ownerSet) { owner = ZoneScope.Opponent; ownerSet = true; }
             includeLeader = true;
+            wheres.Add(new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item });
+            hasCardType = true;
             matched = true;
         }
         else if (cur.Current.IsAnyWord("allies", "ally"))
@@ -909,6 +920,8 @@ public sealed class TargetParser
             cur.Advance();
             if (!ownerSet) { owner = ZoneScope.Self; ownerSet = true; }
             includeLeader = true;
+            wheres.Add(new HasKindExpr { Kind = CardKind.Follower, Of = TargetSpec.Item });
+            hasCardType = true;
             matched = true;
         }
         else if (cur.Current.IsAnyWord("card", "cards"))

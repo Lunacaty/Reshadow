@@ -134,7 +134,7 @@
           "text_eng": "<b><color=Keyword>Countdown</color> (3)</b>\n<hr><b><color=Keyword>Last Words</color></b>: Summon a <b><i><color=Keyword>Testset Prostrating Coward</color></i></b>."
         }
       ],
-      "text": "card 81000004 \"匍匐的懦夫\" (Follower, clan=梦魇, cost=5, atk=4, life=5):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"匍匐的懦夫\" (cost=2):\n        countdown(3)\n        last_words:\n            summon 1 #10661110"
+      "text": "card 81000004 \"匍匐的懦夫\" (Follower, clan=梦魇, cost=5, atk=4, life=5):\n    keywords: [bane, ward]\n    on_enter on($self):\n        restore 2 life to self:leader\n\n    crystallize \"匍匐的懦夫\" (cost=2):\n        countdown(3)\n        last_words:\n            summon 1 #81000004"
     },
     {
       "card_id": 81000005,
@@ -155,7 +155,7 @@
           "text_eng": "Summon a <b><i><color=Keyword>Testset Shoddy Plaything</color></i></b>."
         }
       ],
-      "text": "card 81000005 \"粗劣的玩物\" (Follower, clan=梦魇, cost=6, atk=1, life=3):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"粗劣的玩物\" (cost=2):\n        on_play:\n            summon 1 #10671110"
+      "text": "card 81000005 \"粗劣的玩物\" (Follower, clan=梦魇, cost=6, atk=1, life=3):\n    keywords: [ward]\n    fanfare:\n        draw 3\n\n    accelerate \"粗劣的玩物\" (cost=2):\n        on_play:\n            summon 1 #81000005"
     },
     {
       "card_id": 81000006,

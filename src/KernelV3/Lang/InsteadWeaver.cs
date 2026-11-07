@@ -645,12 +645,30 @@ public static class InsteadWeaver
             Body = needsGate ? GateBody(prev.Body, notSuperEvolved) : prev.Body,
         });
 
+        var superBody = new List<EffectNode>();
+        // 跨时机替代（如 Evolve -> Super-Evolve: ... instead）继承基础句的前置选择（178 号文档 5）
+        if (prev.Body != null && prev.Body.Count > 1 && prev.Body[0] is SelectTargetNode
+            && !thenBody.Any(n => n is SelectTargetNode)
+            && (MentionsSlot(thenBody, TargetSpec.SlotSelected)
+                || MentionsSlotInBool(cur.Condition, TargetSpec.SlotSelected)))
+        {
+            int takePrefix = 1;
+            while (takePrefix < prev.Body.Count - 1
+                   && MentionsSlot(new[] { prev.Body[takePrefix] }, TargetSpec.SlotSelected)
+                   && (thenBody.Count == 0 || prev.Body[takePrefix].GetType() != thenBody[0].GetType()))
+            {
+                takePrefix++;
+            }
+            for (int k = 0; k < takePrefix; k++) superBody.Add(prev.Body[k]);
+        }
+        superBody.AddRange(thenBody);
+
         result.Add(new AbilityDef
         {
             Trigger = cur.Trigger,
             Condition = cur.Condition,
             Costs = cur.Costs,
-            Body = thenBody,
+            Body = superBody,
         });
         return result;
     }

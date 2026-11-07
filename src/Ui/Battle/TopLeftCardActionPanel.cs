@@ -164,8 +164,10 @@ public partial class TopLeftCardActionPanel : Control
         _bound = entity;
         var def = entity.Def;
 
+        string silPart = entity.IsSilenced ? " 【沉默】" : "";
         _nameLbl.Text = DeckEditorViewModel.DisplayName(def)
-            + (entity.IsSuperEvolved ? " 【超进化】" : entity.IsEvolved ? " 【进化】" : "");
+            + (entity.IsSuperEvolved ? " 【超进化】" : entity.IsEvolved ? " 【进化】" : "")
+            + silPart;
 
         string stat = def.Kind == CardKind.Follower
             ? $"费用 {entity.Cost}  |  ⚔ {entity.Attack}  |  【盾】{entity.Life}/{entity.MaxLife}"
@@ -191,7 +193,25 @@ public partial class TopLeftCardActionPanel : Control
         }
         catch { }
 
-        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}{traitPart}】 {stat}";
+        var dynamicStats = new System.Collections.Generic.List<string>();
+        foreach (var kv in entity.Counters)
+        {
+            if (!kv.Key.IsValid || kv.Value <= 0) continue;
+            string cName = kv.Key.Name;
+            string zh = cName switch
+            {
+                "spellboost" => $"⚡魔力增幅: {kv.Value}",
+                "skybound_gauge" => $"⚔奥义槽: {kv.Value}",
+                "fuse_count" => $"◆融合数: {kv.Value}",
+                "countdown" => $"⏳倒计时: {kv.Value}",
+                "earth_sigil" => $"🪨土之印: {kv.Value}",
+                "clues" => $"🔍线索: {kv.Value}",
+                _ => $"{cName}: {kv.Value}"
+            };
+            dynamicStats.Add(zh);
+        }
+        string dynPart = dynamicStats.Count > 0 ? "  |  " + string.Join("  ", dynamicStats) : "";
+        _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}{traitPart}】 {stat}{dynPart}";
 
         _effectRich.Text = SvWbTheme.FormatRichCardText(_ctrl.Store.CardPrinter.PrintCard(def));
 

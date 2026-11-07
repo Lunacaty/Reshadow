@@ -35,6 +35,8 @@ public static class FogOfWarSanitizer
 
         for (int pid = 0; pid < 2; pid++)
         {
+            // 打包前先行检查解锁进化，确保 EpUnlocked 与最新回合数同步（178 号文档 2.3）
+            state.CheckAndUnlockEvolution(pid);
             bool isSelf = pid == viewerPlayerId;
             var p = state.Players[pid];
             var dto = new NetPlayerDto

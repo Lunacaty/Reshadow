@@ -438,9 +438,10 @@ public partial class PendingChoiceOverlay : Control
         _boundChoiceId = -1;
         _selected.Clear();
         Visible = false;
-        // 客机模式：选择也必须上行给权威端，本地不结算。
+        // 客机模式：选择也必须上行给权威端，本地不结算；先乐观清空挂起防止闪回（178 号文档 2.2）
         if (RemoteSubmit != null)
         {
+            _ctrl?.ClearRemotePendingChoice();
             RemoteSubmit(choiceId, chosen);
             OnChoiceSubmitted?.Invoke();
             return;

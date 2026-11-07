@@ -34,7 +34,10 @@ public static class EnhanceWeaver
     /// </summary>
     private static bool IsAlreadyWoven(AbilityDef a)
         => a?.Body != null
-           && a.Body.Any(n => n is ConditionalNode c && c.Else != null && c.Else.Count > 0);
+           && a.Body.OfType<ConditionalNode>().Any(c => c.Else != null && c.Else.Count > 0
+               && c.Condition is CompareExpr cmp
+               && cmp.Left != null && cmp.Left.Op == NumOp.Counter
+               && cmp.Left.Counter.Name == "pp_at_play");
 
     public static List<AbilityDef> Weave(List<AbilityDef> abilities, Lexicon lex)
     {

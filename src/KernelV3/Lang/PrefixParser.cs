@@ -423,12 +423,14 @@ public sealed class PrefixParser
                 {
                     "engage" => CoreEvent.OnEngage,
                     "countdown" => CoreEvent.OnCountdownExpire,
+                    "enhance" => CoreEvent.OnPlay,
                     _ => (CoreEvent)(-1),
                 };
                 if ((int)evFromHead >= 0 && !b.EventExplicit)
                 {
                     b.Event = evFromHead;
                     b.EventExplicit = true;
+                    if (name == "enhance") b.IsFanfare = true;
                 }
                 return true;
             }
@@ -734,7 +736,17 @@ public sealed class PrefixParser
             if (cur.MatchWord("evolves")) return CoreEvent.OnSuperEvolve;
             cur.Seek(sp);
         }
-        if (cur.MatchWord("evolves")) return CoreEvent.OnEvolve;
+        if (cur.MatchWord("evolves"))
+        {
+            // 超进化在运行时已同步触发 OnEvolve，此处消费掉并列短语避免残留报错及双重触发（178 号文档 11）
+            int saveOr = cur.Position;
+            if (cur.MatchWord("or"))
+            {
+                if (cur.MatchWord("super")) { cur.TryMatch(TokKind.Dash); cur.TryMatchWord("evolves"); }
+                else if (!cur.MatchWord("super-evolves")) cur.Seek(saveOr);
+            }
+            return CoreEvent.OnEvolve;
+        }
         if (cur.MatchPhrase("is", "given"))
         {
             // "whenever a follower is given +attack or defense" —— 这是身材被修改的事件。

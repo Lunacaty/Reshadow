@@ -212,29 +212,7 @@ public sealed class EnglishCompiler
         var plain = Preprocess(text);
         var mergedSegs = MergeOptionSegments(SplitSegments(plain)).ToList();
 
-        // 全卡级变量声明预扫描：
-        // "X is the number of ..." 可能写在任意段落（含 <hr> 之后），
-        // 而条件编译发生在逐段循环里 —— 声明句若排在后面，
-        // 前面段落的 "If X is at least 2" 就绑不上。
-        foreach (var (_, segText) in mergedSegs)
-        {
-            if (string.IsNullOrWhiteSpace(segText)) continue;
-            var preToks = _tokenizer.Tokenize(segText);
-            var curSent = new List<Token>();
-            foreach (var tk in preToks)
-            {
-                if (tk.Kind == TokKind.Eof || tk.Kind == TokKind.Period || tk.Kind == TokKind.OptionMark)
-                {
-                    if (curSent.Count > 0 && IsVariableDeclaration(curSent))
-                        TryBindVariableDeclaration(curSent);
-                    curSent.Clear();
-                    continue;
-                }
-                curSent.Add(tk);
-            }
-            if (curSent.Count > 0 && IsVariableDeclaration(curSent))
-                TryBindVariableDeclaration(curSent);
-        }
+        // 变量声明按段局部预扫，避免跨段同名变量相互污染覆盖（178 号文档 9）
 
         var buffer = new List<AbilityDef>();
         foreach (var (zone, segment) in mergedSegs)
@@ -634,6 +612,22 @@ public sealed class EnglishCompiler
         // 裸关键词后面紧跟能力头（Ward Last Words: ...）→ 在此切一刀
         tokens = SplitKeywordThenHeader(tokens);
         tokens = SplitAfterQuote(tokens);
+
+        // 段内变量预扫描：支持段内前向引用，同时避免跨段声明相互污染（178 号文档 9）
+        var curSentPre = new List<Token>();
+        foreach (var tk in tokens)
+        {
+            if (tk.Kind == TokKind.Eof || tk.Kind == TokKind.Period || tk.Kind == TokKind.OptionMark)
+            {
+                if (curSentPre.Count > 0 && IsVariableDeclaration(curSentPre))
+                    TryBindVariableDeclaration(curSentPre);
+                curSentPre.Clear();
+                continue;
+            }
+            curSentPre.Add(tk);
+        }
+        if (curSentPre.Count > 0 && IsVariableDeclaration(curSentPre))
+            TryBindVariableDeclaration(curSentPre);
 
         // 按句号切成句子；同时记录每句属于哪个模式选项（-1 = 非选项）
         var sentences = new List<List<Token>>();
@@ -1397,13 +1391,15 @@ public sealed class EnglishCompiler
             // 所以必须并进当前能力的 Body，用 ConditionalNode 包住条件。
             bool isEnhanceHead = hb.Costs.Any(c => c.Kind == CostKind.UsePp);
             bool isInstead = hasInsteadWord;
-            bool onlyGateCosts = hb.Costs.All(c =>
-                c.Kind == CostKind.TurnPlayCount || c.Kind == CostKind.MatchPlayCount);
+            // 允许死灵术/土之印作为后续句的条件代价并入当前能力，避免 $selected 断裂（178 号文档 6）
+            bool allowedCosts = hb.Costs.All(c =>
+                c.Kind == CostKind.TurnPlayCount || c.Kind == CostKind.MatchPlayCount
+                || c.Kind == CostKind.Necromance || c.Kind == CostKind.DestroyAlly);
 
             if (!hb.EventExplicit
                 && !isEnhanceHead
                 && !isInstead
-                && onlyGateCosts
+                && allowedCosts
                 && currentAbility != null
                 && currentAbility.Trigger != null
                 && currentAbility.Trigger.Event != CoreEvent.PassiveAura)
@@ -1467,10 +1463,31 @@ public sealed class EnglishCompiler
                 }
                 else
                 {
+                    var thenNodes = new List<EffectNode>();
+                    foreach (var cs in hb.Costs)
+                    {
+                        string ctrName = cs.Kind switch
+                        {
+                            CostKind.DestroyAlly => "earth_sigil",
+                            CostKind.Necromance => "shadow",
+                            _ => null,
+                        };
+                        if (ctrName != null && cs.Amount != null)
+                        {
+                            thenNodes.Add(new ModifyCounterNode
+                            {
+                                Counter = _lex.Counter(ctrName),
+                                Op = CounterOp.Add,
+                                Delta = NumExpr.Sub(NumExpr.Const(0), cs.Amount),
+                            });
+                        }
+                    }
+                    thenNodes.AddRange(body);
+
                     bodyList.Add(new ConditionalNode
                     {
                         Condition = followCond,
-                        Then = body.ToList(),
+                        Then = thenNodes,
                     });
                 }
                 continue;
@@ -1979,7 +1996,7 @@ public sealed class EnglishCompiler
             // OptionMark 本身就是切分边界，不必再插 Period
             if (nx.Kind == TokKind.Eof || nx.Kind == TokKind.Period
                 || nx.Kind == TokKind.Comma || nx.Kind == TokKind.OptionMark) continue;
-            if (nx.IsAnyWord("and", "until")) continue;
+            if (nx.IsAnyWord("and", "until", "this", "instead", "to")) continue;
 
             // 引号后还有内容，且不是连接词 -> 切开
             result.Add(new Token { Kind = TokKind.Period, Text = ".", Pos = t.Pos });
@@ -2754,13 +2771,28 @@ public sealed class EnglishCompiler
             c.AdvanceToClauseBoundary();
         }
 
-        // "your Combo" / "your <资源>"
+        // "your leader's defense / attack"
         if (c.Current.IsWord("your"))
         {
             c.Advance();
             if (!c.IsAtEnd)
             {
                 var res = c.Current.Text.ToLowerInvariant();
+                if (res == "leader's" || res == "leader")
+                {
+                    c.Advance();
+                    var st = c.Current.Text.ToLowerInvariant();
+                    var key = st.StartsWith("attack") ? StatKey.Attack
+                            : st.StartsWith("max") ? StatKey.MaxLife
+                            : StatKey.Life;
+                    return NumExpr.Prop(key, TargetSpec.SelfLeader);
+                }
+                res = res switch
+                {
+                    "shadows" => "shadow",
+                    "faith's" => "faith",
+                    _ => res
+                };
                 return NumExpr.Ctr(_lex.Counter(res));
             }
         }

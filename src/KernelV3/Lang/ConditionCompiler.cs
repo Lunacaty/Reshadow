@@ -38,7 +38,11 @@ public static class ConditionCompiler
 
         // 第一个原子能解析就走组合子路径
         var c1 = new TokenCursor(toks);
-        try { return ParseCondition(c1, lex); }
+        try
+        {
+            var res = ParseCondition(c1, lex);
+            if (c1.IsAtEnd) return res;
+        }
         catch (LangException) { }
 
         var raw = string.Join(" ", toks.Select(t => t.Text));
@@ -121,18 +125,11 @@ public static class ConditionCompiler
         var left = ParseAtom(c, lex);
         while (true)
         {
-            if (c.MatchWord("and"))
-            {
-                c.MatchWord("if");
-                left = BoolExpr.And(left, ParseAtom(c, lex));
-                continue;
-            }
-            if (c.MatchWord("or"))
-            {
-                c.MatchWord("if");
-                left = BoolExpr.Or(left, ParseAtom(c, lex));
-                continue;
-            }
+            int sepSave = c.Position;
+            c.TryMatch(TokKind.Comma);
+            if (c.MatchWord("and")) { c.MatchWord("if"); left = BoolExpr.And(left, ParseAtom(c, lex)); continue; }
+            if (c.MatchWord("or"))  { c.MatchWord("if"); left = BoolExpr.Or(left, ParseAtom(c, lex)); continue; }
+            c.Seek(sepSave);
             break;
         }
         return left;
@@ -308,6 +305,16 @@ public static class ConditionCompiler
                 Left = NumExpr.Ctr(lex.Counter("max_pp")),
                 Op = CompareOp.Ge,
                 Right = NumExpr.Const(lex.Schema.Rules.OverflowThreshold),
+            };
+
+        // 补齐【狂乱 Wrath】状态判定（178 号文档 11）
+        if (c.MatchWord("wrath") || c.MatchPhrase("in", "wrath")
+            || c.MatchPhrase("you", "are", "in", "wrath") || c.MatchPhrase("you're", "in", "wrath"))
+            return new CompareExpr
+            {
+                Left = NumExpr.Ctr(lex.Counter("wrath")),
+                Op = CompareOp.Ge,
+                Right = NumExpr.Const(7),
             };
 
         if (c.MatchPhrase("you've", "unlocked") || c.MatchPhrase("you", "have", "unlocked"))
@@ -975,6 +982,21 @@ public static class ConditionCompiler
         if (c.Current.Kind != TokKind.Number) { n = 0; return false; }
         n = c.Current.Value;
         c.Advance();
+        return true;
+    }
+
+    private static bool TryReadComparisonRhs(TokenCursor c, out CompareOp op, out int val)
+    {
+        op = CompareOp.Eq; val = 0;
+        if (c.MatchPhrase("at", "least")) op = CompareOp.Ge;
+        else if (c.MatchPhrase("at", "most")) op = CompareOp.Le;
+
+        if (!TryReadNumber(c, out val)) return false;
+        if (c.MatchWord("or"))
+        {
+            if (c.MatchAnyWord("less", "fewer")) op = CompareOp.Le;
+            else if (c.MatchAnyWord("more", "greater")) op = CompareOp.Ge;
+        }
         return true;
     }
 

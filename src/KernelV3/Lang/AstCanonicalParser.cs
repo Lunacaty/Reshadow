@@ -36,6 +36,7 @@ public sealed class AstCanonicalParser
     /// <summary>解析一段能力块。</summary>
     /// <summary>当前是否在 where 子句内部（决定省略括号时的默认主语）。</summary>
     private int _whereDepth;
+    private bool _inTriggerSubject;
 
     /// <summary>
     /// 省略括号时的默认主语：where 内 -> $item（被筛的那张），where 外 -> $self（本卡）。
@@ -650,7 +651,16 @@ public sealed class AstCanonicalParser
             if (w == "zone") { Advance(); Match(PyTokKind.Assign); zoneV = ZoneOf(TakeIdent()); zoneSet = true; continue; }
             if (w == "turn") { Advance(); Match(PyTokKind.Assign); turnV = TurnOf(TakeIdent()); turnSet = true; continue; }
             if (w == "max") { Advance(); Match(PyTokKind.Assign); maxTrig = TakeNumber(); continue; }
-            if (w == "on") { Advance(); Expect(PyTokKind.LParen, "on 后缺少左括号"); subject = ParseTarget(); Expect(PyTokKind.RParen, "on 缺少右括号"); continue; }
+            if (w == "on")
+            {
+                Advance();
+                Expect(PyTokKind.LParen, "on 后缺少左括号");
+                _inTriggerSubject = true;
+                try { subject = ParseTarget(); }
+                finally { _inTriggerSubject = false; }
+                Expect(PyTokKind.RParen, "on 缺少右括号");
+                continue;
+            }
             if (w == "vs") { Advance(); Expect(PyTokKind.LParen, "vs 后缺少左括号"); secFilter = ParseTarget(); Expect(PyTokKind.RParen, "vs 缺少右括号"); continue; }
             break;
         }
@@ -1666,8 +1676,9 @@ public sealed class AstCanonicalParser
             {
                 spec = spec.WithWhere(new NotSameEntityExpr
                 {
-                    ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf,
-                    // 同上：other 排除的是候选池里的 $item，不能用 $self。
+                    ExcludeSlot = _inTriggerSubject
+                        ? TargetSpec.SlotSelf
+                        : TargetSpec.SlotExcludeTriggerOrSelf,
                     Of = TargetSpec.Item,
                 });
                 continue;

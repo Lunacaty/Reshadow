@@ -299,6 +299,8 @@ public static class DiyZh
         ("bool_has_trait", "拥有某兵种"),
         ("bool_has_clan", "属于某职业"),
         ("bool_has_state", "处于某状态（已进化…）"),
+        ("bool_has_card_name", "卡名为指定名称/同名"),
+        ("bool_has_pack", "属于指定卡包"),
         ("bool_and", "同时满足全部"),
         ("bool_or", "满足任意一个"),
         ("bool_not", "不满足"),

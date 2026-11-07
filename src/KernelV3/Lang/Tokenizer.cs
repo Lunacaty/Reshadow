@@ -108,6 +108,21 @@ public sealed class Lexicon
         if (from >= text.Length) return null;
         foreach (var name in _namesByLength)
         {
+            // 补齐 -y -> -ies（Fairy -> Fairies，178 号文档 2）
+            if (name.EndsWith("y", StringComparison.OrdinalIgnoreCase) && from + name.Length + 2 <= text.Length)
+            {
+                string stem = name.Substring(0, name.Length - 1);
+                if (string.Compare(text, from, stem, 0, stem.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    int iesEnd = from + stem.Length + 3;
+                    if (iesEnd <= text.Length && string.Compare(text, from + stem.Length, "ies", 0, 3, StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        if (iesEnd >= text.Length || !char.IsLetter(text[iesEnd]))
+                            return (name, _cardNames[name], iesEnd - from);
+                    }
+                }
+            }
+
             if (from + name.Length > text.Length) continue;
             if (string.Compare(text, from, name, 0, name.Length, StringComparison.OrdinalIgnoreCase) != 0) continue;
             // 词边界：后面不能紧跟字母
@@ -121,6 +136,19 @@ public sealed class Lexicon
                 int endPlural = end + 1;
                 if (endPlural >= text.Length || !char.IsLetter(text[endPlural]))
                     return (name, _cardNames[name], endPlural - from);
+            }
+            // 补齐 -es（Box -> Boxes, Witch -> Witches，178 号文档 2）
+            if ((name.EndsWith("x", StringComparison.OrdinalIgnoreCase) ||
+                 name.EndsWith("ch", StringComparison.OrdinalIgnoreCase) ||
+                 name.EndsWith("sh", StringComparison.OrdinalIgnoreCase) ||
+                 name.EndsWith("s", StringComparison.OrdinalIgnoreCase)) && end + 2 <= text.Length)
+            {
+                if (string.Compare(text, end, "es", 0, 2, StringComparison.OrdinalIgnoreCase) == 0)
+                {
+                    int endEs = end + 2;
+                    if (endEs >= text.Length || !char.IsLetter(text[endEs]))
+                        return (name, _cardNames[name], endEs - from);
+                }
             }
             if (end < text.Length && char.IsLetter(text[end])) continue;
             return (name, _cardNames[name], name.Length);
@@ -375,7 +403,7 @@ public sealed class Tokenizer
                 ind = q - lineStart;
                 indents[pos] = ind;
             }
-            if (ind != 0) tokens[k] = new Token { Kind = tk.Kind, Text = tk.Text, Value = tk.Value, Pos = tk.Pos, Inner = tk.Inner, Indent = ind };
+            if (ind != 0) tokens[k] = new Token { Kind = tk.Kind, Text = tk.Text, Value = tk.Value, Pos = tk.Pos, Inner = tk.Inner, Indent = ind, CardId = tk.CardId };
         }
 
         return tokens;

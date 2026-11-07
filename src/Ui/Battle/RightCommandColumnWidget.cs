@@ -77,7 +77,8 @@ public partial class RightCommandColumnWidget : Control
         DrawCentered(font, TurnBtnCenter + new Vector2(0, 8), label, 21, Colors.White);
 
         // 4. 我方能量点
-        int myPp = _ctrl.ReadCounter(0, "pp");
+        int bonus = _ctrl.State.Players[0].BonusPp;
+        int myPp = _ctrl.ReadCounter(0, "pp") + bonus;
         int myMax = _ctrl.ReadCounter(0, "max_pp");
         int cap = Math.Max(1, Math.Min(12, _ctrl.State.Rules.MaxPpCap));
         DrawTrapezoid(AllyPpRect, 14f, 0f);

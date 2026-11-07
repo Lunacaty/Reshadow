@@ -56,7 +56,8 @@ public static class PreChoiceInspector
             {
                 // 与 TurnRunner.PlayCard 保持同一真相：被封印爆能时 pp_at_play 写 0，
                 // 否则预扫会把爆能分支当成可走，弹出根本不该出现的选目标框。
-                int ppNow = state.ReadCounter(card.PlayerId, ppKey);
+                // 加上后手已激活待消耗的 BonusPp，统一可用能量口径（178 号文档 1.1）
+                int ppNow = state.ReadCounter(card.PlayerId, ppKey) + state.Players[card.PlayerId].BonusPp;
                 bool suppressed = state.HasEffectiveKeyword(
                     card, state.Schema.Keyword("suppress_enhance"));
                 int synthetic = suppressed ? 0 : ppNow;

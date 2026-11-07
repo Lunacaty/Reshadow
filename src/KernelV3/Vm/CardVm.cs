@@ -765,6 +765,11 @@ public sealed partial class CardVm
                 // 场上两个同名随从的 Whenever 必须各触发一次，不能被这条吃掉。
                 if (ab.Trigger.ActiveZone == Core.ActiveZoneScope.Deck)
                 {
+                    // 满场时不触发牌组瞬念召唤（Invoke），避免白白消耗每回合1次的限额（178 号文档 1.2）
+                    int maxBoard = (_world as Battle.BattleState)?.Rules.MaxBoardSize ?? Battle.PlayerState.MaxBoard;
+                    if (_world.EnumerateZone(ZoneRef.Board, e.PlayerId).Count() >= maxBoard)
+                        continue;
+
                     int cid = e.Def?.CardId ?? 0;
                     if (cid != 0 && !firedOnce.Add((cid, ev.Kind))) continue;
                 }
@@ -959,7 +964,10 @@ public sealed partial class CardVm
         bool spellboostInHand = trig.Event == CoreEvent.OnSpellboost && owner.Zone == ZoneRef.Hand;
         if (owner.Zone != need && !graveSelf && !spellboostInHand
             && !(need == ZoneRef.Board && ActsAsOnField(ev, owner)))
+        {
+            if (ev.Kind == CoreEvent.OnDestroy) Console.WriteLine("[DEBUG MATCH] rejected zone: need=" + need + " owner.Zone=" + owner.Zone + " graveSelf=" + graveSelf);
             return false;
+        }
 
         // 2. 回合归属
         if (trig.DuringTurn != TurnOwnerScope.Any)

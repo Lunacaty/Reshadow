@@ -68,6 +68,7 @@ public partial class BattleScreenRoot : Control
     /// 等 _seq 真正播到那一段 OnDamaged 时才销账，盾牌与飘字同帧跳变。
     /// </summary>
     private readonly Dictionary<long, int> _pendingLifeDelta = new();
+    private readonly Dictionary<long, int> _pendingAtkDelta = new();
 
     /// <summary>
     /// 未播进化账本：后端已进化但翻面动画还在排队时，
@@ -158,6 +159,7 @@ public partial class BattleScreenRoot : Control
         // ResolvedFirstPlayer 用服务端座位号，客机换算由调用方负责，这里原样传入。
         _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
                                             startInMulligan: false, firstPlayer: firstPlayer);
+        _ctrl.IsPvpMatch = true;
         _ctrl.RemoteClient = client;
         BoardUnitWidget.CurrentController = _ctrl;
         _lastEventIdx = _ctrl.State.EventLog.Count;
@@ -195,6 +197,7 @@ public partial class BattleScreenRoot : Control
         _authHost = host;
         // 房主就是权威端 player0：ResolvedFirstPlayer 直接用服务端编号。
         Boot(store, mine, foe, firstPlayer);
+        if (_ctrl != null) _ctrl.IsPvpMatch = true;
 
         // 联机不做本地换牌遮罩：双方直接进第 1 回合。
         if (_ctrl.IsInMulligan)
@@ -658,17 +661,29 @@ public partial class BattleScreenRoot : Control
             w.SetChoiceState(isCand, !isCand);
         }
 
-        // 手牌也必须参与候选高亮：
-        // 「从手牌选一张」这类效果，早先只亮了战场与主战者，玩家不知道该点手牌。
+        // 手牌高亮：融合模式下高亮可选材料，选牌模式下高亮目标候选（178 号文档 3.1）
         var hand = _ctrl.Hand(_ctrl.MyPlayerId);
-        for (int i = 0; i < _handWidgets.Count && i < hand.Count; i++)
+        if (_ctrl.IsInFuseMode)
         {
-            var wd = _handWidgets[i];
-            if (!IsInstanceValid(wd)) continue;
-            if (!choosing) { wd.SetCandidate(false); continue; }
-            int eid = hand[i].EntityId;
-            bool cand = p.Candidates.Contains(eid);
-            wd.SetCandidate(cand, false);
+            for (int i = 0; i < _handWidgets.Count && i < hand.Count; i++)
+            {
+                var card = hand[i];
+                bool valid = _ctrl.CanUseAsFuseMaterial(card);
+                bool picked = _ctrl.SelectedFuseMaterials.Any(m => m.EntityId == card.EntityId);
+                _handWidgets[i].SetCandidate(valid, picked);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < _handWidgets.Count && i < hand.Count; i++)
+            {
+                var wd = _handWidgets[i];
+                if (!IsInstanceValid(wd)) continue;
+                if (!choosing) { wd.SetCandidate(false); continue; }
+                int eid = hand[i].EntityId;
+                bool cand = p.Candidates.Contains(eid);
+                wd.SetCandidate(cand, false);
+            }
         }
 
         // 候选里包含手牌时自动展开手牌托盘：
@@ -797,7 +812,6 @@ public partial class BattleScreenRoot : Control
                     return true;
 
                 _actionPanel.ShowForEntity(ent);
-                if (!IsInputBlocked && _ctrl.IsInFuseMode) _ctrl.ToggleFuseMaterial(ent);
                 return false;
             };
             w.OnRightClicked += ent => _actionPanel.ShowForEntity(ent);
@@ -856,7 +870,7 @@ public partial class BattleScreenRoot : Control
                     PlayerId = sn.PlayerId,
                     Zone = ZoneRef.Board,
                     Attack = sn.Attack,
-                    Life = Math.Max(0, sn.Life),
+                    Life = sn.Life,
                     MaxLife = sn.MaxLife,
                     Cost = sn.Cost,
                     IsEvolved = sn.IsEvolved,
@@ -1143,14 +1157,23 @@ public partial class BattleScreenRoot : Control
 
             case CoreEvent.OnStatsModified:
             {
-                // 身材变化：棋子弹跳 + 飘字。
+                // 身材变化：接入视觉账本，动画播放前先抵消后端立即修改，播放时同步跳变（178 号文档 4.1）
                 if (sid >= 0)
                 {
                     int da = ev.Amount;
                     int dl = ev.SecondaryAmount;
                     bool buff = da + dl >= 0;
+                    _pendingAtkDelta[sid] = _pendingAtkDelta.GetValueOrDefault(sid) - da;
+                    _pendingLifeDelta[sid] = _pendingLifeDelta.GetValueOrDefault(sid) - dl;
+
                     _seq.Enqueue(new Seq().Do(() =>
                     {
+                        _pendingAtkDelta[sid] = _pendingAtkDelta.GetValueOrDefault(sid) + da;
+                        _pendingLifeDelta[sid] = _pendingLifeDelta.GetValueOrDefault(sid) + dl;
+                        if (_pendingAtkDelta[sid] == 0) _pendingAtkDelta.Remove(sid);
+                        if (_pendingLifeDelta[sid] == 0) _pendingLifeDelta.Remove(sid);
+                        ApplyMotionsToWidgets();
+
                         var c = CenterOf(ev.Subject, ownerPid);
                         _anims.PlayStatPulse(sid, buff);
                         // 攻击/生命两个分量都显示：「+2/+2」「-2/-0」。
@@ -1550,6 +1573,7 @@ public partial class BattleScreenRoot : Control
             w.ApplyMotion(_anims.MotionOf(w.Entity.EntityId));
 
             // 视觉血量 / 进化延迟：账本上是「已扣但未播」的部分
+            w.VisualAttackOffset = _pendingAtkDelta.GetValueOrDefault(w.Entity.EntityId, 0);
             w.VisualLifeOffset = _pendingLifeDelta.GetValueOrDefault(w.Entity.EntityId, 0);
             w.HideEvolveVisual = _pendingEvolveVisual.Contains(w.Entity.EntityId);
 
@@ -2078,6 +2102,12 @@ public partial class BattleScreenRoot : Control
 
             _handExpanded = true;
             RebuildHand();
+            // 若正在选目标或融合选材，第一次点击仅展开手牌，吞掉事件防止盲选误触（178 号文档 3.2）
+            if (_ctrl.IsWaitingForInput || _ctrl.IsInFuseMode)
+            {
+                _pressedCard = null;
+                GetViewport().SetInputAsHandled();
+            }
             return;
         }
 
@@ -2218,6 +2248,7 @@ public partial class BattleScreenRoot : Control
         _unitTops.Clear();
         _lastBoardEntities.Clear();
         _pendingLifeDelta.Clear();
+        _pendingAtkDelta.Clear();
         _pendingEvolveVisual.Clear();
         foreach (var p in _dyingProxies.Values)
             if (IsInstanceValid(p)) p.QueueFree();
