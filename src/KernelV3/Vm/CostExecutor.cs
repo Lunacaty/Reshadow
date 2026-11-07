@@ -73,8 +73,17 @@ public static class CostExecutor
                         return false;
                     break;
 
+                // 唤灵 / 土之秘术：**只有纯机制能力**才在这里拦。
+                //
+                // 复合入场曲（"抽 1。唤灵 4：改为抽 2 并打 3"）编译成一条
+                // AbilityDef，Necromancy 挂在 Costs 上、进阶效果写在 Body 的
+                // ConditionalNode 里。若在这里因为墓场不足就返回 false，
+                // CardVm 会把**整条能力**从栈顶 Pop 丢弃 ——
+                // 连基础的「抽 1 张」都被吞掉，整张卡变白板（179 号文档 深水区 1）。
+                // 有 tiered body 时放行，让内部条件分支自己判、自己扣。
                 case CostKind.Necromance:
-                    if (world.ReadCounter(playerId, shadowKey) < need) return false;
+                    if (!hasTieredBody && !HasBaselineBody(body)
+                        && world.ReadCounter(playerId, shadowKey) < need) return false;
                     break;
 
                 // Combo / Rally 在**官方卡池**里由生成的 Condition 检查；
@@ -97,7 +106,9 @@ public static class CostExecutor
                     // 条件层 AndCosts 已经写成 ctr:earth_sigil >= N，
                     // 这里必须用同一个计数器，否则两层判定互相矛盾：
                     // 有 10 层土之印但场上只有 1 个护符时，条件通过而这里拦住。
-                    if (world.ReadCounter(playerId, earthSigilKey) < need) return false;
+                    // 同 Necromance：复合入场曲有基础效果时不得整条否决。
+                    if (!hasTieredBody && !HasBaselineBody(body)
+                        && world.ReadCounter(playerId, earthSigilKey) < need) return false;
                     break;
 
                 case CostKind.Countdown:
@@ -105,6 +116,29 @@ public static class CostExecutor
             }
         }
         return true;
+    }
+
+    /// <summary>
+    /// 这条能力体里是否存在「无条件的基础效果」。
+    ///
+    /// 判据：除第一个节点是顶层 ConditionalNode（条件进阶效果）之外，
+    /// 还有别的节点，或 Condition 之外的 Body 确实能产出效果。
+    /// 换句话说：不是「整条能力就是一个条件块」。
+    ///
+    /// 这类能力是「基础效果 + 可选进阶」，代价不足时**不许**整条否决 ——
+    /// 否则玩家在墓场/土印不够时打出该卡，基础效果也被一起吞掉。
+    /// </summary>
+    private static bool HasBaselineBody(IReadOnlyList<Ast.EffectNode> body)
+    {
+        if (body == null || body.Count == 0) return false;
+        // 只要有一个节点不是 ConditionalNode，就说明存在无条件基础效果。
+        foreach (var n in body)
+        {
+            if (n is Ast.ConditionalNode) continue;
+            if (n is Ast.MacroNode) continue;      // 编织器占位标记，不产出效果
+            return true;
+        }
+        return false;
     }
 
     /// <summary>扣除消耗型代价。调用前必须先过 CanPay。</summary>

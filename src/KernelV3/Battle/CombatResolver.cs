@@ -123,6 +123,14 @@ public sealed class CombatResolver
         if (!CanAttack(attacker, defender, out var reason))
             throw new InvalidOperationException("非法攻击：" + reason);
 
+        // 交战上下文：超进化溢出 1 点要绑定到「破坏防守方的那一瞬间」，
+        // 由 BattleState.DestroyEntity 在发出 OnDestroy 之前结算，
+        // 保证飞脸伤害永远先于谢幕曲（179 号文档 P0-4）。
+        var prevAttacker = _state.CurrentCombatAttacker;
+        var prevDefender = _state.CurrentCombatDefender;
+        _state.CurrentCombatAttacker = attacker;
+        _state.CurrentCombatDefender = defender;
+
         // 1. 攻击宣言：计数与潜行解除
         attacker.AttacksThisTurn++;
         attacker.AttackedThisTurn = true;
@@ -226,12 +234,20 @@ public sealed class CombatResolver
         // 双方伤害就已经交换、Bane 就已经判死 —— 战斗时序被整个跳过。
         if (vm != null)
         {
-            vm.EnqueueContinuation(() => ResolveCombatBody(attacker, defender, vm, isFollowerTarget, overflowPaid));
+            vm.EnqueueContinuation(() =>
+            {
+                ResolveCombatBody(attacker, defender, vm, isFollowerTarget, overflowPaid);
+                // 交战结束：清掉上下文，避免下一次不相干的破坏被误判成溢出。
+                _state.CurrentCombatAttacker = prevAttacker;
+                _state.CurrentCombatDefender = prevDefender;
+            });
             vm.StepUntilBlocked();
         }
         else
         {
             ResolveCombatBody(attacker, defender, vm, isFollowerTarget, overflowPaid);
+            _state.CurrentCombatAttacker = prevAttacker;
+            _state.CurrentCombatDefender = prevDefender;
         }
     }
 
@@ -386,27 +402,38 @@ public sealed class CombatResolver
                 || _state.HasEffectiveKeyword(target, kwImmuneEffects)
                 || _state.HasEffectiveKeyword(target, kwImmuneEffectsXS))) return 0;
 
-        // ---- 动态伤害修正（光环 + 挂载）----
+        // ---- 动态伤害修正：严格按 76-c 4.2 的两阶段顺序 ----
         //
-        // 先算「造成伤害」侧（由来源实体决定），再算「受到伤害」侧（由目标决定）。
-        // 全部实时扫描，不缓存 —— 光环源离场或被沉默后立刻失效。
-        amount = _state.ApplyDealtModifiers(sourcePlayerId, sourceEntity, amount, source);
-        amount = _state.ApplyTakenModifiers(target, amount, source);
-        if (amount <= 0) return 0;
+        // 第 2 步：先汇总**全部增减**（造成侧 + 受到侧 + 易伤）。
+        // 第 3 步：再汇总**全部上限**（造成侧 + 受到侧 + damage_cap）。
+        //
+        // 早先把易伤加在 ApplyTakenModifiers（内部已含 TakenCap）之后，
+        // 于是 +1 易伤能突破「受到伤害上限」；而且基础伤害被减伤扣到 0 时
+        // 提前 return 0，把易伤整个吞掉（179 号文档 P1-11）。
+        amount = _state.ApplyDealtDelta(sourcePlayerId, sourceEntity, amount, source);
+        amount = _state.ApplyTakenDelta(target, amount, source);
 
         var bonusKey = _schema.Keyword("damage_taken_bonus");
         if (target.KeywordValues.TryGetValue(bonusKey, out var bonus)) amount += bonus;
+        if (amount <= 0) return 0;
+
+        amount = _state.ApplyDealtCap(sourcePlayerId, sourceEntity, amount, source);
+        amount = _state.ApplyTakenCap(target, amount, source);
 
         var capKey = _schema.Keyword("damage_cap");
         if (target.KeywordValues.TryGetValue(capKey, out var cap)) amount = Math.Min(amount, cap);
-
         if (amount <= 0) return 0;
 
         var barrierKey = _schema.Keyword("barrier");
         // 必须走 HasEffectiveKeyword：光环授予的屏障同样要拦。
         if (_state.HasEffectiveKeyword(target, barrierKey))
         {
+            // 移除要覆盖**三种来源**：实体 Keywords、限时授予的 TempModifiers、
+            // 以及 GrantAbilityNode 的 _granted。早先只写 Keywords.Remove，
+            // 于是被授予的屏障永远删不掉，变成无限屏障（179 号文档 P1-11）。
             target.Keywords.Remove(barrierKey);
+            _state.ConsumeGrantedKeyword(target, barrierKey);
+            _state.RemoveTemporaryKeywordGrants(target, barrierKey);
             // 屏障把本次伤害抵消为 0 —— 规则上**没有造成过伤害**，
             // 绝不能发 OnDamaged，否则「受到伤害时」能力会被误触发（174 号文档 三.8）。
             return 0;

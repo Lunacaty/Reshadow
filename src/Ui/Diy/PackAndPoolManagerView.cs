@@ -456,6 +456,21 @@ public partial class PackAndPoolManagerView : Control
     /// existing 非空即为编辑：同一个弹窗回填已有值，
     /// 免得玩家「改一个数值只能删掉重建」，中间那段配置就丢了。
     /// </summary>
+    /// <summary>当前卡池的全部卡（供计数器规则的 # 搜卡候选栏使用）。</summary>
+    private List<KernelV3.Ast.CardDef> CurrentPoolCardsForCounter()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(_selectedPoolId))
+            {
+                var rt = _store.GetPoolRuntime(_selectedPoolId);
+                if (rt != null) return rt.AllCards.Values.OrderBy(c => c.CardId).ToList();
+            }
+            return _store.Catalog.AllCards.Values.OrderBy(c => c.CardId).ToList();
+        }
+        catch { return new List<KernelV3.Ast.CardDef>(); }
+    }
+
     private void OpenAddPoolCounterDialog(KernelV3.Packs.PoolCounterDef existing = null)
     {
         if (string.IsNullOrEmpty(_selectedPoolId)) { _ruleStatus.Text = "请先选择一个卡池"; return; }
@@ -468,9 +483,11 @@ public partial class PackAndPoolManagerView : Control
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
         box.AddThemeConstantOverride("separation", 6);
 
-        // 只填一个名字：计数器名就是玩家写的那一个，同时作为内部标识。
-        // 分「内部 ID + 显示名」两套的话，改了名要同步两处，迟早对不上。
-        var nameEdit = new LineEdit { PlaceholderText = "计数器名称（如 充能）" };
+        // 恢复「英文内部 ID + 中文显示名」双输入框（179 号文档 C6 环节 3）。
+        // 内部 ID 要写进 AST（ctr:sword_intent），中文名只用于显示（【剑意】）。
+        // 合成一个框的话，玩家用中文当 ID 会让英文端与 PyAST 端的脚本全部无法引用。
+        var nameEdit = new LineEdit { PlaceholderText = "英文内部 ID（如 sword_intent）" };
+        var zhNameEdit = new LineEdit { PlaceholderText = "中文显示名（如 剑意）" };
         var minEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 0 };
         var maxEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 99 };
         var initEdit = new SpinBox { MinValue = -999, MaxValue = 999, Value = 0 };
@@ -486,14 +503,17 @@ public partial class PackAndPoolManagerView : Control
         {
             nameEdit.Editable = false;
             nameEdit.Text = existing.Name ?? "";
+            zhNameEdit.Text = existing.NameChs ?? "";
             minEdit.Value = existing.Min;
             maxEdit.Value = existing.Max;
             initEdit.Value = existing.Initial;
             lifePick.Select((int)existing.Lifecycle);
         }
 
-        box.AddChild(new Label { Text = "计数器名称" });
+        box.AddChild(new Label { Text = "英文内部 ID（供 AST 与脚本引用）" });
         box.AddChild(nameEdit);
+        box.AddChild(new Label { Text = "中文显示名（供卡面与界面渲染）" });
+        box.AddChild(zhNameEdit);
         box.AddChild(new Label { Text = "最小值" });
         box.AddChild(minEdit);
         box.AddChild(new Label { Text = "最大值" });
@@ -502,6 +522,76 @@ public partial class PackAndPoolManagerView : Control
         box.AddChild(initEdit);
         box.AddChild(new Label { Text = "回合生命周期" });
         box.AddChild(lifePick);
+
+        // ── 计数器的事件驱动规则（179 号文档 C6 环节 4）──
+        //
+        // 规则本质就是标准的 AbilityDef，所以直接复用 DIY 的代码编辑器：
+        // 玩家写的 PyAST 与积木端 / 表单端编译出的东西完全同构。
+        var ruleHeader = new HBoxContainer();
+        ruleHeader.AddThemeConstantOverride("separation", 4);
+        var ruleTitle = new Label
+        {
+            Text = "⚡ 触发变化规则（PyAST）",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        ruleTitle.AddThemeFontSizeOverride("font_size", 12);
+        ruleTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
+        ruleHeader.AddChild(ruleTitle);
+
+        var tplEnterBtn = new Button { Text = "+ 兵种进场 +1" };
+        SvWbTheme.StyleButton(tplEnterBtn, customAccent: SvWbTheme.AccentPurple);
+        ruleHeader.AddChild(tplEnterBtn);
+
+        var tplStrikeBtn = new Button { Text = "+ 随从攻击 +1" };
+        SvWbTheme.StyleButton(tplStrikeBtn, customAccent: SvWbTheme.AccentPurple);
+        ruleHeader.AddChild(tplStrikeBtn);
+
+        var tplTurnBtn = new Button { Text = "+ 回合开始 +1" };
+        SvWbTheme.StyleButton(tplTurnBtn, customAccent: SvWbTheme.AccentPurple);
+        ruleHeader.AddChild(tplTurnBtn);
+        box.AddChild(ruleHeader);
+
+        var ruleEdit = new AstCodeEdit
+        {
+            CustomMinimumSize = new Vector2(520, 150),
+            Text = editing ? (existing.RulesScript ?? "") : "",
+            PlaceholderText =
+                "# 当友方【剑仙】随从进入战场时，使该计数器 +1\n" +
+                "on_enter on(self:board<Follower> where has trait 剑仙):\n" +
+                "    counter sword_intent by 1",
+            CardSource = () =>
+            {
+                try
+                {
+                    return CurrentPoolCardsForCounter().Select(c => (
+                        c.CardId,
+                        string.IsNullOrWhiteSpace(c.NameChs) ? (c.Name ?? "") : c.NameChs,
+                        c.Name ?? "",
+                        c.IsToken));
+                }
+                catch { return Enumerable.Empty<(int, string, string, bool)>(); }
+            },
+        };
+        ruleEdit.SetupIdeFeatures();
+        box.AddChild(ruleEdit);
+
+        // 模板：把当前填的 ID 直接嵌进脚本，玩家点一下就有一条能跑的规则。
+        void AppendRule(string snippet)
+        {
+            string cid = string.IsNullOrWhiteSpace(nameEdit.Text)
+                ? "sword_intent" : nameEdit.Text.Trim();
+            string body = snippet.Replace("__CTR__", cid);
+            string cur2 = ruleEdit.Text ?? "";
+            ruleEdit.Text = string.IsNullOrWhiteSpace(cur2)
+                ? body : cur2.TrimEnd() + "\n\n" + body;
+        }
+        tplEnterBtn.Pressed += () => AppendRule(
+            "on_enter on(self:board<Follower> where has trait 剑仙):\n    counter __CTR__ by 1");
+        tplStrikeBtn.Pressed += () => AppendRule(
+            "strike on(self:board<Follower>):\n    counter __CTR__ by 1");
+        tplTurnBtn.Pressed += () => AppendRule(
+            "turn_start:\n    counter __CTR__ by 1");
+
         dlg.AddChild(box);
 
         dlg.Confirmed += () =>
@@ -509,19 +599,26 @@ public partial class PackAndPoolManagerView : Control
             string id = nameEdit.Text?.Trim();
             if (string.IsNullOrEmpty(id)) { _ruleStatus.Text = "计数器名称不能为空"; return; }
 
+            string zhName = zhNameEdit.Text?.Trim();
+            if (string.IsNullOrEmpty(zhName)) zhName = id;
+
             var def = new KernelV3.Packs.PoolCounterDef
             {
-                // 名字只有一个：Name 既是标识也是显示名，NameChs 保持同值只为兼容旧字段。
-                Name = id, NameChs = id,
+                // 英文内部 ID + 中文显示名分离（179 号文档 C6 环节 3）：
+                // 内部 ID 要能被 AST / 脚本引用，中文名只做渲染。
+                Name = id, NameChs = zhName,
                 Min = (int)minEdit.Value, Max = (int)maxEdit.Value, Initial = (int)initEdit.Value,
                 Lifecycle = (KernelV3.Packs.CounterLifecycle)lifePick.Selected,
                 IsBuiltin = false,
+                // 规则脚本必须一起存下来，重载后由 CardPoolBuilder 重新编译
+                RulesScript = (ruleEdit.Text ?? "").Trim(),
             };
 
             // 注册进 Schema：不注册的话效果里写 ctr:my_charge 会拿到 Invalid。
             _store.Catalog.Schema.Counter(id, cfg.PoolId);
             _store.Catalog.Schema.CounterLimits[id] = (def.Min, def.Max);
-            _store.Catalog.Glossary.Add(id, id);
+            // 中文名进术语表：卡面上 ctr:sword_intent 才能渲染成【剑意】
+            _store.Catalog.Glossary.Add(id, zhName);
 
             var ctrs = new List<KernelV3.Packs.PoolCounterDef>(cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>());
             ctrs.RemoveAll(x => x != null && string.Equals(x.Name, id, StringComparison.OrdinalIgnoreCase));
@@ -681,7 +778,9 @@ public partial class PackAndPoolManagerView : Control
                                      latest.NamedDecks, out string m, clans, latest.LeaderCounters);
             // 卡包的 clans 声明与卡片 clan= 里还写着旧名，不同步替换的话，
             // 重载后旧名会被重新注册进 Schema，界面上变成两个职业并存。
-            _store.RenameClanInPacks(clanName, zh, out string pm);
+            // 只改**本卡池启用**的卡包：全盘扫 data/packs 会把别的卡池一起篡改
+            // （179 号文档 C5c）。
+            _store.RenameClanInPacks(clanName, zh, latest.EnabledPackIds, out string pm);
             _store.Catalog.Schema.Clan(zh, latest.PoolId);
             _store.Catalog.Lexicon.AddClan(zh);
             if (!string.IsNullOrEmpty(pm)) m = m + "；" + pm;
@@ -704,8 +803,18 @@ public partial class PackAndPoolManagerView : Control
         // 先展示**内置**计数器（165 专题二断链 C）。
         // 它们由引擎维护、不进 cfg.LeaderCounters，只遍历配置会让这一栏看起来是空的，
         // 玩家会以为「本卡池没有任何计数器」。内置的锁死只读。
+        // 只列**真正的主战者计数器**。
+        // GameSchema.BuiltinCounterDefs 里还有 pp_at_play / X / Y / Z / ced_engage
+        // 这类内部编译寄存器，把它们当计数器展示会让玩家以为卡池有这么些资源
+        // （179 号文档 C6 环节 3）。
+        var visibleBuiltin = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "pp", "max_pp", "ep", "sep", "combo", "rally", "shadow", "wrath",
+            "evolve_count", "faith", "earth_sigil", "clues", "crest",
+        };
         foreach (var (bName, bMin, bMax) in KernelV3.Core.GameSchema.BuiltinCounterDefs)
         {
+            if (!visibleBuiltin.Contains(bName)) continue;
             var brow = new HBoxContainer();
             brow.AddThemeConstantOverride("separation", 6);
             // 内置计数器也要显示中文名：「pp」这种内码玩家认不出是什么。
@@ -729,10 +838,14 @@ public partial class PackAndPoolManagerView : Control
             // 一行写全：中文名 (英文名) [范围, 初值] · 变化方式。
             // 只显示中文名与内码 Lifecycle，玩家看不出范围与初值是多少。
             string zhName = string.IsNullOrWhiteSpace(def.NameChs) ? def.Name : def.NameChs;
+            // 有规则脚本的计数器给一个 ⚡ 标记，玩家一眼看出它是事件驱动的，
+            // 而不是只能靠卡面效果手动加减（179 号文档 C6）。
+            bool hasRule = !string.IsNullOrWhiteSpace(def.RulesScript);
+            string ruleTag = hasRule ? "  ⚡规则" + (def.RulesAbilities?.Count ?? 0) + "条" : "";
             var name = new Label
             {
                 Text = (zhName == def.Name ? def.Name : zhName + " (" + def.Name + ")") + "  [" + def.Min + ".." + def.Max
-                       + ", 初值:" + def.Initial + "] · " + LifecycleZh(def.Lifecycle),
+                       + ", 初值:" + def.Initial + "] · " + LifecycleZh(def.Lifecycle) + ruleTag,
                 SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 ClipText = true,
             };

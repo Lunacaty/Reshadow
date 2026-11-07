@@ -215,9 +215,16 @@ public sealed class EnglishCompiler
         // 变量声明按段局部预扫，避免跨段同名变量相互污染覆盖（178 号文档 9）
 
         var buffer = new List<AbilityDef>();
-        foreach (var (zone, segment) in mergedSegs)
+        for (int idx = 0; idx < mergedSegs.Count; idx++)
         {
+            var (zone, segment) = mergedSegs[idx];
             if (segment.Trim().Length == 0) continue;
+
+            // 179 号文档 1：按段向后就近绑定变量（兼顾跨行 \n 分段声明与多段隔离）
+            _variableBindings.Clear();
+            for (int look = mergedSegs.Count - 1; look >= idx; look--)
+                PreScanSegmentVariables(mergedSegs[look].text);
+
             try
             {
                 var abs = CompileSegment(segment, zone, r.InnateKeywords);
@@ -2397,6 +2404,26 @@ public sealed class EnglishCompiler
     /// <summary>"X starts at N" 的初值，装配到实体初始计数器。</summary>
     private readonly Dictionary<string, int> _initialCounters = new();
 
+    private void PreScanSegmentVariables(string segText)
+    {
+        if (string.IsNullOrWhiteSpace(segText)) return;
+        var toks = new Tokenizer(_lex).Tokenize(segText);
+        var curSent = new List<Token>();
+        foreach (var t in toks)
+        {
+            if (t.Kind == TokKind.Period)
+            {
+                if (curSent.Count > 0 && IsVariableDeclaration(curSent))
+                    TryBindVariableDeclaration(curSent);
+                curSent.Clear();
+                continue;
+            }
+            curSent.Add(t);
+        }
+        if (curSent.Count > 0 && IsVariableDeclaration(curSent))
+            TryBindVariableDeclaration(curSent);
+    }
+
     /// <summary>
     /// 解析 "X is the number of ..." / "X, Y, and Z ... add up to your faith's value"。
     /// 后者建立 X/Y/Z -> SplitOf(faith, 0/1/2) 的绑定。
@@ -2774,27 +2801,37 @@ public sealed class EnglishCompiler
         // "your leader's defense / attack"
         if (c.Current.IsWord("your"))
         {
+            int saveYour = c.Position;
             c.Advance();
-            if (!c.IsAtEnd)
+            if (!c.IsAtEnd && c.Current.IsAnyWord("leader's", "leader"))
             {
-                var res = c.Current.Text.ToLowerInvariant();
-                if (res == "leader's" || res == "leader")
-                {
-                    c.Advance();
-                    var st = c.Current.Text.ToLowerInvariant();
-                    var key = st.StartsWith("attack") ? StatKey.Attack
-                            : st.StartsWith("max") ? StatKey.MaxLife
-                            : StatKey.Life;
-                    return NumExpr.Prop(key, TargetSpec.SelfLeader);
-                }
-                res = res switch
+                c.Advance();
+                var st = c.Current.Text.ToLowerInvariant();
+                var key = st.StartsWith("attack") ? StatKey.Attack
+                        : st.StartsWith("max") ? StatKey.MaxLife
+                        : StatKey.Life;
+                return NumExpr.Prop(key, TargetSpec.SelfLeader);
+            }
+            // 单词资源（your combo / your faith / your shadows）直接返回；
+            // 后面可能还跟一个计数量名词（"your Combo count" / "your shadow value"），
+            // 一并消费掉，别让它落进 CondenseCounterName 造出 combo_count。
+            // 多词资源（your play points / your max play points）必须放行给下方统一匹配
+            // （179 号文档 4：先前 "your ..." 截胡把 play points 错判成 ctr:play）。
+            if (!c.IsAtEnd && !c.Peek().IsAnyWord("point", "points", "sigil", "sigils"))
+            {
+                var res = c.Current.Text.ToLowerInvariant() switch
                 {
                     "shadows" => "shadow",
                     "faith's" => "faith",
-                    _ => res
+                    var w => w
                 };
+                // 吃掉紧随其后的 count / value / counter 这类量名词
+                c.Advance();
+                if (!c.IsAtEnd && c.Current.IsAnyWord("count", "value", "counter"))
+                    c.Advance();
                 return NumExpr.Ctr(_lex.Counter(res));
             }
+            c.Seek(saveYour);
         }
 
         // "this follower's attack / defense / cost"
@@ -2956,6 +2993,13 @@ public sealed class EnglishCompiler
             else if (joined.Contains("evolution point")) resKey = "ep";
             else if (joined.Contains("super evolution point")) resKey = "sep";
             else if (joined.Contains("spellboost")) resKey = "spellboost";
+            // 单词资源常带一个后缀名词："your Combo count" / "your Rally count" /
+            // "your Shadows value"。不在这里收口，CondenseCounterName 会造出
+            // combo_count 这种伪造计数器，运行时恒为 0（179 号文档 4 的连锁点）。
+            else if (joined.Contains("combo")) resKey = "combo";
+            else if (joined.Contains("rally")) resKey = "rally";
+            else if (joined.Contains("wrath")) resKey = "wrath";
+            else if (joined.Contains("fuse count") || joined.Contains("fused")) resKey = "fuse_count";
             if (resKey != null) return NumExpr.Ctr(_lex.Counter(resKey));
         }
 

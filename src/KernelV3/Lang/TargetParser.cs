@@ -369,6 +369,24 @@ public sealed class TargetParser
         }
 
         // ---- 0. 槽位代词 ----
+        // "activate all of them instead" / "use all of them" 必须在 it/them
+        // 之前拦下：它们是模式抉择的元声明，them 指「上面列出的所有选项」，
+        // 不是实体集合。早先 it/them 分支抢先吃掉 them 并走
+        // ResolvePronounTarget()，而模式引导句本来就没有前置绑定，
+        // StrictPronounCheck 当场抛「代词 them 缺少前序绑定」——
+        // 所有带 all of them 的卡 100% 编译崩溃（179 号文档 6）。
+        if (cur.Current.IsAnyWord("them")
+            && cur.Peek(-2).IsWord("all") && cur.Peek(-1).IsWord("of"))
+        {
+            cur.Advance();
+            return new TargetSpec
+            {
+                SourceKind = TargetSourceKind.Slot,
+                Slot = TargetSpec.SlotSelected,
+                Mode = SelectMode.All,
+            };
+        }
+
         if (cur.Current.IsAnyWord("it", "them"))
         {
             cur.Advance();
@@ -463,12 +481,24 @@ public sealed class TargetParser
             count = NumExpr.Const(n);
             countSet = true;
             mode = SelectMode.Choose;
-            matched = true;
+            // 裸数字本身**不足以**构成一个目标：只有紧跟 "instead"，或后续
+            // 第 3~9 步真的命中了名词 / 卡种 / 区域 / 修饰词时，才算目标。
+            // 否则 "Summon 2 Fairies" 里的 2、或频率词 once/twice 会被单独
+            // 当成 any:board Choose(N) 返回，把动作层的数字语义吃掉
+            // （179 号文档 5-定位1）。
+            // 裸数字本身**不足以**构成一个目标（179 号文档 5-定位1）：
+            // 只有紧跟 "instead"，或后续第 3~9 步真的命中了名词 / 卡种 /
+            // 区域 / 修饰词时才算目标。留 matched=false 时，
+            // 末尾的 "!matched && !hasCardType && wheres.Count==0 && cardId==0"
+            // 会把游标回滚并返回 null，把数量语义完整交还给动作层
+            // （"Summon 2 Fairies" / "attack twice" 都依赖这一点）。
+            matched = cur.Current.IsAnyWord("instead");
             // "2 leftmost" → 按顺序取前 N 个
             if (cur.Current.IsWord("leftmost"))
             {
                 cur.Advance();
                 mode = SelectMode.First;
+                matched = true;
             }
         }
         // "the leftmost"
@@ -977,13 +1007,40 @@ public sealed class TargetParser
                 cur.Advance();
                 owner = ZoneScope.Opponent; ownerSet = true;
             }
-            var z = cur.Current.Text.ToLowerInvariant();
-            cur.Advance();
-            zone = z.StartsWith("hand") ? ZoneRef.Hand
-                 : z.StartsWith("deck") ? ZoneRef.Deck
-                 : z.StartsWith("cemetery") ? ZoneRef.Cemetery
-                 : ZoneRef.Board;
-            matched = true;
+            // "in your hand and deck" / "from your hand and deck" 是**双区域**短语。
+            // Step 8 会先命中并吃掉 "in your hand"，把 Step 8b 的
+            // MatchPhrase("in","your","hand","and","deck") 变成 100% 死代码，
+            // 还把 "and deck" 留在流里让后续解析报错（179 号文档 3）。
+            // 所以在按单词吃 zone 之前，先整体认一次带 and deck 的形态。
+            if (cur.MatchPhrase("hand", "and", "deck")
+                || cur.MatchPhrase("hand", ",", "and", "deck")
+                || cur.MatchPhrase("hand", "and", "in", "your", "deck")
+                || cur.MatchPhrase("hand", "and", "from", "your", "deck"))
+            {
+                zone = ZoneRef.Hand;
+                SawHandAndDeck = true;
+                matched = true;
+            }
+            else
+            {
+                var z = cur.Current.Text.ToLowerInvariant();
+                cur.Advance();
+                zone = z.StartsWith("hand") ? ZoneRef.Hand
+                     : z.StartsWith("deck") ? ZoneRef.Deck
+                     : z.StartsWith("cemetery") ? ZoneRef.Cemetery
+                     : ZoneRef.Board;
+                matched = true;
+
+                // 单吃 zone 之后仍可能跟一个 "and [in/from your] deck" 尾巴。
+                if (zone == ZoneRef.Hand
+                    && (cur.MatchPhrase("and", "deck")
+                        || cur.MatchPhrase(",", "and", "deck")
+                        || cur.MatchPhrase("and", "in", "your", "deck")
+                        || cur.MatchPhrase("and", "from", "your", "deck")))
+                {
+                    SawHandAndDeck = true;
+                }
+            }
         }
 
         // ---- 8b. 更多区域短语 ----

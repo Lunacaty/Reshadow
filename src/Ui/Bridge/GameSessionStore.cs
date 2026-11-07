@@ -606,6 +606,8 @@ public sealed class GameSessionStore
               .Append(", \"max\": ").Append(c.Max)
               .Append(", \"initial\": ").Append(c.Initial)
               .Append(", \"lifecycle\": ").Append(JsonStr(c.Lifecycle.ToString()))
+              // 规则脚本必须落盘，否则玩家配好的计数器触发条件重载后全丢（179 号文档 C6）
+              .Append(", \"rules_script\": ").Append(JsonStr(c.RulesScript ?? ""))
               .Append(" }").Append(ci < ctrs.Count - 1 ? ",\n" : "\n");
         }
         sb.Append("  ],\n");
@@ -1029,10 +1031,27 @@ public sealed class GameSessionStore
     /// 「旧名（未勾选）+ 新名（已勾选）」两个职业并存。
     /// </summary>
     public bool RenameClanInPacks(string oldName, string newName, out string message)
+        => RenameClanInPacks(oldName, newName, null, out message);
+
+    /// <summary>
+    /// 重命名职业。
+    ///
+    /// targetPackIds 为 null 时改全部非官方包（旧行为，仅供「全局维护」用）；
+    /// 由卡池编辑器调用时必须传入该卡池的 EnabledPackIds —— 早先无条件全盘扫
+    /// data/packs，卡池 A 里改「机甲」会把卡池 B 的卡包文件一起篡改
+    /// （179 号文档 C5c）。
+    /// </summary>
+    public bool RenameClanInPacks(string oldName, string newName,
+                                  IEnumerable<string> targetPackIds, out string message)
     {
         message = "";
         if (string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName))
         { message = "名称不能为空"; return false; }
+
+        // 目标包集合：null = 全部非官方包；否则严格限定。
+        HashSet<string> allowed = null;
+        if (targetPackIds != null)
+            allowed = new HashSet<string>(targetPackIds, StringComparer.OrdinalIgnoreCase);
 
         int touched = 0;
         try
@@ -1049,8 +1068,11 @@ public sealed class GameSessionStore
             foreach (var dir in Directory.GetDirectories(root))
             {
                 // 官方核心包不参与改名：那是编译产物，改了就与数据源脱节。
-                if (string.Equals(Path.GetFileName(dir), "official-sv", StringComparison.OrdinalIgnoreCase))
+                string dirName = Path.GetFileName(dir);
+                if (string.Equals(dirName, "official-sv", StringComparison.OrdinalIgnoreCase))
                     continue;
+                // 限定卡池时只处理该池启用的包，绝不跨池误伤（179 号文档 C5c）。
+                if (allowed != null && !allowed.Contains(dirName)) continue;
                 string file = Path.Combine(dir, "pack.json");
                 if (!File.Exists(file)) continue;
                 string raw = File.ReadAllText(file, System.Text.Encoding.UTF8);

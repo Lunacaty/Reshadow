@@ -1573,15 +1573,23 @@ public sealed class DiyBlockDecompiler
     private Block Stack(EffectNode n)
     {
         var blk = StackRaw(n);
-        // 节点级条件（@if / EffectNode.If）还原为单分支 c_if_else 积木（178 号文档 二.2）
-        if (blk != null && n?.If != null)
+        // 节点级条件（@if / EffectNode.If）还原为单分支 c_if_else 积木（178 号文档 二.2）。
+        //
+        // 必须过滤掉恒真条件：EffectNode.If 的默认值是 BoolExpr.True，
+        // 直接包一层会得到 Condition=null 的 c_if_else（Cond(True) 返回 null），
+        // 再次编译时当场报「if 缺少条件」（179 号文档 C1）。
+        if (blk != null && n?.If != null && n.If is not ConstBoolExpr { Value: true })
         {
-            return new Block
+            var cond = Cond(n.If);
+            if (cond != null)
             {
-                Opcode = "c_if_else",
-                Condition = Cond(n.If),
-                Stacks = new List<Block> { blk },
-            };
+                return new Block
+                {
+                    Opcode = "c_if_else",
+                    Condition = cond,
+                    Stacks = new List<Block> { blk },
+                };
+            }
         }
         return blk;
     }

@@ -284,6 +284,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         {
             ("c_if_else", "如果…否则…"),
             ("c_repeat", "重复 N 次"),
+            ("c_repeat_until", "重复直到…"),
             ("c_for_each", "遍历每个目标"),
             ("c_mode", "模式抉择 / 随机"),
         }),
@@ -846,7 +847,8 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             wrap.AddChild(RenderBracketSlot("┣ 【那么 (满足条件时)】", blk.Stacks, baseCol, depth));
             wrap.AddChild(RenderBracketSlot("┗ 【否则 (不满足时)】", blk.ElseStacks, baseCol.Darkened(0.2f), depth));
         }
-        else if (blk.Opcode is "c_repeat" or "c_for_each" or "act_grant_entity_ability" or "act_grant_ability")
+        else if (blk.Opcode is "c_repeat" or "c_repeat_until" or "c_for_each"
+                 or "act_grant_entity_ability" or "act_grant_ability")
         {
             blk.Stacks ??= new List<Block>();
             wrap.AddChild(RenderBracketSlot("🔁 内部执行的动作", blk.Stacks, baseCol, depth));
@@ -1245,6 +1247,10 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             case "c_if_else":
                 BuildConditionSlotEditor(col, "成立条件", b.Condition,
                                          v => { b.Condition = v; Apply(); });
+                break;
+            case "c_repeat_until":
+                BuildConditionSlotEditor(col, "停止条件（直到…）", b.Condition,
+                    v => { b.Condition = v; Apply(); });
                 break;
             case "c_repeat":
                 BuildNumberSlotEditor(col, "重复次数", b.Number, v => { b.Number = v; Apply(); });
@@ -2035,6 +2041,25 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 made.Number = new Block { Opcode = "num_const", IntA = 1 };
                 made.Number2 = new Block { Opcode = "num_const", IntA = 1 };
             }
+            // 179 号文档 C1：新增四种数值孔位的创建默认值。
+            else if (op == "num_sum")
+            {
+                made.EnumA = "Attack";
+                made.Target = null;
+            }
+            else if (op == "num_distinct") made.Target = null;
+            else if (op == "num_cond")
+            {
+                made.Condition = new Block { Opcode = "bool_true" };
+                made.Number = new Block { Opcode = "num_const", IntA = 1 };
+                made.Number2 = new Block { Opcode = "num_const", IntA = 0 };
+            }
+            else if (op == "num_extreme")
+            {
+                made.EnumA = "Max";
+                made.Number = new Block { Opcode = "num_const", IntA = 1 };
+                made.Number2 = new Block { Opcode = "num_const", IntA = 1 };
+            }
             structuralSetter(made);
         };
         box.AddChild(opts);
@@ -2066,6 +2091,40 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             {
                 // 统计目标数量同样必须指定集合。
                 BuildTargetSlotEditor(box, "统计哪个集合", cur.Target, v => { cur.Target = v; setter(cur); });
+            }
+            else if (cur.Opcode == "num_sum")
+            {
+                BuildEnumCombo(box, "统计属性", DiyZh.Stats, cur.EnumA ?? "Attack", v => { cur.EnumA = v; setter(cur); });
+                BuildTargetSlotEditor(box, "统计哪个集合", cur.Target, v => { cur.Target = v; setter(cur); });
+            }
+            else if (cur.Opcode == "num_distinct")
+                BuildTargetSlotEditor(box, "统计哪个集合（按卡名去重）", cur.Target, v => { cur.Target = v; setter(cur); });
+            else if (cur.Opcode == "num_cond")
+            {
+                var cbx = new VBoxContainer(); box.AddChild(cbx);
+                BuildConditionSlotEditor(cbx, "条件", cur.Condition, v => { cur.Condition = v; setter(cur); });
+                var tbx = new VBoxContainer(); box.AddChild(tbx);
+                BuildNumberSlotEditor(tbx, "满足时取", cur.Number, v => { cur.Number = v; setter(cur); });
+                var fbx = new VBoxContainer(); box.AddChild(fbx);
+                BuildNumberSlotEditor(fbx, "否则取", cur.Number2, v => { cur.Number2 = v; setter(cur); });
+            }
+            else if (cur.Opcode == "num_extreme")
+            {
+                var exOpt = new OptionButton { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+                SvWbTheme.StyleOptionPopup(exOpt);
+                exOpt.AddItem("取最大值", 0);
+                exOpt.AddItem("取最小值", 1);
+                exOpt.Selected = (cur.EnumA ?? "Max") == "Min" ? 1 : 0;
+                exOpt.ItemSelected += s7 =>
+                {
+                    cur.EnumA = (int)s7 == 1 ? "Min" : "Max";
+                    setter(cur);
+                };
+                box.AddChild(exOpt);
+                var a1 = new VBoxContainer(); box.AddChild(a1);
+                BuildNumberSlotEditor(a1, "值 A", cur.Number, v => { cur.Number = v; setter(cur); });
+                var a2 = new VBoxContainer(); box.AddChild(a2);
+                BuildNumberSlotEditor(a2, "值 B", cur.Number2, v => { cur.Number2 = v; setter(cur); });
             }
             else if (cur.Opcode == "num_arith")
             {
@@ -2177,6 +2236,19 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildEnumCombo(box, "兵种", AvailableTraits(), cur.Text ?? "", v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "bool_has_clan")
                 BuildEnumCombo(box, "职业", AvailableClans(), cur.Text ?? "", v => { cur.Text = v; setter(cur); });
+            // 179 号文档 C1：这两项在 DiyZh.CondOps 里已加了下拉入口，
+            // 但检视器缺 UI —— 玩家选中后下方一片空白，等于点了没反应。
+            else if (cur.Opcode == "bool_has_card_name")
+            {
+                BuildCardIdPicker(box, "匹配卡牌（卡号）", cur.IntA,
+                    (id, nm) => { cur.IntA = id; cur.Text = nm; setter(cur); });
+                var cb2 = new VBoxContainer(); box.AddChild(cb2);
+                BuildTargetSlotEditor(cb2, "或是与谁同名", cur.Target,
+                    v => { cur.Target = v; setter(cur); });
+            }
+            else if (cur.Opcode == "bool_has_pack")
+                BuildInlineText(box, "卡包 ID（多个用 | 分隔）", cur.Text ?? "",
+                    v => { cur.Text = v; setter(cur); });
             else if (cur.Opcode == "bool_not")
             {
                 var nb = new VBoxContainer(); box.AddChild(nb);
@@ -2339,6 +2411,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             case "hat_passive": return "常驻光环";
             case "c_if_else": return "如果满足条件，则…否则…";
             case "c_repeat": return "重复 " + NumText(blk.Number, 2) + " 次";
+            case "c_repeat_until": return "重复直到条件成立";
             case "c_for_each": return "对每个目标";
             case "c_mode": return "模式抉择（选 " + NumText(blk.Number, blk.IntA) + " 个）";
             case "act_damage": return "对【" + DescribeTargetShort(blk.Target) + "】造成【" + NumText(blk.Number, 2) + "】点伤害";

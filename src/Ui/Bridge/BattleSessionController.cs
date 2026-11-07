@@ -203,6 +203,14 @@ public sealed class BattleSessionController
                     });
         }
 
+        // 双方区域都铺完之后**必须**重建活体索引（179 号文档 D1）。
+        //
+        // MaterializeEntity 是直接 new RuntimeEntity，从不经过 CreateEntity，
+        // 所以 BattleState._all 里一个实体都没有 → GetLive() 恒为 null。
+        // 客机端 CanPlayCard / HasLegalTargetForSpell 全部走 GetLive，
+        // 结果所有指向性法术永远被判成「场上无合法目标」，既不亮绿圈也打不出去。
+        State.RebuildLiveIndexFromZones();
+
         // 还原挂起选择：客机打出一张需要选目标/选模式/发现的牌时，
         // 权威端把 Pending 发过来，不还原就永远弹不出选择框。
         if (snap.Pending != null)

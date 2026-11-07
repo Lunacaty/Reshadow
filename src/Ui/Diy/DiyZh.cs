@@ -288,6 +288,12 @@ public static class DiyZh
         ("num_prop", "属性读取（攻击力 / 生命值 / 费用）"),
         ("num_count", "统计目标数量"),
         ("num_arith", "四则运算"),
+        // 179 号文档 C1：这四项 DiyBlockModel 早已支持编译与反编译，
+        // 但调色盘与数值孔位没挂，玩家根本选不到。
+        ("num_sum", "统计目标属性之和"),
+        ("num_distinct", "统计不同卡名的种类数"),
+        ("num_cond", "条件取值（满足取 A，否则取 B）"),
+        ("num_extreme", "两值中的最大 / 最小"),
     };
 
     /// <summary>条件孔位的九种形态。</summary>

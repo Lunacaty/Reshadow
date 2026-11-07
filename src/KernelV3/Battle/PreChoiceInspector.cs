@@ -80,8 +80,13 @@ public static class PreChoiceInspector
             var defToScan = card.Def;
             if (kind == PlayerActionKind.PlayCard && defToScan != null)
             {
-                int ppNow = state.ReadCounter(card.PlayerId, ppKey);
-                int bodyCost = defToScan.BaseCost;
+                // 必须包含后手已激活的 BonusPp，否则用额外能量点凑够本体费用时
+                // 仍会误切进激奏/结晶预扫（179 号文档 P0-3-1）。
+                // bodyCost 用运行期实际费用 card.Cost 而非印刷 BaseCost ——
+                // 被减费过的手牌必须与 TurnRunner.PlayCard 的 "int pay = card.Cost" 同口径。
+                int ppNow = state.ReadCounter(card.PlayerId, ppKey)
+                            + state.Players[card.PlayerId].BonusPp;
+                int bodyCost = card.Cost;
                 bool boardFull = state.Players[card.PlayerId].Board.Count
                                  (x => x?.Def != null
                                     && (x.Def.Kind == Ast.CardKind.Follower
@@ -194,7 +199,11 @@ public static class PreChoiceInspector
                     if (consumed < answers.Count)
                     {
                         consumed++;
-                        var picked = answers[consumed - 1];
+                        // 必须与 CardVm.SubmitChoice 的执行顺序严格一致：
+                        // 那里用 OrderBy(x => x) 升序压栈执行，这里若按玩家点击
+                        // 顺序（如 [2, 0]）提问，两个模式选中的目标就会张冠李戴
+                        // 甚至直接抛异常熔断（179 号文档 P0-3-2）。
+                        var picked = answers[consumed - 1].OrderBy(x => x).ToList();
                         foreach (var idx in picked)
                         {
                             if (idx < 0 || idx >= n) continue;
@@ -398,11 +407,18 @@ public static class PreChoiceInspector
         // 每次都新建空作用域会让第 1 个已选目标不被排除出候选列表。
         var sc = scope ?? ScopeOf(card);
 
+        // 必须走完整归一化：Where 里的 prop:Attack <= 3 这类比较
+        // 默认锚点是 $self（手里这张法术，读到的攻击力是 0，0 <= 3 恒真），
+        // 于是预选会把全场敌方随从（哪怕 10 攻大哥）全抓进候选池；
+        // 打出后运行时再次校验又不合法，出牌流程直接卡死
+        // （179 号文档 深水区 4）。
+        var normalizedSpec = CardVm.NormalizeZoneWhere(spec);
+
         var ambush = state.Schema.Keyword("ambush");
         var aura = state.Schema.Keyword("aura");
         var ids = new List<int>();
 
-        foreach (var r in eval.ResolveRef(spec, sc))
+        foreach (var r in eval.ResolveRef(normalizedSpec, sc))
         {
             var live = state.GetLive(r.EntityId, r.EntrySerial);
             if (live == null) continue;

@@ -137,7 +137,10 @@ public sealed class TurnRunner
             e.AttackedThisTurn = false;
         }
 
-        BumpSkyboundGauge(playerId);
+        // 奥义槽不再在回合开始手动 +1：槽位总量 = TurnNumber + 手牌期间进化次数，
+        // 由 VmEval 读取时动态合成（76-c 6.2.5 / 179 号文档 P1-7）。
+        // 这里只把「手牌期间进化次数」清零 —— 该计数的生命周期是「本卡在手牌期间」，
+        // 回合开始不重置（它记录的是累计进化次数，不是每回合增量）。
 
         // ── 第 2 步：先触发本回合开始的 TurnStart 能力 ──
         // 必须排在吟唱递减**之前**：Countdown=1 的护符/纹章在最后一回合的
@@ -620,7 +623,11 @@ public sealed class TurnRunner
         foreach (var tier in EnhanceTiers(card))
             if (pp >= tier && tier > bestEnhance) bestEnhance = tier;
 
-        int bodyPay = bestEnhance > card.Cost ? bestEnhance : card.Cost;
+        // 与 PlayCard 的 "isEnhanced = bestTier > 0 && bestTier >= card.Cost" 严格同口径。
+        // 早先写 > 会让「减费后当前费用正好等于爆能档位」的卡显示绿色普通光圈，
+        // 但真打出去时底层按爆能扣费并播爆能动画 —— UI 与结算撕裂
+        // （179 号文档 深水区 2）。
+        int bodyPay = bestEnhance >= card.Cost ? bestEnhance : card.Cost;
         bool canPlayNow = isMyActiveTurn && p.Hand.Contains(card)
                           && !card.Keywords.Contains(_schema.Keyword("cannot_be_played"));
 
@@ -643,7 +650,7 @@ public sealed class TurnRunner
             if (!canPlayNow || !spellOk)
                 return (HandPlayMode.Unplayable, bodyPay);
 
-            return (bestEnhance > card.Cost ? HandPlayMode.Enhance : HandPlayMode.Normal, bodyPay);
+            return (bestEnhance >= card.Cost ? HandPlayMode.Enhance : HandPlayMode.Normal, bodyPay);
         }
 
         // 3. 本体费不够 -> 激奏 / 结晶是另一条合法路径。
@@ -788,6 +795,44 @@ public sealed class TurnRunner
     /// 自动取（All / Random）永远合法，只有 Choose 在池子为空时才会卡住。
     /// </summary>
     private bool HasLegalTargetForSpell(RuntimeEntity card)
+    {
+        if (card.Def?.Abilities == null) return true;
+
+        // 预检发生在 CanPlayCard / EvaluateHandCardPresentation / PlayCard 扣费**之前**，
+        // 此时玩家身上的 pp_at_play 还是上一张卡的残留值、combo 也还没 +1。
+        // 带【爆能强化】或【连击】分支的法术会走到错误的分支：
+        //   · 基础效果要指定敌方随从、爆能后改成全体 AOE（不需要目标）
+        //   · 或反过来基础不需目标、爆能后必须指定目标
+        // 读错分支就会得出「空场打不出去」或「违规打出」的结论（179 号文档 P1-12）。
+        // 与 PreChoiceInspector 同口径：临时写入再严格还原。
+        var ppAtPlayKey = _schema.Counter("pp_at_play");
+        var comboKey0 = _schema.Counter("combo");
+        int savedPpAtPlay = _state.ReadCounter(card.PlayerId, ppAtPlayKey);
+        int savedCombo = _state.ReadCounter(card.PlayerId, comboKey0);
+        try
+        {
+            int ppAvail = AvailablePp(card.PlayerId);
+            bool suppressed = _state.HasEffectiveKeyword(
+                card, _schema.Keyword("suppress_enhance"));
+            int bestTier = 0;
+            if (!suppressed)
+                foreach (var tier in EnhanceTiers(card))
+                    if (ppAvail >= tier && tier > bestTier) bestTier = tier;
+            bool isEnh = bestTier > 0 && bestTier >= card.Cost;
+
+            _state.WriteCounter(card.PlayerId, ppAtPlayKey, isEnh ? bestTier : 0);
+            _state.WriteCounter(card.PlayerId, comboKey0, savedCombo + 1);
+
+            return HasLegalTargetForSpellCore(card);
+        }
+        finally
+        {
+            _state.Players[card.PlayerId].Counters[ppAtPlayKey.Id] = savedPpAtPlay;
+            _state.Players[card.PlayerId].Counters[comboKey0.Id] = savedCombo;
+        }
+    }
+
+    private bool HasLegalTargetForSpellCore(RuntimeEntity card)
     {
         if (card.Def?.Abilities == null) return true;
 
@@ -986,12 +1031,13 @@ public sealed class TurnRunner
         var sbKey = _schema.Counter("spellboost");
         foreach (var e in _state.Players[playerId].Hand)
         {
-            if (ReferenceEquals(e, spellCard)) continue;   // 不包括给自己
+            if (ReferenceEquals(e, spellCard) || e == null) continue;   // 不包括给自己
             if (e.Def?.Abilities == null) continue;
-            bool has = false;
-            foreach (var ab in e.Def.Abilities)
-                if (ab?.Trigger != null && ab.Trigger.Event == CoreEvent.OnSpellboost) { has = true; break; }
-            if (!has) continue;
+            // 判据是「这张卡是否读 spellboost 计数器」，不是「有没有 OnSpellboost 触发器」。
+            // 「造成 X 点伤害，X 为本卡魔力增幅次数」这类卡的触发器是 OnPlay，
+            // 只在 Body 里用 NumOp.Counter(spellboost)，早先按触发器筛会 100% 漏掉
+            // （179 号文档 P1-8）。
+            if (!ReadsSpellboost(e.Def)) continue;
 
             e.Counters.TryGetValue(sbKey, out var cur);
             e.Counters[sbKey] = cur + 1;
@@ -1000,6 +1046,78 @@ public sealed class TurnRunner
         EmitOrEnqueue(vm, new VmEvent { Kind = CoreEvent.OnSpellboost, PlayerId = playerId });
     }
 
+
+    /// <summary>
+    /// 这张卡是否有任何能力读 spellboost 计数器（含 Body 内的条件与嵌套分支）。
+    /// </summary>
+    private static bool ReadsSpellboost(Ast.CardDef def)
+    {
+        if (def?.Abilities == null) return false;
+        static bool InBool(Ast.BoolExpr b)
+        {
+            if (b == null) return false;
+            if (b is Ast.CompareExpr c)
+            {
+                if (c.Left != null && c.Left.Op == Ast.NumOp.Counter
+                    && c.Left.Counter.Name == "spellboost") return true;
+                if (c.Right != null && c.Right.Op == Ast.NumOp.Counter
+                    && c.Right.Counter.Name == "spellboost") return true;
+            }
+            if (b is Ast.AndExpr a2) foreach (var x in a2.Items) if (InBool(x)) return true;
+            if (b is Ast.OrExpr o2) foreach (var x in o2.Items) if (InBool(x)) return true;
+            if (b is Ast.NotExpr n2) return InBool(n2.Inner);
+            return false;
+        }
+        static bool InNum(Ast.NumExpr n)
+        {
+            if (n == null) return false;
+            if (n.Op == Ast.NumOp.Counter && n.Counter.Name == "spellboost") return true;
+            if (n.Args != null) foreach (var x in n.Args) if (InNum(x)) return true;
+            return false;
+        }
+        static bool InBody(IReadOnlyList<Ast.EffectNode> body)
+        {
+            if (body == null) return false;
+            foreach (var n in body)
+            {
+                if (n == null) continue;
+                if (n.If != null && InBool(n.If)) return true;
+                switch (n)
+                {
+                    case Ast.ConditionalNode cn:
+                        if (InBool(cn.Condition) || InBody(cn.Then) || InBody(cn.Else)) return true;
+                        break;
+                    case Ast.LoopNode lp:
+                        if (InBody(lp.Body)) return true;
+                        break;
+                    case Ast.BranchModeNode bm3:
+                        if (bm3.Options != null)
+                            foreach (var opt in bm3.Options) if (InBody(opt)) return true;
+                        break;
+                    case Ast.DealDamageNode dd:
+                        if (InNum(dd.Amount)) return true;
+                        break;
+                    case Ast.ModifyStatsNode ms2:
+                        if (InNum(ms2.Attack) || InNum(ms2.Life)) return true;
+                        break;
+                    case Ast.ModifyCounterNode mc2:
+                        if (mc2.Counter.Name == "spellboost") return true;
+                        if (InNum(mc2.Delta)) return true;
+                        break;
+                }
+            }
+            return false;
+        }
+
+        foreach (var ab in def.Abilities)
+        {
+            if (ab == null) continue;
+            bool hasTrigger = ab.Trigger != null && ab.Trigger.Event == CoreEvent.OnSpellboost;
+            if (hasTrigger) return true;
+            if (InBool(ab.Condition) || InBody(ab.Body)) return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// 手牌中所有带【奥义】的卡，奥义槽 +1。
@@ -1017,12 +1135,17 @@ public sealed class TurnRunner
         var gaugeKey = schema.Counter("skybound_gauge");
         foreach (var e in world.EnumerateZone(ZoneRef.Hand, playerId))
         {
-            if (e.Def == null) continue;
+            if (e.Def?.Abilities == null) continue;
+            // 只要卡面**任何位置**引用了 skybound_gauge 就算奥义卡。
+            // 早先只扫 ab.Condition（顶层条件），把「奥义 10 / 解放奥义 15」
+            // 编译进入场曲 Body 内部 ConditionalNode 的卡全部漏掉，
+            // 它们的奥义槽永远是 0（179 号文档 P1-7）。
             bool hasSkybound = false;
             foreach (var ab in e.Def.Abilities)
             {
-                if (ab?.Condition == null) continue;
-                if (ContainsOnlySkyboundGauge(ab.Condition)) { hasSkybound = true; break; }
+                if (ab == null) continue;
+                if (ContainsSkyboundGauge(ab.Condition) || ContainsSkyboundGauge(ab.Body))
+                { hasSkybound = true; break; }
             }
             if (!hasSkybound) continue;
             e.Counters.TryGetValue(gaugeKey, out var cur);
@@ -1030,13 +1153,56 @@ public sealed class TurnRunner
         }
     }
 
-    private static bool ContainsOnlySkyboundGauge(Ast.BoolExpr e)
+    /// <summary>条件树里是否引用了 skybound_gauge。</summary>
+    private static bool ContainsSkyboundGauge(Ast.BoolExpr e)
     {
+        if (e == null) return false;
         if (e is Ast.CompareExpr c)
-            return c.Left != null && c.Left.Op == Ast.NumOp.Counter
-                   && c.Left.Counter.Name == "skybound_gauge";
+        {
+            if (c.Left != null && c.Left.Op == Ast.NumOp.Counter
+                && c.Left.Counter.Name == "skybound_gauge") return true;
+            if (c.Right != null && c.Right.Op == Ast.NumOp.Counter
+                && c.Right.Counter.Name == "skybound_gauge") return true;
+        }
         if (e is Ast.AndExpr a)
-            foreach (var x in a.Items) if (ContainsOnlySkyboundGauge(x)) return true;
+            foreach (var x in a.Items) if (ContainsSkyboundGauge(x)) return true;
+        if (e is Ast.OrExpr o)
+            foreach (var x in o.Items) if (ContainsSkyboundGauge(x)) return true;
+        if (e is Ast.NotExpr nt) return ContainsSkyboundGauge(nt.Inner);
+        return false;
+    }
+
+    /// <summary>
+    /// 效果体里是否引用了 skybound_gauge（含嵌套 ConditionalNode 的条件与循环体）。
+    /// 奥义卡最常见的就是把它编译进 Body 内部的条件分支。
+    /// </summary>
+    private static bool ContainsSkyboundGauge(IReadOnlyList<Ast.EffectNode> body)
+    {
+        if (body == null) return false;
+        foreach (var n in body)
+        {
+            if (n == null) continue;
+            if (n.If != null && ContainsSkyboundGauge(n.If)) return true;
+            switch (n)
+            {
+                case Ast.ConditionalNode cn:
+                    if (ContainsSkyboundGauge(cn.Condition)) return true;
+                    if (ContainsSkyboundGauge(cn.Then)) return true;
+                    if (ContainsSkyboundGauge(cn.Else)) return true;
+                    break;
+                case Ast.LoopNode lp:
+                    if (ContainsSkyboundGauge(lp.Body)) return true;
+                    break;
+                case Ast.BranchModeNode bm2:
+                    if (bm2.Options != null)
+                        foreach (var opt in bm2.Options)
+                            if (ContainsSkyboundGauge(opt)) return true;
+                    break;
+                case Ast.ModifyCounterNode mc:
+                    if (mc.Counter.Name == "skybound_gauge") return true;
+                    break;
+            }
+        }
         return false;
     }
 

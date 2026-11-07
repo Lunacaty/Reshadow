@@ -526,8 +526,10 @@ public partial class DeckBuilderView : Control
             string c = clan;
             var b = new Button { Text = "★ 副职业: " + SvWbTheme.ClanDisplayZh(clan) };
             SvWbTheme.StyleButton(b, customAccent: SvWbTheme.AccentPurple);
-            _currentPage = 0;
-            b.Pressed += () => { _vm.ActiveClanFilter = c; RefreshCardGrid(); };
+            // 页码重置必须在回调**内**（179 号文档 D5）：
+            // 每次投入/移除一张牌都会 RefreshAll -> RefreshExtraClanTabs，
+            // 写在外面会让玩家翻到第 3 页点一张卡就被弹回第 1 页。
+            b.Pressed += () => { _vm.ActiveClanFilter = c; _currentPage = 0; RefreshCardGrid(); };
             _extraClanTabs.AddChild(b);
         }
     }

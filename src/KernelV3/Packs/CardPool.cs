@@ -52,6 +52,17 @@ public sealed class PoolCounterDef
     public CounterLifecycle Lifecycle { get; init; } = CounterLifecycle.PersistMatch;
     /// <summary>内置计数器（pp / ep / sep 等）由引擎维护，UI 只读。</summary>
     public bool IsBuiltin { get; init; }
+
+    /// <summary>
+    /// 计数器在特定条件下的变化规则（PyAST 文本）。
+    /// 例：当友方【剑仙】随从进入战场时使 sword_intent +1。
+    /// 对局开始时编译成 RulesAbilities 并挂到双方主战者身上
+    /// （179 号文档 C6）。
+    /// </summary>
+    public string RulesScript { get; init; } = "";
+
+    /// <summary>RulesScript 编译后的能力列表，由 CardPoolBuilder 填。</summary>
+    public IReadOnlyList<Ast.AbilityDef> RulesAbilities { get; set; } = Array.Empty<Ast.AbilityDef>();
 }
 
 public sealed class CardPoolConfig
@@ -259,6 +270,12 @@ public static class CardPoolBuilder
         var idOf = new Dictionary<CardRawEntry, int>();
         // 卡号冲突被自动改号时，原号记在这里，稍后写进 CardDef.ArtCardId（找图用）。
         var pendingArtCardId = new Dictionary<CardRawEntry, int>();
+
+        // Pass 2.5 用：包内卡号改号映射 (packId, oldId) -> newId。
+        // 卡包 B 的 950001 与卡包 A 冲突被改成 1000000 之后，
+        // 包内另一张卡若写着 "summon 1 #950001"，引用必须一起改向 ——
+        // 否则实战里召唤出的是**卡包 A 的那张卡**（179 号文档 C5a）。
+        var remappedIds = new Dictionary<(string packId, int oldId), int>();
         var cardOwnerPack = new Dictionary<int, string>();
         var nameOwnerPack = new Dictionary<string, (string packId, int cardId)>(StringComparer.OrdinalIgnoreCase);
 
@@ -278,6 +295,23 @@ public static class CardPoolBuilder
             schema.Counter(ctr.Name, config.PoolId);
             schema.CounterLimits[ctr.Name] = (ctr.Min, ctr.Max);
             if (!string.IsNullOrEmpty(ctr.NameChs)) glossary.Add(ctr.Name, ctr.NameChs);
+
+            // 编译计数器的事件驱动规则（179 号文档 C6 环节 2）。
+            // 规则就是标准的 AbilityDef：与 DIY 积木 / PyAST 编辑器完全同构，
+            // 因此可以直接复用 AstCanonicalParser 的产物。
+            if (!string.IsNullOrWhiteSpace(ctr.RulesScript))
+            {
+                try
+                {
+                    var ctrParser = new Lang.AstCanonicalParser(schema, lexicon);
+                    ctr.RulesAbilities = ctrParser.ParseAbilities(ctr.RulesScript);
+                }
+                catch (Exception ex)
+                {
+                    res.Notices.Add("计数器 [" + ctr.Name + "] 的规则脚本编译失败：" + ex.Message);
+                    ctr.RulesAbilities = Array.Empty<Ast.AbilityDef>();
+                }
+            }
         }
 
         foreach (var pack in packs)
@@ -353,6 +387,7 @@ public static class CardPoolBuilder
                     res.Notices.Add("卡号冲突已自动隔离：卡包 [" + pack.PackId + "] 的《" + c.NameEng
                                     + "》原 CardId=" + effectiveId + "（与 [" + prevPack
                                     + "] 冲突）→ 运行期改为 " + reassigned + "，原号存为 ArtCardId");
+                    remappedIds[(pack.PackId, effectiveId)] = reassigned;
                     effectiveId = reassigned;
                     idOf[c] = effectiveId;
                 }
@@ -370,10 +405,15 @@ public static class CardPoolBuilder
                                           || IsDependencyRelated(prevName.packId, pack.PackId, packs);
                     if (!sameOwnerChain)
                     {
-                        res.Errors.Add("同名歧义冲突：卡包 [" + pack.PackId + "] 与 [" + prevName.packId
-                                       + "] 都定义了同名卡 '" + c.NameEng + "'（id=" + c.CardId
-                                       + " 与 id=" + prevName.cardId + "），且两包之间没有依赖关系 —— "
-                                       + "模糊引用无法消歧，拒绝启动该卡池！");
+                        // 179 号文档 C5b：引擎现在以 #卡号 为权威引用，同名不同 ID
+                        // 完全可以合法共存。早先直接 Errors.Add 会让整个卡池拒绝启动，
+                        // 而玩家只是导入了两个不同作者的卡包而已。
+                        // 降级为 Notice：只有「某张卡用无 ID 的英文名模糊引用同名卡」
+                        // 时才真的无从消歧，那种情况在编译时报错即可。
+                        res.Notices.Add("同名卡共存：卡包 [" + pack.PackId + "] 与 [" + prevName.packId
+                                        + "] 都定义了同名卡 '" + c.NameEng + "'（id=" + c.CardId
+                                        + " 与 id=" + prevName.cardId + "）。"
+                                        + "请用 #卡号 引用以明确指向。");
                         continue;
                     }
                     // 有依赖关系时，被依赖的一方胜出（依赖方知道自己引用的是谁）。
@@ -455,7 +495,8 @@ public static class CardPoolBuilder
             {
                 var card = CompileCard(pack, c, schema, comp, res.Errors,
                                        idOf.TryGetValue(c, out var eid) ? eid : c.CardId,
-                                       lexicon, glossary, nameOwnerPack, config.Rules);
+                                       lexicon, glossary, nameOwnerPack, config.Rules,
+                                       remappedIds);
                 if (card != null)
                 {
                     pool.RegisterCompiledCard(card);
@@ -521,15 +562,30 @@ public static class CardPoolBuilder
         EnglishCompiler comp, List<string> errors, int cardId,
         Lexicon sharedLex = null, Glossary sharedGlossary = null,
         Dictionary<string, (string packId, int cardId)> sharedNames = null,
-        MatchRules rules = null)
+        MatchRules rules = null,
+        Dictionary<(string packId, int oldId), int> remap = null)
     {
         var traits = new List<SymbolId<TraitTag>>();
         foreach (var t in c.Traits) traits.Add(schema.Trait(t));
 
         var clan = string.IsNullOrEmpty(c.Clan) ? SymbolId<ClanTag>.Invalid : schema.Clan(c.Clan);
 
+        // Pass 2.5：包内卡号改号后，本包其他卡里的 "#旧号" 引用必须一起改向。
+        // 否则卡包 B 的 950001 被改号为 1000000 后，包内 "summon 1 #950001"
+        // 召唤出来的仍是**卡包 A 的那张 950001**（179 号文档 C5a）。
+        string cardText = c.Text;
+        if (remap != null && remap.Count > 0 && !string.IsNullOrEmpty(cardText))
+        {
+            foreach (var ((pkId, oldId), newId) in remap)
+            {
+                if (!string.Equals(pkId, pack.PackId, StringComparison.OrdinalIgnoreCase)) continue;
+                cardText = System.Text.RegularExpressions.Regex.Replace(
+                    cardText, "#" + oldId + @"\b", "#" + newId);
+            }
+        }
+
         // 无效果文本的卡不必过编译器：省一次解析，也避免空串误报。
-        if (string.IsNullOrWhiteSpace(c.Text))
+        if (string.IsNullOrWhiteSpace(cardText))
         {
             return new CardDef
             {
@@ -559,7 +615,7 @@ public static class CardPoolBuilder
         {
             var pyParser = new Lang.AstCanonicalParser(schema, sharedLex);
             Ast.CardDef pyDef = null;
-            try { pyDef = pyParser.ParseCard(c.Text); }
+            try { pyDef = pyParser.ParseCard(cardText); }
             catch (Exception ex)
             {
                 errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》PyAST 解析失败：" + ex.Message);
@@ -610,7 +666,7 @@ public static class CardPoolBuilder
         
 
         var alts = c.AltModes.Select(a => (a.TypeEng, a.Cost, a.TextEng)).ToArray();
-        var result = comp.Compile(c.Text, alts, c.NameEng, c.CardId);
+        var result = comp.Compile(cardText, alts, c.NameEng, c.CardId);
         foreach (var e in result.Errors)
             errors.Add("卡包 [" + pack.PackId + "] 的卡 " + c.CardId + "《" + c.NameEng + "》编译失败：" + e);
 

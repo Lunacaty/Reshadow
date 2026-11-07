@@ -270,6 +270,11 @@ public sealed class DiyWorkshopController
             var merged = new CardDef
             {
                 CardId = CurrentDef.CardId,
+                // 179 号文档 D5：只读表单也必须完整保留元属性。
+                // 漏了 ArtCardId 会让卡面变成黑底（找图按卡号查，查不到那张立绘）；
+                // 漏了 Rarity 会让稀有度框掉回普通。
+                ArtCardId = CurrentDef.ArtCardId,
+                Rarity = CurrentDef.Rarity,
                 PackId = CurrentDef.PackId,
                 IsToken = CurrentDef.IsToken,
                 Name = string.IsNullOrWhiteSpace(form.NameEng) ? CurrentDef.Name : form.NameEng,
@@ -283,7 +288,11 @@ public sealed class DiyWorkshopController
                 BaseCost = form.Cost,
                 BaseAttack = form.Attack,
                 BaseLife = form.Life,
-                InnateKeywords = CurrentDef.InnateKeywords,
+                // 常驻关键词允许在只读表单里改（它属于头部属性，不是复杂能力）。
+                // 只认表单里非空的情况，空则沿用原值，避免清空玩家没动过的那一栏。
+                InnateKeywords = (form.Keywords != null && form.Keywords.Count > 0)
+                    ? ParseKeywordsOrKeep(form.Keywords, CurrentDef.InnateKeywords)
+                    : CurrentDef.InnateKeywords,
                 InnateCounters = CurrentDef.InnateCounters,
                 // 以下全部原样保留
                 Abilities = CurrentDef.Abilities,
@@ -587,7 +596,12 @@ public sealed class DiyWorkshopController
 
         // ④ 受限英文端
         var np = new NaturalPrinter(Workspace.Glossary, RenderLang.English);
-        string engText = !string.IsNullOrWhiteSpace(CurrentDef.SourceText)
+        // SourceText 只在「原文本来就是英文 CNL」时才是英文。
+        // 卡片来自 py_ast 时 SourceText 里存的是 PyAST 代码（"card 950001 …"），
+        // 直接拿来当英文端内容会让玩家在 ④ 端看到 PyAST 源码，点编译当场报错
+        // （179 号文档 C2）。必须识别并改走 NaturalPrinter 重新打印标准英文。
+        string engText = (!string.IsNullOrWhiteSpace(CurrentDef.SourceText)
+                          && !LooksLikePyAst(CurrentDef.SourceText))
             ? CurrentDef.SourceText
             : np.PrintCard(CurrentDef.Abilities);
 
@@ -597,7 +611,8 @@ public sealed class DiyWorkshopController
             void AppendAlt(string tag, CardDef sub, bool withCost)
             {
                 if (sub == null) return;
-                string subTxt = !string.IsNullOrWhiteSpace(sub.SourceText)
+                string subTxt = (!string.IsNullOrWhiteSpace(sub.SourceText)
+                                 && !LooksLikePyAst(sub.SourceText))
                     ? sub.SourceText : np.PrintCard(sub.Abilities);
                 sb.Append("\n\n[").Append(withCost ? $"{tag} ({sub.BaseCost})" : tag)
                   .Append("]\n").Append(subTxt);
@@ -628,8 +643,30 @@ public sealed class DiyWorkshopController
     public string GetChineseCardText()
         => CurrentDef == null ? "" : Workspace.PrintChinese(CurrentDef);
 
+    /// <summary>
+    /// 左侧「AST 规范形」预览。
+    ///
+    /// 必须走 PrintBodyAndSubDefs：只打本体 Abilities 的话，
+    /// 左下角预览看不到关联纹章 / 信仰 / 激奏 / 结晶，玩家以为子卡丢了
+    /// （179 号文档 C2）。
+    /// </summary>
     public string GetCanonicalAstText()
-        => CurrentDef == null ? "" : AstCanonicalPrinter.PrintAbilities(CurrentDef.Abilities);
+        => CurrentDef == null ? "" : AstCanonicalPrinter.PrintBodyAndSubDefs(CurrentDef);
+
+    /// <summary>
+    /// 这段文本像不像 PyAST 源码（而不是英文 CNL）。
+    /// 卡片经 py_ast 端编辑保存后，SourceText 会被写成 PyAST 文本。
+    /// </summary>
+    private static bool LooksLikePyAst(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        string t = text.TrimStart();
+        return t.StartsWith("card ", StringComparison.Ordinal)
+            || t.StartsWith("fanfare:", StringComparison.Ordinal)
+            || t.StartsWith("aura:", StringComparison.Ordinal)
+            || t.StartsWith("last_words:", StringComparison.Ordinal)
+            || t.Contains("\n    ", StringComparison.Ordinal);
+    }
 
     /// <summary>四端往返同构自检：Script 打印 → 重编译 → 结构化判等。</summary>
     public bool VerifyRoundTripIsomorphism(out string diff)
@@ -783,6 +820,24 @@ public sealed class DiyWorkshopController
         if (string.Equals(clanName, "中立", StringComparison.OrdinalIgnoreCase))
             return SymbolId<ClanTag>.Invalid;
         return Workspace.Schema.Clan(clanName);
+    }
+
+    /// <summary>
+    /// 把表单里的关键词名字解析成 SymbolId；空则沿用原值。
+    /// 只读表单更新常驻关键词用（179 号文档 D5）。
+    /// </summary>
+    private IReadOnlyList<SymbolId<KeywordTag>> ParseKeywordsOrKeep(
+        List<string> names, IReadOnlyList<SymbolId<KeywordTag>> keep)
+    {
+        if (names == null || names.Count == 0) return keep;
+        var list = new List<SymbolId<KeywordTag>>();
+        foreach (var n in names)
+        {
+            if (string.IsNullOrWhiteSpace(n)) continue;
+            var k = Store.Catalog.Schema.Keyword(n.Trim());
+            if (k.IsValid && !list.Contains(k)) list.Add(k);
+        }
+        return list.Count > 0 ? list : keep;
     }
 
     private IReadOnlyList<SymbolId<TraitTag>> ParseTraitsOrKeep(

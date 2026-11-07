@@ -197,7 +197,98 @@ public sealed class ActionParser
             if (cur.Position == before)
                 throw LangException.At("无法解析的动作", "解析器在此处无法推进", cur, cur.All);
         }
+
+        // "Give all allied followers in your hand and deck +1/+1" /
+        // "Reduce the cost of ... in your hand and deck by 1" /
+        // "Banish ... from your hand and deck"
+        //
+        // TargetSpec 只能装一个 Zone，TargetParser 把双区短语记成 Hand 并置
+        // SawHandAndDeck；这里为作用于 Hand 的节点克隆一份 Deck 版本，
+        // 否则牌组里的那半边永远拿不到效果（179 号文档 3）。
+        // TransformNode 自己已经处理了双区，不能重复补。
+        if (_target.SawHandAndDeck && result.Count > 0
+            && result.All(n => n is not TransformNode))
+        {
+            var deckCopies = new List<EffectNode>();
+            foreach (var nd in result)
+            {
+                var copy = CloneNodeForZone(nd, ZoneRef.Hand, ZoneRef.Deck);
+                if (copy != null) deckCopies.Add(copy);
+            }
+            result.AddRange(deckCopies);
+        }
         return result;
+    }
+
+    /// <summary>
+    /// 把「目标落在 fromZone」的节点克隆成「目标落在 toZone」的版本，
+    /// 供 "in your hand and deck" 这类双区域短语展开。
+    /// 目标不在 fromZone 的节点返回 null（不该被复制）。
+    /// </summary>
+    private static EffectNode CloneNodeForZone(EffectNode n, ZoneRef fromZone, ZoneRef toZone)
+    {
+        static TargetSpec Retarget(TargetSpec t, ZoneRef from, ZoneRef to)
+        {
+            if (t == null) return null;
+            bool hits = t.Zone == from
+                        || (t.SourceKind == TargetSourceKind.Zone && t.Zone == from);
+            if (!hits) return null;
+            return new TargetSpec
+            {
+                SourceKind = t.SourceKind, Owner = t.Owner, Zone = to, Slot = t.Slot,
+                CardId = t.CardId, CardName = t.CardName, Where = t.Where,
+                Sort = t.Sort, SortDescending = t.SortDescending, TopN = t.TopN,
+                DistinctByName = t.DistinctByName, DuplicatesOnly = t.DuplicatesOnly,
+                Mode = t.Mode, Count = t.Count, IncludeLeader = t.IncludeLeader,
+                History = t.History, OmittedFields = t.OmittedFields,
+            };
+        }
+
+        switch (n)
+        {
+            case ModifyStatsNode ms:
+            {
+                var t = Retarget(ms.Target, fromZone, toZone);
+                if (t == null) return null;
+                return new ModifyStatsNode
+                {
+                    Target = t, Op = ms.Op, Attack = ms.Attack, Life = ms.Life,
+                    Duration = ms.Duration, If = ms.If,
+                };
+            }
+            case ModifyCostNode mc:
+            {
+                var t = Retarget(mc.Target, fromZone, toZone);
+                if (t == null) return null;
+                return new ModifyCostNode
+                {
+                    Target = t, Op = mc.Op, Value = mc.Value,
+                    Duration = mc.Duration, If = mc.If,
+                };
+            }
+            case ModifyKeywordNode mk:
+            {
+                var t = Retarget(mk.Target, fromZone, toZone);
+                if (t == null) return null;
+                return new ModifyKeywordNode
+                {
+                    Target = t, Op = mk.Op, Keyword = mk.Keyword, Value = mk.Value,
+                    Duration = mk.Duration, If = mk.If,
+                };
+            }
+            case MoveZoneNode mz:
+            {
+                var t = Retarget(mz.Target, fromZone, toZone);
+                if (t == null) return null;
+                return new MoveZoneNode
+                {
+                    Target = t, ToZone = mz.ToZone,
+                    IsDestroy = mz.IsDestroy, OutSlot = mz.OutSlot, If = mz.If,
+                };
+            }
+            default:
+                return null;
+        }
     }
 
     /// <summary>句中条件从句：if &lt;cond&gt;, &lt;body&gt; → ConditionalNode。</summary>

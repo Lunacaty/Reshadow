@@ -97,7 +97,8 @@ public partial class CardHoverTooltip : PanelContainer
 
         _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}{traitPart}】 {statPart}";
 
-        _bodyRich.Text = SvWbTheme.FormatRichCardText(printer.PrintCard(def));
+        // 悬浮窗同样要带子卡，否则构筑 / 换牌时完全看不到纹章与激奏（179 号文档 D4）。
+        _bodyRich.Text = SvWbTheme.FormatFullCardText(def, printer);
         Visible = true;
 
         // 智能定位：默认贴右，靠右边缘时翻到左侧

@@ -474,7 +474,8 @@ public partial class CardGalleryView : Control
         var body = new RichTextLabel
         {
             BbcodeEnabled = true,
-            Text = SvWbTheme.FormatRichCardText(_store.CardPrinter.PrintCard(def)),
+            // 图鉴同样要带子卡（179 号文档 D4）。
+            Text = SvWbTheme.FormatFullCardText(def, _store.CardPrinter),
             FitContent = true,
             ScrollActive = false,
             SizeFlagsVertical = SizeFlags.ExpandFill,

@@ -305,6 +305,68 @@ public static class SvWbTheme
     /// 顺序有讲究：【构筑规则】必须先替换 —— 否则它会被通用的
     /// 【([^】]+)】规则先吃掉，变成普通的金色能力头。
     /// </summary>
+    /// <summary>
+    /// 把本体与四类子卡（激奏 / 结晶 / 关联纹章 / 关联信仰）拼成一段完整富文本。
+    ///
+    /// 早先只有构筑台右键弹窗手动拼了子卡，战斗中的左上角详情面板、
+    /// 悬浮窗、卡片图鉴全都只调 PrintCard(本体) ——
+    /// 玩家摸到「入场曲：获得纹章：XXX」的卡，点开详情完全看不到那个纹章
+    /// 是什么效果（179 号文档 D4）。
+    /// </summary>
+    public static string FormatFullCardText(
+        KernelV3.Ast.CardDef def, KernelV3.Lang.ChineseCardPrinter printer)
+    {
+        if (def == null || printer == null) return "";
+        var sb = new System.Text.StringBuilder(FormatRichCardText(printer.PrintCard(def)));
+
+        void AppendSub(string tag, KernelV3.Ast.CardDef sub, bool showCost)
+        {
+            if (sub?.Abilities == null || sub.Abilities.Count == 0) return;
+            string head = showCost
+                ? "【" + tag + " (" + sub.BaseCost + "费)】"
+                : "【" + tag + "：" + (sub.NameChs ?? sub.Name) + "】";
+            sb.Append("\n[color=#38BDF8][b]").Append(head).Append("[/b][/color]\n")
+              .Append(FormatRichCardText(printer.PrintCard(sub)));
+        }
+        AppendSub("激奏", def.AccelerateDef, true);
+        AppendSub("结晶", def.CrystallizeDef, true);
+        AppendSub("关联纹章", def.CrestDef, false);
+        AppendSub("关联信仰", def.FaithDef, false);
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// 纯显示层：把 AST 规范文本 / 对局日志里的 #卡牌ID 换成高亮卡名。
+    ///
+    /// 数据层（AST、PyAST 源码、存档 JSON）永远保持 #90011110 这种纯数字 ——
+    /// 它跨语言、跨改名都稳定。只有显示层做富文本映射（179 号文档 C3）。
+    /// </summary>
+    public static string FormatAstWithCardNames(
+        string rawAstText, Func<int, KernelV3.Ast.CardDef> cardLookup = null)
+    {
+        if (string.IsNullOrEmpty(rawAstText)) return "";
+
+        // AST 语法里有 [enhance(4)] / [dur=ThisTurn] 这种方括号，
+        // 直接喂给 RichTextLabel 会被 BBCode 解析器当成未知标签吞掉，
+        // 必须先把 [ 转义掉。
+        string safe = rawAstText.Replace("[", "[lb]");
+
+        return Regex.Replace(safe, @"#(\d{4,9})\b", m =>
+        {
+            if (!int.TryParse(m.Groups[1].Value, out int cid)) return m.Value;
+            var def = cardLookup?.Invoke(cid);
+            string name = def != null
+                ? (!string.IsNullOrWhiteSpace(def.NameChs) ? def.NameChs : def.Name)
+                : KernelV3.Packs.AuthoritativeNames.ChineseOf(cid);
+
+            if (string.IsNullOrWhiteSpace(name))
+                return $"[color=#94A3B8]#{cid}[/color]";
+
+            return $"[bgcolor=#1E293B][color=#38BDF8][b]《{name}》[/b][/color]"
+                 + $"[color=#64748B](#{cid})[/color][/bgcolor]";
+        });
+    }
+
     public static string FormatRichCardText(string plainZh)
     {
         if (string.IsNullOrEmpty(plainZh)) return "[color=#64748B]（白板无效果）[/color]";

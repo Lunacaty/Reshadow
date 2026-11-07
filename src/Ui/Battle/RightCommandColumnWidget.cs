@@ -17,7 +17,10 @@ public partial class RightCommandColumnWidget : Control
     private BattleSessionController _ctrl;
     private bool _turnBtnHovered;
 
-    private static readonly Rect2 ExtraPpRect = new(10, 0, 196, 42);
+    /// <summary>敌方后手时的 Extra PP 框（画在敌方能量牌上方，**不可点**）。</summary>
+    private static readonly Rect2 FoeExtraPpRect = new(10, 0, 196, 42);
+    /// <summary>我方后手时的 Extra PP 框（画在我方能量牌下方，唯一可点的那个）。</summary>
+    private static readonly Rect2 AllyExtraPpRect = new(10, 374, 196, 42);
     private static readonly Rect2 EnemyPpRect = new(14, 52, 188, 62);
     private static readonly Vector2 TurnBtnCenter = new(108, 198);
     private const float TurnBtnRadius = 68f;
@@ -45,9 +48,9 @@ public partial class RightCommandColumnWidget : Control
         bool allyIsSecond = _ctrl.IsSecondPlayer(0);
 
         if (foeIsSecond)
-            DrawExtraPpBox(new Rect2(10, 0, 196, 42), 1, font);
+            DrawExtraPpBox(FoeExtraPpRect, 1, font);
         if (allyIsSecond)
-            DrawExtraPpBox(new Rect2(10, 374, 196, 42), 0, font);
+            DrawExtraPpBox(AllyExtraPpRect, 0, font);
 
         // 2. 敌方能量点
         int foePp = _ctrl.ReadCounter(1, "pp");
@@ -168,10 +171,11 @@ public partial class RightCommandColumnWidget : Control
                 if (canEnd) OnEndTurnClicked?.Invoke();
                 AcceptEvent();
             }
-            // 我方后手时，Extra PP 框画在下方（Y=374..416）；
-            // 敌方后手时画在上方（Y=0..42）。两个位置都要能点。
-            else if (ExtraPpRect.HasPoint(mb.Position)
-                     || new Rect2(10, 374, 196, 42).HasPoint(mb.Position))
+            // 只有「我方确为后手」且精准点在我方那块框上才算激活（179 号文档 暗坑一）。
+            // 早先同时命中敌方的上方框（10,0），我方先手时点敌方框会误触发；
+            // 我方后手时上方本就没画东西，却仍能隔着空白把我方额度用掉。
+            else if (_ctrl != null && _ctrl.IsSecondPlayer(0)
+                     && AllyExtraPpRect.HasPoint(mb.Position))
             {
                 OnExtraPpClicked?.Invoke();
                 AcceptEvent();

@@ -154,8 +154,25 @@ public sealed class VmEval
                             "计数器读取的取值玩家必须是 Self 或 Opponent，实际 " + e.Of.Owner);
                     return _world.ReadCounter(scope.ResolvePlayer(e.Of.Owner), e.Counter);
                 }
-                // 奥义槽是**每张手牌各自**的数值，不能读玩家级计数器。
-                // 先查事件源实体自己身上的计数器，没有才退回玩家级。
+                // 奥义槽 = 当前回合数 + 本卡在手牌期间我方进化次数（76-c 6.2.5）。
+                //
+                // 早先只在 StartTurn 给「已经在手牌」的卡 +1，于是第 8 回合
+                // 刚抽上手的奥义卡槽位是 0 而不是 8。改成读取时动态合成：
+                // 实体身上的 skybound_gauge 只记「手牌期间进化次数」，
+                // 总槽位由 TurnNumber 实时加上（179 号文档 P1-7）。
+                if (e.Counter.Name == "skybound_gauge")
+                {
+                    int evoBonus = 0;
+                    if (scope.Source != null)
+                    {
+                        var srcSb = _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial);
+                        if (srcSb != null && srcSb.Counters.TryGetValue(e.Counter, out var sbCnt))
+                            evoBonus = sbCnt;
+                    }
+                    int turnNum = (_world as Battle.BattleState)?.TurnNumber ?? 0;
+                    return turnNum + evoBonus;
+                }
+                // 奥义槽以外的计数器：先查事件源实体自己身上的，没有才退回玩家级。
                 if (scope.Source != null)
                 {
                     var src = _world.GetLive(scope.Source.Value.EntityId, scope.Source.Value.EntrySerial);
@@ -487,15 +504,20 @@ public sealed class VmEval
     private static int ReadStatFromSnapshot(EntitySnapshot sn, StatKey k)
     {
         if (sn == null) return 0;
+        // 活体读取 ReadStat 对攻击/费用做了 Math.Max(0, …) 钳制，
+        // 快照读取必须同口径 —— 否则一个 1 攻随从吃了 -2/-0（内部 Attack=-1）
+        // 后被破坏，快照留下 -1，之后「破坏攻击力最低的随从」「召唤墓地中
+        // 攻击力最高的随从」以及 SortKey.Attack 的极值分组全被这个 -1 带偏
+        // （179 号文档 深水区 3）。
         return k switch
         {
-            StatKey.Attack => sn.Attack,
+            StatKey.Attack => Math.Max(0, sn.Attack),
             StatKey.Life => sn.Life,
             StatKey.MaxLife => sn.MaxLife,
-            StatKey.Cost => sn.Cost,
-            StatKey.BaseAttack => sn.BaseAttack,
+            StatKey.Cost => Math.Max(0, sn.Cost),
+            StatKey.BaseAttack => Math.Max(0, sn.BaseAttack),
             StatKey.BaseLife => sn.BaseLife,
-            StatKey.BaseCost => sn.BaseCost,
+            StatKey.BaseCost => Math.Max(0, sn.BaseCost),
             StatKey.Countdown => ReadCountdown(sn.Counters),
             StatKey.ChantCount => ReadCountdown(sn.Counters),
             _ => 0,
@@ -769,6 +791,10 @@ public sealed class VmEval
         // Where 过滤（槽位来源同样适用 —— 这是「对刚抽到的牌再筛」的关键）
         if (t.Where != null && !(t.Where is ConstBoolExpr cb && cb.Value))
         {
+            // 统一在这里把隐式 $self 归一化成 $item（179 号文档 P0-1）。
+            // 放在 ResolveRef 入口而不是各个调用方：DoSpawn、AuraTargets、
+            // PreChoiceInspector 等所有路径都自动受惠，不会漏。
+            var where = CardVm.NormalizeWhereForItem(t.Where);
             var filtered = new List<EntityRef>();
             foreach (var r in pool)
             {
@@ -779,7 +805,7 @@ public sealed class VmEval
                 if (_world.GetLive(r.EntityId, r.EntrySerial) == null && r.Snapshot == null) continue;
                 var sub = scope.Derive();
                 sub.BindRefs(TargetSpec.SlotItem, new[] { r });
-                if (EvalBool(t.Where, sub)) filtered.Add(r);
+                if (EvalBool(where, sub)) filtered.Add(r);
             }
             pool = filtered;
         }

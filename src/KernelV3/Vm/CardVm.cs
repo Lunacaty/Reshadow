@@ -412,6 +412,16 @@ public sealed partial class CardVm
             if (!Pending.Candidates.Contains(id))
                 throw new VmFaultException($"实体 {id} 不在候选列表中");
 
+        // 同一个实体重复提交会让下游把一张卡当成两张用（例如「+2/+2」叠两次）。
+        // 数量校验只看 count，看不出重复，必须显式拦（179 号文档 P0-3-4）。
+        if (count > 0)
+        {
+            int distinct = selectedEntityIds.Distinct().Count();
+            if (distinct != count)
+                throw new VmFaultException(
+                    $"选择包含重复实体：提交 {count} 项，去重后 {distinct} 项");
+        }
+
         var frame = _frames.Count > 0 ? _frames[^1] : null;
         if (frame == null) throw new VmFaultException("没有可恢复的帧");
 
@@ -697,6 +707,32 @@ public sealed partial class CardVm
             }
         }
 
+        // 玩家级计数器规则的承载者：**双方主战者**（179 号文档 C6 环节 2）。
+        //
+        // 上面的候选池只扫纹章区 / 战场 / 手牌的实体，而主战者计数器
+        // （sword_intent 剑意等）住在 PlayerState.Counters 里，不属于任何随从。
+        // 玩家空场时这些规则一次都不会触发；挂到随从身上又会在它死掉后消失。
+        // 主战者从 BattleStart 到终局一直在场、有明确 PlayerId、不会被沉默 ——
+        // 所以规则能力挂在 Leader 实体上，这里补一次扫描。
+        foreach (int pidL in new[] { curP, othP })
+        {
+            if (pidL < 0) continue;
+            var leader = _world.EnumerateZone(ZoneRef.Leader, pidL).FirstOrDefault();
+            if (leader == null) continue;
+            foreach (var (gPid, ctr, cab) in _world.GrantedCounterAbilities)
+            {
+                if (gPid != pidL) continue;
+                // 信仰若已有纹章区里的 Faith 实体承载，跳过以免重复触发
+                if (ctr.Name == "faith"
+                    && _world.EnumerateZone(ZoneRef.CrestArea, pidL).Any(x => x.IsFaith))
+                    continue;
+                // 该计数器若已由场上的实体承载（线索护符 / 土之印），同样跳过
+                if (_world.EnumerateZone(ZoneRef.Board, pidL).Any(x => x != null && x.Counters.ContainsKey(ctr)))
+                    continue;
+                AddCandidate(byEntity, leader, cab);
+            }
+        }
+
         // 待压栈的能力：必须先「按主客场+旧新顺序」正向判完条件与代价，
         // 再倒序压进 LIFO 帧栈（倒序压栈才能正序执行）。
         // 不能把外层循环直接倒过来 —— 那样排在后面的能力会先扣掉 necromancy 的墓场
@@ -867,7 +903,9 @@ public sealed partial class CardVm
             Core.ActiveZoneScope.Hand => ZoneRef.Hand,
             Core.ActiveZoneScope.Deck => ZoneRef.Deck,
             Core.ActiveZoneScope.ExArea => ZoneRef.ExArea,
-            _ => owner.Zone == ZoneRef.CrestArea ? ZoneRef.CrestArea : ZoneRef.Board,
+            // 主战者承载玩家级计数器规则（179 号文档 C6），必须与 MatchesTrigger 同口径。
+            _ => owner.Zone is ZoneRef.CrestArea or ZoneRef.Leader
+                     ? owner.Zone : ZoneRef.Board,
         };
         return owner.Zone == need;
     }
@@ -925,7 +963,9 @@ public sealed partial class CardVm
             ActiveZoneScope.ExArea => ZoneRef.ExArea,
             // 信仰与纹章住在纹章区，不在战场。
             // 若按默认 Board 判定，挂在信仰上的被动永远不会触发。
-            _ => owner.Zone == ZoneRef.CrestArea ? ZoneRef.CrestArea : ZoneRef.Board,
+            // 主战者承载玩家级计数器规则，同样要放行 Leader（179 号文档 C6）。
+            _ => owner.Zone is ZoneRef.CrestArea or ZoneRef.Leader
+                     ? owner.Zone : ZoneRef.Board,
         };
         // 豁免一：本卡自己的入场曲 —— 法术正在结算，它还没进墓地，此刻必须被当作在场。
         // 豁免二：本卡自己的谢幕曲 —— 破坏是「先移区、再发事件」，
@@ -1015,12 +1055,18 @@ public sealed partial class CardVm
         }
 
         // 4. 副体过滤：Follower Strike 要求「攻击目标是随从」
+        //
+        // 副目标过滤与主目标过滤完全同构，必须直接复用 SubjectMatches：
+        // 早先在这里新建了一个只带 Controller 的空作用域去 ResolveRef，
+        // 而 SecondaryFilter 里的 HasKindExpr(Follower, Of=$self) 需要
+        // scope.Source 才能解析 $self —— Source 为 null 时解析成空集，
+        // pool 永远为空列表，于是**所有带 SecondaryFilter 的能力
+        // （Follower Strike 等）100% 触发失败**（179 号文档 P0-2）。
+        // 复用 SubjectMatches 还能天然支持副目标在事件瞬间已离场的快照判定。
         if (trig.SecondaryFilter != null)
         {
             if (ev.Object == null) return false;
-            var scope1 = new VmScope { Owner = ZoneScope.Self, Controller = owner.PlayerId };
-            var pool = _eval.ResolveRef(trig.SecondaryFilter, scope1);
-            if (!pool.Any(r => r.EntityId == ev.Object.Value.EntityId)) return false;
+            if (!SubjectMatches(trig.SecondaryFilter, ev.Object.Value, owner)) return false;
         }
 
         // 5. 每回合触发上限：**只判断、不扣次数**。
@@ -1115,7 +1161,10 @@ public sealed partial class CardVm
         // 沿用 scope0.Trigger（= subject）会让「其他随从」把正在进场的那个自己排除掉，
         // 于是「每当其他友方随从进场/被破坏」全卡池 8 张 100% 哑火（174 号文档 三.1）。
         sub.Trigger = null;
-        return _eval.EvalBool(filter.Where, sub);
+        // 护符/纹章监听随从事件时，Where 里的 HasKindExpr(Follower) 默认读 $self
+        // ——也就是护符自己，恒假。必须归一化成 $item 指向被检验的候选
+        // （179 号文档 P0-1：此前全游戏护符与纹章的随从监听 100% 哑火）。
+        return _eval.EvalBool(NormalizeWhereForItem(filter.Where), sub);
     }
 
     if (MatchOne(subject)) return true;

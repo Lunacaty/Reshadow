@@ -203,6 +203,10 @@ public partial class TopLeftCardActionPanel : Control
                 "spellboost" => $"⚡魔力增幅: {kv.Value}",
                 "skybound_gauge" => $"⚔奥义槽: {kv.Value}",
                 "fuse_count" => $"◆融合数: {kv.Value}",
+                // 179 号文档 D4：漏了这两项，玩家看不到已融合的**种类数**与总费，
+                // 而融合变身表正是按总费决定变出哪一档。
+                "fuse_kinds" => $"◆融合种类: {kv.Value}",
+                "fuse_cost" => $"◆融合总费: {kv.Value}",
                 "countdown" => $"⏳倒计时: {kv.Value}",
                 "earth_sigil" => $"🪨土之印: {kv.Value}",
                 "clues" => $"🔍线索: {kv.Value}",
@@ -213,7 +217,9 @@ public partial class TopLeftCardActionPanel : Control
         string dynPart = dynamicStats.Count > 0 ? "  |  " + string.Join("  ", dynamicStats) : "";
         _metaLbl.Text = $"【{SvWbTheme.ClanDisplayZh(def.Clan.IsValid ? def.Clan.Name : null)}{traitPart}】 {stat}{dynPart}";
 
-        _effectRich.Text = SvWbTheme.FormatRichCardText(_ctrl.Store.CardPrinter.PrintCard(def));
+        // 必须走 FormatFullCardText：只打本体的话，玩家点开带纹章 / 信仰 /
+        // 激奏 / 结晶的卡完全看不到那些子卡的效果（179 号文档 D4）。
+        _effectRich.Text = SvWbTheme.FormatFullCardText(def, _ctrl.Store.CardPrinter);
 
         // 主窗背景换成这张卡的立绘中心填充。
         if (_mainCardBox != null)
@@ -513,6 +519,10 @@ public partial class TopLeftCardActionPanel : Control
 
     public void HidePanel()
     {
+        // 融合选材期间关面板必须一并退出融合模式（179 号文档 D3）。
+        // 否则「确认融合 / 取消融合」按钮随着面板消失，而 _ctrl.IsInFuseMode
+        // 仍为 true —— 玩家既拖不出牌、手牌也一直卡在选材态，只能重开一局。
+        if (_ctrl?.IsInFuseMode == true) _ctrl.CancelFuseMode();
         _bound = null;
         if (_secondaryPopup != null) _secondaryPopup.Visible = false;
         _activeRecord = null;

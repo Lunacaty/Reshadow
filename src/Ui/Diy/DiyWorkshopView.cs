@@ -27,12 +27,12 @@ public partial class DiyWorkshopView : Control
     private DiyEndpointKind _active = DiyEndpointKind.Script;
     private CardVisualWidget _cardPreview;
     private RichTextLabel _chinesePreview;
-    private Label _astLabel;
+    private RichTextLabel _astLabel;
     private Label _statusLabel;
     private VBoxContainer _endpointHost;
     /// <summary>积木工作台实例。复用而非每次重建：它内部保存着当前能力域与选中积木。</summary>
     private BlockTreeEditorWidget _blockEditor;
-    private TextEdit _astJsonEdit;
+    private AstCodeEdit _astJsonEdit;
     private OptionButton _packPicker;
     private OptionButton _loadPicker;
     private List<ShadowverseFan.KernelV3.Ast.CardDef> _activePoolCardList = new();
@@ -52,7 +52,7 @@ public partial class DiyWorkshopView : Control
     // 英文端可编辑控件
     private LineEdit _engNameEdit;
     private LineEdit _engTraitsEdit;
-    private TextEdit _engTextEdit;
+    private AstCodeEdit _engTextEdit;
 
     public void Boot(GameSessionStore store)
     {
@@ -340,9 +340,18 @@ public partial class DiyWorkshopView : Control
         astTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentPurple);
         pane.AddChild(astTitle);
 
-        _astLabel = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        _astLabel.AddThemeFontSizeOverride("font_size", 11);
-        _astLabel.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
+        // RichTextLabel 才能把 #卡号 渲染成高亮卡名胶囊（179 号文档 C3）。
+        // 裸 Label 只会原样打印 #90011110，玩家完全看不出那是什么卡。
+        _astLabel = new RichTextLabel
+        {
+            BbcodeEnabled = true,
+            FitContent = true,
+            CustomMinimumSize = new Vector2(0, 110),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            ScrollActive = false,
+        };
+        _astLabel.AddThemeFontSizeOverride("normal_font_size", 11);
+        _astLabel.AddThemeColorOverride("default_color", SvWbTheme.TextMuted);
         pane.AddChild(_astLabel);
 
         return pane;
@@ -509,7 +518,14 @@ public partial class DiyWorkshopView : Control
         _cardPreview.SetCardSize(192, 254);
 
         _chinesePreview.Text = SvWbTheme.FormatRichCardText(_ctrl.GetChineseCardText());
-        _astLabel.Text = _ctrl.GetCanonicalAstText();
+        // 走显示层转换：数据仍是 #卡号，只有渲染成卡名。
+        var cardLookup = new Func<int, ShadowverseFan.KernelV3.Ast.CardDef>(cid =>
+        {
+            try { return _store?.Catalog?.TryGetCard(cid); }
+            catch { return null; }
+        });
+        _astLabel.Text = SvWbTheme.FormatAstWithCardNames(
+            _ctrl.GetCanonicalAstText(), cardLookup);
         _statusLabel.Text = _ctrl.LastStatusMessage;
 
         RefreshEndpoint();
@@ -603,15 +619,38 @@ public partial class DiyWorkshopView : Control
         AddAstSnippetBtn(tplBar, "授予子能力",
             "grant_ability to $self:\n    last_words:\n        draw 1");
 
-        _astJsonEdit = new TextEdit
+        // 升级为 CodeEdit：行号 + 语法高亮 + # 搜卡候选栏（179 号文档 C4）。
+        _astJsonEdit = new AstCodeEdit
         {
             Text = _ctrl.AstJsonText,
             CustomMinimumSize = new Vector2(0, 360),
             SizeFlagsVertical = SizeFlags.ExpandFill,
             WrapMode = TextEdit.LineWrappingMode.None,
+            CardSource = BuildCardSourceForIde(),
         };
         _astJsonEdit.AddThemeFontSizeOverride("font_size", 13);
+        _astJsonEdit.SetupIdeFeatures();
         _endpointHost.AddChild(_astJsonEdit);
+    }
+
+    /// <summary>
+    /// # 搜卡候选栏的数据源：当前激活卡池的全部卡（含衍生），
+    /// 同时提供中文名与英文名供模糊匹配（179 号文档 C4）。
+    /// </summary>
+    private Func<IEnumerable<(int Id, string Zh, string En, bool IsToken)>> BuildCardSourceForIde()
+    {
+        return () =>
+        {
+            try
+            {
+                return CurrentPoolCards().Select(c => (
+                    c.CardId,
+                    !string.IsNullOrWhiteSpace(c.NameChs) ? c.NameChs : (c.Name ?? ""),
+                    c.Name ?? "",
+                    c.IsToken));
+            }
+            catch { return Enumerable.Empty<(int, string, string, bool)>(); }
+        };
     }
 
     private void AddAstSnippetBtn(Control host, string label, string snippet)
@@ -843,13 +882,16 @@ public partial class DiyWorkshopView : Control
         txtTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
         _endpointHost.AddChild(txtTitle);
 
-        _engTextEdit = new TextEdit
+        // 英文端同样是 CodeEdit：英文 CNL 里也写 #卡号，同样需要搜卡栏（179 号文档 C4）。
+        _engTextEdit = new AstCodeEdit
         {
             Text = spec.EngText ?? "",
             CustomMinimumSize = new Vector2(0, 240),
             SizeFlagsVertical = SizeFlags.ExpandFill,
+            CardSource = BuildCardSourceForIde(),
         };
         _engTextEdit.AddThemeFontSizeOverride("font_size", 13);
+        _engTextEdit.SetupIdeFeatures();
         _endpointHost.AddChild(_engTextEdit);
     }
 

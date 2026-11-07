@@ -26,6 +26,19 @@ public sealed class BattleState : IVmWorld
     /// <summary>当前回合玩家（0 或 1）。</summary>
     public int ActivePlayer { get; set; }
 
+    /// <summary>
+    /// 当前交战对：超进化溢出 1 点伤害必须抢在谢幕曲之前结算
+    /// （76-c 3.2 第 4 / 10 步）。
+    ///
+    /// 由 CombatResolver 在战斗开始时写入、结束时清空。置上之后，
+    /// DestroyEntity / DestroyByState 一旦破坏这个防守方，就在发出
+    /// OnDestroy **之前**立即结算那 1 点飞脸伤害并锁存胜负 ——
+    /// 否则 Strike:/Clash: 的能力击杀会让谢幕曲先把主战者奶回来，
+    /// 斩杀就逃走了（179 号文档 P0-4）。
+    /// </summary>
+    public RuntimeEntity CurrentCombatAttacker { get; set; }
+    public RuntimeEntity CurrentCombatDefender { get; set; }
+
     /// <summary>回合数，先手第 1 回合开始计。</summary>
     public int TurnNumber { get; set; }
 
@@ -445,7 +458,7 @@ public sealed class BattleState : IVmWorld
         Schema.StackableAmulets["earth_sigil"] = new StackableAmuletSpec(
             CounterName: "earth_sigil",
             DefaultTokenCardId: MagicSedimentCardId,
-            MatchTraitName: null,              // 土之印只按卡号认同类
+            MatchTraitName: "土之印",          // 补齐土之印兵种匹配（178 号文档 8.2）
             MergePolicy: StackMergePolicy.AbsorbQuietly,
             ProtectedFromAbilities: true);
 
@@ -543,12 +556,12 @@ public sealed class BattleState : IVmWorld
         if (counter.Name == "earth_sigil")
         {
             var sigil = FindEarthSigil(playerId);
-            if (sigil != null) return sigil.Counters.TryGetValue(counter, out var sv) ? sv : 0;
+            return sigil != null && sigil.Counters.TryGetValue(counter, out var sv) ? sv : 0;
         }
         if (counter.Name == "clues")
         {
             var clue = FindClue(playerId);
-            if (clue != null) return clue.Counters.TryGetValue(counter, out var cv) ? cv : 0;
+            return clue != null && clue.Counters.TryGetValue(counter, out var cv) ? cv : 0;
         }
         // crest 作为玩家级读取时，语义是「你有几个纹章」——
         // 以纹章区里的实体个数为准，不读那个镜像计数器。
@@ -605,7 +618,11 @@ public sealed class BattleState : IVmWorld
             {
                 if (clamped <= 0) { Players[playerId].Counters[counter.Id] = 0; return; }
                 holder = isSigil ? SummonEarthSigil(playerId) : SummonClue(playerId);
-                if (holder == null) { Players[playerId].Counters[counter.Id] = clamped; return; }
+                if (holder == null || holder.Zone != ZoneRef.Board)
+                {
+                    Players[playerId].Counters[counter.Id] = 0;
+                    return;
+                }
             }
 
             holder.Counters[counter] = clamped;
@@ -1751,10 +1768,11 @@ public sealed class BattleState : IVmWorld
 
     private bool AuraTargets(Vm.VmEval eval, Ast.TargetSpec spec, Vm.VmScope scope, RuntimeEntity target)
     {
-        if (spec == null) return false;
+        if (spec == null || target == null) return false;
+        var norm = Vm.CardVm.NormalizeZoneWhere(spec);
         try
         {
-            foreach (var r in eval.ResolveRef(spec, scope))
+            foreach (var r in eval.ResolveRef(norm, scope))
                 if (r.EntityId == target.EntityId) return true;
         }
         catch { return false; }
@@ -1762,29 +1780,48 @@ public sealed class BattleState : IVmWorld
         // 手牌中的随从不在 Board 上，按区域解析永远匹配不到。
         // 但「我方随从的爆能强化无法发动」这类光环必须对**手牌**生效 ——
         // 爆能档位是在出牌前算的，那时卡还在手里。
-        // 这种情况退化为只核对归属方与卡种。
-        if (target.Zone == ZoneRef.Hand && target.Def?.Kind == CardKind.Follower)
+        //
+        // 两个必须同时满足的前提（179 号文档 P1-5）：
+        //   1. 选择器必须是**区域查询**。$self 这类槽位选择器的 Owner 默认是 Any，
+        //      若也走这条兜底，场上任何一张带 Target=$self 光环的卡都会把手牌
+        //      全部传染成「受光环影响」（EnhanceTiers 查 suppress_enhance 时踩到）。
+        //   2. 归属方要比的是**光环持有者**（scope.Controller），
+        //      早先比 ActivePlayer，对手的光环会错误地套到我方手牌上。
+        // 另外必须真的核对 Where，否则「友方随从」这类限定被整段跳过。
+        if (norm.SourceKind == Ast.TargetSourceKind.Zone
+            && target.Zone == ZoneRef.Hand && target.Def?.Kind == CardKind.Follower)
         {
-            bool ownerOk = spec.Owner == ZoneScope.Any
-                           || (spec.Owner == ZoneScope.Self && target.PlayerId == ActivePlayer)
-                           || (spec.Owner == ZoneScope.Opponent && target.PlayerId != ActivePlayer);
-            if (ownerOk) return true;
+            int auraOwner = scope.Controller;
+            bool ownerOk = norm.Owner == ZoneScope.Any
+                           || (norm.Owner == ZoneScope.Self && target.PlayerId == auraOwner)
+                           || (norm.Owner == ZoneScope.Opponent && target.PlayerId != auraOwner);
+            if (!ownerOk) return false;
+
+            if (norm.Where == null || (norm.Where is Ast.ConstBoolExpr cb && cb.Value)) return true;
+
+            var sub = scope.Derive();
+            sub.BindRefs(Ast.TargetSpec.SlotItem, new[] { Vm.EntityRef.From(target) });
+            try { return eval.EvalBool(Vm.CardVm.NormalizeWhereForItem(norm.Where), sub); }
+            catch { return false; }
         }
 
         return false;
     }
 
-    /// <summary>结算「受到伤害」侧的修正（上限优先于增减）。</summary>
-    public int ApplyTakenModifiers(RuntimeEntity target, int amount, Ast.DamageSourceMask source)
+    /// <summary>
+    /// 结算「受到伤害」侧的**增减**（76-c 4.2 第 2 步）。
+    ///
+    /// 拆开来是因为文档要求：先汇总全部增减、再汇总全部上限。
+    /// 早先这个方法内部把 TakenCap 也一起算了，于是 CombatResolver 在它之后
+    /// 才加的 damage_taken_bonus（易伤）直接突破了上限（179 号文档 P1-11）。
+    /// </summary>
+    public int ApplyTakenDelta(RuntimeEntity target, int amount, Ast.DamageSourceMask source)
     {
         if (target == null || amount <= 0) return amount;
         var eval = new Vm.VmEval(this);
         int dealt = amount;
 
-        var mods = QueryDamageModifiers(target).ToList();
-
-        // 先应用增减
-        foreach (var (dm, scope) in mods)
+        foreach (var (dm, scope) in QueryDamageModifiers(target).ToList())
         {
             if (dm.Kind != Ast.DamageAuraKind.TakenDelta) continue;
             if ((dm.SourceMask & source) == 0) continue;
@@ -1793,9 +1830,17 @@ public sealed class BattleState : IVmWorld
             dealt = dm.IsReduction ? dealt - x : dealt + x;
             if (dealt <= 0) return 0;
         }
+        return dealt;
+    }
 
-        // 再应用上限（取最严格的那个）
-        foreach (var (dm, scope) in mods)
+    /// <summary>结算「受到伤害」侧的**上限**（76-c 4.2 第 3 步，取最严格的那个）。</summary>
+    public int ApplyTakenCap(RuntimeEntity target, int amount, Ast.DamageSourceMask source)
+    {
+        if (target == null || amount <= 0) return amount;
+        var eval = new Vm.VmEval(this);
+        int dealt = amount;
+
+        foreach (var (dm, scope) in QueryDamageModifiers(target).ToList())
         {
             if (dm.Kind != Ast.DamageAuraKind.TakenCap) continue;
             if ((dm.SourceMask & source) == 0) continue;
@@ -1804,9 +1849,12 @@ public sealed class BattleState : IVmWorld
             if (x < 0) x = 0;
             if (dealt > x) dealt = x;
         }
-
         return Math.Max(0, dealt);
     }
+
+    /// <summary>兼容旧调用点：增减后接上限（供尚未拆分的路径使用）。</summary>
+    public int ApplyTakenModifiers(RuntimeEntity target, int amount, Ast.DamageSourceMask source)
+        => ApplyTakenCap(target, ApplyTakenDelta(target, amount, source), source);
 
     /// <summary>结算「造成伤害」侧的修正。currentTarget 用于找出伤害来源实体。</summary>
     public void ApplyDamage(RuntimeEntity target, int amount, int sourcePlayerId,
@@ -1864,6 +1912,49 @@ public sealed class BattleState : IVmWorld
             }
         }
 
+        return Math.Max(0, dealt);
+    }
+
+    /// <summary>「造成伤害」侧只算增减（76-c 4.2 第 2 步）。</summary>
+    public int ApplyDealtDelta(int sourcePlayerId, RuntimeEntity sourceEntity,
+                               int amount, Ast.DamageSourceMask source)
+        => ApplyDealtFiltered(sourcePlayerId, sourceEntity, amount, source, capPhase: false);
+
+    /// <summary>「造成伤害」侧只算上限（76-c 4.2 第 3 步）。</summary>
+    public int ApplyDealtCap(int sourcePlayerId, RuntimeEntity sourceEntity,
+                             int amount, Ast.DamageSourceMask source)
+        => ApplyDealtFiltered(sourcePlayerId, sourceEntity, amount, source, capPhase: true);
+
+    private int ApplyDealtFiltered(int sourcePlayerId, RuntimeEntity sourceEntity,
+                                   int amount, Ast.DamageSourceMask source, bool capPhase)
+    {
+        if (amount <= 0) return amount;
+        var eval = new Vm.VmEval(this);
+        int dealt = amount;
+
+        var mods = new List<(Ast.DamageModifierNode Node, Vm.VmScope Scope)>();
+        if (sourceEntity != null) mods.AddRange(QueryDamageModifiers(sourceEntity));
+        if (sourcePlayerId is 0 or 1 && Players[sourcePlayerId].Leader != null
+            && !ReferenceEquals(Players[sourcePlayerId].Leader, sourceEntity))
+            mods.AddRange(QueryDamageModifiers(Players[sourcePlayerId].Leader));
+
+        foreach (var (dm, scope) in mods)
+        {
+            if ((dm.SourceMask & source) == 0) continue;
+            int x;
+            try { x = eval.EvalNum(dm.Amount, scope); } catch { continue; }
+
+            if (!capPhase && dm.Kind == Ast.DamageAuraKind.DealtDelta)
+            {
+                dealt = dm.IsReduction ? dealt - x : dealt + x;
+                if (dealt <= 0) return 0;
+            }
+            else if (capPhase && dm.Kind == Ast.DamageAuraKind.DealtCap)
+            {
+                if (x < 0) x = 0;
+                if (dealt > x) dealt = x;
+            }
+        }
         return Math.Max(0, dealt);
     }
     /// <summary>IVmWorld 接口实现：能力破坏，受保护拦截。</summary>
@@ -1938,6 +2029,15 @@ public sealed class BattleState : IVmWorld
         // 旧定义留在 LastFieldDef，稍后 FlushNextTrigger 扫描时靠它找到谢幕曲。
         RestoreOriginalDef(e);
 
+        // ── 超进化溢出 1 点必须在谢幕曲入列**之前**落地（76-c 3.2 第 4 / 10 步）──
+        //
+        // 这条路径覆盖「Strike:/Clash: 能力击杀」与「交战扣血致死」两种情形：
+        // 破坏一旦发生就立刻结算飞脸伤害，等 OnDestroy 送达时主战者已经掉血。
+        // 早先只在 CombatResolver 里、StepUntilBlocked 返回**之后**才判断，
+        // 而 StepUntilBlocked 内部就会把 OnDestroy 跑完 ——
+        // 谢幕曲先奶回来，1 点斩杀永远逃掉（179 号文档 P0-4）。
+        SettleSuperEvolveOverflowOnDestroy(e);
+
         EmitEvent(new VmEvent { Kind = CoreEvent.OnLeaveField, Subject = WithNewSerial(boardRef), PlayerId = owner });
         EmitEvent(new VmEvent
         {
@@ -1945,6 +2045,50 @@ public sealed class BattleState : IVmWorld
             Subject = WithNewSerial(boardRef),
             PlayerId = owner,
             KnockedBackBySuperEvolve = bySuperEvolved,
+        });
+    }
+
+    /// <summary>
+    /// 若被破坏的正是当前交战中的防守方，且攻击方处于超进化，
+    /// 立即对敌方主战者结算溢出伤害并锁存致死 —— 必须早于 OnDestroy。
+    ///
+    /// 每场交战只结算一次：结算后清空 CurrentCombatDefender，
+    /// 后续的 CombatResolver 判据（defender.Zone == Cemetery）自然不再重复扣。
+    /// </summary>
+    private void SettleSuperEvolveOverflowOnDestroy(RuntimeEntity dead)
+    {
+        if (dead == null) return;
+        var attacker = CurrentCombatAttacker;
+        var defender = CurrentCombatDefender;
+        if (attacker == null || defender == null) return;
+        if (defender.EntityId != dead.EntityId) return;
+        // 只在「随从打随从」时飞脸；打主战者没有溢出。
+        // 注意：此处 dead 已被 PlaceInZone 搬到墓地，不能再用 defender.Zone 判断 ——
+        // 用卡种判断「它原本是不是随从」。
+        if (dead.Def?.Kind == CardKind.Leader) return;
+
+        // 先清上下文，防止溢出伤害本身再次触发破坏时递归重入。
+        CurrentCombatDefender = null;
+
+        if (!attacker.IsSuperEvolved) return;
+        if (attacker.Zone != ZoneRef.Board) return;
+        int dmg = Rules.SuperEvolveOverflowDamage;
+        if (dmg <= 0) return;
+
+        var foeLeader = Players[defender.PlayerId].Leader;
+        if (foeLeader == null || foeLeader.Life <= 0) return;
+        if (Players[defender.PlayerId].LostByLifeOut) return;
+
+        foeLeader.Life -= dmg;
+        if (foeLeader.Life <= 0) Players[defender.PlayerId].LostByLifeOut = true;
+
+        EmitEvent(new VmEvent
+        {
+            Kind = CoreEvent.OnDamaged,
+            Subject = EntityRef.From(foeLeader),
+            Amount = dmg,
+            PlayerId = defender.PlayerId,
+            KnockedBackBySuperEvolve = true,
         });
     }
 
@@ -2016,6 +2160,32 @@ public sealed class BattleState : IVmWorld
     }
 
     public void RemoveEntity(RuntimeEntity e) => _all.Remove(e);
+
+    /// <summary>
+    /// 按当前各区域的内容重建 _all 活体索引。
+    ///
+    /// 客机 ApplyRemoteSnapshot 用 MaterializeEntity 直接 new RuntimeEntity
+    /// 铺进 Board / Hand / CrestArea，从不经过 CreateEntity —— 于是 _all 里
+    /// 没有任何实体，GetLive() 恒返回 null。
+    /// 后果：客机端所有指向性法术都被判成「场上无合法目标」（Unplayable），
+    /// 既不亮绿圈也打不出去（179 号文档 D1）。
+    /// 快照还原完成后必须调一次。
+    /// </summary>
+    public void RebuildLiveIndexFromZones()
+    {
+        _all.Clear();
+        for (int pid = 0; pid < 2; pid++)
+        {
+            var p = Players[pid];
+            if (p == null) continue;
+            if (p.Leader != null) _all.Add(p.Leader);
+            _all.AddRange(p.Board);
+            _all.AddRange(p.Hand);
+            _all.AddRange(p.CrestArea);
+            _all.AddRange(p.Cemetery);
+            _all.AddRange(p.Banished);
+        }
+    }
 
     /// <summary>
     /// 吟唱归 0 的纹章到期：移出纹章区，并让它的「谢幕曲」照常触发。
@@ -2143,6 +2313,11 @@ public sealed class BattleState : IVmWorld
 
         // 与 DestroyEntity 同一条规矩：快照已拍（记的是护符卡种），才开始还原。
         RestoreOriginalDef(e);
+
+        // 生命归零这条路径同样要在谢幕曲入列**之前**结算超进化溢出
+        // （76-c 3.2 第 10 步）。实测：防守方 5 血被 -10 打到 -5，
+        // 若不在这里结算，谢幕曲先把它自己主战者奶回来，1 点斩杀就逃走了。
+        SettleSuperEvolveOverflowOnDestroy(e);
 
         // 与 DestroyEntity 完全同构：快照取旧的（Zone 停在 Board），
         // 身份取自增后的 serial —— 触发扫描靠 (EntityId, EntrySerial) 锁身份，
@@ -2394,10 +2569,12 @@ public sealed class BattleState : IVmWorld
         // 那时还没有亡者，由 TagDeparted 内部回头补正那一份。
         if (addDepartedTrait) TagDeparted(e);
 
-        // 复制 / 亡者召还上场的随从同样是「进入战场」，
-        // 必须走与正常召唤一致的通知：rally 计数、OnEnterField、OnSummon。
-        // 早先完全没调，导致所有被召还的随从既不增加协作数、也不触发出场效果。
-        NotifySummoned(e);
+        if (toZone == ZoneRef.Hand && e.Zone == ZoneRef.Hand)
+            EmitEvent(new VmEvent { Kind = CoreEvent.OnAddToHand, Subject = EntityRef.From(e), PlayerId = toPlayerId });
+
+        // 仅当目标区域是战场时才触发进入战场通知，防止手牌复制误触入场（178 号文档 9.3）
+        if (toZone == ZoneRef.Board)
+            NotifySummoned(e);
 
         return e;
     }
@@ -2494,6 +2671,51 @@ public sealed class BattleState : IVmWorld
 
     public IReadOnlyList<(RuntimeEntity e, AbilityDef ab)> GrantedAbilities
         => _granted.Select(x => (x.e, x.ab)).ToList();
+
+    /// <summary>
+    /// 消耗掉「授予型」的一次性关键词（屏障用）。
+    ///
+    /// 环或 GrantAbilityNode 授予的 barrier 不在 target.Keywords 里，
+    /// 早先只写 Keywords.Remove，于是被授予的屏障永远删不掉 —— 无限屏障。
+    /// 这里从 _granted 里摘掉授予该关键词的能力，并同步清掉 Keywords 上的副本。
+    /// 返回是否真的消耗到了东西。
+    /// </summary>
+    public bool ConsumeGrantedKeyword(RuntimeEntity target, SymbolId<KeywordTag> keyword)
+    {
+        if (target == null || !keyword.IsValid) return false;
+        bool removed = false;
+        for (int i = _granted.Count - 1; i >= 0; i--)
+        {
+            var (ge, gab, _, _) = _granted[i];
+            if (ge == null || ge.EntityId != target.EntityId) continue;
+            if (gab?.Body == null) continue;
+            bool grantsIt = false;
+            foreach (var n in gab.Body)
+                if (n is Ast.ModifyKeywordNode mk
+                    && mk.Op == Ast.KeywordOp.Grant
+                    && mk.Keyword.Equals(keyword))
+                { grantsIt = true; break; }
+            if (!grantsIt) continue;
+            _granted.RemoveAt(i);
+            removed = true;
+        }
+        if (removed) target.Keywords.Remove(keyword);
+        return removed;
+    }
+
+    /// <summary>
+    /// 移除「限时授予」的关键词（TempModifiers.IsKeywordGrant）。
+    /// 屏障可能是「本回合获得」这类限时授予，同样要能消耗掉。
+    /// 返回是否真的移除了一条。
+    /// </summary>
+    public bool RemoveTemporaryKeywordGrants(RuntimeEntity target, SymbolId<KeywordTag> keyword)
+    {
+        if (target?.TempModifiers == null || !keyword.IsValid) return false;
+        int before = target.TempModifiers.Count;
+        target.TempModifiers.RemoveAll(
+            m => m.IsKeywordGrant && m.Keyword.Equals(keyword));
+        return target.TempModifiers.Count != before;
+    }
 
     public void GrantCounterAbility(int playerId, SymbolId<CounterTag> counter, AbilityDef ability)
         => _grantedCounters.Add((playerId, counter, ability));
@@ -2636,8 +2858,25 @@ public sealed class BattleState : IVmWorld
 
             if (m.IsKeywordGrant)
             {
-                e.Keywords.Remove(m.Keyword);
-                e.KeywordValues.Remove(m.Keyword);
+                // 只撤销「这次限时授予」的那一份。
+                // 若同一词条还有别的限时授予在生效，或它本来就是卡面常驻词条
+                // （InnateKeywords），一律保留 —— 否则「本回合获得守护」到期时
+                // 会把随从自带的【守护】一起删掉（179 号文档 P1-6）。
+                bool stillGranted = false;
+                for (int j = 0; j < e.TempModifiers.Count; j++)
+                {
+                    if (j == i) continue;
+                    var o = e.TempModifiers[j];
+                    if (o.IsKeywordGrant && o.Keyword.Equals(m.Keyword)) { stillGranted = true; break; }
+                }
+                bool innate = !e.IsSilenced
+                              && e.Def?.InnateKeywords != null
+                              && e.Def.InnateKeywords.Contains(m.Keyword);
+                if (!stillGranted && !innate)
+                {
+                    e.Keywords.Remove(m.Keyword);
+                    e.KeywordValues.Remove(m.Keyword);
+                }
             }
             else if (m.IsCostMod)
             {
@@ -2659,9 +2898,12 @@ public sealed class BattleState : IVmWorld
                 {
                     e.Attack -= m.Attack;
                     e.Life -= m.Life;
-                    // 上限必须同步扣回：DoModifyStats 加临时 +2/+2 时把 MaxLife 也加了 2，
-                    // 到期只减 Life 会留下「2/2 但 MaxLife=4」—— 被永久误判成已受伤。
-                    if (m.Life > 0) e.MaxLife = Math.Max(e.Life, e.MaxLife - m.Life);
+                    // 上限必须同步还原，**正负都要**：DoModifyStats 改临时
+                    // +2/+2 时 MaxLife 也 +2，改临时 -0/-2 时 MaxLife 也 -2。
+                    // 早先只写 m.Life > 0，负生命修正到期只把 Life 加回来、
+                    // MaxLife 不加回，留下 Life > MaxLife 的畸形状态
+                    // （179 号文档 P1-6）。
+                    if (m.Life != 0) e.MaxLife = Math.Max(e.Life, e.MaxLife - m.Life);
                 }
 
                 // 撤销时把主战者扣到 0 以下的情况由调用方统一补锁存 ——

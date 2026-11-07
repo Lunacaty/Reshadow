@@ -163,7 +163,11 @@ public sealed partial class CardVm
                 var only = _world.GetLive(pool[0].EntityId, pool[0].EntrySerial);
                 if (only != null)
                 {
-                    scope.Bind(slot, new List<RuntimeEntity> { only });
+                    // 必须走 BindSelection 而不是裸 Bind：BindSelection 会同步
+                    // 写入序数槽位 $choose1 / $choose2…，而裸 Bind 只写主槽位。
+                    // 早先漏了这一步，后续句子里的 "$choose1" 读到空槽位
+                    // （179 号文档 P0-3-3）。
+                    scope.BindSelection(slot, new[] { EntityRef.From(only) }, append: false);
                     return new List<RuntimeEntity> { only };
                 }
             }
@@ -271,34 +275,118 @@ public sealed partial class CardVm
         };
     }
 
-    private static Ast.BoolExpr NormalizeWhereForItem(Ast.BoolExpr w)
+    /// <summary>
+    /// 把 Where 树里「隐式指向本卡」的主语改写成候选实体 $item。
+    ///
+    /// 过滤语境下候选池里的每个实体都被绑成 $item，但 HasTrait / HasKeyword /
+    /// HasState / HasClan / CompareExpr(prop:…) 的 Of 默认是 null 或 $self ——
+    /// 求值时于是去读**施法者自己**的属性：
+    ///   · Reanimate (2) 的 BaseCost &lt;= 2 读到 5 费施法者，恒假，什么都召不出来
+    ///   · 护符/纹章监听「友方随从进场」时检查护符自己是不是随从，恒假，
+    ///     全游戏所有护符和纹章的随从监听触发器 100% 哑火
+    /// （179 号文档 P0-1）
+    ///
+    /// 只改「隐式自身」（null 或 $self）。显式写了别的锚点（$trigger / @opp）
+    /// 一律保留；HasCardNameExpr 的 $self 表示「与本卡同名」，是另一种语义，不动。
+    /// </summary>
+    internal static Ast.BoolExpr NormalizeWhereForItem(Ast.BoolExpr w)
     {
         if (w == null || w is Ast.ConstBoolExpr) return w;
-        if (w is Ast.AndExpr and)
+
+        static bool IsImplicitSelf(Ast.TargetSpec of)
+            => of == null
+               || (of.SourceKind == Ast.TargetSourceKind.Slot && of.Slot == Ast.TargetSpec.SlotSelf);
+
+        switch (w)
+        {
+            case Ast.AndExpr and:
+            {
+                bool changed = false;
+                var items = new List<Ast.BoolExpr>(and.Items.Count);
+                foreach (var it in and.Items)
+                {
+                    var n = NormalizeWhereForItem(it);
+                    changed |= !ReferenceEquals(n, it);
+                    items.Add(n);
+                }
+                return changed ? new Ast.AndExpr(items) : w;
+            }
+            case Ast.OrExpr or:
+            {
+                bool changed = false;
+                var items = new List<Ast.BoolExpr>(or.Items.Count);
+                foreach (var it in or.Items)
+                {
+                    var n = NormalizeWhereForItem(it);
+                    changed |= !ReferenceEquals(n, it);
+                    items.Add(n);
+                }
+                return changed ? new Ast.OrExpr(items) : w;
+            }
+            case Ast.NotExpr not:
+            {
+                var inner = NormalizeWhereForItem(not.Inner);
+                return ReferenceEquals(inner, not.Inner) ? w : new Ast.NotExpr(inner);
+            }
+            case Ast.CompareExpr cmp:
+            {
+                // 左侧是「候选实体的某属性」，右侧通常是与本卡/主战者比较，
+                // 所以只归一化左侧（179 号文档的原始设计如此）。
+                var left = NormalizeNumForItem(cmp.Left);
+                return ReferenceEquals(left, cmp.Left)
+                    ? w
+                    : new Ast.CompareExpr { Left = left, Op = cmp.Op, Right = cmp.Right };
+            }
+            case Ast.HasKindExpr hk when IsImplicitSelf(hk.Of):
+                return new Ast.HasKindExpr { Kind = hk.Kind, Of = Ast.TargetSpec.Item };
+            case Ast.HasTraitExpr ht when IsImplicitSelf(ht.Of):
+                return new Ast.HasTraitExpr { Trait = ht.Trait, Of = Ast.TargetSpec.Item };
+            case Ast.HasKeywordExpr hkw when IsImplicitSelf(hkw.Of):
+                return new Ast.HasKeywordExpr { Keyword = hkw.Keyword, Of = Ast.TargetSpec.Item };
+            case Ast.HasStateExpr hs when IsImplicitSelf(hs.Of):
+                return new Ast.HasStateExpr { State = hs.State, Of = Ast.TargetSpec.Item };
+            case Ast.HasClanExpr hc when IsImplicitSelf(hc.Of):
+                return new Ast.HasClanExpr
+                {
+                    Clan = hc.Clan, Clans = hc.Clans, IsSelfClan = hc.IsSelfClan,
+                    Of = Ast.TargetSpec.Item,
+                };
+            case Ast.NotSameEntityExpr ns when IsImplicitSelf(ns.Of):
+                return new Ast.NotSameEntityExpr
+                {
+                    ExcludeSlot = ns.ExcludeSlot, Of = Ast.TargetSpec.Item,
+                };
+            default:
+                return w;
+        }
+    }
+
+    /// <summary>Where 树里数值子表达式的同伴重写：prop:… 的隐式自身 → $item。</summary>
+    internal static Ast.NumExpr NormalizeNumForItem(Ast.NumExpr n)
+    {
+        if (n == null) return null;
+        static bool IsImplicitSelf(Ast.TargetSpec of)
+            => of == null
+               || (of.SourceKind == Ast.TargetSourceKind.Slot && of.Slot == Ast.TargetSpec.SlotSelf);
+
+        if (n.Op == Ast.NumOp.Property && IsImplicitSelf(n.Of))
+            return Ast.NumExpr.Prop(n.Stat, Ast.TargetSpec.Item);
+
+        if (n.Op == Ast.NumOp.Arith && n.Args != null && n.Args.Count > 0)
         {
             bool changed = false;
-            var items = new List<Ast.BoolExpr>();
-            foreach (var it in and.Items)
+            var args = new List<Ast.NumExpr>(n.Args.Count);
+            foreach (var a in n.Args)
             {
-                var n = NormalizeWhereForItem(it);
-                changed |= !ReferenceEquals(n, it);
-                items.Add(n);
+                var na = NormalizeNumForItem(a);
+                changed |= !ReferenceEquals(na, a);
+                args.Add(na);
             }
-            return changed ? new Ast.AndExpr(items) : w;
+            return changed
+                ? new Ast.NumExpr { Op = n.Op, Arith = n.Arith, Args = args, Of = n.Of, Stat = n.Stat }
+                : n;
         }
-        // 只有打印器能提权成区域修饰词的两类谓词会带这个 $self：
-        //   · <Follower/Amulet/Spell> -> HasKindExpr
-        //   · other                   -> NotSameEntityExpr
-        // 其余谓词写在显式 where 里，解析时 _whereDepth>0，主语本来就是 $item，
-        // 不能动（HasCardNameExpr.Of=$self 表示「与本卡同名」，是另一种语义）。
-        static bool IsSelfOnly(Ast.TargetSpec of)
-            => of != null && of.SourceKind == Ast.TargetSourceKind.Slot
-                          && of.Slot == Ast.TargetSpec.SlotSelf;
-        if (w is Ast.HasKindExpr hk && IsSelfOnly(hk.Of))
-            return new Ast.HasKindExpr { Kind = hk.Kind, Of = Ast.TargetSpec.Item };
-        if (w is Ast.NotSameEntityExpr ns && IsSelfOnly(ns.Of))
-            return new Ast.NotSameEntityExpr { ExcludeSlot = ns.ExcludeSlot, Of = Ast.TargetSpec.Item };
-        return w;
+        return n;
     }
 
     private bool DoSelect(SelectTargetNode n, VmFrame frame)
@@ -469,12 +557,24 @@ public sealed partial class CardVm
 
         foreach (var t in targets)
         {
+            // 「不受能力影响」：完全免疫攻防修改。先检查免疫，防止免疫随从白白触发事件与动画（178 号文档 10.3）
+            if (_world is Battle.BattleState bsStats
+                && bsStats.IsImmuneToEffectFrom(t, scope?.Source, isStatMod: true)) continue;
+
             RecordEffect(t, scope, n.Op + " " + (n.Attack != null ? "攻" : "") + (n.Life != null ? "血" : ""));
-            // 身材变化事件：UI 据此弹跳与飘字。
-            // 攻击与生命**两个分量都要带上** —— 只给攻击会让「+2/+2」
-            // 显示成「+2」，玩家看不出生命也涨了。
-            int da = n.Attack != null ? _eval.EvalNum(n.Attack, scope) : 0;
-            int dl = n.Life != null ? _eval.EvalNum(n.Life, scope) : 0;
+
+            // 必须在每个目标上求值：翻倍这类表达式的属性读取锚点是 $item
+            var itemScope = scope.Derive();
+            itemScope.Bind(TargetSpec.SlotItem, new[] { t });
+
+            // null = 不修改该项。绝不能当成 0 ——
+            // 「Set 攻击为 4」把生命也赋 0 会让敌方全场随从当场被打死。
+            int atk = n.Attack != null ? _eval.EvalNum(n.Attack, itemScope) : 0;
+            int life = n.Life != null ? _eval.EvalNum(n.Life, itemScope) : 0;
+
+            // 准确计算针对该实体的身材变化量，再发事件
+            int da = n.Op == StatModOp.Add ? atk : (n.Attack != null ? atk - t.Attack : 0);
+            int dl = n.Op == StatModOp.Add ? life : (n.Life != null ? life - t.Life : 0);
             _world.EmitEvent(new VmEvent
             {
                 Kind = CoreEvent.OnStatsModified,
@@ -483,21 +583,6 @@ public sealed partial class CardVm
                 SecondaryAmount = dl,
                 PlayerId = t.PlayerId,
             });
-            // 「不受能力影响」：完全免疫攻防修改。
-            // 「不受能力影响（攻防变化除外）」：放行，所以只查前者。
-            // 自身能力改自身攻防要放行（IsImmuneToEffectFrom 已处理）。
-            if (_world is Battle.BattleState bsStats
-                && bsStats.IsImmuneToEffectFrom(t, scope?.Source, isStatMod: true)) continue;
-
-            // 必须在**每个目标上**求值：翻倍这类表达式的属性读取锚点是 $item，
-            // 在循环外求值会让所有目标都取第一个候选的身材。
-            var itemScope = scope.Derive();
-            itemScope.Bind(TargetSpec.SlotItem, new[] { t });
-
-            // null = 不修改该项。绝不能当成 0 ——
-            // 「Set 攻击为 4」把生命也赋 0 会让敌方全场随从当场被打死。
-            int atk = n.Attack != null ? _eval.EvalNum(n.Attack, itemScope) : 0;
-            int life = n.Life != null ? _eval.EvalNum(n.Life, itemScope) : 0;
 
             // Set 型必须在改之前抓原值快照 —— 撤销时是按原值还原，不是减增量。
             bool isSet = n.Op == StatModOp.Set;
@@ -917,10 +1002,9 @@ public sealed partial class CardVm
                         _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnBanish, Subject = EntityRef.From(t) });
                 }
 
-                // 回手 → 卡面重置为印刷值：手牌里的卡不是「场上的那个随从」。
-                // 之前回手只换区，5/1 已进化 MaxLife=4 的随从会带着全部临时状态
-                // 回到手里再打出来，进化加成被白拿两次。
-                if (fromBoard && n.ToZone == ZoneRef.Hand) ResetToPrintedValues(t);
+                // 战场随从移回手牌或牌组均需重置为印刷状态（违反 76-c 5.6，178 号文档 9.2）
+                if (fromBoard && (n.ToZone == ZoneRef.Hand || n.ToZone == ZoneRef.Deck))
+                    ResetToPrintedValues(t);
 
                 // 弃牌（Hand → Cemetery，且不是 Destroy）要发 OnDiscard 并加墓场。
                 // 官方：弃牌不触发谢幕曲、不进 DestroyedThisMatch，但 shadow +1。
@@ -934,7 +1018,8 @@ public sealed partial class CardVm
                     _world.EmitEvent(new VmEvent { Kind = CoreEvent.OnDiscard, Subject = EntityRef.From(t) });
                 }
             }
-            moved.Add(t);
+            // 仅当实体真正落入目标区域时才记入 moved 寄存器，防止爆牌进墓污染 $created（178 号文档 9.1）
+            if (t.Zone == n.ToZone) moved.Add(t);
         }
 
         // 「X is the number of cards you returned」的计数：**按本次实际移动数覆写**。
@@ -1164,7 +1249,8 @@ public sealed partial class CardVm
                     }
                 }
             }
-            if (e != null) created.Add(e);
+            // 仅当实体真正落入目标区域时才记入 created，防止满场销毁卡被赋予疾驰/守护（178 号文档 9.1）
+            if (e != null && e.Zone == n.ToZone) created.Add(e);
         }
         // ---- $created 的写入策略 ----
         //

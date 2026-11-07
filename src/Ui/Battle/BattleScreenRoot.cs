@@ -178,6 +178,19 @@ public partial class BattleScreenRoot : Control
                 System.Console.WriteLine("[联机] " + msg);
                 CallDeferred(MethodName.ShowDisconnectNotification, msg);
             };
+
+            // 关键：消费在 CallDeferred 切场景期间**已经到达**的首包快照
+            // （179 号文档 D2）。
+            //
+            // 房主点「开始对战」时先发 START| 再发 Attach() 触发的首包 SNAP|，
+            // 局域网或本机双开下两包会在同一毫秒到达客机后台接收线程。
+            // 客机收到 START| 后走 CallDeferred 等主线程下一帧才切场景，
+            // 而 SNAP| 已经先一步被 RemoteBattleClient.Latest 接住并触发了
+            // SnapshotReceived —— 那时本方法还没执行、还没订阅。
+            // 结果客机只能干瞪着本地随机生成的假牌面，直到有人操作触发第二包。
+            // 订阅之后立刻补读一次 Latest，把这个窗口补上。
+            if (_remoteClient.Latest != null)
+                OnRemoteSnapshot(_remoteClient.Latest);
         }
     }
 
@@ -393,15 +406,9 @@ public partial class BattleScreenRoot : Control
             if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
             if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
         };
-        _foeLeader.OnEvolveOrbClicked += isSuper =>
-        {
-            if (IsInputBlocked) return;
-            var target = _actionPanel.BoundEntity;
-            if (target == null) return;
-            _actionPanel.HidePanel();
-            if (IsRemote) { RemoteEvolve(target.EntityId, isSuper); return; }
-            if (_ctrl.TryEvolve(target, isSuper)) Rebuild();
-        };
+        // 敌方主战者的进化球**不接线**（179 号文档 D3）：
+        // 它属于对手，点它不该让我方随从进化。
+        // 早先这里也绑了 TryEvolve，点敌方 EP/SEP 球会触发我方进化。
         AddChild(_allyLeader);
 
         _rightCol = new RightCommandColumnWidget();
@@ -1789,6 +1796,10 @@ public partial class BattleScreenRoot : Control
                 _ctrl.ToggleFuseMaterial(bound);
                 _actionPanel.ShowForEntity(_ctrl.FuseBaseCard);
                 RebuildHand();
+                // RebuildHand 只重排位置，不刷候选高亮 ——
+                // 必须补一次 ApplyChoiceHighlightToBoards，否则手牌顶的
+                // 「✔ 已选 / ▼ 可选」标记与绿框点了没反应（179 号文档 D3）。
+                ApplyChoiceHighlightToBoards();
                 return;
             }
             if (IsInputBlocked) return;
@@ -1822,7 +1833,13 @@ public partial class BattleScreenRoot : Control
         float t = Ease.OutCubic(Mathf.Clamp(_handAnim, 0f, 1f));
         float cardW = Mathf.Lerp(88f, 138f, t);
         float cardH = Mathf.Lerp(116f, 182f, t);
-        float rightEdge = vp.X - 14f;
+
+        // 右侧指令栏是**保留区域**，手牌托盘绝不能侵入。
+        // 早先托盘右边取的是 vp.X-14，展开时纵向顶到 y=516，正好压住「能量点+1」
+        // 按钮的下半截（按钮 y 489..531），实测点 dy>=34 那 15px 完全没反应 ——
+        // 后手玩家展开手牌算完费再点 +1，就像按钮坏了一样（179 号文档 暗坑一）。
+        float railLeft = vp.X - RightColumnRightMargin;
+        float rightEdge = Mathf.Min(vp.X - 14f, railLeft - 8f);
 
         float minLeft = Mathf.Lerp(750f, 420f, t) * sx;
         float maxTrayW = Mathf.Max(220f, rightEdge - minLeft);
@@ -1834,6 +1851,21 @@ public partial class BattleScreenRoot : Control
         float bottomY = vp.Y - HandTrayBottomGap;
         float trayH = cardH + 14f;
         float trayTop = bottomY - trayH;
+
+        // 双保险：即使窗口宽度让托盘碰到了指令栏所在的横向带，
+        // 也不许纵向压住「能量点+1」按钮（右栏局部 y=374..416 → 全局）。
+        // 这里按全局按钮矩形直接夹住托盘上沿，避免任何宽度下再次遮挡。
+        if (_rightCol != null && IsInstanceValid(_rightCol))
+        {
+            var rail = _rightCol.GetGlobalRect();
+            var btnTop = rail.Position.Y + 374f;
+            bool horizontalOverlap = trayLeft + trayW > rail.Position.X;
+            if (horizontalOverlap && trayTop < btnTop + 42f && bottomY > btnTop)
+            {
+                // 托盘顶到按钮下方：把整块手牌抬到按钮之上，保持与底部原有间距语义。
+                trayTop = btnTop - trayH - 6f;
+            }
+        }
 
         if (_handTray == null || !IsInstanceValid(_handTray))
         {
@@ -2012,9 +2044,11 @@ public partial class BattleScreenRoot : Control
             if (@event is InputEventMouseButton rmb
                 && rmb.Pressed && rmb.ButtonIndex == MouseButton.Right)
             {
+                // 网络上行统一由 Controller 收敛（179 号文档 暗坑二）：
+                // CancelPendingChoice 在客机分支里已经发过一次 CancelPending，
+                // 这里再发一次会在同一微秒向房主灌两包 ACTION|CancelPending，
+                // 权威端第二包必然被丢弃，只留下并发抖动与日志脏数据。
                 _ctrl.CancelPendingChoice();
-                // 客机模式：本地取消后必须通知房主，否则房主还卡在等待客机提交预选答案。
-                if (IsRemote) _ = _remoteClient.CancelPending();
                 Rebuild();
                 GetViewport().SetInputAsHandled();
                 return;
@@ -2039,8 +2073,8 @@ public partial class BattleScreenRoot : Control
                                 && HitAnyCandidate(lmb.GlobalPosition);
                 if (pc != null && pc.Kind == ChoiceKind.SelectTarget && !onTarget)
                 {
+                    // 同上：发包由 Controller 统一负责，不在这里重复。
                     _ctrl.CancelPendingChoice();
-                    if (IsRemote) _ = _remoteClient.CancelPending();
                     Rebuild();
                     GetViewport().SetInputAsHandled();
                     return;
@@ -2418,6 +2452,7 @@ public partial class BattleScreenRoot : Control
 
         _field?.QueueRedraw();
     }
+
 
     public void SpawnBoardDemo()
     {

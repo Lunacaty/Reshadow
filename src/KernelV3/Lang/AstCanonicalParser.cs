@@ -2202,8 +2202,17 @@ public sealed class AstCanonicalParser
         // other than ($trigger | $opposing | $chooseN | itself)
         if (MatchIdent("other") && MatchIdent("than"))
         {
+            // 179 号文档 5-定位2：where 子句里的 "other than itself" 必须与
+            // ParseTarget 的内联 other 同口径 —— 触发主语语境下它指 $self，
+            // 而不是全局的 $excludeTriggerOrSelf。
             if (MatchIdent("itself"))
-                return new NotSameEntityExpr { ExcludeSlot = TargetSpec.SlotExcludeTriggerOrSelf, Of = DefaultSubject };
+                return new NotSameEntityExpr
+                {
+                    ExcludeSlot = _inTriggerSubject
+                        ? TargetSpec.SlotSelf
+                        : TargetSpec.SlotExcludeTriggerOrSelf,
+                    Of = DefaultSubject,
+                };
             string slot = Current.Kind == PyTokKind.Slot ? TakeSlot() : TakeIdent();
             return new NotSameEntityExpr { ExcludeSlot = slot, Of = DefaultSubject };
         }

@@ -124,6 +124,8 @@ public static class PoolConfigLoader
                     Name = cn, NameChs = S(c, "name_chs"),
                     Min = I(c, "min", 0), Max = I(c, "max", 99), Initial = I(c, "initial", 0),
                     Lifecycle = lc, IsBuiltin = false,
+                    // 计数器的事件驱动规则（PyAST 文本），179 号文档 C6
+                    RulesScript = S(c, "rules_script"),
                 });
             }
         }

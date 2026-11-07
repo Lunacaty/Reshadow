@@ -246,9 +246,14 @@ public static class RegressPacks
         {
             PoolId = "p1", EnabledPackIds = new List<string> { "a", "b" },
         }, nameClash);
-        // 两个无依赖关系的包定义同名卡 → 报「同名歧义冲突」。
-        // 有依赖关系时是允许的（被依赖方胜出），所以这里刻意不声明依赖。
-        bool c1 = !r1.Ok && r1.Errors.Any(e => e.Contains("同名歧义冲突") || e.Contains("卡名冲突"));
+        // 179 号文档 C5b：引擎现在以 #卡号 为权威引用，
+        // 两个无依赖关系的包定义同名但不同号的卡**合法共存** ——
+        // 早先直接 Errors.Add 会让整个卡池拒绝启动，而玩家只是
+        // 导入了两个不同作者的卡包。改为 Notice 提示用 #卡号 明确引用。
+        bool c1 = r1.Ok
+                  && r1.Notices.Any(n => n.Contains("同名卡共存"))
+                  && r1.Pool != null
+                  && r1.Pool.AllCards.Values.Count(c => c.Name == "Twin Blade") == 2;
 
         // C2：同号不同卡
         var idClash = new Dictionary<string, CardPackDef>(StringComparer.OrdinalIgnoreCase)

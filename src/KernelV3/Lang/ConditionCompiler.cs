@@ -244,6 +244,7 @@ public static class ConditionCompiler
 
         // "if this follower is super-evolved" / "if this card is damaged" — 自身状态句
         // 注意："super-evolved" 在词法层被拆成 super + '-' + evolved 三个 token。
+        int csFollower = c.Position;
         if (c.MatchPhrase("this", "follower", "is") || c.MatchPhrase("this", "card", "is"))
         {
             bool isSuper = false;
@@ -267,25 +268,40 @@ public static class ConditionCompiler
                 _ => UnitState.None,
             };
             if (st != UnitState.None) return new HasStateExpr { State = st, Of = TargetSpec.Self };
-            return BoolExpr.True;
+            // 179 号文档 7：未识别状态词绝不能静默恒真；回滚游标交给后续通用比较解析。
+            c.Seek(csFollower);
         }
 
-        // "if it is super-evolved" / "if it is evolved"
-        if (c.MatchWord("it") && (c.MatchWord("is")))
+        // "if it is super-evolved" / "if it is evolved" / "if it was damaged"
+        // 179 号文档 7：必须 save 游标并在不匹配时原样回滚；
+        // 未识别的状态词绝不能静默返回 BoolExpr.True（那会把有条件限制句抹成恒真）。
+        if (c.Current.IsWord("it"))
         {
-            bool isSuper2 = false;
-            if (c.Current.IsAnyWord("super")) { isSuper2 = true; c.Advance(); c.TryMatch(TokKind.Dash); }
-            var w2 = c.Current.Text.ToLowerInvariant();
+            int saveIt = c.Position;
             c.Advance();
-            c.AdvanceToClauseBoundary();
-            var st2 = w2 switch
+            if (c.MatchWord("is") || c.MatchWord("was"))
             {
-                "evolved" => isSuper2 ? UnitState.SuperEvolved : UnitState.Evolved,
-                "damaged" => UnitState.Damaged,
-                _ => UnitState.None,
-            };
-            if (st2 != UnitState.None) return new HasStateExpr { State = st2, Of = TargetSpec.Self };
-            return BoolExpr.True;
+                bool isSuper2 = false;
+                if (c.Current.IsAnyWord("super")) { isSuper2 = true; c.Advance(); c.TryMatch(TokKind.Dash); }
+                var w2 = c.Current.Text.ToLowerInvariant();
+                if (w2 is "evolved" or "superevolved" or "damaged" or "silenced" or "unevolved")
+                {
+                    c.Advance();
+                    c.AdvanceToClauseBoundary();
+                    if (w2 == "unevolved")
+                        return BoolExpr.Not(new HasStateExpr { State = UnitState.Evolved, Of = TargetSpec.Self });
+                    var st2 = w2 switch
+                    {
+                        "evolved" => isSuper2 ? UnitState.SuperEvolved : UnitState.Evolved,
+                        "superevolved" => UnitState.SuperEvolved,
+                        "damaged" => UnitState.Damaged,
+                        "silenced" => UnitState.Silenced,
+                        _ => UnitState.None,
+                    };
+                    if (st2 != UnitState.None) return new HasStateExpr { State = st2, Of = TargetSpec.Self };
+                }
+            }
+            c.Seek(saveIt); // 不匹配必须原样回滚！
         }
 
 
@@ -373,18 +389,13 @@ public static class ConditionCompiler
             };
         }
 
-        if (c.Current.IsWord("this") && c.Peek().IsWord("card's")
-            && c.Peek(2).IsWord("cost") && c.Peek(3).IsWord("is")
-            && c.Peek(4).Kind == TokKind.Number)
+        // 179 号文档 2：this card's cost is [at least/most] N [or less/more]
+        if (c.MatchPhrase("this", "card's", "cost", "is"))
         {
-            c.Advance(); c.Advance(); c.Advance(); c.Advance();
-            int cv = c.Current.Value; c.Advance();
-            return new CompareExpr
-            {
-                Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Self),
-                Op = CompareOp.Eq,
-                Right = NumExpr.Const(cv),
-            };
+            if (c.MatchWord("not"))
+                return new CompareExpr { Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Self), Op = CompareOp.Ne, Right = NumExpr.Const(ReadNumber(c)) };
+            if (TryReadComparisonRhs(c, out var costOp, out int cv))
+                return new CompareExpr { Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Self), Op = costOp, Right = NumExpr.Const(cv) };
         }
 
         // "this follower's attack is lower/higher than its defense"
@@ -406,28 +417,19 @@ public static class ConditionCompiler
             }
         }
 
-        // "this follower's defense is N or less"
+        // "this follower's defense/attack is [at least/most] N [or less/more]"（179 号文档 2）
         if (c.Current.IsWord("this") && c.Peek().IsWord("follower's")
             && c.Peek(2).IsAnyWord("defense", "attack") && c.Peek(3).IsWord("is"))
         {
             bool isAtk = c.Peek(2).IsWord("attack");
             c.Advance(); c.Advance(); c.Advance(); c.Advance();
-            if (c.Current.Kind == TokKind.Number)
-            {
-                int n3 = c.Current.Value; c.Advance();
-                var op3 = CompareOp.Eq;
-                if (c.MatchWord("or"))
-                {
-                    if (c.MatchWord("less")) op3 = CompareOp.Le;
-                    else if (c.MatchWord("more")) op3 = CompareOp.Ge;
-                }
+            if (TryReadComparisonRhs(c, out var op3, out int n3))
                 return new CompareExpr
                 {
                     Left = NumExpr.Prop(isAtk ? StatKey.Attack : StatKey.Life, TargetSpec.Self),
                     Op = op3,
                     Right = NumExpr.Const(n3),
                 };
-            }
         }
 
         // "this follower is super-evolved"（分词成 super / - / evolved）
@@ -440,15 +442,10 @@ public static class ConditionCompiler
             return new HasStateExpr { State = UnitState.SuperEvolved, Of = TargetSpec.Self };
         }
 
-        if (c.MatchPhrase("this", "card's", "cost", "is") && c.Current.Kind == TokKind.Number)
+        if (c.MatchPhrase("this", "card's", "cost", "is"))
         {
-            int cv = c.Current.Value; c.Advance();
-            return new CompareExpr
-            {
-                Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Self),
-                Op = CompareOp.Eq,
-                Right = NumExpr.Const(cv),
-            };
+            if (TryReadComparisonRhs(c, out var costOp2, out int cv2))
+                return new CompareExpr { Left = NumExpr.Prop(StatKey.Cost, TargetSpec.Self), Op = costOp2, Right = NumExpr.Const(cv2) };
         }
         if (c.MatchPhrase("this", "card's", "cost", "isn't")
             || c.MatchPhrase("this", "card's", "cost", "is", "not"))
@@ -499,61 +496,35 @@ public static class ConditionCompiler
                 Right = NumExpr.Prop(StatKey.Life, TargetSpec.OpponentLeader),
             };
 
-        // "your leader's defense is N or less" / "this follower's defense is N or less"
+        // "your leader's defense is [at least/most] N [or less/more]"（179 号文档 2：补 defense 识别）
         {
             int sv = c.Position;
-            if (c.MatchPhrase("your", "leader's"))
+            if (c.MatchPhrase("your", "leader's", "defense", "is"))
             {
-                if (c.MatchWord("is") && c.Current.Kind == TokKind.Number)
-                {
-                    int n2 = c.Current.Value; c.Advance();
-                    var op = CompareOp.Eq;
-                    if (c.MatchWord("or"))
-                    {
-                        if (c.MatchWord("less")) op = CompareOp.Le;
-                        else if (c.MatchWord("more")) op = CompareOp.Ge;
-                    }
+                if (TryReadComparisonRhs(c, out var opL, out int nL))
                     return new CompareExpr
                     {
                         Left = NumExpr.Prop(StatKey.Life, TargetSpec.SelfLeader),
-                        Op = op,
-                        Right = NumExpr.Const(n2),
+                        Op = opL,
+                        Right = NumExpr.Const(nL),
                     };
-                }
             }
             c.Seek(sv);
         }
 
-        // 「主语 + is + 数值比较」
+        // 「主语 + is + 数值比较」（179 号文档 2 统一接入 TryReadComparisonRhs）
         {
             int save = c.Position;
             var subject = new TargetParser(lex).TryParse(c);
             if (subject != null && c.MatchWord("is"))
             {
-                if (c.MatchPhrase("at", "least"))
+                if (TryReadComparisonRhs(c, out var op2, out int n2))
                     return new CompareExpr
                     {
                         Left = NumExpr.Prop(StatKey.Life, subject),
-                        Op = CompareOp.Ge,
-                        Right = NumExpr.Const(ReadNumber(c)),
-                    };
-                if (c.Current.Kind == TokKind.Number)
-                {
-                    int n2 = c.Current.Value;
-                    c.Advance();
-                    var op = CompareOp.Eq;
-                    if (c.MatchWord("or"))
-                    {
-                        if (c.MatchWord("less")) op = CompareOp.Le;
-                        else if (c.MatchWord("more")) op = CompareOp.Ge;
-                    }
-                    return new CompareExpr
-                    {
-                        Left = NumExpr.Prop(StatKey.Life, subject),
-                        Op = op,
+                        Op = op2,
                         Right = NumExpr.Const(n2),
                     };
-                }
             }
             c.Seek(save);
         }

@@ -296,6 +296,12 @@ public sealed class MatchRunner
             var key = schema.Counter(ctrDef.Name);
             if (!key.IsValid) continue;
             _state.WriteCounter(playerId, key, ctrDef.Initial);
+
+            // 把自定义计数器的事件驱动规则挂到该玩家名下（179 号文档 C6 环节 2）。
+            // CardVm.FlushNextTrigger 会直接扫双方 Leader 承载的计数器能力，
+            // 因此玩家空场时这些规则同样生效。
+            foreach (var ab in ctrDef.RulesAbilities ?? Array.Empty<Ast.AbilityDef>())
+                if (ab != null) _state.GrantCounterAbility(playerId, key, ab);
         }
     }
 
