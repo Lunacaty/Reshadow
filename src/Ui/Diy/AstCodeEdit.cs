@@ -105,16 +105,53 @@ public partial class AstCodeEdit : CodeEdit
 
         // 原生关键字补全（180 号文档 D5）：
         // 输入字母 / $ / : 时把 PyAST 指令、槽位与计数器前缀推给 CodeEdit。
-        if (prefix.Length > 0)
+        TriggerKeywordCompletion(prefix);
+    }
+
+    /// <summary>上一次推入补全队列的「词 + 行」指纹，用于幂等去重。</summary>
+    private string _lastCompletionKey;
+
+    /// <summary>
+    /// 把 PyAST 关键字推给 CodeEdit 的原生补全框。
+    ///
+    /// ⚠ AddCodeCompletionOption 是**入队**语义：不清空就直接追加的话，
+    /// 每敲一个字符都会重加 40 条，候选列表会越滚越长（内存与体验双输）。
+    /// 因此先按当前词干做前缀过滤，并用「词干+行号」做幂等，
+    /// 同一位置重复触发时不重复入队。
+    /// </summary>
+    private void TriggerKeywordCompletion(string prefix)
+    {
+        if (prefix.Length == 0) { _lastCompletionKey = null; return; }
+
+        char last = prefix[prefix.Length - 1];
+        bool trigger = char.IsLetter(last) || last == (char)36 || last == (char)58;
+        if (!trigger) { _lastCompletionKey = null; return; }
+
+        // 取光标前最后一个「词」（连续字母 / $ / : / 下划线）。
+        int ws = prefix.Length;
+        while (ws > 0)
         {
-            char last = prefix[prefix.Length - 1];
-            if (char.IsLetter(last) || last is (char)36 || last is (char)58)
-            {
-                foreach (var kw in IdeKeywords)
-                    AddCodeCompletionOption(CodeCompletionKind.PlainText, kw, kw);
-                UpdateCodeCompletionOptions(false);
-            }
+            char ch = prefix[ws - 1];
+            if (char.IsLetterOrDigit(ch) || ch == (char)36 || ch == (char)58 || ch == (char)95) ws--;
+            else break;
         }
+        string stem = prefix.Substring(ws);
+        if (stem.Length == 0) { _lastCompletionKey = null; return; }
+
+        // 幂等：同一行、同一词干只入队一次。
+        string key = GetCaretLine() + "|" + stem;
+        if (key == _lastCompletionKey) return;
+        _lastCompletionKey = key;
+
+        int added = 0;
+        foreach (var kw in IdeKeywords)
+        {
+            // 前缀过滤：敲 "fa" 只提示 fanfare:，不是把 40 条全推上去。
+            if (kw.IndexOf(stem, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            AddCodeCompletionOption(CodeCompletionKind.PlainText, kw, kw);
+            added++;
+        }
+        if (added > 0) UpdateCodeCompletionOptions(false);
     }
 
     /// <summary>原生补全候选：触发头、动作动词、槽位与计数器前缀。</summary>
@@ -144,10 +181,13 @@ public partial class AstCodeEdit : CodeEdit
             // 选中整段 "#搜索词"，再原位替换成 "#卡号 "。
             // 末尾补一个空格：既符合书写习惯，也让光标离开 # 匹配区，
             // 双重保证候选窗不会再被这一下重新唤出。
+            // 光标必须落在**插入内容之后**，而不是整行末尾：
+            // "#妖" 后面可能还有别的代码，跳到行尾会把光标甩到无关位置。
             Select(line, _hashStartCol, line, col);
-            InsertTextAtCaret("#" + _matched[idx].Id + " ");
+            string inserted = "#" + _matched[idx].Id + " ";
+            InsertTextAtCaret(inserted);
             SetCaretLine(line);
-            SetCaretColumn(GetLine(line).Length);
+            SetCaretColumn(_hashStartCol + inserted.Length);
         }
         finally
         {
