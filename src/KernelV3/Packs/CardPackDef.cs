@@ -46,6 +46,16 @@ public sealed class CardRawEntry
     public int Attack { get; init; }
     public int Life { get; init; }
 
+    /// <summary>
+    /// 卡包里是否显式声明了 cost。
+    ///
+    /// int 的默认值就是 0，所以「没写」与「写了 0 费」在数值上无法区分。
+    /// 影之诗里 0 费卡（0 费法术、妖精萤火）是重要机制组件，
+    /// 用 Cost > 0 判断会把显式 0 费当成没写、回退成 PyAST 里的费用
+    /// （179 号文档 暗坑三）。
+    /// </summary>
+    public bool HasExplicitCost { get; init; }
+
     /// <summary>效果来源："eng_cnl"（官方英文）或 "reshadow_script"（DIY 脚本）。</summary>
     public string SourceFormat { get; init; } = "eng_cnl";
 

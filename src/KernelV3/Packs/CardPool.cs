@@ -639,7 +639,9 @@ public static class CardPoolBuilder
             return new CardDef
             {
                 CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = pyDef.Kind,
-                BaseCost = c.Cost > 0 ? c.Cost : pyDef.BaseCost,
+                // 0 费是合法费用（0 费法术、妖精萤火）。判据看「是否显式声明」，
+                // 而不是 c.Cost > 0 —— 后者会把显式 0 费当成没写而回退（179 号文档 暗坑三）。
+                BaseCost = c.HasExplicitCost ? c.Cost : pyDef.BaseCost,
                 BaseAttack = pyDef.BaseAttack,
                 BaseLife = pyDef.BaseLife,
                 Clan = string.IsNullOrEmpty(c.Clan) ? pyDef.Clan : schema.Clan(c.Clan),

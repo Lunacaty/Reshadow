@@ -2817,7 +2817,20 @@ public sealed class EnglishCompiler
             // 一并消费掉，别让它落进 CondenseCounterName 造出 combo_count。
             // 多词资源（your play points / your max play points）必须放行给下方统一匹配
             // （179 号文档 4：先前 "your ..." 截胡把 play points 错判成 ctr:play）。
-            if (!c.IsAtEnd && !c.Peek().IsAnyWord("point", "points", "sigil", "sigils"))
+            // 必须同时看**当前词**与下一个词：
+            //   "your play points"  -> 当前 play，下一个 point  => 放行
+            //   "your max play points" -> 当前 max，下一个 point => 放行
+            // 只看 Peek() 会让 "max" 掉进单字分支，把槽位错绑成 ctr:max
+            // （179 号文档 4）。
+            // 判定「后面是不是多词资源」要看 your 之后的**两个**词：
+            //   your play points      -> Peek()=play,     Peek(2)=points -> 放行
+            //   your max play points  -> Peek()=max,      Peek(2)=play, Peek(3)=points -> 放行
+            // 只看一格会让 "max" 掉进单字分支，把槽位错绑成 ctr:max（179 号文档 4）。
+            bool nextIsQuantifier = !c.IsAtEnd
+                && (c.Current.IsAnyWord("point", "points", "sigil", "sigils")
+                    || c.Peek().IsAnyWord("point", "points", "sigil", "sigils")
+                    || c.Peek(2).IsAnyWord("point", "points", "sigil", "sigils"));
+            if (!c.IsAtEnd && !nextIsQuantifier)
             {
                 var res = c.Current.Text.ToLowerInvariant() switch
                 {

@@ -239,7 +239,8 @@ public sealed class GlobalCatalog
             return new CardDef
             {
                 CardId = cardId, Name = c.NameEng, NameChs = c.NameChs, Kind = pyDef.Kind,
-                BaseCost = c.Cost > 0 ? c.Cost : pyDef.BaseCost,
+                // 同 CardPool：0 费合法，按「是否显式声明」判（179 号文档 暗坑三）。
+                BaseCost = c.HasExplicitCost ? c.Cost : pyDef.BaseCost,
                 BaseAttack = c.Attack > 0 ? c.Attack : pyDef.BaseAttack,
                 BaseLife = c.Life > 0 ? c.Life : pyDef.BaseLife,
                 Abilities = pyDef.Abilities,

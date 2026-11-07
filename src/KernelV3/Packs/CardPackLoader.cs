@@ -138,6 +138,9 @@ public static class CardPackLoader
                     Clan = Str(c, "clan") is { Length: > 0 } cl ? cl : "中立",
                     Traits = tr,
                     Cost = Int(c, "cost", 0),
+                    // 「写了 cost: 0」（合法 0 费卡）与「根本没写 cost」必须区分，
+                    // 否则 py_ast 卡的费用会被错误回退（179 号文档 暗坑三）。
+                    HasExplicitCost = c.TryGetProperty("cost", out _),
                     Attack = Int(c, "attack", 0),
                     Life = Int(c, "life", 0),
                     SourceFormat = Str(c, "source_format") is { Length: > 0 } sf ? sf : "eng_cnl",
