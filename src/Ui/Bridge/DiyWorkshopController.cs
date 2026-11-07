@@ -747,7 +747,7 @@ public sealed class DiyWorkshopController
         Store.Catalog.Schema.CounterLimits[n] = (min, max);
         // 中文名注入术语表，卡面上的 ctr:sword_intent 才能渲染成【剑意】
         if (zh != n) Store.Catalog.Glossary.Add(n, zh);
-        if (persist) PersistPackEntry("counters", n, min, max);
+        if (persist) PersistPackEntry("counters", n, zh, min, max);
         LastStatusMessage = "已注册新计数器：" + (zh == n ? n : zh + " (" + n + ")")
                             + "（范围 " + min + ".." + max + "）";
         OnCardUpdated?.Invoke();
@@ -767,6 +767,14 @@ public sealed class DiyWorkshopController
 
     /// <summary>把自定义兵种 / 计数器写进当前卡池的第一个启用卡包并落盘。</summary>
     private void PersistPackEntry(string kind, string name, int min, int max)
+        => PersistPackEntry(kind, name, null, min, max);
+
+    /// <summary>
+    /// 把词条写进目标卡包。nameChs 必须一起落盘：
+    /// AddPackSymbolEntry 写完会立刻 ReloadCatalogAndPools()，
+    /// 只写英文 ID 会把内存里的中文名冲掉（181 号文档 4）。
+    /// </summary>
+    private void PersistPackEntry(string kind, string name, string nameChs, int min, int max)
     {
         try
         {
@@ -777,7 +785,7 @@ public sealed class DiyWorkshopController
             string packId = cfg?.EnabledPackIds?
                 .FirstOrDefault(x => !string.Equals(x, "official-sv", StringComparison.OrdinalIgnoreCase))
                 ?? "testset-v2";
-            Store.AddPackSymbolEntry(packId, kind, name, min, max, out _);
+            Store.AddPackSymbolEntry(packId, kind, name, nameChs, min, max, out _);
         }
         catch (Exception) { }
     }

@@ -1638,6 +1638,40 @@ public sealed class BattleState : IVmWorld
                 }
             }
         }
+
+        // ── 运行时授予的常驻攻防光环（181 号文档 2）──
+        //
+        // HasEffectiveKeyword 与 QueryDamageModifiers 都在末尾扫了 _granted，
+        // 唯独这里只扫 src.Def.Abilities。于是「赋予随从：在你的回合中 +2/+0」
+        // 这类通过 GrantAbilityNode 授予的光环完全不生效。
+        foreach (var (ge, gab, _, _) in _granted.ToList())
+        {
+            if (ge == null || ge.IsSilenced || ge.Zone != ZoneRef.Board) continue;
+            if (gab?.Trigger == null || gab.Trigger.Event != CoreEvent.PassiveAura || gab.Body == null) continue;
+            if (gab.Trigger.DuringTurn == Core.TurnOwnerScope.Self && ge.PlayerId != ActivePlayer) continue;
+            if (gab.Trigger.DuringTurn == Core.TurnOwnerScope.Opponent && ge.PlayerId == ActivePlayer) continue;
+
+            var gscope = new Vm.VmScope
+            {
+                Owner = ZoneScope.Self,
+                Controller = ge.PlayerId,
+                Source = Vm.EntityRef.From(ge),
+                SourceAbility = gab,
+            };
+            bool gcondOk;
+            try { gcondOk = gab.Condition == null || eval.EvalBool(gab.Condition, gscope); }
+            catch { gcondOk = true; }
+            if (!gcondOk) continue;
+
+            foreach (var n in gab.Body)
+            {
+                if (n is not Ast.ModifyStatsNode ms || ms.Op != Ast.StatModOp.Add) continue;
+                if (!AuraTargets(eval, ms.Target, gscope, target)) continue;
+                if (ms.Attack != null) { try { atk += eval.EvalNum(ms.Attack, gscope); } catch { } }
+                if (ms.Life != null) { try { life += eval.EvalNum(ms.Life, gscope); } catch { } }
+            }
+        }
+
         return (atk, life);
     }
 
@@ -1838,8 +1872,14 @@ public sealed class BattleState : IVmWorld
             int x;
             try { x = eval.EvalNum(dm.Amount, scope); } catch { continue; }
             dealt = dm.IsReduction ? dealt - x : dealt + x;
-            if (dealt <= 0) return 0;
+            // 绝不能在这里提前 return 0（181 号文档 1）：
+            // 同一目标可能同时挂着「受到 -1」和「受到 +1」两条修正，
+            // 第一轮算到 0 就退出的话，后面的 +1 增伤被整个吞掉；
+            // 也可能 1-2=-1 被提前钳成 0，再加 1 变成 1 伤而不是 0 伤。
+            // 统一让循环跑完，最后交给 CombatResolver.ApplyDamage
+            // 在「全部增减汇总完毕」之后做一次 <= 0 截断。
         }
+        // 保留带符号值（可能为负），由调用方在加减伤全部汇总后统一截断。
         return dealt;
     }
 
@@ -1957,7 +1997,8 @@ public sealed class BattleState : IVmWorld
             if (!capPhase && dm.Kind == Ast.DamageAuraKind.DealtDelta)
             {
                 dealt = dm.IsReduction ? dealt - x : dealt + x;
-                if (dealt <= 0) return 0;
+                // 同 ApplyTakenDelta：不提前截断，让全部增减汇总完再截断
+                // （181 号文档 1）。
             }
             else if (capPhase && dm.Kind == Ast.DamageAuraKind.DealtCap)
             {
@@ -1965,7 +2006,8 @@ public sealed class BattleState : IVmWorld
                 if (dealt > x) dealt = x;
             }
         }
-        return Math.Max(0, dealt);
+        // 增减阶段保留带符号值；上限阶段才钳到 0（181 号文档 1）。
+        return capPhase ? Math.Max(0, dealt) : dealt;
     }
     /// <summary>IVmWorld 接口实现：能力破坏，受保护拦截。</summary>
     void IVmWorld.DestroyEntity(RuntimeEntity e) => DestroyEntity(e);

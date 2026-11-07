@@ -973,6 +973,17 @@ public sealed class GameSessionStore
     /// </summary>
     public bool AddPackSymbolEntry(string packId, string kind, string name,
                                    int min, int max, out string message)
+        => AddPackSymbolEntry(packId, kind, name, null, min, max, out message);
+
+    /// <summary>
+    /// 往卡包写入一个词条（兵种 / 计数器）。
+    ///
+    /// nameChs 必须一起落盘（181 号文档 4）：方法末尾会立即
+    /// ReloadCatalogAndPools()，若只写英文 ID，刚放进内存 Glossary 的
+    /// 中文名会被热重载冲掉，卡面又退回显示 sword_intent。
+    /// </summary>
+    public bool AddPackSymbolEntry(string packId, string kind, string name,
+                                   string nameChs, int min, int max, out string message)
     {
         message = "";
         if (string.IsNullOrWhiteSpace(packId) || string.IsNullOrWhiteSpace(name))
@@ -998,6 +1009,10 @@ public sealed class GameSessionStore
                 { message = "已存在：" + name; return true; }
 
             var entry = new System.Text.Json.Nodes.JsonObject { ["name"] = name };
+            // 中文显示名一并写入，否则热重载后 Glossary 里没有它（181 号文档 4）。
+            if (!string.IsNullOrWhiteSpace(nameChs)
+                && !string.Equals(nameChs, name, StringComparison.Ordinal))
+                entry["name_chs"] = nameChs;
             if (kind == "counters")
             {
                 entry["min"] = min;

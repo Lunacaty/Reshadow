@@ -366,7 +366,10 @@ public static partial class Regress
         // 不再记在玩家身上。
         int fc = baseCard.Counters.TryGetValue(st.Schema.Counter("fuse_count"), out var fcv) ? fcv : 0;
         int fcost = baseCard.Counters.TryGetValue(st.Schema.Counter("fuse_cost"), out var fcostv) ? fcostv : 0;
-        bool counts = fc == 1 && fcost == 5;
+        // 181 号文档 3：《76-c》2.3-C 规定 fuse_count += **材料张数**。
+        // 本次一次喂入 mA + mB 两张材料，因此 fuse_count 必须是 2（不是 1）。
+        // 旧断言把「融合次数」与「材料张数」混为一谈，正是这条文档要修的缺陷。
+        bool counts = fc == 2 && fcost == 5;
         bool onFuseFired = st.Players[1].Leader.Life == 19;
 
         chk("5-6a 融合材料离场但不进墓场",

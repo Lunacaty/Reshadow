@@ -1386,7 +1386,11 @@ public sealed class TurnRunner
 
         baseCard.Counters.TryGetValue(fuseCountKey, out int fc);
         baseCard.Counters.TryGetValue(fuseCostKey, out int fcost);
-        baseCard.Counters[fuseCountKey] = fc + 1;
+        // 《76-c》2.3-C：fuse_count += **材料张数**（不是「融合了几次」）。
+        // 单选材料时 +1 与 +N 无区别，但 UI 一次勾选多张、或联机同批下发的
+        // 多材料融合只会 +1，导致 Sinciro 的 X（= fuse_kinds）与
+        // 「已融合 N 张」类判据全部偏小（181 号文档 3）。
+        baseCard.Counters[fuseCountKey] = fc + materials.Count;
         baseCard.Counters[fuseCostKey] = fcost + totalCost;
 
         // 种类数按「这张卡历史融合过的不同卡号」计。

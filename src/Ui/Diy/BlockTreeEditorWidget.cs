@@ -52,6 +52,9 @@ public partial class BlockTreeEditorWidget : VBoxContainer
     {
         _ws = ws;
         _printer = printer;
+        // 注入静态翻译钩子，让 BuildLabel / NumText 这些 static 文案
+        // 也能把自定义计数器渲染成中文（181 号文档 5）。
+        _counterPrinter = printer;
         _editable = editable;
 
         ClearSelf();
@@ -2391,13 +2394,34 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         }
     }
 
+    /// <summary>
+    /// 计数器中文名的静态翻译钩子。
+    ///
+    /// BuildLabel / NumText 都是 static（画布文案不依赖实例状态），
+    /// 但自定义计数器的中文名只存在于 Glossary / 印刷器里。
+    /// 由 Setup 注入一次实例的印刷器即可让静态文案也拿到中文名
+    /// （181 号文档 5）。
+    /// </summary>
+    private static ChineseCardPrinter _counterPrinter;
+
+    /// <summary>计数器中文名：先查静态表，再查 Glossary，都不认识就原样返回内码。</summary>
+    private static string CounterZhOf(string raw)
+    {
+        string key = string.IsNullOrWhiteSpace(raw) ? "pp" : raw;
+        foreach (var (k, zh) in DiyZh.Counters)
+            if (string.Equals(k, key, StringComparison.Ordinal)) return zh;
+        return _counterPrinter != null ? _counterPrinter.CounterZh(key) : key;
+    }
+
     private static string NumText(Block numBlk, int fallback = 1)
     {
         if (numBlk == null) return fallback.ToString();
         return numBlk.Opcode switch
         {
             "num_const" => numBlk.IntA.ToString(),
-            "num_counter" => "【" + (numBlk.Text ?? "计数") + "】",
+            // 自定义计数器（sword_intent）的中文名只在 Glossary 里，
+            // 静态表查不到 —— 必须落到印刷器（181 号文档 5）。
+            "num_counter" => "【" + CounterZhOf(numBlk.Text) + "】",
             "num_count" => "统计数量",
             "num_prop" => (numBlk.EnumA ?? "属性"),
             "num_rand" => "随机" + numBlk.IntA + "~" + numBlk.IntB,
@@ -2453,7 +2477,11 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 // 完整摘要：作用对象 + 计数器 + 操作 + 数值。
                 // 只写「修改计数器【pp】」的话，玩家在画布上看不出这是加还是减、加几点。
                 string who = blk.Target != null ? DescribeTargetShort(blk.Target) : "我方主战者";
-                string ctrZh = DiyZh.Counters.FirstOrDefault(x => x.Key == (blk.Text ?? "")).Zh ?? (blk.Text ?? "pp");
+                // 先查静态表，再查印刷器（= Glossary）：自定义计数器
+                // sword_intent 只在 Glossary 里有「剑意」，静态表里没有。
+                // 不查 _printer 的话，画布积木上仍是「使【我方主战者】的
+                // 【sword_intent】增加1」（181 号文档 5）。
+                string ctrZh = CounterZhOf(blk.Text);
                 string ctrOp = blk.EnumA == "Set" ? "设为" : blk.EnumA == "Fill" ? "回满" : (blk.FlagA ? "减少" : "增加");
                 string ctrNum = blk.EnumA == "Fill" ? "" : NumText(blk.Number, 1);
                 return "使【" + who + "】的【" + ctrZh + "】" + ctrOp + ctrNum;
