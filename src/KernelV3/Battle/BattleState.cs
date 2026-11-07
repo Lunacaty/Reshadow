@@ -2191,11 +2191,51 @@ public sealed class BattleState : IVmWorld
         if (e == null || e.Zone != ZoneRef.Board) return;
         if (e.Def?.Kind == Ast.CardKind.Follower)
         {
-            var rallyKey = Schema.Counter("rally");
-            WriteCounter(e.PlayerId, rallyKey, ReadCounter(e.PlayerId, rallyKey) + 1);
+            // 打出路径（PlayCard）要延迟到入场曲结算完才计数：
+            // 见 NotifySummonedDeferredRally。其余进场路径当场 +1。
+            if (!_deferRallyFor.Contains(e.EntityId))
+            {
+                var rallyKey = Schema.Counter("rally");
+                WriteCounter(e.PlayerId, rallyKey, ReadCounter(e.PlayerId, rallyKey) + 1);
+            }
         }
         EmitEvent(new VmEvent { Kind = CoreEvent.OnEnterField, Subject = EntityRef.From(e) });
         EmitEvent(new VmEvent { Kind = CoreEvent.OnSummon, Subject = EntityRef.From(e) });
+    }
+
+    /// <summary>本回合被「打出」的随从 —— 它们的协作计数推迟到入场曲之后。</summary>
+    private readonly HashSet<int> _deferRallyFor = new();
+
+    /// <summary>标记这张卡走的是「打出」路径，协作计数要延迟。</summary>
+    public void DeferRallyFor(RuntimeEntity e)
+    {
+        if (e != null) _deferRallyFor.Add(e.EntityId);
+    }
+
+    /// <summary>
+    /// 结算被延迟的协作计数：把 rally +1 并入后续的 OnEnterField 广播里。
+    ///
+    /// 这是给 TurnRunner.PlayCard 用的 —— 入场曲（OnPlay，优先级 10）结算完毕、
+    /// 旁观者的「进入战场时」（OnEnterField，优先级 20）广播之前，
+    /// 必须让 rally 已经 +1，否则旁观者看到的是少一个的旧值（174 号文档 一.3）。
+    /// </summary>
+    /// <summary>按实体编号结算延迟计数（实体已离场时的兜底）。</summary>
+    public void FlushDeferredRallyById(int entityId)
+    {
+        if (!_deferRallyFor.Remove(entityId)) return;
+        var e = _all.FirstOrDefault(x => x.EntityId == entityId);
+        if (e == null || e.Zone != ZoneRef.Board || e.Def?.Kind != Ast.CardKind.Follower) return;
+        var rallyKey = Schema.Counter("rally");
+        WriteCounter(e.PlayerId, rallyKey, ReadCounter(e.PlayerId, rallyKey) + 1);
+    }
+
+    public void FlushDeferredRally(RuntimeEntity e)
+    {
+        if (e == null) return;
+        _deferRallyFor.Remove(e.EntityId);
+        if (e.Zone != ZoneRef.Board || e.Def?.Kind != Ast.CardKind.Follower) return;
+        var rallyKey = Schema.Counter("rally");
+        WriteCounter(e.PlayerId, rallyKey, ReadCounter(e.PlayerId, rallyKey) + 1);
     }
 
     public void ReplaceDeck(int playerId, string deckName, IReadOnlyList<int> cardIds)
@@ -2536,6 +2576,8 @@ public sealed class BattleState : IVmWorld
             {
                 foreach (var e in list) n += ExpireOn(e, endingPlayer);
             }
+            // 撤销限时属性可能把主战者扣到 0 以下 —— 当场锁存致死（174 号文档 BUG5 第 3 条）。
+            if (p.Leader != null && p.Leader.Life <= 0) p.LostByLifeOut = true;
         }
 
         // 到期的「授予能力」也要撤：_granted 是独立账本，
@@ -2602,6 +2644,9 @@ public sealed class BattleState : IVmWorld
                     // 到期只减 Life 会留下「2/2 但 MaxLife=4」—— 被永久误判成已受伤。
                     if (m.Life > 0) e.MaxLife = Math.Max(e.Life, e.MaxLife - m.Life);
                 }
+
+                // 撤销时把主战者扣到 0 以下的情况由调用方统一补锁存 ——
+                // ExpireOn 是静态方法，拿不到 Players（见 ExpireTemporaryModifiers）。
             }
 
             e.TempModifiers.RemoveAt(i);

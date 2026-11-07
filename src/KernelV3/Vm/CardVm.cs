@@ -566,6 +566,19 @@ public sealed partial class CardVm
         var ev = _triggerQueue[0];
         _triggerQueue.RemoveAt(0);
 
+        // 协作计数事件是引擎内部的「时点标记」，不对应任何卡面能力：
+        // 轮到它出队时把延迟的 rally +1 落账即可（174 号文档 一.3）。
+        if (ev.Kind == CoreEvent.OnRallyCount)
+        {
+            if (_world is Battle.BattleState bsRally && ev.Subject != null)
+            {
+                var subjR = bsRally.GetLive(ev.Subject.Value.EntityId, ev.Subject.Value.EntrySerial);
+                if (subjR != null) bsRally.FlushDeferredRally(subjR);
+                else bsRally.FlushDeferredRallyById(ev.Subject.Value.EntityId);
+            }
+            return;
+        }
+
         // 候选能力 = 印制在卡上的 + 运行时授予的
         var byEntity = new Dictionary<int, List<(RuntimeEntity e, Ast.AbilityDef ab)>>();
 

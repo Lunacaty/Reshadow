@@ -532,6 +532,11 @@ public sealed partial class CardVm
                     break;
             }
 
+            // 主战者被属性修改扣到 0 以下同样要当场锁存致死：
+            // 否则效果链里后续的一句「回复 2 点」就能把它奶回来（174 号文档 BUG5 第 3 条）。
+            if (t.Zone == ZoneRef.Leader && t.Life <= 0 && _world is Battle.BattleState bsLead)
+                bsLead.Players[t.PlayerId].LostByLifeOut = true;
+
             // 限时修正必须登记，否则回合结束时无从撤销（会永久生效）。
             // Set 型登记原值快照（到期还原），Add 型登记增量（到期减回去）。
             if (n.Duration != DurationKind.Permanent)

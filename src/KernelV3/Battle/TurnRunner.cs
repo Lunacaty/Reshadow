@@ -155,7 +155,7 @@ public sealed class TurnRunner
         // ── 第 5 步：对手纹章响应（“对手回合开始时”） ──
         StepCrestArea(1 - playerId, vm, ownTurn: false);
 
-        // ── 第 5 步：对手战场响应 ──
+        // ── 第 5 步补充：对手战场响应 ──
         // （对手护符不推进吟唱 —— 吟唱只在持有者自己的回合推进）
         // （当前无独立的“对手回合开始”事件，留待下一步扩展）
 
@@ -517,19 +517,14 @@ public sealed class TurnRunner
         // ── 4. 入场 ──
         if (isFollowerOrAmulet)
         {
-            _state.MoveEntity(card, ZoneRef.Board, playerId);
-
-            // OnEnterField / OnSummon / 连携 已由 MoveEntity → NotifySummoned 发出，
-            // 这里**不能再调一次**，否则连携会被记两次。
-            //
-            // 打出的卡只有一个时序例外：官方的连携在**入场曲结算之后**才 +1，
-            // 所以当前这张在它自己的入场曲里不该已经算进去。
-            // 把 NotifySummoned 加的那一次先扣回来，等 OnPlay 结算完再补上——
-            // 净效果仍是 +1，只是生效时点推迟到入场曲之后。
+            // 打出的随从走「延迟协作」：MoveEntity → NotifySummoned 看到标记就跳过 +1，
+            // 改由紧接着入队的 OnRallyCount（优先级 15）在入场曲(10)之后、
+            // 旁观者 OnEnterField(20) 之前落账（174 号文档 一.3）。
+            // 早先用「先 -1、等续体再 +1」绕弯，续体要等整个触发队列清空才跑，
+            // 于是入场曲后立刻触发的旁观能力读到的还是少 1 的旧值。
             bool isFollower = card.Def.Kind == Ast.CardKind.Follower;
-            var rallyKey = _schema.Counter("rally");
-            if (isFollower)
-                _state.WriteCounter(playerId, rallyKey, _state.ReadCounter(playerId, rallyKey) - 1);
+            if (isFollower) _state.DeferRallyFor(card);
+            _state.MoveEntity(card, ZoneRef.Board, playerId);
 
             // 自身【入场曲】（优先级 10）
             EmitOrEnqueue(vm, new VmEvent
@@ -542,18 +537,21 @@ public sealed class TurnRunner
                 PlayerId = playerId,
             });
 
-            // 协作（Rally）：入场曲**彻底结算完**之后才 +1。
-            // 入场曲里含 Select 时会挂起等玩家选 —— 直接写在 StepUntilBlocked() 后面
-            // 会让 rally 在玩家点选之前就 +1，而官方的时点是入场曲结算完毕。
+            // 协作（Rally）：入队一个优先级 15 的时点事件。
+            // 它排在 OnPlay(10) 之后、OnEnterField(20) 之前，
+            // 于是「入场曲里看不到自己」与「旁观者一定看到已计入」同时成立。
             if (isFollower)
             {
-                if (vm != null)
-                    vm.EnqueueContinuation(() => _state.WriteCounter(playerId, rallyKey,
-                        _state.ReadCounter(playerId, rallyKey) + 1));
-                else
-                    _state.WriteCounter(playerId, rallyKey, _state.ReadCounter(playerId, rallyKey) + 1);
+                EmitOrEnqueue(vm, new VmEvent
+                {
+                    Kind = CoreEvent.OnRallyCount,
+                    Subject = EntityRef.From(card),
+                    PlayerId = playerId,
+                });
             }
             vm?.StepUntilBlocked();
+            // 没有 VM 时事件走 EmitEvent 直接丢弃（无监听者），这里补一次落账。
+            if (isFollower && vm == null) _state.FlushDeferredRally(card);
         }
         else
         {

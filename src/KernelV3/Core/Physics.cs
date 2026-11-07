@@ -140,6 +140,16 @@ public enum CoreEvent
 
     /// <summary>手牌已满导致抽牌被烧毁进墓地。</summary>
     OnCardBurned,
+
+    /// <summary>
+    /// 引擎内部的「协作计数 +1」事件（不是卡面触发词）。
+    ///
+    /// 存在理由：随从**打出**时，官方时点是「入场曲结算完毕、旁观者的
+    /// 『进入战场时』广播之前」才 +1。用优先级 15 排在 OnPlay(10) 与
+    /// OnEnterField(20) 之间，就能既保证入场曲里看不到自己、
+    /// 又保证旁观者看到的一定已经计入（174 号文档 一.3）。
+    /// </summary>
+    OnRallyCount,
 }
 
 /// <summary>触发者在哪个区域监听。</summary>
