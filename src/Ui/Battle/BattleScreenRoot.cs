@@ -240,6 +240,14 @@ public partial class BattleScreenRoot : Control
 
     private ShadowverseFan.Ui.Net.RemoteBattleClient _remoteClient;
 
+    public override void _ExitTree()
+    {
+        if (_remoteClient != null)
+        {
+            _remoteClient.SnapshotReceived -= OnRemoteSnapshot;
+        }
+    }
+
     // ---------------------------------------------------------------- 远程模式输入路由
 
     /// <summary>客机模式下所有操作都必须上行给权威端，绝不在本地结算。</summary>
