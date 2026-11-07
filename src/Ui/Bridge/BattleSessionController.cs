@@ -187,7 +187,14 @@ public sealed class BattleSessionController
             p.DestroyedThisMatch.Clear();
             foreach (var cid in dto.DestroyedCardIds ?? new List<int>())
                 if (State.CardDefOf(cid) is { } cd)
-                    p.DestroyedThisMatch.Add(new EntitySnapshot { CardId = cd.CardId, Def = cd, Name = cd.Name, Kind = cd.Kind, PlayerId = localPid });
+                    p.DestroyedThisMatch.Add(new EntitySnapshot
+                    {
+                        CardId = cd.CardId, Def = cd, Name = cd.Name, Kind = cd.Kind, PlayerId = localPid,
+                        Cost = cd.BaseCost, BaseCost = cd.BaseCost,
+                        Attack = cd.BaseAttack, BaseAttack = cd.BaseAttack,
+                        Life = cd.BaseLife, BaseLife = cd.BaseLife, MaxLife = cd.BaseLife,
+                        Traits = cd.Traits ?? Array.Empty<SymbolId<TraitTag>>(),
+                    });
         }
 
         // 还原挂起选择：客机打出一张需要选目标/选模式/发现的牌时，
@@ -242,6 +249,13 @@ public sealed class BattleSessionController
             });
         }
 
+        // 首包全量事件到达时清空客机本地假开局残留日志与事件（177 号深度走查 3）
+        if (snap.EventStartIndex == 0 && snap.NewEvents != null && snap.NewEvents.Count > 0)
+        {
+            State.EventLog.Clear();
+            State.BattleLogs.Clear();
+        }
+
         if (snap.NewEvents != null && snap.NewEvents.Count > 0)
         {
             foreach (var ne in snap.NewEvents)
@@ -277,6 +291,9 @@ public sealed class BattleSessionController
                 State.AppendBattleLog(vmEv);
             }
         }
+
+        // 客机全盘镜像刷新后作废合法动作缓存，保证按钮状态与手牌光圈实时准确（177 号深度走查 1）
+        InvalidateLegalActions();
     }
 
     /// <summary>
@@ -322,39 +339,50 @@ public sealed class BattleSessionController
         if (d.IsHidden || d.CardId <= 0) return PlaceholderEntity(playerId, zone);
 
         var def = State.CardDefOf(d.CardId);
-        // 结晶随从作为护符入场：卡种与原卡不同，必须切为 CrystallizeDef（177 号文档 一.3）
+        // 结晶随从作为护符入场：卡种与原卡不同，必须切为 CrystallizeDef 并补齐母卡立绘与命名（177 号深度走查 2）
         if (def != null && d.Kind == nameof(CardKind.Amulet)
             && def.Kind != CardKind.Amulet && def.CrystallizeDef != null)
         {
-            def = def.CrystallizeDef;
+            var cDef = def.CrystallizeDef;
+            def = cDef.CardId > 0 ? cDef : new CardDef
+            {
+                CardId = def.CardId,
+                ArtCardId = def.ArtCardId > 0 ? def.ArtCardId : def.CardId,
+                Name = cDef.Name ?? def.Name,
+                NameChs = !string.IsNullOrEmpty(cDef.NameChs) ? cDef.NameChs : def.NameChs,
+                Kind = CardKind.Amulet,
+                BaseCost = cDef.BaseCost,
+                Abilities = cDef.Abilities,
+                InnateKeywords = cDef.InnateKeywords,
+                InnateCounters = cDef.InnateCounters,
+                Traits = cDef.Traits ?? def.Traits,
+                Clan = def.Clan,
+            };
         }
 
-        // 纹章/信仰在权威端是动态合成号，客机本地字典原本没有；通过 ArtCardId 溯源母卡补注册（176 号文档 一.4）
+        // 纹章/信仰溯源：按 d.IsFaith 区分，且当 sub == null 时用 hostDef 兜底构造而非丢弃（177 号深度走查 2）
         if (def == null && d.ArtCardId > 0)
         {
             var hostDef = State.CardDefOf(d.ArtCardId);
             if (hostDef != null)
             {
-                var sub = hostDef.CrestDef ?? hostDef.FaithDef;
-                if (sub != null)
+                var sub = d.IsFaith ? (hostDef.FaithDef ?? hostDef.CrestDef)
+                                    : (hostDef.CrestDef ?? hostDef.FaithDef);
+                def = new CardDef
                 {
-                    def = new CardDef
-                    {
-                        CardId = d.CardId,
-                        ArtCardId = d.ArtCardId,
-                        Name = sub.Name,
-                        Kind = sub.Kind,
-                        BaseCost = sub.BaseCost,
-                        BaseAttack = sub.BaseAttack,
-                        BaseLife = sub.BaseLife,
-                        Abilities = sub.Abilities,
-                        InnateKeywords = sub.InnateKeywords,
-                        InnateCounters = sub.InnateCounters,
-                        Traits = sub.Traits,
-                        Clan = sub.Clan,
-                    };
-                    State.RegisterCard(def);
-                }
+                    CardId = d.CardId,
+                    ArtCardId = d.ArtCardId,
+                    Name = sub?.Name ?? hostDef.Name,
+                    NameChs = !string.IsNullOrEmpty(sub?.NameChs) ? sub.NameChs : hostDef.NameChs,
+                    Kind = d.IsFaith ? CardKind.Faith : (sub?.Kind ?? CardKind.Crest),
+                    BaseCost = sub?.BaseCost ?? 0,
+                    Abilities = sub?.Abilities ?? Array.Empty<AbilityDef>(),
+                    InnateKeywords = sub?.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>(),
+                    InnateCounters = sub?.InnateCounters ?? new Dictionary<SymbolId<CounterTag>, int>(),
+                    Traits = sub?.Traits ?? hostDef.Traits,
+                    Clan = hostDef.Clan,
+                };
+                State.RegisterCard(def);
             }
         }
         if (def == null) return PlaceholderEntity(playerId, zone);
@@ -724,6 +752,7 @@ public sealed class BattleSessionController
     {
         cost = 0;
         if (e == null || e.Zone != ZoneRef.Board) return false;
+        Runner.Turns.CanEngageAmulet(MyPlayerId, e, out cost);
         return GetLegalActionsCached().Any(a =>
             a.Kind == PlayerActionKind.EngageAmulet && a.Subject?.EntityId == e.EntityId);
     }
@@ -854,8 +883,9 @@ public sealed class BattleSessionController
 
     public bool TryUseExtraPp()
     {
+        if (IsRemote) { _ = RemoteClient?.UseExtraPp(); return true; }
         bool ok = Runner.UseExtraPp();
-        if (ok) ResolveAiPendingIfAny();
+        if (ok) { InvalidateLegalActions(); ResolveAiPendingIfAny(); }
         return ok;
     }
 
