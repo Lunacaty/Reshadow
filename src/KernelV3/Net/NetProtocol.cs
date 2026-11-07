@@ -90,6 +90,7 @@ public sealed class NetEntityDto
     public int PlayerId { get; set; }
     public string Zone { get; set; } = "";
     public int CardId { get; set; }
+    public string Kind { get; set; } = "";
     public int Cost { get; set; }
     public int Attack { get; set; }
     public int Life { get; set; }
@@ -131,6 +132,8 @@ public sealed class NetPlayerDto
     public List<NetEntityDto> Crests { get; set; } = new();
     public List<NetEntityDto> Hand { get; set; } = new();
     public Dictionary<string, int> Counters { get; set; } = new();
+    public List<int> PlayedCardIds { get; set; } = new();
+    public List<int> DestroyedCardIds { get; set; } = new();
 }
 
 public sealed class NetEventDto

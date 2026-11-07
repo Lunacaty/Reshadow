@@ -238,20 +238,6 @@ public partial class LanLobbyModal : Control
         var deck = _filteredDecks[_deckPicker.Selected - 1];
         string poolId = _poolPicker.GetItemText(_poolPicker.Selected);
 
-        // 广播包带上本机卡池指纹：客机加入前先比对，不一致直接提示。
-        string hash = ShadowverseFan.KernelV3.Net.PoolIntegrityHasher
-            .ComputePoolHash(_store.GetPoolView(poolId));
-        _discovery.StartBroadcast(System.Environment.MachineName,
-            LanDiscoveryService.MatchPort, poolId, hash);
-
-        if (_status != null)
-            _status.Text = "⏳ 房间已创建（卡池: " + poolId + "，指纹: "
-                         + hash.Substring(0, Math.Min(8, hash.Length))
-                         + "），正在广播等待对手加入…";
-
-        // ★ 绝不能在这里 Shutdown()：那会把刚启动的广播当场停掉，
-        // 房间存活不到 1 毫秒，客机永远扫不到。广播一直开到客机握手成功，
-        // 由 DeckManagementRoot 在 ClientMatched 的主线程回调里关掉大厅。
         _hostCreated = true;
         OnHostRoom?.Invoke(poolId, deck);
     }

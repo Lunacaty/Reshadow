@@ -68,6 +68,10 @@ public static class FogOfWarSanitizer
             foreach (var e in p.Hand)
                 dto.Hand.Add(ToDto(e, isSelf || e.IsRevealed));
 
+            // 对局信息统计页签数据：同步使用与破坏历史（177 号文档 二.2）
+            dto.PlayedCardIds = p.PlayedThisMatch.Where(d => d != null).Select(d => d.CardId).ToList();
+            dto.DestroyedCardIds = p.DestroyedThisMatch.Where(d => d != null).Select(d => d.CardId).ToList();
+
             snap.Players[pid] = dto;
         }
 
@@ -157,6 +161,7 @@ public static class FogOfWarSanitizer
             PlayerId = e.PlayerId,
             Zone = e.Zone.ToString(),
             CardId = e.Def?.CardId ?? 0,
+            Kind = e.Def?.Kind.ToString() ?? "",
             ArtCardId = e.Def?.ArtCardId ?? 0,
             Cost = e.Cost,
             Attack = e.Attack,

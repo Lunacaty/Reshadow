@@ -75,6 +75,7 @@ public sealed class LanDiscoveryService : IDisposable
 
     private UdpClient _udp;
     private bool _broadcasting;
+    public bool IsBroadcasting => _broadcasting;
     private System.Threading.Timer _timer;
 
     /// <summary>发现到的房间（按 IP:Port 去重）。</summary>

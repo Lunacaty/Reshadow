@@ -135,18 +135,6 @@ public partial class DeckManagementRoot : Control
     private ShadowverseFan.KernelV3.Net.AuthoritativeMatchHost _authoritativeHost;
     private string _hostingPoolId;
     private ShadowverseFan.KernelV3.Packs.ConstructedDeck _hostingDeck;
-    private Net.LanLobbyModal _pendingLobby;
-
-    /// <summary>ClientMatched 主线程回调：客机已连入，广播可以停了；房间界面已在树上。</summary>
-    private void StopHostBroadcast() => ClosePendingLobby();
-
-    /// <summary>关掉隐藏的大厅（会停掉 UDP 广播），可重复调用。</summary>
-    private void ClosePendingLobby()
-    {
-        if (_pendingLobby != null && IsInstanceValid(_pendingLobby))
-            _pendingLobby.QueueFree();
-        _pendingLobby = null;
-    }
 
     /// <summary>
     /// 只有 START 到达才建对局。房主用 BeginHosting 期间登记的最新牌组，
@@ -154,8 +142,6 @@ public partial class DeckManagementRoot : Control
     /// </summary>
     private void StartNetworkBattle(int firstPlayer, bool isHost)
     {
-        // 进战斗前把可能还隐藏在树上的大厅收干净，别让广播跟着对局一直跑。
-        ClosePendingLobby();
         var view = new Battle.BattleScreenRoot();
         Swap(view);
         view.OnExitToDecks += () =>
@@ -192,7 +178,6 @@ public partial class DeckManagementRoot : Control
         _authoritativeHost = null;
         _remoteClient?.Dispose();
         _remoteClient = null;
-        ClosePendingLobby();
         _hostingDeck = null;
         ShowMainMenu();
     }

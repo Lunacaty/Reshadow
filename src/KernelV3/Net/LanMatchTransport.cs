@@ -488,18 +488,28 @@ public sealed class AuthoritativeMatchHost : IDisposable
         }
     }
 
-    /// <summary>由房主主线程在 _Process 中轮询调用：主线程单线程执行指令并广播快照，杜绝跨线程并发竞态（176 号文档 一.1）。</summary>
-    public void PumpActionsOnMainThread()
+    /// <summary>由房主主线程在 _Process 中轮询调用：主线程单线程执行指令并广播快照，杜绝跨线程并发竞态（176/177 号文档 一.1）。返回本帧是否有指令被处理。</summary>
+    public bool PumpActionsOnMainThread()
     {
+        bool any = false;
         while (_inbox.TryDequeue(out var item))
+        {
             ApplyAction(item.PlayerId, item.Action);
+            any = true;
+        }
+        return any;
     }
 
     /// <summary>权威端执行一条意图。合法性由 MatchRunner 判定，不信任客机自报。</summary>
     private void ApplyAction(int playerId, NetActionPacket a)
     {
         if (a == null || State == null || Runner == null) return;
-        if (State.ActivePlayer != playerId && a.Kind != NetActionKind.SubmitChoice) return;
+        // 校验选择归属：只有当前需要作答的玩家才允许提交/取消选择（177 号文档 二.1）
+        if (a.Kind is NetActionKind.SubmitChoice or NetActionKind.CancelPending)
+        {
+            if (Runner.PendingChoice == null || Runner.PendingChoice.PlayerId != playerId) return;
+        }
+        else if (State.ActivePlayer != playerId) return;
 
         switch (a.Kind)
         {

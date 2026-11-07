@@ -487,7 +487,15 @@ public sealed class AstCanonicalParser
             if (Current.Kind == PyTokKind.Dedent) Advance();
         }
 
-        var def = new Ast.CardDef { Name = name, BaseCost = cost, Abilities = body, Kind = CardKind.Crest };
+        var defKind = kind switch
+        {
+            "crest" => CardKind.Crest,
+            "faith" => CardKind.Faith,
+            "accelerate" => CardKind.Spell,
+            "crystallize" => CardKind.Amulet,
+            _ => CardKind.Crest,
+        };
+        var def = new Ast.CardDef { Name = name, BaseCost = cost, Abilities = body, Kind = defKind };
         switch (kind)
         {
             case "crest": crest = def; break;

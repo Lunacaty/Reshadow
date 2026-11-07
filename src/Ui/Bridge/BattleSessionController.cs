@@ -178,6 +178,16 @@ public sealed class BattleSessionController
                 if (kv.Key == "faith" && State.FindFaith(localPid) is { } faith)
                     faith.Counters[key] = kv.Value;
             }
+
+            // 对局信息统计页签数据：使用与破坏历史还原（177 号文档 二.2）
+            p.PlayedThisMatch.Clear();
+            foreach (var cid in dto.PlayedCardIds ?? new List<int>())
+                if (State.CardDefOf(cid) is { } cd) p.PlayedThisMatch.Add(cd);
+
+            p.DestroyedThisMatch.Clear();
+            foreach (var cid in dto.DestroyedCardIds ?? new List<int>())
+                if (State.CardDefOf(cid) is { } cd)
+                    p.DestroyedThisMatch.Add(new EntitySnapshot { CardId = cd.CardId, Def = cd, Name = cd.Name, Kind = cd.Kind, PlayerId = localPid });
         }
 
         // 还原挂起选择：客机打出一张需要选目标/选模式/发现的牌时，
@@ -237,9 +247,13 @@ public sealed class BattleSessionController
             foreach (var ne in snap.NewEvents)
             {
                 if (!Enum.TryParse<CoreEvent>(ne.Kind, out var kind)) continue;
-                int mappedPid = MapPid(ne.PlayerId);
-                var subj = ResolveEventRef(ne.SubjectEntityId, ne.SubjectCardId, mappedPid, ne.SubjectZone);
-                var obj = ResolveEventRef(ne.ObjectEntityId, 0, 1 - mappedPid, "");
+                // 防范 ne.PlayerId == -1 导致 MapPid 返回 -1 越界崩溃（177 号文档 一.2）
+                int rawPid = ne.PlayerId >= 0 ? ne.PlayerId : ne.SubjectPlayerId;
+                int mappedPid = rawPid >= 0 ? MapPid(rawPid) : 0;
+                int subjPid = ne.SubjectPlayerId >= 0 ? MapPid(ne.SubjectPlayerId) : mappedPid;
+
+                var subj = ResolveEventRef(ne.SubjectEntityId, ne.SubjectCardId, subjPid, ne.SubjectZone);
+                var obj = ResolveEventRef(ne.ObjectEntityId, 0, 1 - subjPid, "");
 
                 AbilityDef activatedAb = null;
                 if (ne.AbilityIndex >= 0 && (subj?.Snapshot?.Def?.Abilities?.Count > ne.AbilityIndex))
@@ -247,7 +261,7 @@ public sealed class BattleSessionController
                     activatedAb = subj.Value.Snapshot.Def.Abilities[ne.AbilityIndex];
                 }
 
-                State.EventLog.Add(new VmEvent
+                var vmEv = new VmEvent
                 {
                     Kind = kind,
                     PlayerId = mappedPid,
@@ -258,7 +272,9 @@ public sealed class BattleSessionController
                     CounterName = ne.CounterName ?? "",
                     KnockedBackBySuperEvolve = ne.KnockedBackBySuperEvolve,
                     ActivatedAbility = activatedAb,
-                });
+                };
+                State.EventLog.Add(vmEv);
+                State.AppendBattleLog(vmEv);
             }
         }
     }
@@ -306,6 +322,13 @@ public sealed class BattleSessionController
         if (d.IsHidden || d.CardId <= 0) return PlaceholderEntity(playerId, zone);
 
         var def = State.CardDefOf(d.CardId);
+        // 结晶随从作为护符入场：卡种与原卡不同，必须切为 CrystallizeDef（177 号文档 一.3）
+        if (def != null && d.Kind == nameof(CardKind.Amulet)
+            && def.Kind != CardKind.Amulet && def.CrystallizeDef != null)
+        {
+            def = def.CrystallizeDef;
+        }
+
         // 纹章/信仰在权威端是动态合成号，客机本地字典原本没有；通过 ArtCardId 溯源母卡补注册（176 号文档 一.4）
         if (def == null && d.ArtCardId > 0)
         {
@@ -489,8 +512,18 @@ public sealed class BattleSessionController
     // 客机模式下 Runner.PendingChoice 恒为 null，必须走 EffectivePendingChoice。
     public bool CanCancelPending => EffectivePendingChoice?.CanCancel == true;
 
-    /// <summary>取消发动前预选：卡退回手牌、PP/EP 零消耗。</summary>
-    public bool CancelPendingChoice() => Runner.CancelPendingChoice();
+    /// <summary>取消发动前预选：客机模式清理本地 RemotePendingChoice 并向权威端发送网络取消指令（177 号文档 二.1）。</summary>
+    public bool CancelPendingChoice()
+    {
+        if (IsRemote)
+        {
+            if (RemotePendingChoice == null || !RemotePendingChoice.CanCancel) return false;
+            RemotePendingChoice = null;
+            _ = RemoteClient?.CancelPending();
+            return true;
+        }
+        return Runner.CancelPendingChoice();
+    }
 
     public RuntimeEntity GetPendingSourceEntity()
     {

@@ -75,13 +75,20 @@ public partial class MatchResultOverlay : Control
         row.AddThemeConstantOverride("separation", 16);
         v.AddChild(row);
 
-        var rematch = new Button { Text = isNetworkMatch ? "🏠 返回联机房间" : "⚔ 再战一局", CustomMinimumSize = new Vector2(200, 48) };
-        SvWbTheme.StyleButton(rematch, isPrimary: true, customAccent: accent);
-        rematch.Pressed += () => OnRematch?.Invoke();
-        row.AddChild(rematch);
+        if (!isNetworkMatch)
+        {
+            var rematch = new Button { Text = "⚔ 再战一局", CustomMinimumSize = new Vector2(200, 48) };
+            SvWbTheme.StyleButton(rematch, isPrimary: true, customAccent: accent);
+            rematch.Pressed += () => OnRematch?.Invoke();
+            row.AddChild(rematch);
+        }
 
-        var back = new Button { Text = "← 返回牌组一览", CustomMinimumSize = new Vector2(200, 48) };
-        SvWbTheme.StyleButton(back);
+        var back = new Button
+        {
+            Text = isNetworkMatch ? "← 返回主菜单" : "← 返回牌组一览",
+            CustomMinimumSize = new Vector2(200, 48)
+        };
+        SvWbTheme.StyleButton(back, isPrimary: isNetworkMatch, customAccent: isNetworkMatch ? accent : null);
         back.Pressed += () => OnBackToDecks?.Invoke();
         row.AddChild(back);
     }

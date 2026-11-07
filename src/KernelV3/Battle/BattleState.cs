@@ -203,10 +203,12 @@ public sealed class BattleState : IVmWorld
                     // 卡面正文只写「信仰」，它的效果文本在主人卡的 alt_modes 里。
                     // 不接这条，开局生成的信仰就是个没有能力的空壳。
                     var fd = card.Def.FaithDef;
+                    int artId = card.Def.ArtCardId > 0 ? card.Def.ArtCardId : card.Def.CardId;
                     _cardPool[fid] = fd != null
                         ? new CardDef
                         {
                             CardId = fid,
+                            ArtCardId = artId,
                             Name = fd.Name ?? card.Def.Name,
                             Kind = CardKind.Faith,
                             BaseCost = fd.BaseCost,
@@ -218,6 +220,7 @@ public sealed class BattleState : IVmWorld
                         : new CardDef
                         {
                             CardId = fid,
+                            ArtCardId = artId,
                             Name = card.Def.Name,
                             Kind = CardKind.Faith,
                             BaseCost = 0,
@@ -1104,7 +1107,7 @@ public sealed class BattleState : IVmWorld
     /// <summary>本局对局日志（中文可读），书页统计的「日志」页签直接读它。</summary>
     public List<string> BattleLogs { get; } = new();
 
-    private void AppendBattleLog(VmEvent ev)
+    public void AppendBattleLog(VmEvent ev)
     {
         if (ev == null) return;
         string Side(int pid) => pid == 0 ? "【我方】" : pid == 1 ? "【敌方】" : "";

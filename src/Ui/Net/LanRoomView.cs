@@ -29,6 +29,7 @@ public partial class LanRoomView : Control
     private AuthoritativeMatchHost _host;
     private RemoteBattleClient _client;
     private string _poolId = "";
+    private string _poolHash = "";
     private ConstructedDeck _initialDeck;
     private bool _swappedToBattle;
     private int _startFirstPlayer;
@@ -66,9 +67,9 @@ public partial class LanRoomView : Control
         // 房主本地也要刷新：SetHostDeck / SetHostReady 等都会重新 PublishRoom。
         // 房主在房间等待期间直接广播，无需将大厅隐藏挂在后台（176 号文档 二.3）
         var poolView = _store.GetPoolView(_poolId);
-        string poolHash = poolView != null ? PoolIntegrityHasher.ComputePoolHash(poolView) : "";
+        _poolHash = poolView != null ? PoolIntegrityHasher.ComputePoolHash(poolView) : "";
         _discovery = new LanDiscoveryService();
-        _discovery.StartBroadcast("Reshadow", LanDiscoveryService.MatchPort, _poolId, poolHash);
+        _discovery.StartBroadcast(System.Environment.MachineName, LanDiscoveryService.MatchPort, _poolId, _poolHash);
 
         _host.RoomStateChanged += OnRoomState;
         _host.StartMatchRequested += OnStartMatch;
@@ -405,11 +406,9 @@ public partial class LanRoomView : Control
         if (isHost && _discovery != null)
         {
             if (room.GuestJoined) _discovery.Stop();
-            else
+            else if (!_discovery.IsBroadcasting)
             {
-                var pv = _store?.GetPoolView(_poolId);
-                string ph = pv != null ? PoolIntegrityHasher.ComputePoolHash(pv) : "";
-                _discovery.StartBroadcast("Reshadow", LanDiscoveryService.MatchPort, _poolId, ph);
+                _discovery.StartBroadcast(System.Environment.MachineName, LanDiscoveryService.MatchPort, _poolId, _poolHash);
             }
         }
 

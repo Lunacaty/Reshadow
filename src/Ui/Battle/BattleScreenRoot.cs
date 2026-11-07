@@ -203,14 +203,10 @@ public partial class BattleScreenRoot : Control
         _authHost?.Attach(_ctrl.State, _ctrl.Runner);
         if (_authHost != null)
         {
-            // 客机指令在后台线程改了 State，必须切回主线程再动场景树。
-            _authHost.SnapshotPushed += () => CallDeferred(MethodName.RebuildFromHost);
             _authHost.ClientDisconnected += pid => CallDeferred(MethodName.ShowDisconnectNotification, "客机已断开连接");
         }
         Rebuild();
     }
-
-    private void RebuildFromHost() => Rebuild();
 
     private void ShowDisconnectNotification(string message)
     {
@@ -477,8 +473,9 @@ public partial class BattleScreenRoot : Control
     {
         float dt = (float)delta;
 
-        // 房主端：主线程单线程出队执行客机网络指令，杜绝并发竞态（176 号文档 一.1）
-        _authHost?.PumpActionsOnMainThread();
+        // 房主端：主线程单线程出队执行客机网络指令，有指令被处理时只重绘本地画面、不再重入触发快照（177 号文档 一.1）
+        if (_authHost != null && _authHost.PumpActionsOnMainThread())
+            Rebuild(broadcastToGuest: false);
 
         if (_draggingPlay && _draggingCard != null)
         {
@@ -593,7 +590,9 @@ public partial class BattleScreenRoot : Control
 
     // ---------------------------------------------------------------- 重建与坐标计算
 
-    public void Rebuild()
+    public void Rebuild() => Rebuild(true);
+
+    public void Rebuild(bool broadcastToGuest)
     {
         LayoutBattlefield();
         ConsumeNewEventsToVfx();
@@ -610,8 +609,8 @@ public partial class BattleScreenRoot : Control
         RefreshOverlays();
 
         // 房主每次状态变化后把脱敏快照推给客机。
-        // 没有这一句，客机永远停在开局那一帧。
-        _authHost?.BroadcastSnapshot();
+        // 当由客机指令出队驱动刷新时，避免重入再次广播。
+        if (broadcastToGuest) _authHost?.BroadcastSnapshot();
     }
 
     private void ApplyChoiceHighlightToLeaders()
