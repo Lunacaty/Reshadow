@@ -128,8 +128,12 @@ public sealed class CombatResolver
         // 保证飞脸伤害永远先于谢幕曲（179 号文档 P0-4）。
         var prevAttacker = _state.CurrentCombatAttacker;
         var prevDefender = _state.CurrentCombatDefender;
+        var prevCombat = _state.CurrentCombat;
         _state.CurrentCombatAttacker = attacker;
         _state.CurrentCombatDefender = defender;
+        // 超进化溢出由 DestroyEntity/DestroyByState 在破坏瞬间唯一结算，
+        // 且必须复用本 resolver 的统一伤害管线（180 号文档 A1）。
+        _state.CurrentCombat = this;
 
         // 1. 攻击宣言：计数与潜行解除
         attacker.AttacksThisTurn++;
@@ -217,15 +221,14 @@ public sealed class CombatResolver
 
         _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
 
-        // 第 4 步的超进化溢出伤害必须抢在「被第 2/3 步能力炸死的随从的谢幕曲」之前：
-        // 否则谢幕曲先把主战者奶回来，1 点斩杀就逃走了（174 号文档 二.5）。
-        bool overflowPaid = false;
-        if (attacker != null && attacker.Zone == ZoneRef.Board && attacker.IsSuperEvolved
-            && isFollowerTarget && defender != null && defender.Zone == ZoneRef.Cemetery)
-        {
-            OverflowDamage(attacker, defender, vm);
-            overflowPaid = true;
-        }
+        // 超进化溢出 1 点**不在这里**结算（180 号文档 A1）。
+        //
+        // 它已由 BattleState.DestroyEntity / DestroyByState 在「破坏防守方的那一瞬间」
+        // 唯一结算（SettleSuperEvolveOverflowOnDestroy），从而保证飞脸伤害
+        // 永远先于谢幕曲入列（174 号文档 二.5 / 76-c 3.2 第 4、10 步）。
+        // 这里再判一次 defender.Zone == Cemetery 会与破坏瞬间重复结算，
+        // 实测每次超进化击杀打敌方主战者 **2 血**。
+        bool overflowPaid = true;
 
         // ── 第 4～12 步：战斗结算主体 ──
         //
@@ -240,6 +243,7 @@ public sealed class CombatResolver
                 // 交战结束：清掉上下文，避免下一次不相干的破坏被误判成溢出。
                 _state.CurrentCombatAttacker = prevAttacker;
                 _state.CurrentCombatDefender = prevDefender;
+                _state.CurrentCombat = prevCombat;
             });
             vm.StepUntilBlocked();
         }
@@ -248,6 +252,7 @@ public sealed class CombatResolver
             ResolveCombatBody(attacker, defender, vm, isFollowerTarget, overflowPaid);
             _state.CurrentCombatAttacker = prevAttacker;
             _state.CurrentCombatDefender = prevDefender;
+            _state.CurrentCombat = prevCombat;
         }
     }
 
@@ -260,17 +265,7 @@ public sealed class CombatResolver
         // 第 2～3 步的能力可能已经把某一方带走，主体结算前必须重新确认。
         if (attacker.Zone != ZoneRef.Board) { _state.ProcessStateBasedActions(); return; }
 
-        // 溢出伤害只结算一次：第 4 步（能力击杀）与第 10 步（交战击杀）
-        // 用同一个判据「defender.Zone != Board」，若不设闸门，
-        // 能力击杀会在第 4 步打 1 点、第 10 步再打 1 点（实测 20→18）。
-        // 4. 超进化溢出 1 点（第 2 步用能力破坏对方随从时）
-        // 若 ExecuteCombat 已经抢在谢幕曲之前结算过，这里不再重复。
-        if (!overflowPaid && attacker.IsSuperEvolved && isFollowerTarget
-            && defender.Zone == ZoneRef.Cemetery)
-        {
-            OverflowDamage(attacker, defender, vm);
-            overflowPaid = true;
-        }
+        // 超进化溢出已由破坏瞬间唯一结算（180 号文档 A1），此处不再判、不再扣。
 
         // 5/6. 双方因【攻撃時】/【交戦時】诱发的效果
         vm?.StepUntilBlocked();
@@ -323,9 +318,8 @@ public sealed class CombatResolver
 
         _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
 
-        // 10. 超进化溢出 1 点（交战破坏对方随从时）
-        if (!overflowPaid && attacker.IsSuperEvolved && isFollowerTarget && defender.Zone == ZoneRef.Cemetery)
-            OverflowDamage(attacker, defender, vm);
+        // 10. 超进化溢出 1 点（交战破坏对方随从时）——
+        // 同样已由破坏瞬间唯一结算（180 号文档 A1），这里不再重复扣。
 
         // 11/12. 被破坏随从的谢幕曲等诱发效果
         // 顺序铁律（R-3.2 第 11/12 步）：
@@ -341,19 +335,6 @@ public sealed class CombatResolver
         // 不做无限循环：最多两轮，避免互相触发无休止。
         vm?.StepUntilBlocked();
         _state.ProcessStateBasedActions(attacker != null && attacker.IsSuperEvolved);
-    }
-
-    /// <summary>
-    /// 超进化溢出 1 点。必须把 vm 传下去：3 参版 ApplyDamage 不派发 OnDamaged，
-    /// 于是溢出伤害不会触犯「每当受到伤害时」类能力，也不会计入 Wrath。
-    /// </summary>
-    private void OverflowDamage(RuntimeEntity attacker, RuntimeEntity defender, CardVm vm)
-    {
-        // 飞脸伤害走规则：DIY 卡池可以设成 0（不飞脸）或 3。
-        int dmg = _state.Rules.SuperEvolveOverflowDamage;
-        if (dmg <= 0) return;
-        var foe = _state.Players[defender.PlayerId].Leader;
-        if (foe != null) ApplyDamage(foe, dmg, attacker.PlayerId, vm);
     }
 
     /// <summary>

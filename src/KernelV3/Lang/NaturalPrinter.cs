@@ -55,6 +55,33 @@ public sealed class NaturalPrinter
         if (a == null) return "";
         var sb = new StringBuilder();
 
+        // 常驻倒计时与信仰初值必须印成 EnglishCompiler 认识的句式
+        // （180 号文档 D6）：
+        //   吟唱     -> "Countdown (3)."      （不是 "Countdown (3):" 空正文）
+        //   信仰初值 -> "This faith's value starts at 0."（不是 "set 0 faith."）
+        // 否则切到「④ 官方英文端」再点编译会当场报错。
+        if (a.Trigger?.Event == CoreEvent.PassiveAura)
+        {
+            if (a.Costs is { Count: 1 } && a.Costs[0].Kind == CostKind.Countdown
+                && (a.Body == null || a.Body.Count == 0))
+            {
+                string cdNum = PrintNum(a.Costs[0].Amount);
+                return _lang == RenderLang.Chinese
+                    ? "【吟唱" + cdNum + "】"
+                    : "Countdown (" + cdNum + ").";
+            }
+
+            if (a.Body is { Count: 1 }
+                && a.Body[0] is ModifyCounterNode { Op: CounterOp.Set } mcSet
+                && mcSet.Counter.Name == "faith")
+            {
+                string fv = PrintNum(mcSet.Delta);
+                return _lang == RenderLang.Chinese
+                    ? "初始【信仰】值为" + fv + "。"
+                    : "This faith's value starts at " + fv + ".";
+            }
+        }
+
         // PassiveAura + 授予自身关键词 = 裸关键词（"Ward" / "Storm"）。
         // 官方卡面就是这么写的，给它加上 "Fanfare:" 会把常驻光环变成入场曲。
         // 带参关键词必须先判：裸词分支排前面会把
@@ -620,7 +647,15 @@ public sealed class NaturalPrinter
             return Word("add") + Space() + count + what + Space() + Word("to your hand") + Period();
 
         if (sp.ToZone == ZoneRef.CrestArea)
-            return Word("gain") + Space() + Word("Crest") + Space() + what + Period();
+        {
+            // 纹章名要点名：CardName 为空时退回 CrestDef.Name，再退回 #卡号。
+            // 早先 WhenCardName 为空会印出 "gain Crest ."（无名字），
+            // EnglishCompiler 解析不出、纹章变成空壳（180 号文档 D6）。
+            string crestName = !string.IsNullOrEmpty(sp.CardName) ? sp.CardName
+                             : (!string.IsNullOrEmpty(sp.CrestDef?.Name) ? sp.CrestDef.Name
+                                : "#" + sp.CardId);
+            return Word("gain") + Space() + Word("Crest") + Colon() + crestName + Period();
+        }
 
         return Word("summon") + Space() + count + what + Period();
     }

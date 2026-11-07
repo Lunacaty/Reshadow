@@ -280,6 +280,22 @@ public partial class BattleInfoModal : Control
             shown++;
         }
 
+        // 卡池自定义主战者计数器（如【剑意】sword_intent）。
+        // 只遍历上面那 8 个内置项的话，玩家自定义的计数器哪怕涨到 10，
+        // 点开书页统计也完全看不到（180 号文档 D2）。
+        foreach (var pc in _ctrl.State.PoolCounterDefs
+                     ?? Array.Empty<ShadowverseFan.KernelV3.Packs.PoolCounterDef>())
+        {
+            if (pc == null || pc.IsBuiltin || string.IsNullOrWhiteSpace(pc.Name)) continue;
+            int mine = _ctrl.ReadCounter(0, pc.Name);
+            int foe = _ctrl.ReadCounter(1, pc.Name);
+            if (mine == 0 && foe == 0) continue;
+            string label = string.IsNullOrWhiteSpace(pc.NameChs)
+                ? pc.Name : pc.NameChs + " (" + pc.Name + ")";
+            _body.AddChild(CounterRow(label, mine, foe));
+            shown++;
+        }
+
         if (shown == 0)
             _body.AddChild(EmptyHint("（当前所有特殊计数器均为 0）"));
     }

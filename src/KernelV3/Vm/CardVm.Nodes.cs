@@ -1180,7 +1180,11 @@ public sealed partial class CardVm
                             ? bs2.SpawnCopy(r, n.ToZone, owner2, n.IsExactCopy, n.AddDepartedTrait)
                             : _world.SpawnCopy(r, n.ToZone, owner2,
                                                addDepartedTrait: n.AddDepartedTrait);
-                        if (one != null) made.Add(one);
+                        // 满场/满手时 SpawnCopy 造出的实体会落在 ZoneRef.None
+                        // 或爆进墓地。只有真正落进目标区域的才记入 $created，
+                        // 否则后续「给予其疾驰 / 使其费用 -2」会改到虚空里的卡上
+                        // （180 号文档 B2）。
+                        if (one != null && one.Zone == n.ToZone) made.Add(one);
                     }
                 }
                 // 内层的 perRef 已经把「该复制几份」全部处理完了，
@@ -1750,7 +1754,8 @@ public sealed partial class CardVm
             {
                 var pick = candidates[_world.Rng.Next(candidates.Count)];
                 var made = _world.SpawnCard(pick.CardId, n.ToZone, owner);
-                if (made != null)
+                // 同 B2-1：满场时落点不是 n.ToZone，不得进 $created。
+                if (made != null && made.Zone == n.ToZone)
                 {
                     scope.LastSpawnedCardId = pick.CardId;
                     created.Add(made);

@@ -2046,8 +2046,10 @@ public sealed class ChineseCardPrinter
         "enemy_leader" => "敌方主战者",
         "distinct_base_costs_played" => "本局打出过的不同费用数",
         "X" => "X", "Y" => "Y", "Z" => "Z",
-        // 卡池自定义计数器直接用玩家写的中文名，原样返回。
-        _ => name ?? "",
+        // 卡池自定义计数器（如 sword_intent / 剑意）住在 Glossary 里。
+        // 早先直接原样返回英文内码，卡面会印成「使【sword_intent】+1」
+        // 而不是「使【剑意】+1」（180 号文档 D1）。
+        _ => _glossary != null ? _glossary.ToChinese(name) : (name ?? ""),
     };
 
     public string StatZh(StatKey k) => k switch

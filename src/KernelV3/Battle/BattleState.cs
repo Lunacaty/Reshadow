@@ -39,6 +39,16 @@ public sealed class BattleState : IVmWorld
     public RuntimeEntity CurrentCombatAttacker { get; set; }
     public RuntimeEntity CurrentCombatDefender { get; set; }
 
+    /// <summary>
+    /// 当前交战使用的 CombatResolver。
+    ///
+    /// 超进化溢出 1 点必须走**统一伤害管线**（屏障 / 减伤 / 伤害上限 /
+    /// OnDamaged / Wrath 计数 / 本回合伤害累计），而不是在 BattleState 里
+    /// 裸扣 Life。裸扣会直接穿透主战者身上的屏障与减伤护盾
+    /// （180 号文档 A1）。
+    /// </summary>
+    public CombatResolver CurrentCombat { get; set; }
+
     /// <summary>回合数，先手第 1 回合开始计。</summary>
     public int TurnNumber { get; set; }
 
@@ -2079,17 +2089,29 @@ public sealed class BattleState : IVmWorld
         if (foeLeader == null || foeLeader.Life <= 0) return;
         if (Players[defender.PlayerId].LostByLifeOut) return;
 
-        foeLeader.Life -= dmg;
-        if (foeLeader.Life <= 0) Players[defender.PlayerId].LostByLifeOut = true;
-
-        EmitEvent(new VmEvent
+        // 必须走统一伤害管线（屏障 / 减伤 / 上限 / OnDamaged / Wrath / 累计）。
+        // 早先这里裸写 Life -= dmg，等于无视主战者的屏障与减伤护盾
+        // （180 号文档 A1）。
+        // 管线由 CombatResolver 提供；没有挂载时（纯 BattleState 单测）
+        // 才退回最朴素的扣血，保证行为不会「什么都不做」。
+        if (CurrentCombat != null)
         {
-            Kind = CoreEvent.OnDamaged,
-            Subject = EntityRef.From(foeLeader),
-            Amount = dmg,
-            PlayerId = defender.PlayerId,
-            KnockedBackBySuperEvolve = true,
-        });
+            CurrentCombat.ApplyDamage(foeLeader, dmg, attacker.PlayerId, null,
+                                      Ast.DamageSourceMask.Ability, attacker);
+        }
+        else
+        {
+            foeLeader.Life -= dmg;
+            if (foeLeader.Life <= 0) Players[defender.PlayerId].LostByLifeOut = true;
+            EmitEvent(new VmEvent
+            {
+                Kind = CoreEvent.OnDamaged,
+                Subject = EntityRef.From(foeLeader),
+                Amount = dmg,
+                PlayerId = defender.PlayerId,
+                KnockedBackBySuperEvolve = true,
+            });
+        }
     }
 
     /// <summary>

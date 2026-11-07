@@ -268,7 +268,10 @@ public sealed partial class CardVm
                         var earthKey = Schema.Counter("earth_sigil");
                         if (!CostExecutor.CanPay(_world, pid, owner, ab.Costs, ppKey, shadowKey, earthKey, ab.Body))
                         { _frames.RemoveAt(_frames.Count - 1); continue; }
-                        CostExecutor.Pay(_world, pid, owner, ab.Costs, ppKey, shadowKey, earthKey);
+                        // 必须把 ab.Body 传下去：Body 自带 ConditionalNode 时
+                        // 条件判定与扣减都由体内负责，入口提前抢扣会吞掉墓场、
+                        // 让唤灵效果判假（180 号文档 A2）。
+                        CostExecutor.Pay(_world, pid, owner, ab.Costs, ppKey, shadowKey, earthKey, ab.Body);
                         if (owner != null) ConsumeTriggerQuota(owner, ab);
                         _world.EmitEvent(new VmEvent
                         {

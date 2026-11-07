@@ -345,10 +345,12 @@ public partial class DiyWorkshopView : Control
         _astLabel = new RichTextLabel
         {
             BbcodeEnabled = true,
-            FitContent = true,
+            // 必须开滚动：带纹章 / 模式分支的卡，AST 有 15~25 行，
+            // FitContent=true 会把整个左栏顶出 720p 屏幕下沿（180 号文档 D10）。
+            FitContent = false,
+            ScrollActive = true,
             CustomMinimumSize = new Vector2(0, 110),
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            ScrollActive = false,
         };
         _astLabel.AddThemeFontSizeOverride("normal_font_size", 11);
         _astLabel.AddThemeColorOverride("default_color", SvWbTheme.TextMuted);
@@ -1013,8 +1015,8 @@ public partial class DiyWorkshopView : Control
         {
             switch (kind)
             {
-                // 名称只有一个：eng 与 chs 在弹窗里已经是同一个值。
-                case "counter": _ctrl.DefineCustomCounter(chs, min, max); break;
+                // 英文 ID 供 AST/脚本引用，中文名只做渲染（180 号文档 D11）。
+                case "counter": _ctrl.DefineCustomCounter(eng, chs, min, max); break;
                 case "clan":    _ctrl.DefineCustomClan(chs); break;
                 default:        _ctrl.DefineCustomTrait(chs, min, max); break;
             }

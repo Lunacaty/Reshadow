@@ -591,6 +591,12 @@ public sealed class DiyWorkshopController
                 Cost = CurrentDef.BaseCost,
                 Attack = CurrentDef.BaseAttack,
                 Life = CurrentDef.BaseLife,
+                // 180 号文档 C1：只读兜底表单也必须回填这两项，
+                // 否则切到「① 表单向导端」时关键词框与稀有度显示为空白，
+                // 玩家会以为原卡没有这些属性。
+                Rarity = CurrentDef.Rarity,
+                Keywords = (CurrentDef.InnateKeywords ?? Array.Empty<SymbolId<KeywordTag>>())
+                           .Where(k => k.IsValid).Select(k => k.Name).ToList(),
             };
         }
 
@@ -722,14 +728,28 @@ public sealed class DiyWorkshopController
     }
 
     public void DefineCustomCounter(string name, int min, int max, bool persist = true)
+        => DefineCustomCounter(name, null, min, max, persist);
+
+    /// <summary>
+    /// 注册自定义计数器。name 是英文内部 ID（写进 AST：ctr:sword_intent），
+    /// nameChs 是中文显示名（卡面与界面渲染：剑意）。
+    /// 两套名字分离才能让脚本引用稳定、同时卡面显示中文（180 号文档 D11）。
+    /// </summary>
+    public void DefineCustomCounter(string name, string nameChs, int min, int max,
+                                    bool persist = true)
     {
         string n = (name ?? "").Trim();
         if (string.IsNullOrWhiteSpace(n)) { LastStatusMessage = "名称不能为空"; return; }
-        Workspace.DefineCounter(n, n, min, max);
+        string zh = string.IsNullOrWhiteSpace(nameChs) ? n : nameChs.Trim();
+
+        Workspace.DefineCounter(n, zh, min, max);
         Store.Catalog.Schema.Counter(n);
         Store.Catalog.Schema.CounterLimits[n] = (min, max);
+        // 中文名注入术语表，卡面上的 ctr:sword_intent 才能渲染成【剑意】
+        if (zh != n) Store.Catalog.Glossary.Add(n, zh);
         if (persist) PersistPackEntry("counters", n, min, max);
-        LastStatusMessage = "已注册新计数器：" + n + "（范围 " + min + ".." + max + "）";
+        LastStatusMessage = "已注册新计数器：" + (zh == n ? n : zh + " (" + n + ")")
+                            + "（范围 " + min + ".." + max + "）";
         OnCardUpdated?.Invoke();
     }
 

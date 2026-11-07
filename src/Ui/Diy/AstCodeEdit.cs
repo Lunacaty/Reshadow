@@ -27,6 +27,13 @@ public partial class AstCodeEdit : CodeEdit
     private readonly List<(int Id, string Zh, string En, bool IsToken)> _matched = new();
     private int _hashStartCol = -1;
 
+    /// <summary>
+    /// 替换 #搜索词 期间抑制 TextChanged 回调。
+    /// 不抑制的话：InsertTextAtCaret 写入卡号会同步触发 OnEditorTextChanged，
+    /// 正则再次命中刚写好的卡号，刚隐藏的候选窗瞬间又弹出来（180 号文档 D4）。
+    /// </summary>
+    private bool _suppressPopup;
+
     /// <summary>一次性接好全部 IDE 特性。构造后必须显式调用。</summary>
     public void SetupIdeFeatures()
     {
@@ -36,6 +43,10 @@ public partial class AstCodeEdit : CodeEdit
 
         // 语法高亮
         SyntaxHighlighter = BuildPyAstHighlighter();
+
+        // 原生关键字与符号补全（180 号文档 D5）。
+        // Godot CodeEdit 自带补全框，开启后敲 $ 或 : 会自动弹出候选。
+        CodeCompletionEnabled = true;
 
         // # 搜卡浮动候选栏
         _cardPopup = new PopupPanel { Unfocusable = true, Size = new Vector2I(340, 190) };
@@ -49,6 +60,8 @@ public partial class AstCodeEdit : CodeEdit
 
     private void OnEditorTextChanged()
     {
+        if (_suppressPopup) return;
+
         int line = GetCaretLine();
         string cur = GetLine(line);
         int col = Math.Min(GetCaretColumn(), cur.Length);
@@ -89,17 +102,57 @@ public partial class AstCodeEdit : CodeEdit
             }
         }
         if (_cardPopup != null && _cardPopup.Visible) _cardPopup.Hide();
+
+        // 原生关键字补全（180 号文档 D5）：
+        // 输入字母 / $ / : 时把 PyAST 指令、槽位与计数器前缀推给 CodeEdit。
+        if (prefix.Length > 0)
+        {
+            char last = prefix[prefix.Length - 1];
+            if (char.IsLetter(last) || last is (char)36 || last is (char)58)
+            {
+                foreach (var kw in IdeKeywords)
+                    AddCodeCompletionOption(CodeCompletionKind.PlainText, kw, kw);
+                UpdateCodeCompletionOptions(false);
+            }
+        }
     }
+
+    /// <summary>原生补全候选：触发头、动作动词、槽位与计数器前缀。</summary>
+    private static readonly string[] IdeKeywords =
+    {
+        "fanfare:", "last_words:", "evolve:", "super_evolve:", "strike:", "clash:",
+        "engage:", "aura:", "turn_start:", "turn_end:", "on_enter", "on_leave",
+        "on_destroy", "on_summon", "on_draw", "on_discard", "on_damaged",
+        "deal", "draw", "restore", "summon", "add_to_hand", "destroy", "banish",
+        "discard", "buff", "set_stats", "grant_keyword", "counter", "select",
+        "transform", "move", "where", "modes", "option", "if", "else",
+        "$self", "$selected", "$created", "$trigger", "$opposing", "$choose1",
+        "ctr:", "prop:", "sum:", "split:", "trait:",
+    };
 
     private void ApplySelectedCard(int idx)
     {
         if (idx < 0 || idx >= _matched.Count) return;
-        int line = GetCaretLine();
-        int col = GetCaretColumn();
-        // 选中整段 "#搜索词"，再原位替换成 "#卡号"。
-        Select(line, _hashStartCol, line, col);
-        InsertTextAtCaret("#" + _matched[idx].Id);
-        if (_cardPopup != null) _cardPopup.Hide();
+        // 整个替换过程必须抑制 TextChanged，否则写回卡号的瞬间
+        // 正则又命中、候选窗立刻重开（180 号文档 D4）。
+        _suppressPopup = true;
+        try
+        {
+            if (_cardPopup != null) _cardPopup.Hide();
+            int line = GetCaretLine();
+            int col = GetCaretColumn();
+            // 选中整段 "#搜索词"，再原位替换成 "#卡号 "。
+            // 末尾补一个空格：既符合书写习惯，也让光标离开 # 匹配区，
+            // 双重保证候选窗不会再被这一下重新唤出。
+            Select(line, _hashStartCol, line, col);
+            InsertTextAtCaret("#" + _matched[idx].Id + " ");
+            SetCaretLine(line);
+            SetCaretColumn(GetLine(line).Length);
+        }
+        finally
+        {
+            _suppressPopup = false;
+        }
     }
 
     public override void _GuiInput(InputEvent @event)

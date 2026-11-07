@@ -307,6 +307,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             ("act_gain_crest", "获得纹章"),
             ("act_reveal", "公开手牌"),
             ("act_replace_deck", "替换整副牌组"),
+            ("act_mark_victory", "设为胜利卡"),
         }),
         ("解场 / 移区", new[]
         {
@@ -1428,6 +1429,11 @@ public partial class BlockTreeEditorWidget : VBoxContainer
                 BuildTextEditor(col, "牌组名", b.Text, v => { b.Text = v; Apply(); });
                 break;
 
+            // 180 号文档 D9：胜利卡没有参数，但必须显式吃掉这个 case，
+            // 否则会掉进 default 显示一个毫无意义的卡牌选择器。
+            case "act_mark_victory":
+                break;
+
             // 弃牌：弃谁 + 张数
             case "act_discard":
                 BuildTargetSlotEditor(col, "弃谁的牌", b.Target, v => { b.Target = v; Apply(); });
@@ -2396,6 +2402,11 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             "num_prop" => (numBlk.EnumA ?? "属性"),
             "num_rand" => "随机" + numBlk.IntA + "~" + numBlk.IntB,
             "num_arith" => "(" + (numBlk.EnumA ?? "+") + ")",
+            // 180 号文档 D8：这四种数值块的画布文案，缺了会在积木上显示英文 opcode。
+            "num_sum" => "属性总和(" + (numBlk.EnumA ?? "Attack") + ")",
+            "num_distinct" => "不同名数量",
+            "num_cond" => "条件取值",
+            "num_extreme" => (numBlk.EnumA == "Min" ? "最小值" : "最大值"),
             _ => string.IsNullOrEmpty(numBlk.Opcode) ? fallback.ToString() : numBlk.Opcode,
         };
     }
@@ -2412,6 +2423,7 @@ public partial class BlockTreeEditorWidget : VBoxContainer
             case "c_if_else": return "如果满足条件，则…否则…";
             case "c_repeat": return "重复 " + NumText(blk.Number, 2) + " 次";
             case "c_repeat_until": return "重复直到条件成立";
+            case "act_mark_victory": return "将牌组底设为【胜利卡】";
             case "c_for_each": return "对每个目标";
             case "c_mode": return "模式抉择（选 " + NumText(blk.Number, blk.IntA) + " 个）";
             case "act_damage": return "对【" + DescribeTargetShort(blk.Target) + "】造成【" + NumText(blk.Number, 2) + "】点伤害";

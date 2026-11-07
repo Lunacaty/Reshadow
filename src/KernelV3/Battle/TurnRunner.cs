@@ -627,7 +627,11 @@ public sealed class TurnRunner
         // 早先写 > 会让「减费后当前费用正好等于爆能档位」的卡显示绿色普通光圈，
         // 但真打出去时底层按爆能扣费并播爆能动画 —— UI 与结算撕裂
         // （179 号文档 深水区 2）。
-        int bodyPay = bestEnhance >= card.Cost ? bestEnhance : card.Cost;
+        // 必须带 bestEnhance > 0 前提，与 PlayCard 的 isEnhanced 完全同口径。
+        // 少了它，0 费卡（妖精萤火 / 减到 0 费的增幅卡）会命中
+        // 0 >= 0 恒真，在手牌里一直亮金色爆能光圈（180 号文档 A3）。
+        bool isEnhancedHand = bestEnhance > 0 && bestEnhance >= card.Cost;
+        int bodyPay = isEnhancedHand ? bestEnhance : card.Cost;
         bool canPlayNow = isMyActiveTurn && p.Hand.Contains(card)
                           && !card.Keywords.Contains(_schema.Keyword("cannot_be_played"));
 
@@ -650,7 +654,7 @@ public sealed class TurnRunner
             if (!canPlayNow || !spellOk)
                 return (HandPlayMode.Unplayable, bodyPay);
 
-            return (bestEnhance >= card.Cost ? HandPlayMode.Enhance : HandPlayMode.Normal, bodyPay);
+            return (isEnhancedHand ? HandPlayMode.Enhance : HandPlayMode.Normal, bodyPay);
         }
 
         // 3. 本体费不够 -> 激奏 / 结晶是另一条合法路径。
@@ -1104,6 +1108,25 @@ public sealed class TurnRunner
                         if (mc2.Counter.Name == "spellboost") return true;
                         if (InNum(mc2.Delta)) return true;
                         break;
+                    // 180 号文档 B3：这五类节点的数值同样可能引用 spellboost，
+                    // 例如「抽 X 张牌，X 为魔力增幅次数」「召唤 X 个随从」
+                    // 「对 1 个随从造成 X 点伤害」「使费用 -X」「返回 X 张」.
+                    // 漏掉它们会让这些卡在手牌里永远拿不到 +1。
+                    case Ast.ModifyCostNode mc3:
+                        if (InNum(mc3.Value)) return true;
+                        break;
+                    case Ast.SpawnCardNode sp3:
+                        if (InNum(sp3.Count)) return true;
+                        break;
+                    case Ast.RestoreLifeNode rl3:
+                        if (InNum(rl3.Amount)) return true;
+                        break;
+                    case Ast.MoveZoneNode mz3:
+                        if (mz3.Target != null && InNum(mz3.Target.Count)) return true;
+                        break;
+                    case Ast.SelectTargetNode st3:
+                        if (st3.Target != null && InNum(st3.Target.Count)) return true;
+                        break;
                 }
             }
             return false;
@@ -1333,7 +1356,11 @@ public sealed class TurnRunner
             {
                 var sc = new Vm.VmScope { Owner = Core.ZoneScope.Self, Controller = playerId };
                 sc.BindRefs(Ast.TargetSpec.SlotItem, new[] { Vm.EntityRef.From(m) });
-                if (!eval.EvalBool(filter.Where, sc))
+                // 必须归一化：Where 里的 HasKindExpr / HasTraitExpr 默认读 $self
+                // （主体卡自己），而这里要判的是材料 m。
+                // 不归一化时 Fuse: Loot cards / Fuse: Artifact amulets
+                // 的条件恒为 false，材料一张都放不进去（180 号文档 B1）。
+                if (!eval.EvalBool(Vm.CardVm.NormalizeWhereForItem(filter.Where), sc))
                 { reason = "材料不满足融合条件"; return false; }
             }
         }

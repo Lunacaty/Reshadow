@@ -1359,7 +1359,13 @@ public partial class PackAndPoolManagerView : Control
             editBtn.Pressed += () =>
             {
                 // 转成运行时 CardDef 再交给工坊：Raw 条目里没有编译好的 Abilities。
-                var def = _store.Catalog.AllCards.Values.FirstOrDefault(x => x.CardId == capId);
+                // 优先匹配**本卡包**内的卡：两个卡包都可能有 CardId == 950001，
+                // 只按卡号查会拿到另一个卡包的卡，点「编辑」打开的是别人的卡。
+                // 同时兼容被自动改号后原号存进 ArtCardId 的情况（180 号文档 D12）。
+                var def = _store.Catalog.AllCards.Values.FirstOrDefault(x =>
+                              string.Equals(x.PackId, packId, StringComparison.OrdinalIgnoreCase)
+                              && (x.CardId == capId || x.ArtCardId == capId))
+                          ?? _store.Catalog.AllCards.Values.FirstOrDefault(x => x.CardId == capId);
                 if (def == null)
                 {
                     _header.Text = "卡包 / 卡池管理 —— 该卡尚未成功编译，无法编辑";

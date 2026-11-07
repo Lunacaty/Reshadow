@@ -146,8 +146,32 @@ public static class CostExecutor
         IVmWorld world, int playerId, RuntimeEntity source,
         IReadOnlyList<CostSpec> costs, SymbolId<CounterTag> ppKey, SymbolId<CounterTag> shadowKey,
         SymbolId<CounterTag> earthSigilKey)
+        => Pay(world, playerId, source, costs, ppKey, shadowKey, earthSigilKey, null);
+
+    /// <summary>
+    /// 带能力体的扣费版本。
+    ///
+    /// 当 Body 内部已经用 ConditionalNode 自行判定并扣减时，这里绝不能提前抢扣
+    /// （180 号文档 A2）：
+    ///   · 资源不够时：CanPay 因「有基础效果」放行，Pay 却照扣 ——
+    ///     玩家 2 墓场打出「抽 1；唤灵 4：打 3」会把 2 点墓场扣成 0；
+    ///     0 层土印打出复合卡甚至会凭空发一次 OnEarthRite。
+    ///   · 资源刚好够时：Pay 在 Ip==0 前先把 4 墓场扣成 0，
+    ///     Body 里的 if shadow &gt;= 4 再读就是 0，唤灵效果被整个跳过。
+    ///
+    /// 判据与 CanPay 的 HasBaselineBody/hasTieredBody 同源：只要 Body 里有
+    /// ConditionalNode，就认定「条件与扣减都由 Body 自己负责」。
+    /// </summary>
+    public static void Pay(
+        IVmWorld world, int playerId, RuntimeEntity source,
+        IReadOnlyList<CostSpec> costs, SymbolId<CounterTag> ppKey, SymbolId<CounterTag> shadowKey,
+        SymbolId<CounterTag> earthSigilKey, IReadOnlyList<Ast.EffectNode> body)
     {
         if (costs == null) return;
+
+        // Body 自带 ConditionalNode ⇒ 条件判定与资源扣减都在体内完成。
+        bool bodySelfHandles = body != null && body.Any(n => n is Ast.ConditionalNode);
+
         foreach (var c in costs)
         {
             int need = Value(c.Amount);
@@ -157,26 +181,35 @@ public static class CostExecutor
                 // 爆能强化的实际扣费也在 TurnRunner 里完成，这里不重复。
                 case CostKind.UsePp:
                     break;
+
                 case CostKind.Necromance:
-                    world.WriteCounter(playerId, shadowKey, world.ReadCounter(playerId, shadowKey) - need);
+                    if (bodySelfHandles) break;   // 交给 Body 内部扣
+                    // 资源不足时不扣（与 CanPay 同口径，绝不扣成负数）
+                    if (world.ReadCounter(playerId, shadowKey) >= need)
+                        world.WriteCounter(playerId, shadowKey,
+                            world.ReadCounter(playerId, shadowKey) - need);
                     break;
 
                 case CostKind.DestroyAlly:
-                    // 与 CanPay 对称：扣除土之印层数。
-                    // 之前这里什么都不做，所以土之秘术是白嫖。
-                    world.WriteCounter(playerId, earthSigilKey,
-                        world.ReadCounter(playerId, earthSigilKey) - need);
-                    // 扣完之后必须发「发动土之秘术」事件，
-                    // 否则「Whenever you perform Earth Rite」永远不触发 ——
-                    // 76-c 6.2-1 明确要求「执行后续效果，并触发全场监听」。
-                    world.EmitEvent(new VmEvent
+                    if (bodySelfHandles) break;   // 交给 Body 内部扣
+                    // 与 CanPay 对称：扣除土之印层数，且**不足时不扣、不发事件**。
+                    // 早先无条件扣 + 无条件发 OnEarthRite，导致 0 层土印也能
+                    // 白嫖触发一次土之秘术（180 号文档 A2）。
+                    if (world.ReadCounter(playerId, earthSigilKey) >= need)
                     {
-                        Kind = CoreEvent.OnEarthRite,
-                        PlayerId = playerId,
-                        Subject = source != null ? EntityRef.From(source) : null,
-                    });
+                        world.WriteCounter(playerId, earthSigilKey,
+                            world.ReadCounter(playerId, earthSigilKey) - need);
+                        // 扣完之后必须发「发动土之秘术」事件，
+                        // 否则「Whenever you perform Earth Rite」永远不触发 ——
+                        // 76-c 6.2-1 明确要求「执行后续效果，并触发全场监听」。
+                        world.EmitEvent(new VmEvent
+                        {
+                            Kind = CoreEvent.OnEarthRite,
+                            PlayerId = playerId,
+                            Subject = source != null ? EntityRef.From(source) : null,
+                        });
+                    }
                     break;
-                // DestroyAlly 的精确目标选择需要 UI，在此不自动执行
                 default:
                     break;
             }

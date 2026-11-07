@@ -56,6 +56,19 @@ public static class DiyBlockTree
                 };
             case "c_repeat":
                 return new Block { Opcode = opcode, Number = ConstNum(2) };
+            // 180 号文档 D7：从调色盘点「+ 重复直到…」时必须带一个可用的
+            // 默认停止条件，否则新积木的 Condition 为空，编译直接报「缺少条件」。
+            case "c_repeat_until":
+                return new Block
+                {
+                    Opcode = opcode,
+                    Condition = new Block
+                    {
+                        Opcode = "bool_compare", EnumA = "Ge",
+                        Number = new Block { Opcode = "num_counter", Text = "combo" },
+                        Number2 = ConstNum(3),
+                    },
+                };
             case "c_for_each":
                 return new Block { Opcode = opcode, Target = EnemyFollower() };
             case "c_mode":

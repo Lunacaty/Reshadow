@@ -66,11 +66,16 @@ public partial class DefineEntryDialog : Control
         SvWbTheme.StyleOptionPopup(_kindPicker);
         v.AddChild(Field("类别", _kindPicker));
 
-        // 只填一个名字：词条名就是玩家写的那一个，同时作为内部标识。
-        // PyAST 词法器原生支持中文标识符，不需要先起个英文 ID。
+        // 恢复「英文内部 ID + 中文显示名」双输入框（180 号文档 D11）。
+        // 英文 ID 要能被 AST / PyAST 脚本引用（如 sword_intent），
+        // 中文名只用于卡面与界面渲染（如 剑意）。
+        _engEdit = new LineEdit { CustomMinimumSize = new Vector2(260, 34),
+                                  PlaceholderText = "英文 ID，如 sword_intent（可留空）" };
+        v.AddChild(Field("英文 ID", _engEdit));
+
         _chsEdit = new LineEdit { CustomMinimumSize = new Vector2(260, 34),
-                                  PlaceholderText = "名称，如 机甲" };
-        v.AddChild(Field("名称", _chsEdit));
+                                  PlaceholderText = "显示名，如 剑意" };
+        v.AddChild(Field("显示名", _chsEdit));
 
         _minSpin = new SpinBox { MinValue = 0, MaxValue = 999, Value = 0,
                                  CustomMinimumSize = new Vector2(120, 34) };
@@ -116,10 +121,15 @@ public partial class DefineEntryDialog : Control
 
     private void OnConfirm()
     {
+        string eng = (_engEdit?.Text ?? "").Trim();
         string chs = (_chsEdit?.Text ?? "").Trim();
-        string eng = chs;   // 同一个名字同时用作标识与显示名
 
-        if (string.IsNullOrEmpty(chs)) { _status.Text = "名称不能为空"; return; }
+        // 英文 ID 留空时退回显示名 —— 中文标识符 PyAST 词法器也支持，
+        // 只是脚本里写起来不方便，所以不强制。
+        if (string.IsNullOrEmpty(eng)) eng = chs;
+        if (string.IsNullOrEmpty(chs)) chs = eng;
+
+        if (string.IsNullOrEmpty(eng)) { _status.Text = "名称不能为空"; return; }
 
         string kind = _kindPicker?.Selected switch
         {

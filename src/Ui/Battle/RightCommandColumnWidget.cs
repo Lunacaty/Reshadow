@@ -53,7 +53,10 @@ public partial class RightCommandColumnWidget : Control
             DrawExtraPpBox(AllyExtraPpRect, 0, font);
 
         // 2. 敌方能量点
-        int foePp = _ctrl.ReadCounter(1, "pp");
+        // 敌方可用能量点也要叠加它自己激活的 BonusPp：
+        // 否则后手敌方按下「能量点+1」但还没出牌时，我方看到的数字不动，
+        // 与对方实际的可用费用对不上（180 号文档 C2）。
+        int foePp = _ctrl.ReadCounter(1, "pp") + _ctrl.State.Players[1].BonusPp;
         int foeMax = _ctrl.ReadCounter(1, "max_pp");
         DrawTrapezoid(EnemyPpRect, 0f, 14f);
         DrawString(font, EnemyPpRect.Position + new Vector2(22, 38), "能量点",

@@ -296,22 +296,6 @@ public static class CardPoolBuilder
             schema.CounterLimits[ctr.Name] = (ctr.Min, ctr.Max);
             if (!string.IsNullOrEmpty(ctr.NameChs)) glossary.Add(ctr.Name, ctr.NameChs);
 
-            // 编译计数器的事件驱动规则（179 号文档 C6 环节 2）。
-            // 规则就是标准的 AbilityDef：与 DIY 积木 / PyAST 编辑器完全同构，
-            // 因此可以直接复用 AstCanonicalParser 的产物。
-            if (!string.IsNullOrWhiteSpace(ctr.RulesScript))
-            {
-                try
-                {
-                    var ctrParser = new Lang.AstCanonicalParser(schema, lexicon);
-                    ctr.RulesAbilities = ctrParser.ParseAbilities(ctr.RulesScript);
-                }
-                catch (Exception ex)
-                {
-                    res.Notices.Add("计数器 [" + ctr.Name + "] 的规则脚本编译失败：" + ex.Message);
-                    ctr.RulesAbilities = Array.Empty<Ast.AbilityDef>();
-                }
-            }
         }
 
         foreach (var pack in packs)
@@ -430,6 +414,33 @@ public static class CardPoolBuilder
         }
         if (res.Errors.Count > 0) return res;
         lexicon.Build();
+
+        // ── 计数器规则的编译必须放在 lexicon.Build() **之后** ──
+        //
+        // 规则脚本里会按名字引用兵种（has trait 剑仙）、卡号（#90011110）
+        // 以及别的自定义计数器。这些符号在 Pass 1 完成前都还没注册进
+        // schema / lexicon —— 提前编译会把它们解析成 Invalid 符号，
+        // 规则看起来「编译成功」但运行期永远不触发（180 号文档 D3）。
+        // 另外 AstCanonicalParser 遇到语法错误**不抛异常**，只把错误写进
+        // Errors 列表，所以必须显式读出来转成 Notice，否则玩家写错脚本
+        // 完全没有提示。
+        foreach (var ctr in config.LeaderCounters ?? new List<PoolCounterDef>())
+        {
+            if (ctr == null || string.IsNullOrWhiteSpace(ctr.RulesScript)) continue;
+            try
+            {
+                var ctrParser = new Lang.AstCanonicalParser(schema, lexicon);
+                ctr.RulesAbilities = ctrParser.ParseAbilities(ctr.RulesScript);
+                foreach (var pe in ctrParser.Errors)
+                    res.Notices.Add("计数器 [" + (ctr.NameChs ?? ctr.Name) + "(" + ctr.Name
+                                    + ")] 规则脚本语法错误：" + pe);
+            }
+            catch (Exception ex)
+            {
+                res.Notices.Add("计数器 [" + ctr.Name + "] 规则脚本编译异常：" + ex.Message);
+                ctr.RulesAbilities = Array.Empty<Ast.AbilityDef>();
+            }
+        }
 
         // ================= 第 3 步：具名牌组跨包解析 =================
         // 归属顺序：卡池 config.NamedDecks 主导，卡包里的旧定义只作为向后兼容回落。
