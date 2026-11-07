@@ -1646,7 +1646,10 @@ public sealed class BattleState : IVmWorld
         // 这类通过 GrantAbilityNode 授予的光环完全不生效。
         foreach (var (ge, gab, _, _) in _granted.ToList())
         {
-            if (ge == null || ge.IsSilenced || ge.Zone != ZoneRef.Board) continue;
+            // 与 HasEffectiveKeyword / QueryDamageModifiers 口径完全一致：
+            // 纹章区里的实体同样能承载授予的常驻光环（182 号文档问题 1）。
+            if (ge == null || ge.IsSilenced) continue;
+            if (ge.Zone != ZoneRef.Board && ge.Zone != ZoneRef.CrestArea) continue;
             if (gab?.Trigger == null || gab.Trigger.Event != CoreEvent.PassiveAura || gab.Body == null) continue;
             if (gab.Trigger.DuringTurn == Core.TurnOwnerScope.Self && ge.PlayerId != ActivePlayer) continue;
             if (gab.Trigger.DuringTurn == Core.TurnOwnerScope.Opponent && ge.PlayerId == ActivePlayer) continue;
