@@ -1834,12 +1834,13 @@ public partial class BattleScreenRoot : Control
         float cardW = Mathf.Lerp(88f, 138f, t);
         float cardH = Mathf.Lerp(116f, 182f, t);
 
-        // 右侧指令栏是**保留区域**，手牌托盘绝不能侵入。
-        // 早先托盘右边取的是 vp.X-14，展开时纵向顶到 y=516，正好压住「能量点+1」
-        // 按钮的下半截（按钮 y 489..531），实测点 dy>=34 那 15px 完全没反应 ——
-        // 后手玩家展开手牌算完费再点 +1，就像按钮坏了一样（179 号文档 暗坑一）。
-        float railLeft = vp.X - RightColumnRightMargin;
-        float rightEdge = Mathf.Min(vp.X - 14f, railLeft - 8f);
+        // 手牌托盘固定在**右下角、能量点面板正下方**，右边界贴窗口内边距。
+        // ⚠ 绝不能用「指令栏左边缘」当右边界：那会把整块手牌向左推 240px，
+        // 既改变了原本的版面（手牌跑到战场中间），又把可用宽度压窄到
+        // 连 5 张牌都放不下、被迫重叠。
+        // 「能量点 +1」按钮被手牌遮住的问题改从**指令栏上移**解决
+        // （见 LayoutBattlefield 里 _rightCol 的 Y 偏移）。
+        float rightEdge = vp.X - 14f;
 
         float minLeft = Mathf.Lerp(750f, 420f, t) * sx;
         float maxTrayW = Mathf.Max(220f, rightEdge - minLeft);
@@ -1851,21 +1852,6 @@ public partial class BattleScreenRoot : Control
         float bottomY = vp.Y - HandTrayBottomGap;
         float trayH = cardH + 14f;
         float trayTop = bottomY - trayH;
-
-        // 双保险：即使窗口宽度让托盘碰到了指令栏所在的横向带，
-        // 也不许纵向压住「能量点+1」按钮（右栏局部 y=374..416 → 全局）。
-        // 这里按全局按钮矩形直接夹住托盘上沿，避免任何宽度下再次遮挡。
-        if (_rightCol != null && IsInstanceValid(_rightCol))
-        {
-            var rail = _rightCol.GetGlobalRect();
-            var btnTop = rail.Position.Y + 374f;
-            bool horizontalOverlap = trayLeft + trayW > rail.Position.X;
-            if (horizontalOverlap && trayTop < btnTop + 42f && bottomY > btnTop)
-            {
-                // 托盘顶到按钮下方：把整块手牌抬到按钮之上，保持与底部原有间距语义。
-                trayTop = btnTop - trayH - 6f;
-            }
-        }
 
         if (_handTray == null || !IsInstanceValid(_handTray))
         {
@@ -2408,11 +2394,25 @@ public partial class BattleScreenRoot : Control
                 _unitCenters[ldr0.EntityId] = _allyLeader.Position + new Vector2(LeaderHalfW, 54f);
         }
 
-        // 右侧能量点指令栏：距窗口底部距离恒定（720 - 115 = 605）
+        // 右侧指令栏：距窗口底部恒定（720 - 115 = 605）。
+        //
+        // 但手牌托盘展开后顶到 y = vp.Y-204（720p 下 = 516），而「能量点+1」
+        // 按钮在栏内 y=374..416（全局 489..531）—— 托盘会压住按钮下 15px，
+        // 后手玩家展开手牌算完费再点 +1 就没反应。
+        //
+        // 修法只能是**把指令栏整体上移**，绝不能反过来把手上托盘左移：
+        // 手牌必须留在右下角（能量点面板正下方），这是原始版面。
+        // 上移量按「按钮底边 + 留白 <= 托盘顶边」实时算，随窗口高度自适应。
         if (_rightCol != null)
         {
-            _rightCol.Position = new Vector2(
-                vp.X - RightColumnRightMargin, vp.Y - 605f);
+            const float extraLift = 10f;   // 留白余量
+            float trayTopNow = (vp.Y - HandTrayBottomGap) - (Mathf.Lerp(116f, 182f, 1f) + 14f);
+            float btnBottomRel = 374f + 42f;   // 栏内局部：按钮底边
+            float wantedRailTop = trayTopNow - extraLift - btnBottomRel;
+            float baseRailTop = vp.Y - 605f;
+            // 只在会重叠时上移，且不许顶出屏幕上缘。
+            float railTop = Mathf.Min(baseRailTop, Mathf.Max(0f, wantedRailTop));
+            _rightCol.Position = new Vector2(vp.X - RightColumnRightMargin, railTop);
         }
 
         // 左侧对局信息书页按钮：距窗口底部距离恒定（720 - 312 = 408）
