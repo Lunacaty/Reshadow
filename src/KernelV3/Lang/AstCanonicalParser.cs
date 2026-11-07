@@ -1039,8 +1039,11 @@ public sealed class AstCanonicalParser
         from = WithZone(from, chaos ? ZoneRef.GlobalPool : ZoneRef.CardPool);
         from = WithMode(from, isChoose ? SelectMode.Choose : SelectMode.Random);
 
+        // 与 ParseTarget 同理：<Kind> 过滤的是候选池里的卡，主语必须是 $item。
+        // 用 DefaultSubject（_whereDepth==0 时是 $self）会让发现条件拿
+        // 「本卡是不是随从」去判卡种，恒 false（175 号对照表 BUG 1 备注）。
         if (inlineKind.HasValue)
-            from = from.WithWhere(new HasKindExpr { Kind = inlineKind.Value, Of = DefaultSubject });
+            from = from.WithWhere(new HasKindExpr { Kind = inlineKind.Value, Of = TargetSpec.Item });
         if (MatchIdent("where")) { _whereDepth++; try { from = from.WithWhere(ParseBoolExpr()); } finally { _whereDepth--; } }
 
         return new SpawnCardNode

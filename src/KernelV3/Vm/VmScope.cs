@@ -39,7 +39,22 @@ public sealed class VmScope
     /// "Summon a X. ... summon 2 instead." 里第二句没有卡名，
     /// 靠这个记录补上前一句的卡（CardSourceKind.CopyOfPrevious）。
     /// </summary>
-    public int LastSpawnedCardId { get; set; }
+    private int _lastSpawnedCardId;
+
+    /// <summary>
+    /// 上一次真正召唤成功的卡 ID。写入时同步向上传播到父帧 ——
+    /// if/else、modes、repeat 块内召唤的卡，块外的 spawn_previous 也要能读到
+    /// （175 号第二部分 2 的同类问题）。
+    /// </summary>
+    public int LastSpawnedCardId
+    {
+        get => _lastSpawnedCardId;
+        set
+        {
+            _lastSpawnedCardId = value;
+            if (Parent != null) Parent.LastSpawnedCardId = value;
+        }
+    }
 
     /// <summary>把 AST 的相对视角翻译成世界的绝对玩家编号。</summary>
     public int ResolvePlayer(ZoneScope relative) => relative switch

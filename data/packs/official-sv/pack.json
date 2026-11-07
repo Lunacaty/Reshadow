@@ -2970,7 +2970,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 10172320 \"改境的重启\" (Spell, clan=超越者, cost=5, rarity=2):\n    on_play:\n        select self:hand<Follower> Choose(2) where (has trait 创造物 and prop:Cost <= 5)\n        spawn_exact_copy 2 of $selected to Board\n        grant_ability to $created:\n            turn_end turn=Opponent:\n                destroy $self",
+      "text": "card 10172320 \"改境的重启\" (Spell, clan=超越者, cost=5, rarity=2):\n    on_play:\n        select self:hand<Follower> Choose(2) where (has trait 创造物 and prop:Cost <= 5)\n        spawn_exact_copy 1 of $selected to Board\n        grant_ability to $created:\n            turn_end turn=Opponent:\n                destroy $self",
       "rarity": 2,
       "name": "改境的重启"
     },
@@ -3089,7 +3089,7 @@
       "attack": 2,
       "life": 2,
       "source_format": "py_ast",
-      "text": "card 10174130 \"增幅加速·洛拉米亚\" (Follower, clan=超越者, cost=8, atk=2, life=2, rarity=4):\n    fanfare:\n        select self:hand<Follower> Choose(3) where (has trait 创造物 and prop:Cost <= 5)\n        spawn_exact_copy 3 of $selected to Board\n    super_evolve:\n        buff self:board<Follower> All where has trait 创造物 +1/+1",
+      "text": "card 10174130 \"增幅加速·洛拉米亚\" (Follower, clan=超越者, cost=8, atk=2, life=2, rarity=4):\n    fanfare:\n        select self:hand<Follower> Choose(3) where (has trait 创造物 and prop:Cost <= 5)\n        spawn_exact_copy 1 of $selected to Board\n    super_evolve:\n        buff self:board<Follower> All where has trait 创造物 +1/+1",
       "rarity": 4,
       "name": "增幅加速·洛拉米亚"
     },

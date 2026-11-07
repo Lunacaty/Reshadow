@@ -844,8 +844,10 @@ public sealed class VmEval
                     pool = pool.Where(r => sortKey(r) == bestAll).ToList();
                 }
                 return pool;
-            case SelectMode.First: return pool.Take(Math.Max(1, n)).ToList();
-            case SelectMode.Last: return pool.Skip(Math.Max(0, pool.Count - Math.Max(1, n))).ToList();
+            // n 已经在上方按 Count 求值并钳到 >= 0，这里不能再 Math.Max(1, n)：
+            // 动态数量算出 0 时应当取 0 个，不是强取 1 个（175 号对照表 四.9~11 备注）。
+            case SelectMode.First: return pool.Take(n).ToList();
+            case SelectMode.Last: return pool.Skip(Math.Max(0, pool.Count - n)).ToList();
             case SelectMode.Random:
                 if (n <= 0) return new List<EntityRef>();
                 // 带 Sort 时按极值分组依次取满 n 个，只在跨过 n 的那一组内部随机。
@@ -868,7 +870,11 @@ public sealed class VmEval
                     return result;
                 }
                 return pool.OrderBy(_ => _world.Rng.Next()).Take(n).ToList();
-            case SelectMode.Distinct: return pool.Take(Math.Max(1, n)).ToList();
+            case SelectMode.Distinct:
+                // 同名各取 1 张，最多 n 张；n=0 时取 0 张。
+                if (n <= 0) return new List<EntityRef>();
+                return pool.GroupBy(r => RefDef(r)?.CardId ?? (r.Snapshot?.CardId ?? 0))
+                           .Select(g => g.First()).Take(n).ToList();
             case SelectMode.Choose: return pool;   // ← 由调用方挂起等玩家
             default: return pool;
         }
