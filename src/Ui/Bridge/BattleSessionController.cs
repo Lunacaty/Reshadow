@@ -341,6 +341,18 @@ public sealed class BattleSessionController
                 Kind = def.Kind,
                 PlayerId = mappedPid,
                 Zone = z == ZoneRef.None ? ZoneRef.Board : z,
+
+                // 兜底分支必须给出基础身材。
+                //
+                // 走到这里说明这个实体既不在当前战场、也不在 prevLiveEntities 里 ——
+                // 典型是「本回合刚由效果召唤、紧接着在同一包快照里被破坏」。
+                // 早先没填这三个字段，默认全是 0，EnsureDyingProxy 无条件对齐后
+                // 替身象棋血量变成 0，画面上就是一刀砍出个 0 血残影。
+                Attack = def.BaseAttack,
+                // Life 填 0 是有意的：它在本包里被打死了，真实血量本就 <= 0；
+                // 前端的 _pendingLifeDelta 会在此基础上还原到受击前的数字。
+                Life = 0,
+                MaxLife = def.BaseLife,
             });
         }
 
