@@ -139,7 +139,11 @@ public partial class PackAndPoolManagerView : Control
             if (string.IsNullOrEmpty(_selectedPoolId)) { _header.Text = "请先选中一个卡池"; return; }
             _store.DeletePool(_selectedPoolId, out string m);
             _header.Text = "卡包 / 卡池管理 —— " + m;
-            RefreshRules();
+            // 删掉后当前池已不存在，必须走全量刷新：
+            // 只调 RefreshRules() 的话，中栏卡包勾选框与右栏具名牌组/计数器
+            // 还停在刚被删掉的那个池上（186 号文档复核 遗留项 1）。
+            _selectedPoolId = null;
+            SelectPoolAndRefreshAll(null);
         };
         poolBar.AddChild(delPoolBtn2);
 
@@ -976,12 +980,16 @@ public partial class PackAndPoolManagerView : Control
                 var d = def;
                 del.Pressed += () =>
                 {
-                    var rest = (cfg.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>())
+                    // 与具名牌组删除同源：cfg 是旧快照，必须现取最新配置。
+                    if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var latestCtr)) return;
+                    var rest = (latestCtr.LeaderCounters ?? new List<KernelV3.Packs.PoolCounterDef>())
                         .Where(x => !ReferenceEquals(x, d) && x.Name != d.Name).ToList();
-                    _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds, cfg.Rules, cfg.NamedDecks,
-                                             out string m, cfg.PoolClans, rest);
+                    bool okCtr = _store.SavePoolConfigFull(latestCtr.PoolId, latestCtr.Name,
+                                             latestCtr.EnabledPackIds, latestCtr.Rules,
+                                             latestCtr.NamedDecks, out string m,
+                                             latestCtr.PoolClans, rest);
                     _ruleStatus.Text = m;
-                    RefreshPoolCounters();
+                    if (okCtr) RefreshPoolCounters();
                 };
                 row.AddChild(del);
             }
@@ -1036,14 +1044,22 @@ public partial class PackAndPoolManagerView : Control
             var capturedNd = nd;
             delBtn.Pressed += () =>
             {
+                // 必须现取最新配置：cfg 是外部闭包捕获的旧快照，
+                // 每次 SavePoolConfigFull 后 ReloadCatalogAndPools 都会换新实例。
+                // 且要显式带上 PoolClans / LeaderCounters —— 漏传会把
+                // 玩家自定义的开放职业与主战者计数器整段清空。
+                if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var latestNd)) return;
+
                 var rest = new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>();
-                foreach (var x in cfg.NamedDecks)
+                foreach (var x in latestNd.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>())
                     if (!ReferenceEquals(x, capturedNd)) rest.Add(x);
 
-                _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds,
-                                          cfg.Rules, rest, out string msg);
+                bool okDel = _store.SavePoolConfigFull(latestNd.PoolId, latestNd.Name,
+                                          latestNd.EnabledPackIds, latestNd.Rules, rest,
+                                          out string msg,
+                                          latestNd.PoolClans, latestNd.LeaderCounters);
                 _ruleStatus.Text = msg;
-                RefreshNamedDecks();
+                if (okDel) RefreshNamedDecks();
             };
             row.AddChild(delBtn);
 
@@ -1181,14 +1197,21 @@ public partial class PackAndPoolManagerView : Control
                 Entries = working,
             };
 
+            // 同 delBtn：cfg 是旧快照，必须现取最新配置；
+            // 并显式带上 PoolClans / LeaderCounters，否则保存具名牌组会把
+            // 自定义职业与主战者计数器一并清空。
+            if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var latestEd)) { dlg.QueueFree(); return; }
+
             var list = new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>();
-            foreach (var x in cfg.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>())
+            foreach (var x in latestEd.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>())
                 list.Add(ReferenceEquals(x, target) ? newNd : x);
 
-            _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, cfg.EnabledPackIds,
-                                      cfg.Rules, list, out string msg);
+            bool okEd = _store.SavePoolConfigFull(latestEd.PoolId, latestEd.Name,
+                                      latestEd.EnabledPackIds, latestEd.Rules, list,
+                                      out string msg,
+                                      latestEd.PoolClans, latestEd.LeaderCounters);
             _ruleStatus.Text = msg;
-            RefreshNamedDecks();
+            if (okEd) RefreshNamedDecks();
             dlg.QueueFree();
         };
         dlg.Canceled += () => dlg.QueueFree();
