@@ -13661,7 +13661,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 11003210 \"理想国·涅格尔赫亚\" (Amulet, clan=中立, cost=1, rarity=3):\n    traits: [证据]\n    on_banish on($self):\n        restore 2 life to self:leader\n    engage [engage(1)]:\n        draw 1\n        gain_clues 1",
+      "text": "card 11003210 \"理想国·涅格尔赫亚\" (Amulet, clan=中立, cost=1, rarity=3):\n    traits: [证据]\n    on_banish on($self):\n        restore 2 life to self:leader\n    engage [engage(1)]:\n        draw 1\n        spend_clues 1",
       "rarity": 3,
       "name": "理想国·涅格尔赫亚"
     },
@@ -14895,7 +14895,7 @@
       "attack": 0,
       "life": 0,
       "source_format": "py_ast",
-      "text": "card 90001210 \"神域的物证\" (Amulet, clan=中立, cost=1, rarity=1, token):\n    traits: [证据]\n    engage [engage(1)]:\n        draw 1\n        gain_clues 1",
+      "text": "card 90001210 \"神域的物证\" (Amulet, clan=中立, cost=1, rarity=1, token):\n    traits: [证据]\n    engage [engage(1)]:\n        draw 1\n        spend_clues 1",
       "rarity": 1,
       "name": "神域的物证"
     },
