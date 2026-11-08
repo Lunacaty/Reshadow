@@ -342,14 +342,19 @@ public static class SvWbTheme
     /// 它跨语言、跨改名都稳定。只有显示层做富文本映射（179 号文档 C3）。
     /// </summary>
     /// <summary>AST 预览用的全语法 token 正则（与右侧 CodeEdit 的 7 色系同构）。</summary>
+    /// <summary>
+    /// ⚠ 必须与 AstCodeEdit.GradientAstHighlighter.TokenRegex **逐字一致**。
+    /// 188 号文档 缺陷四 要求左侧预览与右侧编辑器「完全一致的 7 大色系」，
+    /// 两边正则一旦分叉（此前左侧缺 22 个英文 CNL 词），同一条卡在两侧就会高亮不同。
+    /// </summary>
     private static readonly Regex AstPreviewTokenRegex = new(
         @"(?<comment>//.*$)" +
-        @"|(?<card>#\d{4,9}\b)" +
         @"|(?<str>""[^""]*""|【[^】]+】|《[^》]+》)" +
+        @"|(?<card>#\d+\b)" +
         @"|(?<slot>\$[a-zA-Z0-9_]+|\b(?:ctr|prop|sum|split|trait|clan):[a-zA-Z0-9_\u4e00-\u9fa5]+)" +
-        @"|(?<trig>\b(?:fanfare|last_words|evolve|super_evolve|strike|clash|engage|aura|turn_start|turn_end|crest|faith|accelerate|crystallize|on_\w+)\b:?)" +
-        @"|(?<act>\b(?:card|deck_mod|keywords|deal|draw|restore|summon|add_to_hand|destroy|banish|discard|bounce|buff|set_stats|grant_keyword|remove_keyword|discover|reanimate|gain_crest|if|elif|else|repeat|for_each|modes|option|pay|where|counter|select|transform|invoke_ability|grant_ability|move)\b)" +
-        @"|(?<kw>\b(?:ward|rush|storm|bane|drain|ambush|intimidate|barrier|ignores_ward|free_evolve|free_super_evolve|immune_\w+|cannot_\w+)\b)" +
+        @"|(?<trig>\b(?:fanfare|last_words|evolve|super_evolve|strike|clash|engage|aura|turn_start|turn_end|crest|faith|accelerate|crystallize|on_\w+|Fanfare|Last\s+Words|Evolve|Super-Evolve|Strike|Clash|Engage|Activate|Countdown|Necromancy|Earth\s+Rite|Combo|Rally|Overflow|Wrath|Spellboost|Skybound\s+Art|Super\s+Skybound\s+Art|Enhance|Fuse|Reanimate|Invoke)\b:?)" +
+        @"|(?<act>\b(?:card|deck_mod|keywords|deal|draw|restore|summon|add_to_hand|destroy|banish|discard|bounce|buff|set_stats|grant_keyword|remove_keyword|discover|reanimate|gain_crest|if|elif|else|repeat|for_each|modes|option|pay|where|counter|select|transform|invoke_ability|grant_ability|move|give|gain|damage|life|leader|followers?|amulets?|spells?|cards?)\b)" +
+        @"|(?<kw>\b(?:ward|rush|storm|bane|drain|ambush|intimidate|barrier|ignores_ward|free_evolve|free_super_evolve|immune_\w+|cannot_\w+|Ward|Rush|Storm|Bane|Drain|Ambush|Aura|Intimidate|Barrier)\b)" +
         @"|(?<tgt>\b(?:self|opponent|any|board|hand|deck|cemetery|banished|crest_area|ex_area|All|Choose|Random|First|Last|Distinct|Follower|Spell|Amulet|Crest|Faith|Leader|ThisTurn|Permanent|UntilEndOfOpponentTurn)\b)" +
         @"|(?<num>[+-]?\d+(?:/[+-]?\d+)?)",
         RegexOptions.Compiled | RegexOptions.Multiline);

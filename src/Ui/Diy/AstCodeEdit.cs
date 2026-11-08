@@ -314,7 +314,7 @@ public sealed partial class GradientAstHighlighter : SyntaxHighlighter
         if (string.IsNullOrEmpty(text)) return dict;
 
         // 先铺整行默认渐变，保证普通单词也有质感；再按 Token 覆盖专属色系。
-        PaintSpan(dict, 0, text.Length, PalDefault.Light, PalDefault.Main);
+        PaintSpan(dict, 0, text.Length, PalDefault.Light, PalDefault.Main, text);
 
         foreach (Match m in TokenRegex.Matches(text))
         {
@@ -329,19 +329,28 @@ public sealed partial class GradientAstHighlighter : SyntaxHighlighter
                     : m.Groups["tgt"].Success     ? PalTarget
                     : m.Groups["num"].Success     ? PalNumber
                     : PalDefault;
-            PaintSpan(dict, m.Index, m.Length, pal.Light, pal.Main);
+            PaintSpan(dict, m.Index, m.Length, pal.Light, pal.Main, text);
         }
         return dict;
     }
 
     /// <summary>给 [start, start+len) 的每一列写入插值色，形成词内渐变。</summary>
+    /// <param name="text">整行文本，用于跳过空白字符。</param>
     private static void PaintSpan(Godot.Collections.Dictionary dict, int start, int len,
-                                  Color light, Color main)
+                                  Color light, Color main, string text = null)
     {
         for (int i = 0; i < len; i++)
         {
+            int col = start + i;
+            // 188 号文档 缺陷四 末段：
+            // 对空格也写颜色字典，会让 CodeEdit 在多词关键字
+            // （"Last Words:" / "Super Skybound Art"）处出现词间距微抖。
+            // 空白列一律跳过，交由默认色渲染。
+            if (text != null && col < text.Length && (text[col] == (char)32 || text[col] == (char)9))
+                continue;
+
             float t = len <= 1 ? 0f : (float)i / (len - 1);
-            dict[start + i] = new Godot.Collections.Dictionary
+            dict[col] = new Godot.Collections.Dictionary
             {
                 ["color"] = light.Lerp(main, t),
             };
