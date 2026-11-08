@@ -1297,7 +1297,11 @@ public partial class BattleScreenRoot : Control
                     .MarkBlocking(true)
                     .Do(() =>
                     {
-                        Vector2 c = CenterOf(ev.Subject, ownerPid);
+                        // 192 号文档 3-A：CenterOf 给的是**新槽位**中心，
+                        // 但进化动画第 0 帧棋子还停在旧槽位（LayoutOffset 未走完），
+                        // 不补这份偏移，金色光柱会劈在旁边的空地上。
+                        Vector2 c = CenterOf(ev.Subject, ownerPid)
+                                   + (sid >= 0 ? _anims.MotionOf(sid).LayoutOffset : Vector2.Zero);
                         _vfx.PlayEvolve(c, false);
                         SpawnBurst(c, 26, 170f, new Color("F59E0B"), 0.65f, -30f, 3.2f);
                         if (sid >= 0)
@@ -1318,7 +1322,8 @@ public partial class BattleScreenRoot : Control
                     .MarkBlocking(true)
                     .Do(() =>
                     {
-                        Vector2 c = CenterOf(ev.Subject, ownerPid);
+                        Vector2 c = CenterOf(ev.Subject, ownerPid)
+                                   + (sid >= 0 ? _anims.MotionOf(sid).LayoutOffset : Vector2.Zero);
                         _vfx.PlayEvolve(c, true);
                         SpawnBurst(c, 32, 200f, new Color("C084FC"), 0.70f, -40f, 3.5f);
                         if (sid >= 0)
