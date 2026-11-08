@@ -280,13 +280,18 @@ public partial class AstCodeEdit : CodeEdit
 public sealed partial class GradientAstHighlighter : SyntaxHighlighter
 {
     // 七大语法色系（浅主色 -> 主色）
-    private static readonly (Color Light, Color Main) PalTrigger = (new Color("FFF9DB"), new Color("F59E0B"));
-    private static readonly (Color Light, Color Main) PalAction  = (new Color("F3E8FF"), new Color("C084FC"));
-    private static readonly (Color Light, Color Main) PalTarget  = (new Color("E0F7FA"), new Color("06B6D4"));
-    private static readonly (Color Light, Color Main) PalSlot    = (new Color("FFE4E6"), new Color("FB7185"));
-    private static readonly (Color Light, Color Main) PalKeyword = (new Color("DCFCE7"), new Color("10B981"));
-    private static readonly (Color Light, Color Main) PalNumber  = (new Color("FEF08A"), new Color("EAB308"));
-    private static readonly (Color Light, Color Main) PalDefault = (new Color("FFF3CF"), new Color("E3BD63"));
+    // 七大语法色系（浅主色 -> 主色）。
+    //
+    // 浅色一律取「同色相、明度 ~0.97、饱和度压到主色约 62%」。
+    // 早先那批 #FFF9DB / #F3E8FF 饱和度只有 0.09~0.14，观感就是纯白，
+    // 整词渐变只剩后半段在变色，等于没有渐变。
+    private static readonly (Color Light, Color Main) PalTrigger = (new Color("F7C165"), new Color("F59E0B"));
+    private static readonly (Color Light, Color Main) PalAction  = (new Color("D3AEF7"), new Color("C084FC"));
+    private static readonly (Color Light, Color Main) PalTarget  = (new Color("62E2F7"), new Color("06B6D4"));
+    private static readonly (Color Light, Color Main) PalSlot    = (new Color("F7A3AF"), new Color("FB7185"));
+    private static readonly (Color Light, Color Main) PalKeyword = (new Color("6AF5C7"), new Color("10B981"));
+    private static readonly (Color Light, Color Main) PalNumber  = (new Color("F7D363"), new Color("EAB308"));
+    private static readonly (Color Light, Color Main) PalDefault = (new Color("F7DEA1"), new Color("E3BD63"));
     private static readonly (Color Light, Color Main) PalComment = (new Color("94A3B8"), new Color("475569"));
 
     /// <summary>

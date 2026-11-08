@@ -432,12 +432,19 @@ public static class SvWbTheme
     //   通道 C · _Draw() 手绘字  -> DrawGradientString（逐字插值 + 描边）
     // ========================================================================
 
-    /// <summary>预设渐变色对（浅主色 -> 主色）。</summary>
-    public static readonly (Color Light, Color Main) GradGold    = (new Color("FFF3CF"), new Color("E3BD63"));
-    public static readonly (Color Light, Color Main) GradCyan    = (new Color("E0F7FA"), new Color("00E5FF"));
-    public static readonly (Color Light, Color Main) GradPurple  = (new Color("F3E8FF"), new Color("C084FC"));
-    public static readonly (Color Light, Color Main) GradGreen   = (new Color("DCFCE7"), new Color("34D399"));
-    public static readonly (Color Light, Color Main) GradCrimson = (new Color("FFE4E6"), new Color("F43F5E"));
+    /// <summary>
+    /// 预设渐变色对（浅主色 -> 主色）。
+    ///
+    /// ⚠ 浅色**不是越白越好**：早先用的 #FFF3CF / #E0F7FA 之类饱和度只有
+    /// 0.09~0.19、亮度 0.93~0.97，实际观感就是纯白，整句渐变只看到后半段在变色。
+    /// 现在统一按「同色相、明度提高、饱和度压到主色约 62%」推导，
+    /// 起点仍是明显的彩度色，与主色同属一个色系，过渡才有层次。
+    /// </summary>
+    public static readonly (Color Light, Color Main) GradGold    = (new Color("F7DEA1"), new Color("E3BD63"));
+    public static readonly (Color Light, Color Main) GradCyan    = (new Color("5EE8F7"), new Color("00E5FF"));
+    public static readonly (Color Light, Color Main) GradPurple  = (new Color("D3AEF7"), new Color("C084FC"));
+    public static readonly (Color Light, Color Main) GradGreen   = (new Color("84F7CD"), new Color("34D399"));
+    public static readonly (Color Light, Color Main) GradCrimson = (new Color("F78699"), new Color("F43F5E"));
 
     /// <summary>
     /// 按主色推导「浅主色 -> 主色」。
@@ -447,7 +454,13 @@ public static class SvWbTheme
     public static (Color Light, Color Main) DeriveGradientPair(Color mainColor)
     {
         if (mainColor.S < 0.12f && mainColor.V > 0.85f) return GradGold;
-        return (mainColor.Lerp(new Color("FFF8E7"), 0.62f), mainColor);
+
+        // 早先用「向奶白 #FFF8E7 插值 62%」，同样会把起点冲成近白。
+        // 改为保持主色色相，只提明度、压饱和度。
+        mainColor.ToHsv(out float h, out float s, out float v);
+        float lightV = Mathf.Min(0.97f, Mathf.Max(0.90f, v + (1f - v) * 0.85f));
+        float lightS = s * 0.62f;
+        return (Color.FromHsv(h, lightS, lightV), mainColor);
     }
 
     /// <summary>
