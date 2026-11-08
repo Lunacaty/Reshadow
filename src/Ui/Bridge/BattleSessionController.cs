@@ -108,16 +108,27 @@ public sealed class BattleSessionController
     /// 把同一个实例送进来两次，这里也直接挡掉。
     /// </summary>
     private ShadowverseFan.KernelV3.Net.NetStateSnapshot _lastAppliedSnap;
+    private int _lastAppliedEventIndex = -1;
+    private bool _hasAppliedOnce;
 
     public void ApplyRemoteSnapshot(ShadowverseFan.KernelV3.Net.NetStateSnapshot snap)
     {
         if (snap == null || State == null) return;
 
-        // 幂等守卫：同一个快照实例绝不允许被应用第二次。
+        // 幂等守卫：同一包快照绝不允许被应用第二次。
         // 面板状态重复覆盖无害，但 NewEvents 是往 EventLog 追加的 ——
         // 应用两遍就把 OnDamaged 复制成两条，前端视觉血量会凭空多出 +dmg。
+        //
+        // 两道判定：
+        //   ① 实例引用相同（BootRemote 补读 Latest 与事件回调撞车的最常见形态）；
+        //   ② EventStartIndex 相同（不同实例但内容重复，例如重连后重发同一包）。
         if (ReferenceEquals(snap, _lastAppliedSnap)) return;
+        if (snap.EventStartIndex >= 0 && snap.EventStartIndex == _lastAppliedEventIndex
+            && _hasAppliedOnce)
+            return;
         _lastAppliedSnap = snap;
+        _lastAppliedEventIndex = snap.EventStartIndex;
+        _hasAppliedOnce = true;
 
         // 在清空旧的 Board/Hand 之前，拍下上一帧所有存活实体的快照索引，
         // 供后续事件还原（阵亡、打出、被破坏的随从动画不至于丢失主体，176 号文档 一.3）。
