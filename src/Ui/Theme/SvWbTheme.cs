@@ -635,12 +635,25 @@ void fragment() {
         // 描边仍由 font_outline_color 控制，不受影响。
         lbl.AddThemeColorOverride("font_color", Colors.White);
 
+        // 缓存上次渲染用的文本：Label 没有 TextChanged 信号，
+        // 而「同宽换字」（如 HP 20 -> 21）不会触发 Resized，
+        // 只有靠 Draw 钩子在每次重绘前比对文本，才能保证渐变始终贴合当前内容。
+        string lastText = null;
+
         void RefreshMat()
         {
             if (!GodotObject.IsInstanceValid(lbl)) return;
             // 每次 Resized / 文本变化都重算 start_x 与 span_w，不得短路。
+            lastText = lbl.Text;
             ApplyGradientText(lbl, originalMainCol);
         }
+
+        // Label 每帧重绘前检查文本变化；只在真的变了才重算，开销可忽略。
+        lbl.Draw += () =>
+        {
+            if (!GodotObject.IsInstanceValid(lbl)) return;
+            if (!string.Equals(lbl.Text, lastText, StringComparison.Ordinal)) RefreshMat();
+        };
 
         RefreshMat();
         lbl.Resized += RefreshMat;
