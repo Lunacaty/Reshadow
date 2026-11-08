@@ -44,6 +44,21 @@ public sealed partial class AadAssistantPanel : VBoxContainer
         _sess = sess;
         _writableRoot = writableRoot;
 
+        // 卡池卡表：**每次发请求时**现取当前池（用户在 DIY 里可以随时切池）。
+        // 不能在这里一次性拍快照 —— 切池后名单就过期了，
+        // LLM 会按旧池的卡号造卡，召唤出来的是当前池里不存在的卡。
+        _sess.CardRosterSource = () =>
+        {
+            var rt = _ctrl?.Store?.GetPoolRuntime(_ctrl.ActivePoolId);
+            if (rt == null) return Array.Empty<(int, string)>();
+            return rt.AllCards.Values
+                     .Where(c => c != null && c.CardId > 0)
+                     .OrderBy(c => c.CardId)
+                     .Select(c => (c.CardId,
+                                   string.IsNullOrWhiteSpace(c.NameChs) ? (c.Name ?? "") : c.NameChs))
+                     .ToArray();
+        };
+
         AddThemeConstantOverride("separation", 8);
         SizeFlagsHorizontal = SizeFlags.ExpandFill;
         SizeFlagsVertical = SizeFlags.ExpandFill;

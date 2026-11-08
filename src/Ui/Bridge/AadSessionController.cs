@@ -60,6 +60,36 @@ public sealed class AadSessionController
     public List<PromptAsset> PromptAssets { get; } = new();
     public List<AadChatMessage> ContextMessages { get; } = new();
 
+    /// <summary>
+    /// 当前卡池的卡名+卡号名单提供器。
+    ///
+    /// 卡池是**动态**的：用户可以在 DIY 工坊里切到自己的自制卡池，
+    /// 里面既有官方卡也有他自己造的卡。所以名单不能固化进静态提示词，
+    /// 必须在每次发请求时现取 —— 否则切池后 LLM 会一直用旧名单。
+    /// 返回 (卡号, 卡名) 序列；为 null 表示不注入名单。
+    /// </summary>
+    public Func<IEnumerable<(int Id, string Name)>> CardRosterSource { get; set; }
+
+    /// <summary>系统提示词的附加段（卡池名单等），每次发送时重新生成。</summary>
+    private string BuildRosterSection()
+    {
+        var src = CardRosterSource;
+        if (src == null) return "";
+
+        List<(int Id, string Name)> list;
+        try { list = src()?.Where(x => x.Id > 0).ToList() ?? new List<(int, string)>(); }
+        catch { return ""; }
+        if (list.Count == 0) return "";
+
+        var sb = new StringBuilder();
+        sb.Append("===== 当前卡池卡表（引用卡牌时只能从下表里选） =====").Append('\n');
+        sb.Append("格式：#卡号 《卡名》").Append('\n');
+        foreach (var (id, name) in list)
+            sb.Append('#').Append(id).Append(" 《").Append(name).Append("》").Append('\n');
+        sb.Append("===== 卡表结束（共 ").Append(list.Count).Append(" 张） =====");
+        return sb.ToString();
+    }
+
     /// <summary>最近一次请求的原始回复（供 UI 显示排查）。</summary>
     public string LastRawReply { get; private set; } = "";
 
@@ -122,18 +152,32 @@ public sealed class AadSessionController
                 return (false, "", "", LastError);
             }
 
+            // 卡池名单在**每次发送时**现取并拼到 system 消息末尾。
+            // 卡池是动态的（用户可以切到自制卡池），固化进静态提示词会导致
+            // 切池后 LLM 仍按旧名单造卡 —— 召唤出来的卡号当前池里根本不存在。
+            string roster = BuildRosterSection();
+            var payload = new List<object>(enabled.Count);
+            foreach (var m in enabled)
+            {
+                bool isSystem = string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase);
+                string content = (!string.IsNullOrEmpty(roster) && isSystem)
+                    ? m.Content + "\n\n" + roster
+                    : m.Content;
+                payload.Add(new { role = m.Role, content });
+            }
+
             string url = (Config.BaseUrl ?? "").TrimEnd('/') + "/chat/completions";
-            var payload = new
+            var bodyJson = new
             {
                 model = Config.Model,
                 temperature = Config.Temperature,
-                messages = enabled.Select(m => new { role = m.Role, content = m.Content }).ToArray(),
+                messages = payload.ToArray(),
             };
 
             using var req = new HttpRequestMessage(HttpMethod.Post, url);
             if (!string.IsNullOrWhiteSpace(Config.ApiKey))
                 req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Config.ApiKey);
-            req.Content = new StringContent(JsonSerializer.Serialize(payload),
+            req.Content = new StringContent(JsonSerializer.Serialize(bodyJson),
                                             Encoding.UTF8, "application/json");
 
             using var resp = await Http.SendAsync(req, ct);
