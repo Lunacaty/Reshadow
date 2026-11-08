@@ -898,7 +898,29 @@ public partial class BattleScreenRoot : Control
             return;
 
         RuntimeEntity ent = null;
-        if (!_lastBoardEntities.TryGetValue(entityId, out ent) && subjRef?.Snapshot != null)
+
+        // 195 号文档 修改 2（双保险）：
+        // 若 _lastBoardEntities 里已有该实体，且死亡事件带了快照，
+        // 强制把血量/攻防对齐到快照值。
+        //
+        // 有了 MaterializeEntity 的原位复用，此时两者本该是同一对象；
+        // 但多包快照、分步快照等边缘路径仍可能出现偏差，
+        // 一旦带着「受击前的满血」去叠 _pendingLifeDelta，就会凭空多出 +dmg。
+        if (_lastBoardEntities.TryGetValue(entityId, out ent) && ent != null
+            && subjRef?.Snapshot != null)
+        {
+            var fixSn = subjRef.Value.Snapshot;
+            // 只在快照确实携带有效数值时才覆盖，避免 0/占位把正常实体打回白板。
+            if (fixSn.MaxLife > 0 || fixSn.Life != 0)
+            {
+                ent.Life = fixSn.Life;
+                ent.MaxLife = fixSn.MaxLife;
+                ent.Attack = fixSn.Attack;
+            }
+            if (ent.Def == null) ent.Def = fixSn.Def ?? _ctrl?.State?.CardDefOf(fixSn.CardId);
+        }
+
+        if (ent == null && subjRef?.Snapshot != null)
         {
             var sn = subjRef.Value.Snapshot;
             var def = sn.Def ?? _ctrl.State.CardDefOf(sn.CardId);

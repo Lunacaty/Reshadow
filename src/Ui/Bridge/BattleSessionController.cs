@@ -115,19 +115,29 @@ public sealed class BattleSessionController
     {
         if (snap == null || State == null) return;
 
-        // 幂等守卫：同一包快照绝不允许被应用第二次。
-        // 面板状态重复覆盖无害，但 NewEvents 是往 EventLog 追加的 ——
-        // 应用两遍就把 OnDamaged 复制成两条，前端视觉血量会凭空多出 +dmg。
+        // 幂等守卫：拦掉真正的重发包，但**绝不拦纯状态包**。
         //
-        // 两道判定：
-        //   ① 实例引用相同（BootRemote 补读 Latest 与事件回调撞车的最常见形态）；
-        //   ② EventStartIndex 相同（不同实例但内容重复，例如重连后重发同一包）。
+        // 195 号文档 致命缺陷 1：上一版直接比 EventStartIndex，把一大批
+        // 「零新增事件」的合法快照全当成重复包丢弃了 ——
+        //   ① PreAction 预选：牌还没打出，EventLog 一动没动，
+        //      客机永远弹不出选目标框，整局卡死；
+        //   ② CancelPendingChoice：同样不产生事件，取消操作被吞；
+        //   ③ UseExtraPp：只改 BonusPp，不发 VmEvent，
+        //      客机点「能量点 +1」界面完全不涨。
+        //
+        // 正确条件：必须**携带非空增量事件**且起点游标与上一条有事件包相同，
+        // 才是真正的重发包。EventStartIndex 只在有事件时才推进记录。
         if (ReferenceEquals(snap, _lastAppliedSnap)) return;
-        if (snap.EventStartIndex >= 0 && snap.EventStartIndex == _lastAppliedEventIndex
-            && _hasAppliedOnce)
+        bool hasEvents = snap.NewEvents is { Count: > 0 };
+        if (_hasAppliedOnce && hasEvents
+            && snap.EventStartIndex >= 0
+            && snap.EventStartIndex == _lastAppliedEventIndex)
             return;
+
         _lastAppliedSnap = snap;
-        _lastAppliedEventIndex = snap.EventStartIndex;
+        // 只有带事件的包才推进游标基准：纯状态包不推进，
+        // 否则下一个真正的事件包会被误判成重复。
+        if (hasEvents) _lastAppliedEventIndex = snap.EventStartIndex;
         _hasAppliedOnce = true;
 
         // 在清空旧的 Board/Hand 之前，拍下上一帧所有存活实体的快照索引，
@@ -216,17 +226,17 @@ public sealed class BattleSessionController
 
             foreach (var e in dto.Board)
             {
-                var made = MaterializeEntity(e, localPid, ZoneRef.Board);
+                var made = MaterializeEntity(e, localPid, ZoneRef.Board, prevLiveEntities);
                 if (made != null) p.Board.Add(made);
             }
             foreach (var e in dto.Crests)
             {
-                var made = MaterializeEntity(e, localPid, ZoneRef.CrestArea);
+                var made = MaterializeEntity(e, localPid, ZoneRef.CrestArea, prevLiveEntities);
                 if (made != null) p.CrestArea.Add(made);
             }
             foreach (var e in dto.Hand)
             {
-                var made = MaterializeEntity(e, localPid, ZoneRef.Hand);
+                var made = MaterializeEntity(e, localPid, ZoneRef.Hand, prevLiveEntities);
                 if (made != null) p.Hand.Add(made);
             }
 
@@ -438,7 +448,13 @@ public sealed class BattleSessionController
         };
     }
 
-    private RuntimeEntity MaterializeEntity(ShadowverseFan.KernelV3.Net.NetEntityDto d, int playerId, ZoneRef zone)
+    /// <param name="reusePool">
+    /// 上一帧的存活实体池。命中同 EntityId 时**原位复用**而不是 new，
+    /// 保证 _lastBoardEntities / prevLiveEntities / BoardUnitWidget.Entity
+    /// 永远指向同一个对象引用（195 号文档 致命缺陷 2）。
+    /// </param>
+    private RuntimeEntity MaterializeEntity(ShadowverseFan.KernelV3.Net.NetEntityDto d, int playerId, ZoneRef zone,
+                                             System.Collections.Generic.Dictionary<int, RuntimeEntity> reusePool = null)
     {
         if (d == null) return null;
         if (d.IsHidden || d.CardId <= 0) return PlaceholderEntity(playerId, zone);
@@ -492,28 +508,68 @@ public sealed class BattleSessionController
         }
         if (def == null) return PlaceholderEntity(playerId, zone);
 
-        var e = new RuntimeEntity
+        // 195 号文档 致命缺陷 2：优先原位复用上一帧的同名实例。
+        //
+        // 早先每包快照都无脑 new 一遍，导致三个地方各持一个不同对象：
+        //   _lastBoardEntities[id]（上一帧满血）
+        //   prevLiveEntities[id]（本帧）
+        //   BoardUnitWidget.Entity（控件上挂的）
+        // 客机连续出队两包时，伤害扣在 E_v2 上，而 _lastBoardEntities 里还是 E_v1，
+        // EnsureDyingProxy 拿到满血 E_v1 再加 _pendingLifeDelta → 血量暴涨。
+        RuntimeEntity e = null;
+        if (reusePool != null && d.EntityId >= 0
+            && reusePool.TryGetValue(d.EntityId, out var reused) && reused != null)
         {
-            EntityId = d.EntityId,
-            EntrySerial = d.EntrySerial,
-            Def = def,
-            PlayerId = playerId,
-            Zone = zone,
-            Cost = d.Cost,
-            Attack = d.Attack,
-            Life = d.Life,
-            MaxLife = d.MaxLife,
-            IsEvolved = d.IsEvolved,
-            IsSuperEvolved = d.IsSuperEvolved,
-            IsSilenced = d.IsSilenced,
-            IsRevealed = d.IsRevealed,
-            EnteredTurn = d.EnteredTurn,
-            AttacksThisTurn = d.AttacksThisTurn,
-            AttackedThisTurn = d.AttackedThisTurn,
-            EngagedThisTurn = d.EngagedThisTurn,
-            FusedThisTurn = d.FusedThisTurn,
-            IsFaith = d.IsFaith,
-        };
+            e = reused;
+            e.EntrySerial = d.EntrySerial;
+            e.Def = def;
+            e.PlayerId = playerId;
+            e.Zone = zone;
+            e.Cost = d.Cost;
+            e.Attack = d.Attack;
+            e.Life = d.Life;
+            e.MaxLife = d.MaxLife;
+            e.IsEvolved = d.IsEvolved;
+            e.IsSuperEvolved = d.IsSuperEvolved;
+            e.IsSilenced = d.IsSilenced;
+            e.IsRevealed = d.IsRevealed;
+            e.EnteredTurn = d.EnteredTurn;
+            e.AttacksThisTurn = d.AttacksThisTurn;
+            e.AttackedThisTurn = d.AttackedThisTurn;
+            e.EngagedThisTurn = d.EngagedThisTurn;
+            e.FusedThisTurn = d.FusedThisTurn;
+            e.IsFaith = d.IsFaith;
+            // 集合类字段先清空，下面统一重填，避免旧关键词叠加。
+            e.Keywords.Clear();
+            e.KeywordValues.Clear();
+            e.Traits.Clear();
+            e.Counters.Clear();
+        }
+        else
+        {
+            e = new RuntimeEntity
+            {
+                EntityId = d.EntityId,
+                EntrySerial = d.EntrySerial,
+                Def = def,
+                PlayerId = playerId,
+                Zone = zone,
+                Cost = d.Cost,
+                Attack = d.Attack,
+                Life = d.Life,
+                MaxLife = d.MaxLife,
+                IsEvolved = d.IsEvolved,
+                IsSuperEvolved = d.IsSuperEvolved,
+                IsSilenced = d.IsSilenced,
+                IsRevealed = d.IsRevealed,
+                EnteredTurn = d.EnteredTurn,
+                AttacksThisTurn = d.AttacksThisTurn,
+                AttackedThisTurn = d.AttackedThisTurn,
+                EngagedThisTurn = d.EngagedThisTurn,
+                FusedThisTurn = d.FusedThisTurn,
+                IsFaith = d.IsFaith,
+            };
+        }
 
         // 关键词 / 兵种 / 计数器：快照里已经发过来了，不还原的话
         // 客机画面上看不到守护外框、必杀图标，也看不到护符的吟唱倒计时。
