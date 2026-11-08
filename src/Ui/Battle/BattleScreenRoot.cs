@@ -909,18 +909,15 @@ public partial class BattleScreenRoot : Control
         if (_lastBoardEntities.TryGetValue(entityId, out ent) && ent != null
             && subjRef?.Snapshot != null)
         {
+            // 195 号文档原稿：无条件对齐，不加任何「有效性」判断。
+            // 这里多一个 if 就会在边界情况（如快照 Life/MaxLife 同为 0）下
+            // 放过满血实体，让 _pendingLifeDelta 再叠一次伤害 —— 正是要修的 bug。
             var fixSn = subjRef.Value.Snapshot;
-            // 只在快照确实携带有效数值时才覆盖，避免 0/占位把正常实体打回白板。
-            if (fixSn.MaxLife > 0 || fixSn.Life != 0)
-            {
-                ent.Life = fixSn.Life;
-                ent.MaxLife = fixSn.MaxLife;
-                ent.Attack = fixSn.Attack;
-            }
-            if (ent.Def == null) ent.Def = fixSn.Def ?? _ctrl?.State?.CardDefOf(fixSn.CardId);
+            ent.Life = fixSn.Life;
+            ent.MaxLife = fixSn.MaxLife;
+            ent.Attack = fixSn.Attack;
         }
-
-        if (ent == null && subjRef?.Snapshot != null)
+        else if (ent == null && subjRef?.Snapshot != null)
         {
             var sn = subjRef.Value.Snapshot;
             var def = sn.Def ?? _ctrl.State.CardDefOf(sn.CardId);

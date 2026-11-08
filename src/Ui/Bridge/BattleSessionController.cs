@@ -128,16 +128,18 @@ public sealed class BattleSessionController
         // 正确条件：必须**携带非空增量事件**且起点游标与上一条有事件包相同，
         // 才是真正的重发包。EventStartIndex 只在有事件时才推进记录。
         if (ReferenceEquals(snap, _lastAppliedSnap)) return;
-        bool hasEvents = snap.NewEvents is { Count: > 0 };
-        if (_hasAppliedOnce && hasEvents
+        if (_hasAppliedOnce
+            && snap.NewEvents is { Count: > 0 }
             && snap.EventStartIndex >= 0
             && snap.EventStartIndex == _lastAppliedEventIndex)
+        {
             return;
-
+        }
         _lastAppliedSnap = snap;
         // 只有带事件的包才推进游标基准：纯状态包不推进，
         // 否则下一个真正的事件包会被误判成重复。
-        if (hasEvents) _lastAppliedEventIndex = snap.EventStartIndex;
+        if (snap.NewEvents is { Count: > 0 })
+            _lastAppliedEventIndex = snap.EventStartIndex;
         _hasAppliedOnce = true;
 
         // 在清空旧的 Board/Hand 之前，拍下上一帧所有存活实体的快照索引，
