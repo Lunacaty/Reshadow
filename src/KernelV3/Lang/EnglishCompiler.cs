@@ -1131,13 +1131,30 @@ public sealed class EnglishCompiler
                 && hb.Event == CoreEvent.OnSuperEvolve
                 && ((currentAbility?.Trigger?.Event == CoreEvent.OnEvolve)
                     || (_lastBuiltAbility?.Trigger?.Event == CoreEvent.OnEvolve));
+            // Fanfare/OnPlay → Enhance(N) 是**同类**的跨段耦合对（182 号文档 问题一）。
+            //
+            // 卡面原文把累加型爆能强化写成独立一句：
+            //   "Fanfare: Summon a Zeta & Bea, Crimson and Blue."
+            //   "Enhance (6): Give it Bane and this follower Storm."
+            // Preprocess 把换行折成分段符，两句各走一次 CompileSegment。
+            // EnhanceWeaver 之后会把它们合并成同一条能力（基础动作 + 条件档位），
+            // 语义上是**同源扩展**而非独立新事件 —— 所以进 Enhance 段时
+            // 必须继承前序 OnPlay 绑定的 $created / $selected 槽位，
+            // 否则 "Give it / them ..." 立刻触发严格代词检查而崩。
+            bool isEnhanceHeader = hb.Costs != null && hb.Costs.Any(cs =>
+                cs.Kind == CostKind.UsePp
+                && string.Equals(cs.Label, "enhance", StringComparison.OrdinalIgnoreCase));
+
+            bool isCoupledEnhance = isEnhanceHeader
+                && ((currentAbility?.Trigger?.Event == CoreEvent.OnPlay)
+                    || (_lastBuiltAbility?.Trigger?.Event == CoreEvent.OnPlay));
 
             // 注意：这里**不能**再加「Super-Evolve 段只要 BoundSlots 非空就保留」的兜底。
             // 那样 Fanfare 的旧槽位会泄漏进 Super-Evolve：
             //   "Fanfare: Summon X."  ...  "Super-Evolve: Give them Drain."
             // them 会错误指向 Fanfare 召出的东西。
             // 判据只认「上一段确实是 OnEvolve」这一条。
-            if (hb.EventExplicit && !isCoupledSuperEvolve && !hasInsteadWord)
+            if (hb.EventExplicit && !isCoupledSuperEvolve && !isCoupledEnhance && !hasInsteadWord)
                 _target.ResetSlots();
 
             // 触发主体优先；没有任何主体时，若本句带交战目标或条件里提到 $opposing，
@@ -1159,7 +1176,7 @@ public sealed class EnglishCompiler
                 _target.DefaultPronounSlot = TargetSpec.SlotOpposing;
                 _target.MarkBound(TargetSpec.SlotOpposing);
             }
-            else if (hb.EventExplicit && !isCoupledSuperEvolve && !hasInsteadWord)
+            else if (hb.EventExplicit && !isCoupledSuperEvolve && !isCoupledEnhance && !hasInsteadWord)
             {
                 _target.DefaultPronounSlot = null;
             }

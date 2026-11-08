@@ -305,12 +305,23 @@ public static class CardPoolBuilder
                 schema.Trait(t.Name);
                 lexicon.AddTrait(t.Name);
                 if (!string.IsNullOrEmpty(t.NameChs)) glossary.Add(t.Name, t.NameChs);
+                // 兵种英文名也要进词法表：官方英文原文写的是 "an allied Pixie
+                // follower"，而卡包里的兵种名是中文（"妖精"）。不补英文名，
+                // 整句「每当友方妖精随从进场…」编译直接失败（实测 30+ 张）。
+                var tEn = TraitEnOf(t.Name);
+                if (!string.IsNullOrEmpty(tEn)) lexicon.AddTrait(tEn);
             }
             foreach (var c in pack.Clans)
             {
                 schema.Clan(c.Name);
                 lexicon.AddClan(c.Name);
                 if (!string.IsNullOrEmpty(c.NameChs)) glossary.Add(c.Name, c.NameChs);
+                // 职业的英文别名同样要进词法表。官方英文原文混用两套称呼：
+                // 旧式 "Swordcraft / Forestcraft / Havencraft" 与新式
+                // "Royal / Elf / Bishop"，两套都要能解析，
+                // 否则「抽 2 张皇家护卫随从」整句失败。
+                foreach (var alias in ClanEnAliasesOf(c.Name))
+                    lexicon.AddClan(alias);
             }
             foreach (var k in pack.Keywords)
             {
@@ -406,9 +417,20 @@ public static class CardPoolBuilder
                 }
                 nameOwnerPack[c.NameEng] = (pack.PackId, effectiveId);
                 {
-                    var enName2 = string.IsNullOrWhiteSpace(c.NameEng)
-                        ? AuthoritativeNames.EnglishOf(effectiveId) : c.NameEng;
+                    // 产物卡包的 name / NameEng 字段里存的是**中文名**，
+                    // 不是英文名。若把它当英文名注册进词法表，
+                    // 英文编译器就完全认不出 "Add a Fairy to your hand" 里的
+                    // Fairy —— 整条效果静默消失（实测 465/973 张编译失败的真因）。
+                    //
+                    // 因此优先取权威英文名表；权威表没有时才退回卡包字段
+                    // （DIY 卡的 NameEng 可能是玩家自己写的英文）。
+                    var authEn2 = AuthoritativeNames.EnglishOf(effectiveId);
+                    var enName2 = !string.IsNullOrWhiteSpace(authEn2) ? authEn2 : c.NameEng;
                     if (!string.IsNullOrWhiteSpace(enName2)) lexicon.AddCard(enName2, effectiveId);
+                    // 中文名同样登记一次：具名牌组 / DIY 按中文名引用时要能查到。
+                    if (!string.IsNullOrWhiteSpace(c.NameEng)
+                        && !string.Equals(c.NameEng, enName2, StringComparison.Ordinal))
+                        lexicon.AddCard(c.NameEng, effectiveId);
                 }
             }
         }
@@ -705,4 +727,48 @@ public static class CardPoolBuilder
             SourceText = c.Text,
         };
     }
+    /// <summary>
+    /// 兵种中文名 -> 官方英文名（16 对，来源见 132-权威数据源）。
+    ///
+    /// 卡包的 traits 只存中文名，而英文 CNL 原文按英文兵种名书写，
+    /// 两者必须能互通，否则「an allied Pixie follower」这类触发器
+    /// 在重建管线里全部编译失败。
+    /// </summary>
+    private static string TraitEnOf(string zh) => zh switch
+    {
+        "士兵" => "Officer",
+        "鲁米那斯" => "Luminous",
+        "雷维翁" => "Levin",
+        "妖精" => "Pixie",
+        "亡者" => "Departed",
+        "土之印" => "Earth Sigil",
+        "玛纳利亚" => "Mysteria",
+        "巨像" => "Golem",
+        "式神" => "Shikigami",
+        "创造物" => "Artifact",
+        "人偶" => "Puppetry",
+        "海洋" => "Marine",
+        "财宝" => "Loot",
+        "侵蚀者" => "Encroacher",
+        "安纳提玛" => "Anathema",
+        "证据" => "Clue",
+        _ => null,
+    };
+    /// <summary>
+    /// 职业中文名 -> 英文别名（新旧两套称呼都返回）。
+    /// 英文 CNL 原文里 "Swordcraft" 与 "Royal"、"Dragoncraft" 与 "Dragon"
+    /// 指的是同一个职业，词法表必须都能识别（132-权威数据源）。
+    /// </summary>
+    private static string[] ClanEnAliasesOf(string zh) => zh switch
+    {
+        "中立" => new[] { "Neutral" },
+        "精灵" => new[] { "Forestcraft", "Elf" },
+        "皇家护卫" => new[] { "Swordcraft", "Royal" },
+        "巫师" => new[] { "Runecraft", "Witch" },
+        "龙族" => new[] { "Dragoncraft", "Dragon" },
+        "梦魇" => new[] { "Shadowcraft", "Nightmare", "Abysscraft" },
+        "主教" => new[] { "Havencraft", "Bishop" },
+        "超越者" => new[] { "Portalcraft", "Nemesis" },
+        _ => System.Array.Empty<string>(),
+    };
 }

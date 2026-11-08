@@ -298,8 +298,12 @@ public sealed class ActionParser
         cur.ExpectWord("if");
 
         var condTokens = new List<Token>();
-        while (!cur.IsAtEnd && cur.Current.Kind != TokKind.Comma)
+        while (!cur.IsAtEnd)
         {
+            // 数字枚举内部的逗号（"1, 2, 3, and 8"）不是条件结束标志，
+            // 与 TokenCursor.AdvanceToClauseBoundary 共用同一判据
+            // （182 号文档 问题二）。
+            if (cur.Current.Kind == TokKind.Comma && !cur.IsNumericListComma()) break;
             condTokens.Add(cur.Current);
             cur.Advance();
         }

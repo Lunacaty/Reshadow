@@ -59,12 +59,41 @@ public sealed class TokenCursor
     /// `and <条件2>` / `or less` 一起吃掉，复合条件被静默截断。
     /// 边界 = 句读（Period / Comma / OptionMark）或并列连词（and / or / then）。
     /// </summary>
+    /// 当前逗号是否是数字枚举（"1, 2, 3, and 8"）内部的分隔符，而非从句边界。
+    ///
+    /// 官方卡面「if you've played cards with base costs of 1, 2, 3, 4, 5, 6, 7,
+    /// and 8 this match」里，每个逗号后面都跟一个数字，最后一个还带牛津逗号
+    /// + and。把它们当成从句边界会让条件只剩 "1"，整句条件无法建模
+    /// （182 号文档 问题二：10903210 / 10904110）。
+    public bool IsNumericListComma()
+    {
+        if (Current.Kind != TokKind.Comma) return false;
+        return Peek(1).Kind == TokKind.Number
+            || (Peek(1).IsAnyWord("and", "or") && Peek(2).Kind == TokKind.Number);
+    }
+
     public void AdvanceToClauseBoundary()
     {
         while (!IsAtEnd)
         {
-            if (Current.Kind is TokKind.Period or TokKind.Comma or TokKind.OptionMark) break;
-            if (Current.IsAnyWord("and", "or", "then")) break;
+            if (Current.Kind is TokKind.Period or TokKind.OptionMark) break;
+            if (Current.Kind == TokKind.Comma)
+            {
+                // 跳过 "1, 2, ..., and 8" 里的枚举逗号及其后的 and/or + 数字
+                if (IsNumericListComma())
+                {
+                    Advance();                       // 吃掉 ','
+                    TryMatchAnyWord("and", "or");    // 吃掉牛津逗号后的 and/or
+                    continue;
+                }
+                break;
+            }
+            if (Current.IsAnyWord("and", "or", "then"))
+            {
+                // 无牛津逗号的 "1, 2 and 3"：and 后面紧跟数字，仍属枚举内部
+                if (Peek(1).Kind == TokKind.Number) { Advance(); continue; }
+                break;
+            }
             Advance();
         }
     }
