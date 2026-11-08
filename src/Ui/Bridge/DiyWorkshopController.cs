@@ -9,7 +9,21 @@ using ShadowverseFan.KernelV3.Lang;
 
 namespace ShadowverseFan.Ui.Bridge;
 
-public enum DiyEndpointKind { Form = 0, Block = 1, Script = 2, EnglishCnl = 3 }
+public enum DiyEndpointKind
+{
+    Form = 0,
+    Block = 1,
+    Script = 2,
+    EnglishCnl = 3,
+    /// <summary>
+    /// AAD（AI 辅助 DIY）。
+    ///
+    /// 它**不是**第五种卡牌表达 —— CurrentDef 仍由另外四端维护。
+    /// 这一端的作用是让模型产出 PyAST 文本，再经 CompileFromCanonicalAst
+    /// 回填到 ③ 端，因此不参与四端同构比对。
+    /// </summary>
+    AiAssistant = 4,
+}
 
 /// <summary>
 /// DIY 四端造卡工坊的纯 C# 控制器（零 Godot 依赖，可在 .et 门禁里直接单测）。

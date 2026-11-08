@@ -46,7 +46,12 @@ public partial class BattleSelectDialog : Control
         var panel = new PanelContainer();
         AddChild(panel);
         panel.SetAnchorsPreset(LayoutPreset.TopLeft);
-        SvWbTheme.KeepCentered(this, panel, new Vector2(1080, 608));
+        // 宽度必须容得下四列最小宽 + 间距 + 内边距，否则子容器会把面板
+        // 强行撑出视口右缘：KeepCentered 仍按旧宽算左起点，右边缘直接飞出屏幕。
+        //
+        //   210 + 340 + 340 + 190 = 1080（四列）
+        //   + 16×3 = 48（列间距） + 12×2 = 24（面板内边距）= 1152 <= 1180 ✓
+        SvWbTheme.KeepCentered(this, panel, new Vector2(1180, 620));
         panel.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             SvWbTheme.BgPanel, SvWbTheme.AccentGold, 14, 2, 20));
 
@@ -69,10 +74,10 @@ public partial class BattleSelectDialog : Control
         cols.SizeFlagsVertical = SizeFlags.ExpandFill;
         root.AddChild(cols);
 
-        _poolCol = AddColumn(cols, "① 赛制卡池", 240);
-        _myCol = AddColumn(cols, "② 我方牌组", 380);
-        _foeCol = AddColumn(cols, "③ 对手（AI）牌组", 380);
-        _firstCol = AddColumn(cols, "④ 先后手", 180);
+        _poolCol = AddColumn(cols, "① 赛制卡池", 210, 1.0f);
+        _myCol = AddColumn(cols, "② 我方牌组", 340, 1.6f);
+        _foeCol = AddColumn(cols, "③ 对手（AI）牌组", 340, 1.6f);
+        _firstCol = AddColumn(cols, "④ 先后手", 190, 0.9f);
         RefreshFirstPlayer();
 
         var bar = new HBoxContainer();
@@ -106,9 +111,18 @@ public partial class BattleSelectDialog : Control
         if (presetMine != null) { _myDeck = presetMine; RefreshDeckColumns(); UpdateStatus(); }
     }
 
-    private static VBoxContainer AddColumn(HBoxContainer host, string title, int width)
+    private static VBoxContainer AddColumn(HBoxContainer host, string title, int width,
+                                           float stretchRatio = 1f)
     {
-        var wrap = new VBoxContainer { CustomMinimumSize = new Vector2(width, 0) };
+        // 既受最小宽度保护，又能随窗口弹性伸缩。
+        // ClipContents 防止长牌组名把列撑破、进而把整个面板推出屏幕。
+        var wrap = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(width, 0),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsStretchRatio = stretchRatio,
+            ClipContents = true,
+        };
         wrap.AddThemeConstantOverride("separation", 8);
         host.AddChild(wrap);
 

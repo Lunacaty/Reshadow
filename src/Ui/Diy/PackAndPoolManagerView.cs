@@ -28,6 +28,13 @@ public partial class PackAndPoolManagerView : Control
     private string _selectedPackId;
     private readonly Dictionary<string, CheckBox> _enabledPackChecks = new();
     private VBoxContainer _cardList;
+    /// <summary>右栏当前页签：0=赛制规则 1=具名牌组 2=卡池计数器 3=卡包归属。</summary>
+    private int _activeRightTab = 0;
+    /// <summary>页签内容宿主；切换页签时只重填它，不重建整页。</summary>
+    private VBoxContainer _tabContentHost;
+    private Button[] _tabButtons;
+    /// <summary>各区域的页签包装容器（用于显示 / 隐藏）。</summary>
+    private readonly List<Control> _tabPages = new();
     private VBoxContainer _ruleList;
     private VBoxContainer _namedDeckList;
     private HFlowContainer _poolClanList;
@@ -168,13 +175,48 @@ public partial class PackAndPoolManagerView : Control
         right.AddThemeConstantOverride("separation", 6);
         body.AddChild(right);
 
+        // ── 右栏页签化（185 号文档 专题一）──
+        //
+        // 早先右栏在一个 720p 高的容器里堆了 4 个独立 ScrollContainer
+        // （规则 / 具名牌组 / 职业 / 计数器），每块只有 90~110px，
+        // 形同「钥匙孔看世界」。改成页签后每块独占全高。
+        var tabBar = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        tabBar.AddThemeConstantOverride("separation", 6);
+        string[] tabNames = { "⚙ 赛制规则", "📚 具名牌组", "🔢 卡池计数器", "📦 卡包归属" };
+        _tabButtons = new Button[tabNames.Length];
+        for (int ti = 0; ti < tabNames.Length; ti++)
+        {
+            int idx = ti;
+            var tb = new Button
+            {
+                Text = tabNames[ti],
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                CustomMinimumSize = new Vector2(0, 32),
+            };
+            SvWbTheme.StyleButton(tb, isPrimary: _activeRightTab == idx);
+            tb.AddThemeFontSizeOverride("font_size", 11);
+            tb.Pressed += () => { _activeRightTab = idx; ApplyRightTabVisibility(); };
+            _tabButtons[ti] = tb;
+            tabBar.AddChild(tb);
+        }
+        right.AddChild(tabBar);
+
         // 用 HFlowContainer 而不是 HBoxContainer：标题 + 卡池下拉 + 三个按钮 +
         // 状态标签的总最小宽度会超过 1360px，HBox 不换行，窗口一窄就溢出。
         // HFlow 会自动折到第二行。
         var ruleBar = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         ruleBar.AddThemeConstantOverride("h_separation", 8);
         ruleBar.AddThemeConstantOverride("v_separation", 6);
-        right.AddChild(ruleBar);
+        // ── 页签 0：赛制规则（独占全高）──
+        var page0 = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        page0.AddThemeConstantOverride("separation", 6);
+        right.AddChild(page0);
+        _tabPages.Add(page0);
+        page0.AddChild(ruleBar);
 
         var ruleTitle = new Label { Text = "赛制卡池规则（MatchRules 全字段）" };
         ruleTitle.AddThemeFontSizeOverride("font_size", 14);
@@ -300,7 +342,7 @@ public partial class PackAndPoolManagerView : Control
         ruleBar.AddChild(_ruleStatus);
 
         var ruleScroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
-        right.AddChild(ruleScroll);
+        page0.AddChild(ruleScroll);
         SvWbTheme.StyleScroll(ruleScroll);
         _ruleList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _ruleList.AddThemeConstantOverride("separation", 3);
@@ -351,7 +393,16 @@ public partial class PackAndPoolManagerView : Control
             RefreshNamedDecks();
         };
         ndBar.AddChild(addNdBtn);
-        right.AddChild(ndBar);
+        // ── 页签 1：具名牌组 ──
+        var page1 = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        page1.AddThemeConstantOverride("separation", 6);
+        right.AddChild(page1);
+        _tabPages.Add(page1);
+        page1.AddChild(ndBar);
 
         _namedDeckList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _namedDeckList.AddThemeConstantOverride("separation", 2);
@@ -359,12 +410,22 @@ public partial class PackAndPoolManagerView : Control
         ndScroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
         SvWbTheme.StyleScroll(ndScroll);
         ndScroll.AddChild(_namedDeckList);
-        right.AddChild(ndScroll);
+        page1.AddChild(ndScroll);
 
         // ---- 本卡池职业（164 专题二） ----
         //
         // 职业归属卡池而非卡包：同一批卡在不同赛制里开放的职业可以不同。
         // 这里只做展示与勾选，真正生效在 CardPool 构建时读 PoolClans。
+        // ── 页签 2：卡池职业 + 计数器 ──
+        var page2 = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        page2.AddThemeConstantOverride("separation", 6);
+        right.AddChild(page2);
+        _tabPages.Add(page2);
+
         var clanBar = new HBoxContainer();
         clanBar.AddThemeConstantOverride("separation", 6);
         var clanTitle = new Label { Text = "本卡池职业", SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -376,12 +437,12 @@ public partial class PackAndPoolManagerView : Control
         addClanBtn.AddThemeFontSizeOverride("font_size", 11);
         addClanBtn.Pressed += OpenAddPoolClanDialog;
         clanBar.AddChild(addClanBtn);
-        right.AddChild(clanBar);
+        page2.AddChild(clanBar);
 
         _poolClanList = new HFlowContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _poolClanList.AddThemeConstantOverride("h_separation", 8);
         _poolClanList.AddThemeConstantOverride("v_separation", 4);
-        right.AddChild(_poolClanList);
+        page2.AddChild(_poolClanList);
 
         // ---- 主战者计数器（164 专题二） ----
         //
@@ -397,7 +458,7 @@ public partial class PackAndPoolManagerView : Control
         addCtrBtn.AddThemeFontSizeOverride("font_size", 11);
         addCtrBtn.Pressed += () => OpenAddPoolCounterDialog();
         ctrBar.AddChild(addCtrBtn);
-        right.AddChild(ctrBar);
+        page2.AddChild(ctrBar);
 
         _poolCounterList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _poolCounterList.AddThemeConstantOverride("separation", 2);
@@ -405,7 +466,20 @@ public partial class PackAndPoolManagerView : Control
         ctrScroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
         SvWbTheme.StyleScroll(ctrScroll);
         ctrScroll.AddChild(_poolCounterList);
-        right.AddChild(ctrScroll);
+        page2.AddChild(ctrScroll);
+
+        // ── 页签 3：卡包归属 ──
+        var page3 = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        page3.AddThemeConstantOverride("separation", 6);
+        right.AddChild(page3);
+        _tabPages.Add(page3);
+        _tabContentHost = page3;
+
+        ApplyRightTabVisibility();
     }
 
 
@@ -427,7 +501,7 @@ public partial class PackAndPoolManagerView : Control
         var nameEdit = new LineEdit { PlaceholderText = "职业名（如 机甲）" };
         box.AddChild(new Label { Text = "职业名" });
         box.AddChild(nameEdit);
-        dlg.AddChild(box);
+        WrapDialogContent(dlg, box);
 
         dlg.Confirmed += () =>
         {
@@ -592,7 +666,7 @@ public partial class PackAndPoolManagerView : Control
         tplTurnBtn.Pressed += () => AppendRule(
             "turn_start:\n    counter __CTR__ by 1");
 
-        dlg.AddChild(box);
+        WrapDialogContent(dlg, box);
 
         dlg.Confirmed += () =>
         {
@@ -745,7 +819,7 @@ public partial class PackAndPoolManagerView : Control
         var edit = new LineEdit { Text = clanName };
         box.AddChild(new Label { Text = "新职业名" });
         box.AddChild(edit);
-        dlg.AddChild(box);
+        WrapDialogContent(dlg, box);
 
         dlg.Confirmed += () =>
         {
@@ -984,7 +1058,7 @@ public partial class PackAndPoolManagerView : Control
         var dlg = new AcceptDialog { Title = "编辑具名牌组", Size = new Vector2I(620, 520) };
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 6);
-        dlg.AddChild(box);
+        WrapDialogContent(dlg, box);
 
         // 牌组名只有一个。分「英文标识名 + 中文显示名」两套的话，
         // replace_deck 引用的是英文名、卡面显示的是中文名，改名要同步两处。
@@ -1110,19 +1184,53 @@ public partial class PackAndPoolManagerView : Control
     }
 
     /// <summary>「本卡池启用的物理卡包」勾选区。原生包锁死勾选。</summary>
+    /// <summary>
+    /// 按 _activeRightTab 显示对应区域、隐藏其余。
+    ///
+    /// 用「隐藏」而不是销毁重建：规则行、计数器行都带输入控件，
+    /// 重建会丢掉玩家正在编辑、尚未落盘的内容。
+    /// </summary>
+    private void ApplyRightTabVisibility()
+    {
+        for (int i = 0; i < _tabPages.Count; i++)
+            if (_tabPages[i] != null && IsInstanceValid(_tabPages[i]))
+                _tabPages[i].Visible = i == _activeRightTab;
+
+        if (_tabButtons != null)
+            for (int i = 0; i < _tabButtons.Length; i++)
+                if (_tabButtons[i] != null && IsInstanceValid(_tabButtons[i]))
+                    SvWbTheme.StyleButton(_tabButtons[i], isPrimary: i == _activeRightTab);
+    }
+
+    /// <summary>
+    /// 页签 3：卡包归属。
+    ///
+    /// 185 号文档 专题一：这块原先埋在右栏规则列表最底部，改完还要再点一次
+    /// 「应用启用卡包」—— 心智模型割裂。现在独立成页签，且**勾选即存盘**。
+    /// </summary>
     private void BuildEnabledPacksSection()
     {
-        if (_ruleList == null || !_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var cfg)) return;
+        if (_tabContentHost == null || !IsInstanceValid(_tabContentHost)) return;
+        foreach (var c in _tabContentHost.GetChildren()) { _tabContentHost.RemoveChild(c); c.QueueFree(); }
 
-        var head = new Label { Text = "本卡池启用的物理卡包" };
+        if (!_store.PoolConfigs.TryGetValue(_selectedPoolId ?? "", out var cfg))
+        {
+            _tabContentHost.AddChild(new Label { Text = "（未选中卡池）" });
+            return;
+        }
+
+        var head = new Label { Text = "本卡池启用的物理卡包（勾选即时生效）" };
         head.AddThemeFontSizeOverride("font_size", 13);
         head.AddThemeColorOverride("font_color", new Color("7DD3FC"));
-        _ruleList.AddChild(head);
+        _tabContentHost.AddChild(head);
 
-        var flow = new HFlowContainer();
-        flow.AddThemeConstantOverride("h_separation", 10);
-        flow.AddThemeConstantOverride("v_separation", 4);
-        _ruleList.AddChild(flow);
+        var scroll = new ScrollContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        SvWbTheme.StyleScroll(scroll);
+        _tabContentHost.AddChild(scroll);
+
+        var list = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        list.AddThemeConstantOverride("separation", 4);
+        scroll.AddChild(list);
 
         _enabledPackChecks.Clear();
         foreach (var kv in _store.Catalog.Packs.OrderBy(x => x.Key, StringComparer.Ordinal))
@@ -1133,44 +1241,73 @@ public partial class PackAndPoolManagerView : Control
 
             var cb = new CheckBox
             {
-                Text = pid + (isNative ? "（原生必选）" : ""),
+                Text = kv.Value.Name + "  [" + pid + "]  " + kv.Value.Cards.Count + " 张"
+                       + (isNative ? "  🔒原生绑定" : ""),
                 ButtonPressed = on,
                 Disabled = isNative,
+                TooltipText = isNative ? "原生绑定卡包，不可从本卡池移除" : "勾选即把此卡包纳入当前卡池",
             };
-            cb.AddThemeFontSizeOverride("font_size", 11);
+            cb.AddThemeFontSizeOverride("font_size", 12);
+
+            // 勾选即时存盘，不再需要「应用」按钮。
+            cb.Toggled += pressed =>
+            {
+                var chosen = new List<string>();
+                foreach (var kv2 in _enabledPackChecks)
+                    if (kv2.Value != null && IsInstanceValid(kv2.Value) && kv2.Value.ButtonPressed)
+                        chosen.Add(kv2.Key);
+                if (chosen.Count == 0)
+                {
+                    _ruleStatus.Text = "至少要启用一个卡包";
+                    if (IsInstanceValid(cb)) cb.ButtonPressed = true;
+                    return;
+                }
+                bool ok = _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, chosen,
+                    cfg.Rules, cfg.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>(),
+                    out string msg);
+                _ruleStatus.Text = msg;
+                if (ok) RefreshRules();
+            };
+
             _enabledPackChecks[pid] = cb;
-            flow.AddChild(cb);
+            list.AddChild(cb);
         }
-
-        var applyBtn = new Button { Text = "✔ 应用启用卡包", CustomMinimumSize = new Vector2(0, 28) };
-        SvWbTheme.StyleButton(applyBtn, isPrimary: true, customAccent: SvWbTheme.AccentCyan);
-        applyBtn.AddThemeFontSizeOverride("font_size", 11);
-        applyBtn.Pressed += () =>
-        {
-            var chosen = new List<string>();
-            foreach (var kv2 in _enabledPackChecks)
-                if (kv2.Value.ButtonPressed) chosen.Add(kv2.Key);
-            if (chosen.Count == 0) { _ruleStatus.Text = "至少要启用一个卡包"; return; }
-
-            bool ok = _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, chosen,
-                cfg.Rules, cfg.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>(),
-                out string msg);
-            _ruleStatus.Text = msg;
-            if (ok) RefreshRules();
-        };
-        _ruleList.AddChild(applyBtn);
-
-        var sep = new HSeparator();
-        _ruleList.AddChild(sep);
     }
 
+
     /// <summary>新建卡池弹窗：填 ID 与显示名，其余用标准规则与 official-sv 起步。</summary>
+    /// <summary>
+    /// 给 AcceptDialog 套一层受控尺寸，防止内容把窗口撑出屏幕。
+    ///
+    /// Godot 的 AcceptDialog 会按子节点自动撑大：内部一旦有高组件
+    /// （AstCodeEdit、长提示文本），高度就突破 720p，底部 OK 按钮掉出屏幕外。
+    /// 这里把内容包进固定高度的 ScrollContainer，并钳死窗口上限。
+    /// </summary>
+    private static ScrollContainer WrapDialogContent(AcceptDialog dlg, Control content,
+                                                     int maxW = 560, int maxH = 320)
+    {
+        dlg.MaxSize = new Vector2I(maxW, maxH + 72);   // +72 给标题栏与按钮行
+        var scroll = new ScrollContainer
+        {
+            CustomMinimumSize = new Vector2(maxW - 32, maxH),
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
+        SvWbTheme.StyleScroll(scroll);
+        if (content != null)
+        {
+            content.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            scroll.AddChild(content);
+        }
+        dlg.AddChild(scroll);
+        return scroll;
+    }
+
     private void OpenNewPoolDialog()
     {
         var dlg = new AcceptDialog { Title = "新建卡池", Size = new Vector2I(440, 240) };
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 8);
-        dlg.AddChild(box);
+        WrapDialogContent(dlg, box);
 
         LineEdit Field(string label, string initial)
         {
@@ -1235,7 +1372,7 @@ public partial class PackAndPoolManagerView : Control
 
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 8);
-        dlg.AddChild(box);
+        WrapDialogContent(dlg, box);
 
         LineEdit Field(string label, string initial)
         {
@@ -1401,6 +1538,9 @@ public partial class PackAndPoolManagerView : Control
         foreach (var c in _ruleList.GetChildren()) c.QueueFree();
         _ruleEdits.Clear();
 
+        // 卡包归属页签跟随卡池切换重建（勾选状态按当前池重算）。
+        BuildEnabledPacksSection();
+
         // 下拉框：列出全部卡池
         if (_poolPicker != null)
         {
@@ -1498,7 +1638,6 @@ public partial class PackAndPoolManagerView : Control
             _ruleList.AddChild(foot);
         }
 
-        BuildEnabledPacksSection();
     }
 
     /// <summary>

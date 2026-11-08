@@ -152,7 +152,7 @@ public static class DiyZh
         ("faith", "信仰"),
         ("earth_sigil", "土之印"),
         ("clues", "证据"),
-        ("wrath", "血怒"),
+        ("wrath", "狂乱"),
         ("crest", "纹章"),
         ("countdown", "吟唱"),
         ("spellboost", "魔力增幅"),

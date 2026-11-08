@@ -30,6 +30,9 @@ public partial class DiyWorkshopView : Control
     private RichTextLabel _astLabel;
     private Label _statusLabel;
     private VBoxContainer _endpointHost;
+    /// <summary>AAD 会话（跨页签切换保留上下文）。</summary>
+    private ShadowverseFan.Ui.Bridge.AadSessionController _aadSession;
+    private bool _aadInitialized;
     /// <summary>积木工作台实例。复用而非每次重建：它内部保存着当前能力域与选中积木。</summary>
     private BlockTreeEditorWidget _blockEditor;
     private AstCodeEdit _astJsonEdit;
@@ -375,6 +378,10 @@ public partial class DiyWorkshopView : Control
         // 与卡包 source_format: "py_ast" 共用同一份打印器与解析器。
         AddEndpointTab(tabs, "③ AST 规范语法", DiyEndpointKind.Script);
         AddEndpointTab(tabs, "④ 官方英文", DiyEndpointKind.EnglishCnl);
+        // ⑤ AAD（AI 辅助 DIY）—— 185 号文档 专题二。
+        // 不是「第四种表达」，而是「让模型帮你写 ③ 端代码」，
+        // 生成结果仍走 CompileFromCanonicalAst / CompileFromScript 回填。
+        AddEndpointTab(tabs, "🤖 AI 辅助 (AAD)", DiyEndpointKind.AiAssistant);
 
         // 不再给 _endpointHost 套外层 ScrollContainer：
         // 三栏（调色盘 / 画布 / 属性检视器）在 BlockTreeEditorWidget 内部各自独立滚动，
@@ -553,6 +560,7 @@ public partial class DiyWorkshopView : Control
         {
             case DiyEndpointKind.Script: BuildScriptEndpoint(); break;
             case DiyEndpointKind.Form: BuildFormEndpoint(); break;
+            case DiyEndpointKind.AiAssistant: BuildAadEndpoint(); break;
             case DiyEndpointKind.Block: BuildBlockEndpoint(); break;
             case DiyEndpointKind.EnglishCnl: BuildEnglishEndpoint(); break;
         }
@@ -667,6 +675,32 @@ public partial class DiyWorkshopView : Control
         };
         host.AddChild(b);
     }
+    /// <summary>
+    /// ⑤ AAD（AI 辅助 DIY）端。
+    ///
+    /// 会话对象挂在字段上而不是每次重建：玩家切走再切回来，
+    /// 上下文时间线必须原样保留，否则刚写好的需求全丢。
+    /// </summary>
+    private void BuildAadEndpoint()
+    {
+        _aadSession ??= new AadSessionController();
+        string writableRoot = _store?.DeckRoot ?? ContentPaths.Root ?? ".";
+
+        // 首次进入时把配置与内置提示词准备好。
+        if (!_aadInitialized)
+        {
+            _aadInitialized = true;
+            _aadSession.LoadConfig(writableRoot, out _);
+            _aadSession.LoadPromptAssets(writableRoot, out _);
+            if (_aadSession.ContextMessages.Count == 0)
+                _aadSession.AddMessage("system", AadSessionController.DefaultSystemPrompt());
+        }
+
+        var panel = new AadAssistantPanel();
+        panel.Setup(_ctrl, _aadSession, writableRoot);
+        _endpointHost.AddChild(panel);
+    }
+
     private void BuildFormEndpoint()
     {
         var def = _ctrl.CurrentDef;

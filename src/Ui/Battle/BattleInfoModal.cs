@@ -268,7 +268,7 @@ public partial class BattleInfoModal : Control
         string[] counters = { "rally", "combo", "evolve_count", "shadow", "faith",
                               "earth_sigil", "clues", "wrath" };
         string[] zh = { "协作数 (Rally)", "本回合连击 (Combo)", "本局进化次数", "墓场数 (Shadows)",
-                        "信仰值 (Faith)", "土之印层数", "线索层数", "血怒次数 (Wrath)" };
+                        "信仰值 (Faith)", "土之印层数", "线索层数", "狂乱次数 (Wrath)" };
 
         int shown = 0;
         for (int i = 0; i < counters.Length; i++)

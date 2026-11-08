@@ -436,9 +436,13 @@ public sealed class CombatResolver
                 _state.ReadCounter(sourcePlayerId, dmgKey) + amount);
         }
 
-        // 血怒（Wrath）：我方**主战者**每受到一次伤害就 +1。
-        // 随从受伤不计 —— 卡面写的是「your leader」受到伤害的次数。
-        if (target.Zone == ZoneRef.Leader)
+        // 狂乱（Wrath）：**自己回合内**我方主战者每受到一次伤害就 +1。
+        //
+        // 两个前提缺一不可（《影之诗WB完全攻略》12.4 与 76-c 4.2.5）：
+        //   1. target 必须是主战者（随从受伤不计）；
+        //   2. 必须发生在**该主战者自己的回合** —— 对手回合挨打不加狂乱。
+        // 早先只判了 1，任何回合受伤都 +1，狂乱会提前 2~3 回合达成。
+        if (target.Zone == ZoneRef.Leader && _state.ActivePlayer == target.PlayerId)
         {
             var wrathKey = _schema.Counter("wrath");
             _state.WriteCounter(target.PlayerId, wrathKey,

@@ -100,7 +100,7 @@ public sealed class GameSchema
         ("crest", 0, 99),
         ("faith", 0, 99),
         ("shadow", 0, 999),
-        // 血怒（Wrath）：本局我方主战者累计受伤次数。
+        // 狂乱（Wrath）：本局**自己回合内**我方主战者累计受伤次数。
         // 「If you're in Wrath, ...」类条件靠它判定，此前全仓没有任何计数点。
         ("wrath", 0, 999),
         ("X", 0, 999), ("Y", 0, 999), ("Z", 0, 999),

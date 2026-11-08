@@ -2027,7 +2027,7 @@ public sealed class ChineseCardPrinter
         "fuse_kinds" => "融合材料种类数",
         "cards_returned_to_hand" => "本回合返回手牌数",
         "evolve_count" => "进化次数",
-        "wrath" => "血怒",
+        "wrath" => "狂乱",
         "damage_dealt_this_turn" => "本回合造成的伤害",
         "turn_ally_attacks" => "本回合我方随从攻击次数",
         "ally_attacked_leader_last_turn" => "上回合我方随从攻击主战者次数",
