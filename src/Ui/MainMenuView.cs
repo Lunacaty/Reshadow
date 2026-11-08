@@ -87,15 +87,6 @@ public partial class MainMenuView : Control
         title.MouseFilter = MouseFilterEnum.Ignore;
         box.AddChild(title);
 
-        var sub = new Label
-        {
-            Text = "影 之 诗 · 超 凡 世 界",
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        sub.AddThemeFontSizeOverride("font_size", 18);
-        sub.AddThemeColorOverride("font_color", SvWbTheme.AccentCyan);
-        sub.MouseFilter = MouseFilterEnum.Ignore;
-        box.AddChild(sub);
 
         var rule = new ColorRect
         {
