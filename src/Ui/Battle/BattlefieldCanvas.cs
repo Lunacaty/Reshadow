@@ -246,7 +246,12 @@ public partial class BattlefieldCanvas : Control
 
             // 纹章 / 信仰圆槽改用**卡面立绘的中心圆形**填充（取代原先的卡名首字）。
             // 首字（「炽」「守」）信息量低且和卡面对不上，立绘一眼就能认出来。
-            int artId = ent.Def?.CardId ?? 0;
+            // 纹章 / 信仰与主人卡是同一张卡：它们的 CardId 是自身定义号，
+            // 立绘要取 ArtCardId（指向主人卡）。少了这一层，信仰会去找
+            // 一个根本不存在的 11514120.png，圆槽就退回卡名首字。
+            int artId = ent.Def?.ArtCardId ?? 0;
+            if (artId <= 0) artId = ent.Def?.CardId ?? 0;
+
             var art = artId > 0
                 ? ShadowverseFan.Ui.CardArtLoader.LoadCircleCenter(artId)
                 : null;
