@@ -283,6 +283,14 @@ public sealed class BoardAnimDirector
     public void PlayEvolve(long entityId, bool super)
     {
         var t = TrackOf(entityId);
+
+        // 191 号文档 问题 3：进化动画会把「槽位重排」的平移动画杀掉，
+        // 收尾的 ResetKeepLayout 又把残余 LayoutOffset 永久锁死 ——
+        // 于是进化时若能力召唤了新随从（A 的槽位左移），A 会永远卡在旧位置。
+        //
+        // 修法：Clear 之前先把未走完的偏移抓下来，在升空阶段顺滑归零，
+        // 砸落时自然落进新分配的槽位。
+        Vector2 startLayoutOffset = t.Motion.LayoutOffset;
         t.Running.Clear();
 
         float rise = super ? 92f : 74f;
@@ -290,6 +298,12 @@ public sealed class BoardAnimDirector
         Play(entityId, new Anim(0.58f, Ease.Linear, v =>
         {
             t.Motion.Alpha = 1f;
+
+            // 前 42%（升空阶段）把旧槽位偏移插值归零，
+            // 砸落结束时 LayoutOffset 已经是 0，不会被 ResetKeepLayout 锁死。
+            float layoutT = Mathf.Clamp(v / 0.42f, 0f, 1f);
+            t.Motion.LayoutOffset = startLayoutOffset * (1f - Ease.OutCubic(layoutT));
+
             if (v < 0.42f)
             {
                 float k = Ease.OutCubic(v / 0.42f);

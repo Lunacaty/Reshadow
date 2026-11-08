@@ -241,18 +241,33 @@ public partial class TopLeftCardActionPanel : Control
             c.QueueFree();
         }
 
+        // 191 号文档 问题 4：点进化后必须**立刻收起详情面板**。
+        // 早先调 DeferRefresh，下一帧又 ShowForEntity 把面板重新盖在战场上 ——
+        // 预选的瞄准线与候选高亮全被挡住，玩家点不到目标，也点不到空白取消。
         if (_ctrl.CanEvolveUnit(entity))
         {
             var b = new Button { Text = "✦ 进化 (+2/+2)" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentGold);
-            b.Pressed += () => { if (Blocked) return; if (_ctrl.TryEvolve(entity, false)) DeferRefresh(entity); };
+            b.Pressed += () =>
+            {
+                if (Blocked) return;
+                var target = entity;
+                HidePanel();
+                if (_ctrl.TryEvolve(target, false)) OnEntityChanged?.Invoke(target);
+            };
             _actionRow.AddChild(b);
         }
         if (_ctrl.CanSuperEvolveUnit(entity))
         {
             var b = new Button { Text = "★ 超进化 (+3/+3)" };
             SvWbTheme.StyleButton(b, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
-            b.Pressed += () => { if (Blocked) return; if (_ctrl.TryEvolve(entity, true)) DeferRefresh(entity); };
+            b.Pressed += () =>
+            {
+                if (Blocked) return;
+                var target = entity;
+                HidePanel();
+                if (_ctrl.TryEvolve(target, true)) OnEntityChanged?.Invoke(target);
+            };
             _actionRow.AddChild(b);
         }
         if (_ctrl.CanEngageUnit(entity, out int cost))

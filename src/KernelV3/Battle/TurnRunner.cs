@@ -937,6 +937,12 @@ public sealed class TurnRunner
         Ast.GrantAbilityNode ga => ga.Target,
         Ast.TransformNode tn => tn.Target,
         Ast.EvolveNode ev => ev.Target,
+        // 与 PreChoiceInspector.ChooseTargetOf 保持一致：
+        // 漏掉这三类会让「进化：给目标加减伤/改计数器/复刻能力」的
+        // Choose 判定失效，预选阶段被跳过（191 号文档 问题 4）。
+        Ast.DamageModifierNode dm => dm.Target,
+        Ast.ModifyCounterNode mc2 => mc2.Target,
+        Ast.InvokeAbilityNode iv => iv.Target,
         _ => null,
     };
 

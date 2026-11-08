@@ -395,6 +395,12 @@ public static class PreChoiceInspector
         TransformNode t => t.Target,
         EvolveNode e => e.Target,
         GrantAbilityNode g => g.Target,
+        // 191 号文档 问题 4：这三类节点也能承载 Choose 目标。
+        // 漏掉它们时，「进化：选一个随从获得减伤 / 改其计数器 / 复刻其能力」
+        // 的预选会直接跳过，退化成「先进化，再弹窗选择」。
+        DamageModifierNode dm => dm.Target,
+        ModifyCounterNode mc => mc.Target,
+        InvokeAbilityNode iv => iv.Target,
         _ => null,
     };
 

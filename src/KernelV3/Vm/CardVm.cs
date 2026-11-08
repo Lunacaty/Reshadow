@@ -650,9 +650,23 @@ public sealed partial class CardVm
             // 而谢幕曲不是关键词，从关键词表删「last words」拦不住它 ——
             // 必须在候选阶段就整条跳过。
             bool lastWordsRemoved = e.LastWordsRemoved;
-            if (e.Def != null)
+
+            // 191 号文档 问题 1：排他性形态读取。
+            //
+            // 结晶护符被破坏时，DestroyEntity 会先把 e.Def 还原成随从本体，
+            // 再发 OnDestroy。若这里照常扫 e.Def，下面又扫 e.LastFieldDef，
+            // 就会把「本体谢幕曲」与「结晶形态谢幕曲」同时放进候选池 → 双触发。
+            //
+            // 正确语义：实体以替代形态离场时，本次离场事件只认离场瞬间的形态。
+            bool useLastFieldDef = e.LastFieldDef != null && ev.Subject != null
+                && ev.Subject.Value.EntityId == e.EntityId
+                && (ev.Kind == CoreEvent.OnDestroy || ev.Kind == CoreEvent.OnLeaveField
+                    || ev.Kind == CoreEvent.OnBanish || ev.Kind == CoreEvent.OnDiscard);
+
+            var activeDef = useLastFieldDef ? e.LastFieldDef : e.Def;
+            if (activeDef != null)
             {
-                foreach (var ab in e.Def.Abilities)
+                foreach (var ab in activeDef.Abilities)
                 {
                     if (lastWordsRemoved && ab?.Trigger != null
                         && ab.Trigger.Event == CoreEvent.OnDestroy) continue;
@@ -671,21 +685,11 @@ public sealed partial class CardVm
                 AddCandidate(byEntity, ge, gab);
             }
 
-            // 激奏 / 结晶打出的卡：离场时 Def 已还原成本体，
-            // 而它的谢幕曲挂在离场前那份定义（LastFieldDef）上。
-            // 不补这一支，结晶护符的「谢幕曲召唤本体」100% 哑火 ——
-            // 因为事件是**先入队、稍后才扫**的，扫的时候 Def 早就换回去了。
-            //
-            // 只在事件主体就是它自己（graveSelf 场景）时读；
-            // 否则一张已还原的卡会拿旧定义去响应别人的事件。
-            if (e.LastFieldDef != null && ev.Subject != null
-                && ev.Subject.Value.EntityId == e.EntityId
-                && (ev.Kind == CoreEvent.OnDestroy || ev.Kind == CoreEvent.OnLeaveField
-                    || ev.Kind == CoreEvent.OnBanish || ev.Kind == CoreEvent.OnDiscard))
-            {
-                foreach (var ab in e.LastFieldDef.Abilities ?? Array.Empty<Ast.AbilityDef>())
-                    AddCandidate(byEntity, e, ab);
-            }
+            // 注意：**不要**在这里清空 LastFieldDef。
+            // DestroyEntity 会先后发 OnLeaveField 与 OnDestroy 两条事件，
+            // 若在第一条处理完就清掉，第二条的谢幕曲就扫不到结晶形态了
+            // （实测 81000004 的「结晶谢幕曲召唤本体」直接哑火）。
+            // 清理交给回手路径（CardVm.Nodes.cs 的 LastFieldDef = null）。
 
             // 挂在资源计数器上的能力（信仰、线索等）。
             // 例："give your faith 'Whenever an allied follower evolves, deal 1 damage'"。

@@ -344,9 +344,6 @@ _ = (sep, superAoE);
         e.St.Players[0].Leader.Life = 15;
         e.St.Players[0].Leader.MaxLife = 20;
         int leader0 = e.St.Players[0].Leader.Life;
-        Console.WriteLine("[DEBUG ABILITIES] Count=" + c.Def?.Abilities?.Count);
-        foreach (var a in c.Def?.Abilities ?? new List<AbilityDef>())
-            Console.WriteLine("  ab ev=" + a.Trigger?.Event + " body=" + a.Body?.Count + " nodes=" + string.Join(",", a.Body?.Select(n => n.GetType().Name) ?? Array.Empty<string>()));
         c.Counters[e.St.Schema.Counter("countdown")] = 1;
         e.Vm.DropPendingTriggers();
         e.Tr.StartTurn(0, e.Vm);

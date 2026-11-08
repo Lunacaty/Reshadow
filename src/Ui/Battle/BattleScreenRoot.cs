@@ -2050,14 +2050,21 @@ public partial class BattleScreenRoot : Control
                     && _pending.IsPointOnOverlayUi(lmb.GlobalPosition))
                     return;
 
-                // 只有「选目标」才存在「点空白 = 取消」的语义。
-                // 选模式、多选确认这些都必须点到具体控件上，
-                // 点空白不取消，否则玩家永远没机会做选择。
+                // 191 号文档 问题 4：预选阶段点空白必须能放弃本次进化/出牌。
+                //
+                // 选目标：点在非候选目标上 = 放弃。
+                // 选模式：点在弹窗 UI **之外**的暗区 = 放弃（点在弹窗内交给控件）。
+                //   早先只处理了 SelectTarget，进化带模式抉择时点空白毫无反应，
+                //   玩家只能被迫做出选择，无法反悔。
                 // 客机模式本地不跑 VM，Runner 里永远空；必须读远端快照带来的那一份。
                 var pc = _ctrl.EffectivePendingChoice;
                 bool onTarget = pc != null && pc.Kind == ChoiceKind.SelectTarget
                                 && HitAnyCandidate(lmb.GlobalPosition);
-                if (pc != null && pc.Kind == ChoiceKind.SelectTarget && !onTarget)
+                bool cancelOnBlank = pc != null
+                    && (pc.Kind == ChoiceKind.SelectTarget
+                        // 模式抉择：只要没点在挂起弹窗的 UI 上就算点空白
+                        || pc.Kind == ChoiceKind.SelectMode);
+                if (cancelOnBlank && !onTarget)
                 {
                     // 同上：发包由 Controller 统一负责，不在这里重复。
                     _ctrl.CancelPendingChoice();

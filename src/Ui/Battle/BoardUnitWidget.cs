@@ -1194,6 +1194,41 @@ public partial class BoardUnitWidget : Control
 
     private void DrawCountdown(CardDef def, Font font)
     {
+        // 191 号文档 问题 2：可堆叠护符（土之印 / 证据）的层数此前完全没画 ——
+        // 老逻辑只读 countdown 计数器，而这两种资源的层数存在 earth_sigil / clues 里，
+        // 玩家在场上根本看不出攒了几层。
+        //
+        // 判定走 Schema.StackableAmulets（引擎不写死具体卡号），
+        // 并用「琥珀金圆章」与吟唱的冰蓝大数字区分开，一眼能分清是哪种资源。
+        try
+        {
+            var schema = CurrentController?.Schema;
+            if (schema != null && Entity?.Counters != null)
+            {
+                foreach (var counterName in schema.StackableAmulets.Keys)
+                {
+                    var skey = schema.Counter(counterName);
+                    if (!skey.IsValid) continue;
+                    if (!Entity.Counters.TryGetValue(skey, out int stackVal) || stackVal <= 0) continue;
+
+                    // 层数圆章：右下角，暖金描边与吟唱的冰蓝数字形成对比。
+                    Vector2 badge = new(W - 18f, H - 18f);
+                    DrawCircle(badge, 13f, new Color(0.10f, 0.08f, 0.04f, 0.92f));
+                    DrawArc(badge, 13f, 0, Mathf.Tau, 24, new Color("F59E0B"), 2.0f);
+
+                    string st = stackVal.ToString();
+                    var ssz = font.GetStringSize(st, HorizontalAlignment.Left, -1, 18);
+                    var spos = new Vector2(badge.X - ssz.X * 0.5f, badge.Y + 6f);
+                    DrawString(font, spos + new Vector2(1f, 1f), st,
+                               HorizontalAlignment.Left, -1, 18, Colors.Black);
+                    DrawString(font, spos, st,
+                               HorizontalAlignment.Left, -1, 18, new Color("FEF08A"));
+                    return;   // 可堆叠护符不再画吟唱数字，避免两个角标叠在一起
+                }
+            }
+        }
+        catch { }
+
         int cd = 0;
         try
         {
