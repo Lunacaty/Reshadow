@@ -241,17 +241,29 @@ public partial class BattlefieldCanvas : Control
             var ent = crests[i];
             if (ent == null) continue;
 
+            // 圆槽底色先铺满：立绘加载失败时它就是兜底外观，不会露出透明洞。
             DrawCircle(c, 21f, new Color("0284C7"));
-            DrawArc(c, 22f, 0, Mathf.Tau, 28, new Color("FDE047"), 2.5f);
 
-            // 中文首字（不印英文缩写）：从简中卡名取第一个汉字。
-            string full = DeckEditorViewModel.DisplayName(ent.Def);
-            string nm = full.Length > 0 ? full.Substring(0, 1) : "?";
-            Vector2 tw = font.GetStringSize(nm, HorizontalAlignment.Left, -1, 15);
-            // 纹章汉字首字渐变（190 号文档 问题 3 ②）。
-            SvWbTheme.DrawGradientString(this, font,
-                new Vector2(c.X - tw.X * 0.5f, c.Y + 6f), nm,
-                15, SvWbTheme.GradGold.Light, SvWbTheme.GradGold.Main);
+            // 纹章 / 信仰圆槽改用**卡面立绘的中心圆形**填充（取代原先的卡名首字）。
+            // 首字（「炽」「守」）信息量低且和卡面对不上，立绘一眼就能认出来。
+            int artId = ent.Def?.CardId ?? 0;
+            var art = artId > 0
+                ? ShadowverseFan.Ui.CardArtLoader.LoadCircleCenter(artId)
+                : null;
+            if (art != null)
+                DrawTextureRect(art, new Rect2(c - new Vector2(21f, 21f), new Vector2(42f, 42f)), false);
+            else
+            {
+                // 没有立绘才退回首字，保证圆槽永远不为空。
+                string full = DeckEditorViewModel.DisplayName(ent.Def);
+                string nm = full.Length > 0 ? full.Substring(0, 1) : "?";
+                Vector2 tw = font.GetStringSize(nm, HorizontalAlignment.Left, -1, 15);
+                SvWbTheme.DrawGradientString(this, font,
+                    new Vector2(c.X - tw.X * 0.5f, c.Y + 6f), nm,
+                    15, SvWbTheme.GradGold.Light, SvWbTheme.GradGold.Main);
+            }
+
+            DrawArc(c, 22f, 0, Mathf.Tau, 28, new Color("FDE047"), 2.5f);
 
             // 右下角数值角标：吟唱倒计时或信仰值
             int badgeVal = 0;

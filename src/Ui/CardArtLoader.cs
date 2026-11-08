@@ -93,6 +93,82 @@ public static class CardArtLoader
         catch { return tex; }
     }
 
+    private static readonly System.Collections.Generic.Dictionary<(int, bool), Texture2D> _circleCache = new();
+
+    /// <summary>
+    /// 取卡面立绘的**居中方形**部分，裁成圆形透明底纹理（给纹章 / 信仰圆槽用）。
+    ///
+    /// 早先圆槽里印的是卡名首字（「炽」「守」这种），信息量低且和卡面对不上。
+    /// 现在直接填充立绘中心，一眼就能认出是哪张纹章/信仰。
+    ///
+    /// 裁一次缓存，绘制时只需 1 次 DrawTextureRect —— 每帧跑扫描线会拖慢战场。
+    /// </summary>
+    public static Texture2D LoadCircleCenter(int cardId, bool evolved = false)
+    {
+        if (cardId <= 0) return null;
+        var key = (cardId, evolved);
+        if (_circleCache.TryGetValue(key, out var cached)) return cached;
+
+        Texture2D result = null;
+        try
+        {
+            var tex = evolved ? (LoadEvolved(cardId) ?? Load(cardId)) : Load(cardId);
+            var img = tex?.GetImage();
+            if (img != null && !img.IsEmpty())
+            {
+                var dup = img.Duplicate() as Image;
+                if (dup != null)
+                {
+                    if (dup.IsCompressed()) dup.Decompress();
+                    dup.Convert(Image.Format.Rgba8);
+
+                    // 取居中正方形，再按圆裁掉四角。
+                    int side = Mathf.Min(dup.GetWidth(), dup.GetHeight());
+                    int sx = (dup.GetWidth() - side) / 2;
+                    int sy = (dup.GetHeight() - side) / 2;
+                    var sq = dup.GetRegion(new Rect2I(sx, sy, side, side));
+                    var round = MakeRound(sq, 96);
+                    if (round != null) result = CreateHighQualityTexture(round);
+                }
+            }
+        }
+        catch { }
+
+        _circleCache[key] = result;
+        return result;
+    }
+
+    /// <summary>把方形图缩放到 size×size，并按内切圆把圆外像素清零。</summary>
+    private static Image MakeRound(Image square, int size)
+    {
+        if (square == null || square.IsEmpty()) return null;
+        var scaled = square.Duplicate() as Image;
+        if (scaled == null) return null;
+        scaled.Resize(size, size, Image.Interpolation.Bilinear);
+        scaled.Convert(Image.Format.Rgba8);
+
+        float r = size / 2f;
+        // 边缘留 0.5px 过渡带，避免硬锯齿。
+        const float feather = 0.8f;
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x + 0.5f - r;
+                float dy = y + 0.5f - r;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                if (d <= r - feather) continue;
+                var c = scaled.GetPixel(x, y);
+                float a = d >= r ? 0f : (r - d) / feather;
+                scaled.SetPixel(x, y, new Color(c.R, c.G, c.B, c.A * a));
+            }
+
+        scaled.GenerateMipmaps();
+        return scaled;
+    }
+
+    /// <summary>清空圆形立绘缓存（换素材后用）。</summary>
+    public static void ClearCircleCache() => _circleCache.Clear();
+
     private static Texture2D LoadUncached(int cardId)
     {
         try
