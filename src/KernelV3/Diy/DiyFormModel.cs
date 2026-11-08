@@ -58,6 +58,14 @@ public sealed class CardFormModel
     /// <summary>稀有度（0 = 未指定）。卡面框色与分解价值用，不影响对局。</summary>
     public int Rarity { get; set; }
 
+    /// <summary>
+    /// 是否为 Token（衍生卡）。
+    ///
+    /// 决定这张卡能否进构筑：Token 只能由效果召唤 / 生成，
+    /// 不能直接放进牌组。官方卡池里 9 开头的号段全部是 Token。
+    /// </summary>
+    public bool IsToken { get; set; }
+
     // 注意：表单**不含** Abilities。
     // 基础信息（卡名/费用/身材/职业/稀有度/关键词）只在这里填，
     // 效果交给积木 / AST 规范语法 / 官方英文三端。
@@ -216,6 +224,7 @@ public sealed class DiyFormCompiler
             Abilities = abilities,
             InnateKeywords = innateKeywords,
             Rarity = form.Rarity,
+            IsToken = form.IsToken,
             Traits = (form.Traits ?? new List<string>()).Select(t => _schema.Trait(t)).ToList(),
             Clan = string.IsNullOrEmpty(form.Clan) ? SymbolId<ClanTag>.Invalid : _schema.Clan(form.Clan),
             // 构筑期修正：对局中不生效，单独成一组，不进 Abilities。
@@ -310,6 +319,7 @@ public sealed class DiyFormCompiler
             Cost = def.BaseCost,
             Attack = def.BaseAttack,
             Life = def.BaseLife,
+            IsToken = def.IsToken,
             // 构筑期修正反译成表单行。不处理的话，一张带扩容的卡
             // 用表单读回再存，扩容效果就悄悄没了 —— 而卡面中文看不出区别。
             DeckModRows = (def.DeckModifiers ?? new List<DeckBuildModifier>())

@@ -44,6 +44,7 @@ public partial class DiyWorkshopView : Control
     private SpinBox _formCostSpin;
     private SpinBox _formAtkSpin;
     private SpinBox _formLifeSpin;
+    private CheckBox _formTokenCheck;
     private OptionButton _formKindPicker;
     private OptionButton _formClanPicker;
     private LineEdit _formTraitsEdit;
@@ -747,6 +748,12 @@ public partial class DiyWorkshopView : Control
         };
         _endpointHost.AddChild(EditRow("关键词", _formKeywordsEdit));
 
+        // Token 标记：决定这张卡能否进构筑。
+        // Token 只能由效果召唤 / 生成，不能直接放进牌组。
+        _formTokenCheck = new CheckBox { Text = "Token（衍生卡，不能进构筑）", ButtonPressed = fm.IsToken };
+        _formTokenCheck.AddThemeFontSizeOverride("font_size", 12);
+        _endpointHost.AddChild(EditRow("卡牌属性", _formTokenCheck));
+
         _endpointHost.AddChild(new Label
         {
             Text = "构筑修正 " + (def.DeckModifiers?.Count ?? 0) + " 条 / 能力 "
@@ -794,6 +801,7 @@ public partial class DiyWorkshopView : Control
 
         fm.Traits = SplitList(_formTraitsEdit?.Text);
         fm.Keywords = SplitList(_formKeywordsEdit?.Text);
+        if (_formTokenCheck != null) fm.IsToken = _formTokenCheck.ButtonPressed;
 
         return _ctrl.CompileFromForm(fm);
     }

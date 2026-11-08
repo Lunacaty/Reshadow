@@ -108,6 +108,14 @@ public sealed class CardBlockWorkspace
     /// 原卡走 ArtCardId 打印成 #N，重建后 CardId=0 且 ArtCardId=0，只能退回卡名。</summary>
     public int SubArtCardId { get; set; }
     public string Kind { get; set; } = "Follower";
+
+    /// <summary>
+    /// 是否为 Token（衍生卡）。
+    ///
+    /// Token 只能由效果召唤 / 生成，不能直接进构筑。
+    /// 反编译器与编译器都要带上，否则在积木端编辑一次就会把这标记丢掉。
+    /// </summary>
+    public bool IsToken { get; set; }
     public int Cost { get; set; }
     public int Attack { get; set; }
     public int Life { get; set; }
@@ -406,6 +414,9 @@ public sealed class DiyBlockCompiler
             CardId = doc.CardId,
             Name = doc.Name,
             Kind = ParseKind(doc.Kind),
+            // Token 标记必须在积木端往返中保留：
+            // 丢一次就把衍生卡变成可进构筑的普通卡。
+            IsToken = doc.IsToken,
             BaseCost = doc.Cost,
             BaseAttack = doc.Attack,
             BaseLife = doc.Life,
@@ -1403,6 +1414,7 @@ public sealed class DiyBlockDecompiler
             // 这里取英文名的话，去积木端改一个积木就会把中文卡名冲成英文。
             Name = !string.IsNullOrWhiteSpace(def.NameChs) ? def.NameChs : (def.Name ?? ""),
             Kind = def.Kind.ToString(),
+            IsToken = def.IsToken,
             Cost = def.BaseCost,
             Attack = def.BaseAttack,
             Life = def.BaseLife,
