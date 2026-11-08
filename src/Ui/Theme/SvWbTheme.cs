@@ -598,6 +598,7 @@ void fragment() {
             Callable.From(() => BindAutoGradient(lbl)).CallDeferred();
     }
 
+
     /// <summary>
     /// 给单个 Label 绑渐变。
     ///
