@@ -59,8 +59,10 @@ public partial class RightCommandColumnWidget : Control
         int foePp = _ctrl.ReadCounter(1, "pp") + _ctrl.State.Players[1].BonusPp;
         int foeMax = _ctrl.ReadCounter(1, "max_pp");
         DrawTrapezoid(EnemyPpRect, 0f, 14f);
-        DrawString(font, EnemyPpRect.Position + new Vector2(22, 38), "能量点",
-                   HorizontalAlignment.Left, -1, 13, new Color("CBD5E1"));
+        // 通道 C 示范点：手绘文字同样走「浅主色 -> 主色」渐变（187 号文档 专题二）。
+        // 逐字按「字符中心 / 整句宽度」插值，并保留深色描边保证可读性。
+        SvWbTheme.DrawGradientString(this, font, EnemyPpRect.Position + new Vector2(22, 38),
+            "能量点", 13, SvWbTheme.GradGold.Light, SvWbTheme.GradGold.Main);
         DrawString(font, EnemyPpRect.Position + new Vector2(80, 40), foePp.ToString(),
                    HorizontalAlignment.Left, -1, 22, Colors.White);
         DrawString(font, EnemyPpRect.Position + new Vector2(108, 38), "/ " + foeMax,
