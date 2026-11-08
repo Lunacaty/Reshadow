@@ -106,7 +106,10 @@ public partial class CardInspectorModal : Control
         rightCol.AddThemeConstantOverride("separation", 10);
         body.AddChild(rightCol);
 
-        rightCol.AddChild(Section("卡面效果", printer.PrintCard(def), SvWbTheme.TextPrimary, 13));
+        // ⚠ PrintCard 自带【关联纹章/信仰/激奏/结晶】段，而下面 AddSubCard
+        // 又把同样的内容各打印一遍 —— 关联纹章会被渲染两次。
+        // 修复：主卡段只保留本体，四类子卡统一交给分栏输出。
+        rightCol.AddChild(Section("卡面效果", printer.PrintCardBody(def), SvWbTheme.TextPrimary, 13));
 
         // 四类子卡分栏
         AddSubCard(rightCol, "激奏", def.AccelerateDef, printer);

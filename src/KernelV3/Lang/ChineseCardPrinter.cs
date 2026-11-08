@@ -32,6 +32,32 @@ public sealed class ChineseCardPrinter
 
     // ---------------------------------------------------------------- 卡面
 
+    /// <summary>
+    /// 只打印主卡本体（不含关联纹章 / 信仰 / 激奏 / 结晶子卡段）。
+    ///
+    /// 供 CardInspectorModal 这类「主卡 + 子卡分栏」的界面使用：
+    /// 那里子卡各占一栏，若用 PrintCard 会把纹章内容打印两遍。
+    /// </summary>
+    public string PrintCardBody(CardDef card)
+    {
+        if (card == null) return "";
+        var sub = new CardDef
+        {
+            CardId = card.CardId,
+            Name = card.Name,
+            Kind = card.Kind,
+            BaseCost = card.BaseCost,
+            BaseAttack = card.BaseAttack,
+            BaseLife = card.BaseLife,
+            DeckModifiers = card.DeckModifiers,
+            HasFuse = card.HasFuse,
+            FuseMaterialFilter = card.FuseMaterialFilter,
+            Abilities = card.Abilities,
+            InnateKeywords = card.InnateKeywords,
+        };
+        return PrintCard(sub);
+    }
+
     /// <summary>渲染一张完整卡面：融合头 → 激奏/结晶 → 本体 → 关联纹章/信仰。</summary>
     public string PrintCard(CardDef card)
     {
