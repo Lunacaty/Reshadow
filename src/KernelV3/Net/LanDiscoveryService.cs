@@ -25,15 +25,21 @@ public static class LanNetworkHelper
                 if (ni.OperationalStatus != OperationalStatus.Up) continue;
                 if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
 
+
+                bool isRadminNic =
+                    (ni.Description ?? "").Contains("Radmin", StringComparison.OrdinalIgnoreCase)
+                    || (ni.Name ?? "").Contains("Radmin", StringComparison.OrdinalIgnoreCase);
+
+                // 193 号文档：过滤虚拟网卡。
+                // VMware / VirtualBox / Hyper-V / WSL / Docker 会分到 192.168.x.1，
+                // 列出来只会让玩家选错（实测都会优先点第一条）。
+                // Radmin VPN 本身也是虚拟网卡，但它是远程联机的正经通道，必须保留。
+                if (!isRadminNic && IsVirtualAdapter(ni)) continue;
                 foreach (var ua in ni.GetIPProperties().UnicastAddresses)
                 {
                     if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
                     string ip = ua.Address.ToString();
                     if (ip.StartsWith("169.254.")) continue;
-
-                    bool isRadminNic =
-                        (ni.Description ?? "").Contains("Radmin", StringComparison.OrdinalIgnoreCase)
-                        || (ni.Name ?? "").Contains("Radmin", StringComparison.OrdinalIgnoreCase);
 
                     string tag = ip.StartsWith("26.") || isRadminNic ? "Radmin VPN（远程直连）"
                                : ip.StartsWith("192.168.") || ip.StartsWith("10.") || ip.StartsWith("172.")
@@ -48,6 +54,46 @@ public static class LanNetworkHelper
         return list.OrderByDescending(x => x.Tag.StartsWith("Radmin"))
                    .ThenBy(x => x.Ip, StringComparer.Ordinal)
                    .ToList();
+    }
+
+    /// <summary>
+    /// 是否为桌面虚拟化 / 容器 / 隧道类虚拟网卡。
+    ///
+    /// 这些网卡上的地址只有宿主机自己能访问，列给玩家当「可直连 IP」是误导 ——
+    /// 室友连的一定是物理网卡地址，或 Radmin VPN 分配的那个 26.x 地址。
+    /// </summary>
+    private static bool IsVirtualAdapter(NetworkInterface ni)
+    {
+        string hint = ((ni.Name ?? "") + " " + (ni.Description ?? "")).ToLowerInvariant();
+
+        string[] virtualKeys =
+        {
+            "vmware", "virtualbox", "vbox", "hyper-v", "vethernet",
+            "docker", "wsl", "virtual adapter", "pseudo-interface",
+            "tap-windows", "tap adapter", "openvpn", "wireguard",
+            "zerotier", "tailscale", "bluetooth",
+            // 代理软件的 TUN 网卡（Clash / Mihomo / sing-box 等）。
+            // 198.18.0.0/15 是这类工具惯用的假地址段，室友绝不可能连上。
+            "mihomo", "clash", "sing-box", "singbox", "v2ray", "tun",
+        };
+        foreach (var k in virtualKeys)
+            if (hint.Contains(k)) return true;
+
+        // 198.18.0.0/15 是 RFC 2544 保留段，代理软件的 TUN 隧道专用。
+        // 光靠网卡名可能漏（有些工具名很随意），按地址段再兜一层。
+        try
+        {
+            foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+            {
+                if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                byte[] b = ua.Address.GetAddressBytes();
+                if (b[0] == 198 && (b[1] == 18 || b[1] == 19)) return true;
+            }
+        }
+        catch { }
+
+        if (ni.NetworkInterfaceType == NetworkInterfaceType.Tunnel) return true;
+        return false;
     }
 }
 

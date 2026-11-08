@@ -140,10 +140,14 @@ public partial class LeaderMedallionWidget : Control
 
     public override void _Draw()
     {
-        if (Leader?.Def == null) return;
+        // Leader 是实时属性（每次访问都会查控制器）。
+        // 一次 _Draw 里读多遍会重复查询、且极端情况下前后可能拿到不同实例，
+        // 所以开头取一次存进局部变量，本帧统一用它。
+        var leader = Leader;
+        if (leader?.Def == null) return;
         var font = ThemeDB.FallbackFont;
 
-        var clanCol = SvWbTheme.ClanColor(Leader.Def.Clan.IsValid ? Leader.Def.Clan.Name : null);
+        var clanCol = SvWbTheme.ClanColor(leader.Def.Clan.IsValid ? leader.Def.Clan.Name : null);
 
         float l = FrameL, w = FrameW, t = FrameT, h = FrameH;
 
@@ -173,7 +177,7 @@ public partial class LeaderMedallionWidget : Control
         Vector2 c = new(l + w * 0.5f, FlipY(t + h * 0.55f));
         DrawCircle(c, 30f, clanCol.Lightened(0.10f) with { A = 0.35f });
         DrawArc(c, 30f, 0, Mathf.Tau, 32, new Color(0.9f, 0.94f, 1f, 0.25f), 1.5f);
-        string initial = SvWbTheme.ClanDisplayZh(Leader.Def.Clan.IsValid ? Leader.Def.Clan.Name : null);
+        string initial = SvWbTheme.ClanDisplayZh(leader.Def.Clan.IsValid ? leader.Def.Clan.Name : null);
         if (initial.Length > 1) initial = initial.Substring(0, 1);
         var isz = font.GetStringSize(initial, HorizontalAlignment.Left, -1, 30);
         // 职业汉字纹章整句渐变（190 号文档 问题 3 ③）。
@@ -195,7 +199,7 @@ public partial class LeaderMedallionWidget : Control
         for (int i = 0; i < sp.Length; i++) spi[i] = shield + (sp[i] - shield) * 0.82f;
         DrawColoredPolygon(spi, new Color("991B1B"));
 
-        int shownLife = Math.Max(0, Leader.Life + VisualLifeOffset);
+        int shownLife = Math.Max(0, leader.Life + VisualLifeOffset);
         string life = shownLife.ToString();
         var lsz = font.GetStringSize(life, HorizontalAlignment.Left, -1, 22);
         DrawString(font, new Vector2(shield.X - lsz.X * 0.5f, shield.Y + 8f), life,
