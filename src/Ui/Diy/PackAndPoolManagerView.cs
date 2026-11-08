@@ -86,6 +86,8 @@ public partial class PackAndPoolManagerView : Control
         _header = new Label { Text = "卡包 / 卡池管理" };
         _header.AddThemeFontSizeOverride("font_size", 22);
         _header.AddThemeColorOverride("font_color", new Color("FEF08A"));
+        // 通道 B 示范点：页面大标题走「奶白 -> 鎏金」渐变（187 号文档 专题二）。
+        SvWbTheme.ApplyGradientText(_header, SvWbTheme.AccentGold);
         row.AddChild(_header);
 
         // 外包一层左右 16 的边距：不加的话右栏紧贴屏幕右缘，

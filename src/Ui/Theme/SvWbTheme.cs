@@ -433,9 +433,18 @@ public static class SvWbTheme
     /// 通道 B：给普通 Label / Button 挂上「浅主色 -> 主色」渐变材质。
     /// 按控件 UV 做 94°（近似横向略偏纵）插值，保留低亮度像素（描边）不被染亮。
     /// </summary>
+    /// <summary>
+    /// 通道 B：给 Label 这类**纯文字控件**挂「浅主色 -> 主色」渐变材质。
+    ///
+    /// ⚠ 绝对不要往 Button / PanelContainer 这类容器上挂：
+    /// Material 作用于整个控件树的绘制结果，会把子控件的 COLOR 一起改写，
+    /// 实测按钮文字会直接消失（只剩边框）。只对 Label 使用。
+    /// </summary>
     public static void ApplyGradientText(CanvasItem ctrl, Color? mainColor = null)
     {
         if (ctrl == null) return;
+        // 只接受标签：其它控件类型一律不挂，避免破坏可读性。
+        if (ctrl is not Label) return;
         var pair = mainColor.HasValue ? DeriveGradientPair(mainColor.Value) : GradGold;
         if (!_gradMatCache.TryGetValue(pair, out var mat))
         {
