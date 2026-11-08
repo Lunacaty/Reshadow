@@ -175,8 +175,15 @@ public static class AstCanonicalPrinter
     private static void AppendSub(StringBuilder sb, string label, Ast.CardDef sub, int indent = 1)
     {
         if (sub == null) return;
-        sb.Append('\n').Append('\n').Append(Pad(indent))
-          .Append(label).Append(" \"").Append(sub.Name ?? "").Append("\" (cost=").Append(sub.BaseCost).Append("):");
+        // 子卡头优先写 #卡号，与 gain_crest #卡号 同源。
+        // 卡号是唯一真相；只在没有号时才退回名字（DIY 新建的子卡）。
+        //
+        // 这一条直接决定 DIY 编辑态的显示：写名字时 AST 端不再出现 #卡号，
+        // 富文本的「按 ID 渲染卡名」就匹配不到，编辑一次后卡名高亮就没了。
+        sb.Append('\n').Append('\n').Append(Pad(indent)).Append(label).Append(' ');
+        if (sub.CardId > 0) sb.Append("#").Append(sub.CardId);
+        else sb.Append('"').Append(sub.Name ?? "").Append('"');
+        sb.Append(" (cost=").Append(sub.BaseCost).Append("):");
         if (sub.Abilities != null && sub.Abilities.Count > 0)
         {
             sb.Append('\n').Append(PrintAbilities(sub.Abilities, indent + 1));

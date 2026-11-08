@@ -630,7 +630,11 @@ public sealed class NaturalPrinter
             ? Word("Exact Copy") + Space() + Of() + Space() + PrintTarget(sp.CopyFrom)
             : sp.SourceKind == CardSourceKind.CopyOfPrevious
                 ? null   // 在下面单独处理："Summon 2 instead"
-                : sp.CardName;
+                // 卡号是唯一真相：有 CardId 就写 #卡号。
+                // 卡包里已不存英文名，只用 CardName 会让英文端冒出中文名
+                // （"Summon 3 copies of 妖精"）。
+                : (sp.CardId > 0 ? "#" + sp.CardId
+                   : (string.IsNullOrEmpty(sp.CardName) ? "" : sp.CardName));
 
         // CopyOfPrevious 对应卡面 "Super-Evolve: Summon 2 instead."
         if (sp.SourceKind == CardSourceKind.CopyOfPrevious)
@@ -651,9 +655,10 @@ public sealed class NaturalPrinter
             // 纹章名要点名：CardName 为空时退回 CrestDef.Name，再退回 #卡号。
             // 早先 WhenCardName 为空会印出 "gain Crest ."（无名字），
             // EnglishCompiler 解析不出、纹章变成空壳（180 号文档 D6）。
-            string crestName = !string.IsNullOrEmpty(sp.CardName) ? sp.CardName
-                             : (!string.IsNullOrEmpty(sp.CrestDef?.Name) ? sp.CrestDef.Name
-                                : "#" + sp.CardId);
+            // 同 Spawn：有卡号就写 #卡号，别把中文名带进英文端。
+            string crestName = sp.CardId > 0 ? "#" + sp.CardId
+                             : (!string.IsNullOrEmpty(sp.CardName) ? sp.CardName
+                                : (sp.CrestDef?.Name ?? ""));
             return Word("gain") + Space() + Word("Crest") + Colon() + crestName + Period();
         }
 
