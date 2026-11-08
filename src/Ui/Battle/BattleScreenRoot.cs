@@ -286,22 +286,48 @@ public partial class BattleScreenRoot : Control
     private void RemoteSubmitChoice(int choiceId, int[] selected) { if (_remoteClient != null) _ = _remoteClient.SubmitChoice(choiceId, selected); }
 
     /// <summary>最近一帧远端快照。网络线程只写它，主线程取走消费。</summary>
-    private ShadowverseFan.KernelV3.Net.NetStateSnapshot _latestRemoteSnap;
+    /// <summary>
+    /// 后台接收线程投递过来的快照队列。
+    ///
+    /// 194 号文档 缺陷 2：早先只用一个字段 `_latestRemoteSnap` 暂存，
+    /// 而每收到一包都会 CallDeferred 排一次「应用快照」。
+    /// 一帧内到达两包时：后一包把前一包覆盖掉，
+    /// 但主线程仍会按排队的次数执行两遍 —— 于是**同一包被应用两次**。
+    ///
+    /// 快照里的面板状态是幂等覆盖（应用两遍还是那点血），
+    /// 但 NewEvents 是 `State.EventLog.Add` 追加的！
+    /// 同一包应用两遍 = OnDamaged(1) 变成两条 = 前端 _pendingLifeDelta 记两笔 +1
+    /// = 被攻击随从在挨打前的 0.34 秒里血量凭空 +1（攻方攻击力越大加得越多）。
+    /// 改用线程安全队列后，一包只入队一次、只出队一次。
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentQueue<ShadowverseFan.KernelV3.Net.NetStateSnapshot> _remoteSnapQueue = new();
 
     private void OnRemoteSnapshot(ShadowverseFan.KernelV3.Net.NetStateSnapshot snap)
     {
         // ReceiveLoop 跑在 Task.Run 的后台线程。直接在这里动 Godot 场景树
         // （Rebuild 会增删控件）属于跨线程操作，轻则闪烁重则崩溃。
-        // 只暂存，切回主线程再应用。
-        _latestRemoteSnap = snap;
+        // 只入队，切回主线程再应用。
+        if (snap == null) return;
+        _remoteSnapQueue.Enqueue(snap);
         CallDeferred(MethodName.ApplyRemoteSnapshotOnMainThread);
     }
 
     private void ApplyRemoteSnapshotOnMainThread()
     {
-        var snap = _latestRemoteSnap;
-        if (_ctrl == null || snap == null) return;
-        _ctrl.ApplyRemoteSnapshot(snap);
+        if (_ctrl == null) return;
+
+        // 把这一帧积压的所有快照按到达顺序全部应用，再统一重绘一次。
+        // 早先「只取最后一包」会丢单，而「按次数重复取同一包」会重复应用 ——
+        // 队列两者都根治了。
+        bool appliedAny = false;
+        while (_remoteSnapQueue.TryDequeue(out var snap))
+        {
+            if (snap == null) continue;
+            _ctrl.ApplyRemoteSnapshot(snap);
+            appliedAny = true;
+        }
+        if (!appliedAny) return;
+
         Rebuild();
         RefreshOverlays();
     }
@@ -1469,6 +1495,17 @@ public partial class BattleScreenRoot : Control
                 float k = Ease.OutCubic((v - 0.52f) / 0.48f);
                 offset = targetDelta * (0.84f * (1f - k));
                 scale = 1.18f - 0.18f * k;
+            }
+
+            // 194 号文档 缺陷 1：冲锋这 0.34 秒里必须实时同步视觉账本。
+            //
+            // 早先只在创建时设了一次 VisualLifeOffset，
+            // 之后 _pendingLifeDelta 变了替身棋子也不刷新 ——
+            // 表现为血量显示滞后，撞上去那一刻才突然跳到正确值。
+            if (actor != null && IsInstanceValid(actor))
+            {
+                actor.VisualLifeOffset = _pendingLifeDelta.GetValueOrDefault(atkId, 0);
+                actor.VisualAttackOffset = _pendingAtkDelta.GetValueOrDefault(atkId, 0);
             }
 
             actor.Position = startTopLeft + offset;

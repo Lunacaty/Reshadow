@@ -100,9 +100,24 @@ public sealed class BattleSessionController
     public MatchPhase? RemotePhase { get; private set; }
     public int? RemoteWinner { get; private set; }
 
+    /// <summary>
+    /// 上一包已应用的快照引用（幂等守卫用）。
+    ///
+    /// 194 号文档 缺陷 2 的第 2 处防线：即便 UI 侧因为订阅时序问题
+    /// （BootRemote 里先订阅、又手动应用一次 _remoteClient.Latest）
+    /// 把同一个实例送进来两次，这里也直接挡掉。
+    /// </summary>
+    private ShadowverseFan.KernelV3.Net.NetStateSnapshot _lastAppliedSnap;
+
     public void ApplyRemoteSnapshot(ShadowverseFan.KernelV3.Net.NetStateSnapshot snap)
     {
         if (snap == null || State == null) return;
+
+        // 幂等守卫：同一个快照实例绝不允许被应用第二次。
+        // 面板状态重复覆盖无害，但 NewEvents 是往 EventLog 追加的 ——
+        // 应用两遍就把 OnDamaged 复制成两条，前端视觉血量会凭空多出 +dmg。
+        if (ReferenceEquals(snap, _lastAppliedSnap)) return;
+        _lastAppliedSnap = snap;
 
         // 在清空旧的 Board/Hand 之前，拍下上一帧所有存活实体的快照索引，
         // 供后续事件还原（阵亡、打出、被破坏的随从动画不至于丢失主体，176 号文档 一.3）。
