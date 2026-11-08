@@ -58,11 +58,107 @@ public partial class AstCodeEdit : CodeEdit
         AddChild(_cardPopup);
 
         TextChanged += OnEditorTextChanged;
+
+        // 打开界面时文本是先构造好再挂上编辑器的（Text = ...），
+        // 那一刻还没有 TextChanged 回调，已有的 #123 不会被补卡名。
+        // 等一帧让 CardSource / 文本都稳定后补一次。
+        Callable.From(AnnotateCardNames).CallDeferred();
+
+        // 代码直接赋值 Text（编译回填、外部灌入）**不会**触发 TextChanged，
+        // 那样 #123 就永远补不上卡名。用 Draw 钩子做兜底检查：
+        // 每帧只在解析出的「未标注卡号集合」与上次不同时才真正重写文本。
+        Draw += () =>
+        {
+            if (!GodotObject.IsInstanceValid(this)) return;
+            if (_autoAnnotating || _suppressPopup || !AutoAnnotateCardNames) return;
+            string cur = Text;
+            // 快速路径：文本没变过就直接跳过，避免每帧跑正则。
+            if (ReferenceEquals(cur, _annotateLastSeen) || cur == _annotateLastSeen) return;
+            _annotateLastSeen = cur;
+            if (string.IsNullOrEmpty(cur) || cur.IndexOf((char)35) < 0) return;
+            AnnotateCardNames();
+        };
+    }
+
+    // ========================================================================
+    // 卡号 -> 卡名 的实时显示增强
+    //
+    // 需求：PyAST / CNL 里写 #123 时，编辑器要让人看到这是哪张卡，
+    // 但底层语义仍然是卡号（卡号是唯一真相，卡名只是注释）。
+    //
+    // 做法：把 "#123" 就地补成 "#123 《卡名》"。
+    // 解析器实测能容忍这种后缀（读号后忽略剩余），所以编译不受影响；
+    // 同时用 _autoAnnotating 抑制重入，避免补完又触发一次扫描。
+    // ========================================================================
+    private bool _autoAnnotating;
+    /// <summary>上次扫描过的文本快照：Draw 每帧都跑，靠它做快速短路。</summary>
+    private string _annotateLastSeen;
+
+    /// <summary>是否启用「卡号后面自动补《卡名》」。默认开启。</summary>
+    public bool AutoAnnotateCardNames { get; set; } = true;
+
+    /// <summary>
+    /// 扫描全文，把没有卡名注释的 #数字 补成 #数字 《卡名》。
+    /// 已有 《…》 后缀的跳过，避免重复叠加。
+    /// </summary>
+    private void AnnotateCardNames()
+    {
+        if (_autoAnnotating || !AutoAnnotateCardNames || CardSource == null) return;
+        string text = Text;
+        if (string.IsNullOrEmpty(text) || text.IndexOf((char)35) < 0) return;
+
+        var map = new System.Collections.Generic.Dictionary<int, string>();
+        foreach (var c in CardSource())
+            if (c.Id > 0 && !string.IsNullOrWhiteSpace(c.Zh)) map[c.Id] = c.Zh;
+        if (map.Count == 0) return;
+
+        // 只匹配「#数字」且后面**没有**紧跟《…》的位置。
+        var rx = new Regex(@"#(\d+)(?!\s*《)");
+        var sb = new System.Text.StringBuilder(text.Length + 64);
+        int last = 0;
+        bool changed = false;
+
+        foreach (Match m in rx.Matches(text))
+        {
+            if (!int.TryParse(m.Groups[1].Value, out int id)) continue;
+            if (!map.TryGetValue(id, out var zh)) continue;
+
+            sb.Append(text, last, m.Index - last);
+            sb.Append(m.Value).Append(" 《").Append(zh).Append("》");
+            last = m.Index + m.Length;
+            changed = true;
+        }
+        if (!changed) return;
+        sb.Append(text, last, text.Length - last);
+
+        // 保持在光标附近的阅读位置：记下行列，写回后还原。
+        int caretLine = GetCaretLine();
+        int caretCol = GetCaretColumn();
+
+        _autoAnnotating = true;
+        _suppressPopup = true;
+        try
+        {
+            Text = sb.ToString();
+            int line = Mathf.Clamp(caretLine, 0, GetLineCount() - 1);
+            SetCaretLine(line);
+            SetCaretColumn(Mathf.Min(caretCol, GetLine(line).Length));
+        }
+        finally
+        {
+            _annotateLastSeen = Text;
+            _suppressPopup = false;
+            _autoAnnotating = false;
+        }
     }
 
     private void OnEditorTextChanged()
     {
         if (_suppressPopup) return;
+
+        // 先补卡名：让玩家敲完 #123 立刻看到是哪张卡。
+        // 内部自带重入抑制，补完不会再次触发本回调。
+        AnnotateCardNames();
 
         int line = GetCaretLine();
         string cur = GetLine(line);
