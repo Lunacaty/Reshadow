@@ -315,7 +315,15 @@ public partial class DiyWorkshopView : Control
 
     private Control BuildLeftPane()
     {
-        var pane = new VBoxContainer { CustomMinimumSize = new Vector2(350, 0) };
+        // pane 允许在窗口矮时收缩（ClipContents 防溢出绘制）：
+        // 早先 CustomMinimumSize 只有宽度约束，预览卡(280)+标题+页签+内容+按钮
+        // 的最小总高在非全屏下超过窗口，把底部按钮顶出屏幕。
+        var pane = new VBoxContainer
+        {
+            CustomMinimumSize = new Vector2(350, 0),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            ClipContents = true,
+        };
         pane.AddThemeConstantOverride("separation", 6);
 
         var holder = new CenterContainer { CustomMinimumSize = new Vector2(0, 280) };
@@ -407,6 +415,8 @@ public partial class DiyWorkshopView : Control
         var bar = new PanelContainer { CustomMinimumSize = new Vector2(0, 46) };
         bar.AddThemeStyleboxOverride("panel", SvWbTheme.MakePanelBox(
             SvWbTheme.BgSurface, SvWbTheme.BorderSubtle, 6, 1, 0));
+        // 窗口矮时收缩优先级最低：内容区(hostBox)先收缩，bar 保持 46。
+        bar.SizeFlagsVertical = Control.SizeFlags.ShrinkEnd;
         pane.AddChild(bar);
 
         var row = new HBoxContainer();

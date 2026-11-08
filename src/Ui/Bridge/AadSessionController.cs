@@ -174,19 +174,6 @@ public sealed class AadSessionController
         }
     }
 
-    /// <summary>
-    /// 从回复里提取代码块。优先认 pyast / python 标记，其次任意代码块，
-    /// 都没有才退回全文 —— 模型偶尔会直接吐裸代码。
-    /// </summary>
-    public static string ExtractPyAstCode(string reply)
-    {
-        if (string.IsNullOrWhiteSpace(reply)) return "";
-        var tagged = Regex.Match(reply, "```(?:pyast|python|ast|text)?[ \\t]*\\r?\\n([\\s\\S]*?)```", RegexOptions.IgnoreCase);
-        if (tagged.Success) return tagged.Groups[1].Value.Trim();
-        var any = Regex.Match(reply, "```([\\s\\S]*?)```");
-        if (any.Success) return any.Groups[1].Value.Trim();
-        return reply.Trim();
-    }
 
     private static string Clip(string s, int max)
         => string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s.Substring(0, max) + "…");
@@ -298,21 +285,119 @@ public sealed class AadSessionController
     /// 内置默认提示词：把 PyAST 语法要点压成一段可直接发送的 system 内容。
     /// 玩家第一次打开 AAD 时点一下就能用，不必自己写。
     /// </summary>
-    public static string DefaultSystemPrompt() => string.Join("\n", new[]
+    /// <summary>
+    /// 内置默认提示词：直接采用 docs/语法PyAST.md 全文，附输出约定。
+    ///
+    /// 输出约定（防 LLM 添油加醋）：
+    ///   · 代码必须包在 <ast></ast> 标签里，标签外的一切文字都会被正则丢弃；
+    ///   · 引用卡牌只写 #卡号；
+    ///   · 不写 markdown 代码围栏（``` 会被解析器当噪音）。
+    /// </summary>
+    public static string DefaultSystemPrompt()
     {
-        "你是《影之诗：超凡世界》同人引擎 Reshadow 的造卡助手。",
-        "只输出 PyAST 效果块代码，用 pyast 代码块包裹，不要解释。",
-        "",
-        "PyAST 规则要点：",
-        "1. 用 4 空格缩进表达层级，不要写大括号。",
-        "2. 触发头：fanfare: / last_words: / evolve: / super_evolve: / strike: / clash:",
-        "   turn_start: / turn_end: / aura: / on_enter: / on_leave:",
-        "3. 常用动作：draw N / deal N damage to <目标> / restore N life to <目标> /",
-        "   summon N #卡号 / add_to_hand N #卡号 / destroy <目标> / buff <目标> +X/+Y /",
-        "   grant_keyword <关键词> to <目标>",
-        "4. 目标写法：opponent:leader / self:leader / opponent:board<Follower> All /",
-        "   self:board<Follower> All where has trait <兵种> / $self / $selected / $created",
-        "5. 条件：if <表达式>: 下面缩进写动作。计数器写作 ctr:<名字>。",
-        "6. 引用卡牌一律用 #卡号，不要写卡名。",
-    });
+        string body;
+        try
+        {
+            // 优先用打包后的可写目录副本（ContentPaths.Root/docs），开发期回落仓库根。
+            string p1 = Path.Combine(ContentPaths.Root, "docs", "语法PyAST.md");
+            string p2 = Path.Combine(ContentPaths.Root, "..", "docs", "语法PyAST.md");
+            string p3 = ContentPaths.Root;
+            // 开发期 Root=game/，仓库根的 docs 在上一级；打包后可能与 exe 同级。
+            string[] candidates =
+            {
+                p1,
+                p2,
+                // 逐级向上找（最多 3 层）。
+                Path.Combine(Directory.GetParent(p3)?.FullName ?? p3, "docs", "语法PyAST.md"),
+                Path.Combine(Directory.GetParent(Directory.GetParent(p3)?.FullName ?? p3)?.FullName ?? p3,
+                             "docs", "语法PyAST.md"),
+            };
+            body = null;
+            foreach (var c in candidates)
+                if (File.Exists(c)) { body = File.ReadAllText(c, Encoding.UTF8); break; }
+        }
+        catch { body = null; }
+
+        if (string.IsNullOrWhiteSpace(body))
+            body = "（语法手册缺失：请把 docs/语法PyAST.md 放到程序目录旁）";
+
+        return string.Join("\n", new[]
+        {
+            "你是同人卡牌引擎 Reshadow 的造卡助手。下面是 PyAST 规范语法手册全文，必须严格遵守其中的语法，",
+            "禁止发明手册中不存在的触发词、动作指令或目标写法。",
+            "",
+            "输出约定：",
+            "1. 只把 PyAST 代码放在 <ast></ast> 标签内输出，标签外不要写任何解释文字。",
+            "2. 引用卡牌一律写 #卡号（如 #90011110），不要写卡名。",
+            "3. 不要使用 markdown 代码围栏（```）。",
+            "4. DIY 编辑器场景省略最外层 card 头，直接以 0 缩进写能力块。",
+            "",
+            "===== 语法手册 =====",
+            body,
+            "===== 手册结束 =====",
+        });
+    }
+
+    /// <summary>
+    /// 从回复中提取 PyAST 代码：优先 <ast></ast> 标签；
+    /// 兼容旧的三反引号代码块；都没有才退回全文。
+    /// </summary>
+    public static string ExtractPyAstCode(string reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply)) return "";
+
+        // ① <ast> 标签（约定的主格式）
+        var tag = Regex.Match(reply, @"<ast>([\s\S]*?)</ast>", RegexOptions.IgnoreCase);
+        if (tag.Success)
+        {
+            var inner = tag.Groups[1].Value.Trim();
+            // 有些模型会把代码再裹一层 ```，剥掉。
+            var fence = Regex.Match(inner, @"```[a-zA-Z]*\r?\n([\s\S]*?)```");
+            return fence.Success ? fence.Groups[1].Value.Trim() : inner;
+        }
+
+        // ② 兼容：普通代码围栏
+        var tagged = Regex.Match(reply, @"```(?:pyast|python|ast|text)?\s*\r?\n([\s\S]*?)```");
+        if (tagged.Success) return tagged.Groups[1].Value.Trim();
+
+        // ③ 都没有：退回全文（模型偶尔直接吐裸代码）
+        return reply.Trim();
+    }
+
+    /// <summary>
+    /// 拉取模型列表（OpenAI 兼容 GET /v1/models）。
+    /// 返回 (是否成功, 模型 id 列表, 错误)。
+    /// </summary>
+    public async Task<(bool Ok, List<string> Models, string Error)> FetchModelsAsync(
+        CancellationToken ct = default)
+    {
+        try
+        {
+            string url = (Config.BaseUrl ?? "").TrimEnd('/') + "/models";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrWhiteSpace(Config.ApiKey))
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Config.ApiKey);
+
+            using var resp = await Http.SendAsync(req, ct);
+            string json = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+                return (false, new List<string>(), "HTTP " + (int)resp.StatusCode + ": " + Clip(json, 200));
+
+            using var doc = JsonDocument.Parse(json);
+            var list = new List<string>();
+            if (doc.RootElement.TryGetProperty("data", out var data))
+                foreach (var m in data.EnumerateArray())
+                    if (m.TryGetProperty("id", out var idEl))
+                    {
+                        var id = idEl.GetString();
+                        if (!string.IsNullOrWhiteSpace(id)) list.Add(id);
+                    }
+            list.Sort(StringComparer.Ordinal);
+            return (true, list, "");
+        }
+        catch (Exception ex)
+        {
+            return (false, new List<string>(), ex.Message);
+        }
+    }
 }

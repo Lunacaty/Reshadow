@@ -495,7 +495,8 @@ public sealed partial class AadAssistantPanel : VBoxContainer
 
     private void OpenConfigDialog()
     {
-        var dlg = new AcceptDialog { Title = "AAD · API 设置", Size = new Vector2I(520, 300) };
+        var dlg = new AcceptDialog { Title = "AAD · API 设置", Size = new Vector2I(560, 340) };
+        dlg.MaxSize = new Vector2I(640, 640);
         var box = new VBoxContainer();
         box.AddThemeConstantOverride("separation", 8);
 
@@ -519,7 +520,60 @@ public sealed partial class AadAssistantPanel : VBoxContainer
         var urlEdit = Field("BaseUrl", _sess.Config.BaseUrl, "https://api.openai.com/v1");
         var keyEdit = Field("ApiKey", _sess.Config.ApiKey, "sk-…（本地模型可留空）");
         keyEdit.Secret = true;
-        var modelEdit = Field("Model", _sess.Config.Model, "gpt-4o-mini / deepseek-chat …");
+
+        // Model 行：手动输入 + 在线拉取（GET /models，OpenAI 兼容）+ 下拉快选。
+        var modelRow = new HBoxContainer();
+        modelRow.AddThemeConstantOverride("separation", 6);
+        var modelLb = new Label { Text = "Model", CustomMinimumSize = new Vector2(90, 0) };
+        modelLb.AddThemeFontSizeOverride("font_size", 12);
+        modelRow.AddChild(modelLb);
+        var modelEdit = new LineEdit
+        {
+            Text = _sess.Config.Model,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            PlaceholderText = "gpt-4o-mini / deepseek-chat …",
+        };
+        modelRow.AddChild(modelEdit);
+        var fetchBtn = new Button { Text = "⤓ 拉取", CustomMinimumSize = new Vector2(72, 30) };
+        SvWbTheme.StyleButton(fetchBtn, customAccent: SvWbTheme.AccentCyan);
+        fetchBtn.AddThemeFontSizeOverride("font_size", 11);
+        modelRow.AddChild(fetchBtn);
+        var modelPick = new OptionButton { CustomMinimumSize = new Vector2(150, 30) };
+        SvWbTheme.StyleButton(modelPick);
+        SvWbTheme.StyleOptionPopup(modelPick);
+        modelPick.AddItem("(模型列表)", -1);
+        modelPick.Disabled = true;
+        modelRow.AddChild(modelPick);
+        modelPick.ItemSelected += idx =>
+        {
+            int k = (int)idx;
+            if (k >= 0 && k < modelPick.ItemCount && modelPick.GetItemText(k) != "(模型列表)")
+                modelEdit.Text = modelPick.GetItemText(k);
+        };
+        box.AddChild(modelRow);
+
+        // 拉取模型：OpenAI 兼容 GET /v1/models。
+        fetchBtn.Pressed += async () =>
+        {
+            // 先把当前输入的 URL/Key 应用到 Config，拉取才用得上。
+            _sess.Config.BaseUrl = urlEdit.Text?.Trim() ?? "";
+            _sess.Config.ApiKey = keyEdit.Text?.Trim() ?? "";
+            fetchBtn.Disabled = true;
+            fetchBtn.Text = "…";
+            var (ok, models, err) = await _sess.FetchModelsAsync();
+            if (!IsInstanceValid(dlg)) return;
+            fetchBtn.Disabled = false;
+            fetchBtn.Text = "⤓ 拉取";
+            if (!ok) { SetStatus("✘ 拉取失败：" + err); return; }
+            modelPick.Clear();
+            modelPick.Disabled = models.Count == 0;
+            if (models.Count == 0) modelPick.AddItem("(空)", -1);
+            foreach (var m in models) modelPick.AddItem(m);
+            modelPick.Selected = 0;
+            SetStatus("✔ 拉取到 " + models.Count + " 个模型");
+        };
+        dlg.RegisterTextEnter(urlEdit);
+        dlg.RegisterTextEnter(modelEdit);
 
         var tempRow = new HBoxContainer();
         var tempLb = new Label { Text = "Temperature", CustomMinimumSize = new Vector2(90, 0) };

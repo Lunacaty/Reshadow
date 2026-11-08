@@ -731,7 +731,9 @@ void fragment() {
                 if (tk == "【构筑规则】")
                     sb.Append(WrapSentenceGradient(tk, GradPurple.Light, GradPurple.Main, bold: true));
                 else if (tk.StartsWith("【") && tk.EndsWith("】"))
-                    sb.Append(WrapSentenceGradient(tk, lightKeyword, mainKeyword, bold: true));
+                    // 190 用户反馈：关键词不再加粗 —— 粗体在小字号下糊成一团看不清，
+                    // 颜色差（亮金白->琥珀金）已足够区分关键词与普通描述。
+                    sb.Append(WrapSentenceGradient(tk, lightKeyword, mainKeyword, bold: false));
                 else if (tk.StartsWith("《") && tk.EndsWith("》"))
                     sb.Append(WrapSentenceGradient(tk, lightCard, mainCard, bold: true));
                 else
