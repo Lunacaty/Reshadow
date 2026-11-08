@@ -503,7 +503,8 @@ public static class SvWbTheme
     /// Material 作用于整个控件树的绘制结果，会把子控件的 COLOR 一起改写，
     /// 实测按钮文字会直接消失（只剩边框）。只对 Label 使用。
     /// </summary>
-    public static void ApplyGradientText(CanvasItem ctrl, Color? mainColor = null, float spanWidth = 240f)
+    /// <param name="spanWidth">显式指定渐变跨度；传 0 表示按文字实际宽度自动计算。</param>
+    public static void ApplyGradientText(CanvasItem ctrl, Color? mainColor = null, float spanWidth = 0f)
     {
         if (ctrl is not Label lbl) return;
         var pair = mainColor.HasValue ? DeriveGradientPair(mainColor.Value) : GradGold;
@@ -512,11 +513,17 @@ public static class SvWbTheme
         // Godot 里每个字符是独立 Glyph Quad，UV 是该字符在字体图集里的局部坐标，
         // 结果会变成「每个字自己内部从左到右变色」，完全不是整句渐变。
         // 正确做法：vertex() 里取控件局部像素坐标 VERTEX.x，fragment() 里除以 span_w。
+        //
+        // 189 号文档 问题 2：居中对齐的 Label（RESHADOW / VICTORY 这类）只传 span_w
+        // 从 x=0 起算是不够的 —— 1280 宽容器里文字画在 480~800，
+        // v_x/240 早就 clamp 到 1.0，整句直接变成纯终点色。
+        // 必须再加 start_x，从文字真正的起始像素开始算。
         _textGradShader ??= new Shader
         {
             Code = @"shader_type canvas_item;
 uniform vec4 col_light : source_color = vec4(1.0, 0.953, 0.812, 1.0);
 uniform vec4 col_main  : source_color = vec4(0.890, 0.741, 0.388, 1.0);
+uniform float start_x = 0.0;
 uniform float span_w = 240.0;
 varying float v_x;
 void vertex() {
@@ -524,7 +531,7 @@ void vertex() {
 }
 void fragment() {
     vec4 tex = texture(TEXTURE, UV);
-    float t = clamp(v_x / max(1.0, span_w), 0.0, 1.0);
+    float t = clamp((v_x - start_x) / max(1.0, span_w), 0.0, 1.0);
     vec3 grad = mix(col_light.rgb, col_main.rgb, t);
     // 描边与阴影亮度低，保留原色，避免整块糊掉
     float lum = dot(COLOR.rgb, vec3(0.299, 0.587, 0.114));
@@ -534,11 +541,91 @@ void fragment() {
 "
         };
 
+        // 量出文字真实宽度与容器宽度，据此推 start_x / span_w。
+        var font = lbl.GetThemeDefaultFont() ?? ThemeDB.FallbackFont;
+        int fs = lbl.HasThemeFontSizeOverride("font_size") ? lbl.GetThemeFontSize("font_size") : 14;
+        float textW = (font != null && !string.IsNullOrEmpty(lbl.Text))
+            ? font.GetStringSize(lbl.Text, HorizontalAlignment.Left, -1, fs).X
+            : 180f;
+        float boxW = lbl.Size.X > 1f ? lbl.Size.X : textW;
+        float actualSpan = spanWidth > 1f ? spanWidth : Mathf.Max(24f, Mathf.Min(textW, boxW));
+
+        float startX = lbl.HorizontalAlignment switch
+        {
+            HorizontalAlignment.Center => Mathf.Max(0f, (boxW - actualSpan) * 0.5f),
+            HorizontalAlignment.Right  => Mathf.Max(0f, boxW - actualSpan),
+            _                          => 0f,
+        };
+
         var mat = new ShaderMaterial { Shader = _textGradShader };
         mat.SetShaderParameter("col_light", pair.Light);
         mat.SetShaderParameter("col_main", pair.Main);
-        mat.SetShaderParameter("span_w", Mathf.Max(60f, spanWidth));
+        mat.SetShaderParameter("start_x", startX);
+        mat.SetShaderParameter("span_w", actualSpan);
         lbl.Material = mat;
+    }
+
+    // ---- 189 号文档 问题 3：全局自动渐变挂载器 ----
+    //
+    // 手动去 55 个 UI 文件里改几百处 new Label 不现实，改为挂 SceneTree.NodeAdded：
+    // 任何 Label 进树时自动补材质，覆盖全游戏，包括以后新增的界面。
+    private static bool _autoHookInstalled;
+
+    /// <summary>安装全局 Label 自动渐变钩子（幂等，可重复调用）。</summary>
+    public static void InstallGlobalLabelGradientHook(SceneTree tree)
+    {
+        if (tree == null) return;
+        if (!_autoHookInstalled)
+        {
+            _autoHookInstalled = true;
+            tree.NodeAdded += OnNodeAddedToTree;
+        }
+        // 已在树里的 Label 也刷一遍，避免钩子装晚了漏掉首屏。
+        ApplyGradientRecursively(tree.Root);
+    }
+
+    private static void ApplyGradientRecursively(Node root)
+    {
+        if (root == null) return;
+        if (root is Label lbl) BindAutoGradient(lbl);
+        foreach (var child in root.GetChildren())
+            ApplyGradientRecursively(child);
+    }
+
+    private static void OnNodeAddedToTree(Node node)
+    {
+        if (node is Label lbl)
+            Callable.From(() => BindAutoGradient(lbl)).CallDeferred();
+    }
+
+    /// <summary>
+    /// 给单个 Label 绑渐变。
+    ///
+    /// 已经手动指定过渐变材质的 Label 一律跳过，不覆盖作者的意图；
+    /// Resized 里重建材质，保证文字变长/换行后渐变区间仍然贴合实际宽度。
+    /// </summary>
+    private static void BindAutoGradient(Label lbl)
+    {
+        if (lbl == null || !GodotObject.IsInstanceValid(lbl)) return;
+        if (lbl.Material is ShaderMaterial) return;
+
+        void RefreshMat()
+        {
+            if (!GodotObject.IsInstanceValid(lbl)) return;
+            if (lbl.Material is ShaderMaterial) return;
+
+            Color? mainCol = lbl.HasThemeColorOverride("font_color")
+                ? lbl.GetThemeColor("font_color")
+                : null;
+
+            // 基础顶点色必须是纯白，否则 COLOR 乘算会把浅主色压暗；
+            // 描边仍由 font_outline_color 控制，不受影响。
+            lbl.AddThemeColorOverride("font_color", Colors.White);
+            ApplyGradientText(lbl, mainCol);
+        }
+
+        RefreshMat();
+        lbl.Resized += RefreshMat;
     }
 
     /// <summary>

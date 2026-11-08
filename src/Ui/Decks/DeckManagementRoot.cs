@@ -25,6 +25,11 @@ public partial class DeckManagementRoot : Control
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
 
+        // 189 号文档 问题 3：全游戏 Label 自动渐变。
+        // 在应用根节点装一次，覆盖所有界面（含以后新增的），
+        // 不必去 55 个 UI 文件里逐个改 new Label。
+        SvWbTheme.InstallGlobalLabelGradientHook(GetTree());
+
         // 星象圣殿背景（替代单调色块）：渐变 + 星轨同心圆 + 斜向圣光带。
         var bg = new AstralBackgroundCanvas();
         AddChild(bg);

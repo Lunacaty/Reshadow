@@ -282,9 +282,7 @@ public sealed partial class GradientAstHighlighter : SyntaxHighlighter
     // 七大语法色系（浅主色 -> 主色）
     // 七大语法色系（浅主色 -> 主色）。
     //
-    // 浅色一律取「同色相、明度 ~0.97、饱和度压到主色约 62%」。
-    // 早先那批 #FFF9DB / #F3E8FF 饱和度只有 0.09~0.14，观感就是纯白，
-    // 整词渐变只剩后半段在变色，等于没有渐变。
+    // 浅色取「同色相、明度 ~0.97、饱和度压到主色约 62%」，避免起点泛白。
     private static readonly (Color Light, Color Main) PalTrigger = (new Color("F7C165"), new Color("F59E0B"));
     private static readonly (Color Light, Color Main) PalAction  = (new Color("D3AEF7"), new Color("C084FC"));
     private static readonly (Color Light, Color Main) PalTarget  = (new Color("62E2F7"), new Color("06B6D4"));
