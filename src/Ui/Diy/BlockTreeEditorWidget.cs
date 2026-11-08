@@ -1515,9 +1515,22 @@ public partial class BlockTreeEditorWidget : VBoxContainer
         return cardId > 0 ? "#" + cardId : "#?";
     }
 
-    private static string BlockZone(Block b) => string.IsNullOrEmpty(b.EnumA) ? "Board" : b.EnumA;
+    // 生效区域必须读写 Block.ActiveZone，**不能**借用 EnumA。
+    //
+    // 编译器（DiyBlockTree）与反编译器（DiyBlockModel）都用 ActiveZone：
+    //   DiyBlockModel.cs:1531  ActiveZone = trigger.ActiveZone.ToString()
+    //   DiyBlockTree.cs:290    ActiveZone = b.ActiveZone
+    // 而 EnumA 是各 opcode 的通用枚举槽（Zone / Owner / Mode / Op 共用）。
+    // 早先 SetBlockZone 写的是 EnumA，于是「改生效区域」只改了显示，
+    // 编译回 AST 时 ActiveZone 仍是 null → 落到 Board，改成牌组完全无效。
+    private static string BlockZone(Block b)
+        => string.IsNullOrEmpty(b.ActiveZone) ? "Board" : b.ActiveZone;
 
-    private static void SetBlockZone(Block b, string zone) => b.EnumA = zone;
+    private static void SetBlockZone(Block b, string zone)
+    {
+        // "Board" 是默认值：存 null 与反编译器保持一致，避免往返产生差异。
+        b.ActiveZone = string.Equals(zone, "Board", StringComparison.Ordinal) ? null : zone;
+    }
 
     /// <summary>中文下拉框：选项来自词表，回写内部值。</summary>
     private void BuildEnumCombo(VBoxContainer col, string label,
