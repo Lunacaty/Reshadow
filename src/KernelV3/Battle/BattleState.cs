@@ -659,6 +659,38 @@ public sealed class BattleState : IVmWorld
     public const int FaithEntityIdBase = 900000;
 
     /// <summary>
+    /// <summary>
+    /// 用给定的 CardDef 直接造一个纹章实体（不查卡池）。
+    ///
+    /// 纹章与主人卡共用卡号时，卡池里存的是主人卡的随从定义；
+    /// 走 CreateEntity(cardId) 会把随从当纹章。这里显式用传入的 def。
+    /// </summary>
+    private RuntimeEntity CreateCrestEntity(int cardId, CardDef def, ZoneRef zone, int playerId)
+    {
+        if (def == null) return null;
+        var e = new RuntimeEntity
+        {
+            EntityId = AllocateEntityId(),
+            EntrySerial = 1,
+            Def = def,
+            PlayerId = playerId,
+            Zone = zone,
+            Attack = def.BaseAttack,
+            Life = def.BaseLife,
+            Cost = def.BaseCost,
+        };
+        e.MaxLife = e.Life;
+        // 与 CreateEntity 保持一致：装配卡面常驻属性（兵种/关键词/初始计数器/
+        // PassiveAura/Countdown），并登记进 _all 活体。
+        // 漏了 MountInnateProperties 纹章就没有自己的兵种与关键词；
+        // 漏了 _all.Add 则 GetLive 找不到它，按区域解析全部落空。
+        MountInnateProperties(e);
+        _all.Add(e);
+        PlaceInZone(e, zone, playerId);
+        return e;
+    }
+
+    /// <summary>
     /// 获得一个纹章（R-6.2）。
     /// 纹章不是普通召唤：它自有同名唯一与区域上限两道门槛，
     /// 而且两道都是「安静失败」——不进墓地、不触发任何事件。
@@ -680,7 +712,15 @@ public sealed class BattleState : IVmWorld
             // Aria 的随从卡与她的纹章同名不同物，共用 id 会让 CreateEntity
             // 从卡池取到随从定义 —— 纹章的 Abilities 直接变成空。
             // 一律走 ResolveCrestCardId 合成（它在同一卡名下是幂等的）。
-            int synth = ResolveCrestCardId(crestDef.Name ?? cardName ?? CrestFallbackName);
+            // 纹章与主人卡**同 ID**：两者本就同名，且纹章定义只存在于
+            // 主人卡的 CrestDef 里，不参与卡池编号，因此不存在号冲突。
+            // 卡号是唯一真相，不再拿名字做哈希反推。
+            //
+            // 前提：绝不能用 _cardPool[主人的号] = 纹章定义 去覆盖随从定义，
+            // 否则之后召唤该随从会拿到纹章。实体在这里直接构造，不查卡池。
+            int synth = crestDef.CardId > 0 ? crestDef.CardId : cardId;
+            if (synth <= 0)
+                synth = ResolveCrestCardId(crestDef.Name ?? cardName ?? CrestFallbackName);
             if (synth <= 0) return null;
             def = crestDef.CardId == synth
                 ? crestDef
@@ -709,7 +749,9 @@ public sealed class BattleState : IVmWorld
                         : (crestDef.CardId > 0 && crestDef.CardId < 40000000 ? crestDef.CardId : cardId),
                 };
             cardId = synth;
-            _cardPool[cardId] = def;
+            // 注意：这里**不能**写 _cardPool[cardId] = def。
+            // 纹章与主人卡共用卡号时，那会把随从定义覆盖成纹章定义。
+            // 实体在下方直接构造（见 CreateCrestEntityFromDef）。
         }
 
         if (def == null && cardId > 0) _cardPool.TryGetValue(cardId, out def);
@@ -741,7 +783,11 @@ public sealed class BattleState : IVmWorld
         if (def == null) return null;
 
         // 纹章必须以 Crest 卡种进入纹章区。
-        var e = CreateEntity(cardId, ZoneRef.CrestArea, playerId);
+        //
+        // 这里**直接构造实体**，不走 CreateEntity(cardId) —— 纹章与主人卡共用
+        // 卡号时，CreateEntity 会从 _cardPool 取到主人卡的随从定义，
+        // 造出来的「纹章」卡种、身材、能力全错。def 已经在上面备好。
+        var e = CreateCrestEntity(cardId, def, ZoneRef.CrestArea, playerId);
         if (e == null) return null;
         if (e.Zone != ZoneRef.CrestArea) return null;   // 同名或满员：安静失败
 

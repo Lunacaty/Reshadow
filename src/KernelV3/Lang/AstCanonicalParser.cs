@@ -431,6 +431,15 @@ public sealed class AstCanonicalParser
     {
         string kind = TakeIdent();
         string name = Current.Kind == PyTokKind.String ? TakeString() : "";
+        // 子卡头也允许写 #卡号（与 gain_crest #卡号 同源）。
+        // 卡号是唯一真相；名字只用于显示，能反查就换成中文名。
+        int subCardId = 0;
+        if (Current.Kind == PyTokKind.Hash)
+        {
+            Advance();
+            subCardId = TakeNumber();
+            if (_lex != null && _lex.TryGetCardName(subCardId, out var resolved)) name = resolved;
+        }
         int cost = 0;
         if (Current.Kind == PyTokKind.LParen)
         {
@@ -496,7 +505,7 @@ public sealed class AstCanonicalParser
             "crystallize" => CardKind.Amulet,
             _ => CardKind.Crest,
         };
-        var def = new Ast.CardDef { Name = name, BaseCost = cost, Abilities = body, Kind = defKind };
+        var def = new Ast.CardDef { CardId = subCardId, Name = name, BaseCost = cost, Abilities = body, Kind = defKind };
         switch (kind)
         {
             case "crest": crest = def; break;
