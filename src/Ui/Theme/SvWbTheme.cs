@@ -341,37 +341,83 @@ public static class SvWbTheme
     /// 数据层（AST、PyAST 源码、存档 JSON）永远保持 #90011110 这种纯数字 ——
     /// 它跨语言、跨改名都稳定。只有显示层做富文本映射（179 号文档 C3）。
     /// </summary>
+    /// <summary>AST 预览用的全语法 token 正则（与右侧 CodeEdit 的 7 色系同构）。</summary>
+    private static readonly Regex AstPreviewTokenRegex = new(
+        @"(?<comment>//.*$)" +
+        @"|(?<card>#\d{4,9}\b)" +
+        @"|(?<str>""[^""]*""|【[^】]+】|《[^》]+》)" +
+        @"|(?<slot>\$[a-zA-Z0-9_]+|\b(?:ctr|prop|sum|split|trait|clan):[a-zA-Z0-9_\u4e00-\u9fa5]+)" +
+        @"|(?<trig>\b(?:fanfare|last_words|evolve|super_evolve|strike|clash|engage|aura|turn_start|turn_end|crest|faith|accelerate|crystallize|on_\w+)\b:?)" +
+        @"|(?<act>\b(?:card|deck_mod|keywords|deal|draw|restore|summon|add_to_hand|destroy|banish|discard|bounce|buff|set_stats|grant_keyword|remove_keyword|discover|reanimate|gain_crest|if|elif|else|repeat|for_each|modes|option|pay|where|counter|select|transform|invoke_ability|grant_ability|move)\b)" +
+        @"|(?<kw>\b(?:ward|rush|storm|bane|drain|ambush|intimidate|barrier|ignores_ward|free_evolve|free_super_evolve|immune_\w+|cannot_\w+)\b)" +
+        @"|(?<tgt>\b(?:self|opponent|any|board|hand|deck|cemetery|banished|crest_area|ex_area|All|Choose|Random|First|Last|Distinct|Follower|Spell|Amulet|Crest|Faith|Leader|ThisTurn|Permanent|UntilEndOfOpponentTurn)\b)" +
+        @"|(?<num>[+-]?\d+(?:/[+-]?\d+)?)",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
+    /// <summary>
+    /// AST 规范形预览 -> BBCode。
+    ///
+    /// 188 号文档 缺陷四：此前只把 #卡号 换成卡名，其余 fanfare: / deal / $self /
+    /// ctr:pp 全部落在 default_color 的暗灰单色里，既没有语法层次也没有渐变。
+    /// 现在按行扫描全语法正则，与右侧 GradientAstHighlighter 使用**完全同构**的
+    /// 7 大色系，左侧预览与右侧编辑器看起来是同一套配色。
+    /// </summary>
     public static string FormatAstWithCardNames(
         string rawAstText, Func<int, KernelV3.Ast.CardDef> cardLookup = null)
     {
         if (string.IsNullOrEmpty(rawAstText)) return "";
 
-        // AST 语法里有 [enhance(4)] / [dur=ThisTurn] 这种方括号，
-        // 直接喂给 RichTextLabel 会被 BBCode 解析器当成未知标签吞掉，
-        // 必须先把 [ 转义掉。
-        string safe = rawAstText.Replace("[", "[lb]");
+        var sb = new System.Text.StringBuilder(rawAstText.Length * 8);
+        int lastIdx = 0;
 
-        return Regex.Replace(safe, @"#(\d{4,9})\b", m =>
+        // 普通片段：整句奶白 -> 鎏金渐变（浅淡，不抢 token 的视觉）。
+        void FlushPlain(string plain)
         {
-            if (!int.TryParse(m.Groups[1].Value, out int cid)) return m.Value;
-            var def = cardLookup?.Invoke(cid);
-            string name = def != null
-                ? (!string.IsNullOrWhiteSpace(def.NameChs) ? def.NameChs : def.Name)
-                : KernelV3.Packs.AuthoritativeNames.ChineseOf(cid);
+            if (string.IsNullOrEmpty(plain)) return;
+            sb.Append(WrapSentenceGradient(plain.Replace("[", "[lb]"), GradGold.Light, GradGold.Main));
+        }
 
-            if (string.IsNullOrWhiteSpace(name))
-                return $"[color=#94A3B8]#{cid}[/color]";
+        foreach (Match m in AstPreviewTokenRegex.Matches(rawAstText))
+        {
+            if (!m.Success || m.Length == 0) continue;
+            if (m.Index > lastIdx) FlushPlain(rawAstText.Substring(lastIdx, m.Index - lastIdx));
 
-            // 卡名走「冰白 -> 星辉青」整句渐变（187 号文档 专题三 末段），
-            // 与 FormatRichCardText 的《卡名》色对保持一致；
-            // 卡号本身保持暗灰，避免抢视觉焦点。
-            string gradName = WrapSentenceGradient("《" + name + "》",
-                new Color("E0F7FA"), new Color("38BDF8"), bold: true);
-            return "[bgcolor=#1E293B]" + gradName
-                 + $"[color=#64748B](#{cid})[/color][/bgcolor]";
-        });
+            if (m.Groups["card"].Success && int.TryParse(m.Value.AsSpan(1), out int cid))
+            {
+                var def = cardLookup?.Invoke(cid);
+                string name = def != null
+                    ? (!string.IsNullOrWhiteSpace(def.NameChs) ? def.NameChs : def.Name)
+                    : KernelV3.Packs.AuthoritativeNames.ChineseOf(cid);
+
+                if (string.IsNullOrWhiteSpace(name))
+                    sb.Append(WrapSentenceGradient(m.Value, new Color("FEF08A"), new Color("EAB308")));
+                else
+                    sb.Append("[bgcolor=#1E293B]")
+                      .Append(WrapSentenceGradient("《" + name + "》", GradCyan.Light, new Color("38BDF8"), bold: true))
+                      .Append("[color=#64748B](#").Append(cid).Append(")[/color][/bgcolor]");
+            }
+            else if (m.Groups["comment"].Success)
+            {
+                sb.Append(WrapSentenceGradient(m.Value.Replace("[", "[lb]"),
+                    new Color("94A3B8"), new Color("475569")));
+            }
+            else
+            {
+                var (light, main, bold) = m.Groups["trig"].Success ? (new Color("FFF9DB"), new Color("F59E0B"), true)
+                                        : m.Groups["act"].Success  ? (GradPurple.Light, GradPurple.Main, true)
+                                        : m.Groups["slot"].Success ? (GradCrimson.Light, new Color("FB7185"), false)
+                                        : (m.Groups["kw"].Success || m.Groups["str"].Success)
+                                              ? (GradGreen.Light, new Color("10B981"), true)
+                                        : m.Groups["tgt"].Success  ? (GradCyan.Light, new Color("06B6D4"), false)
+                                        : (new Color("FEF08A"), new Color("EAB308"), false);
+                sb.Append(WrapSentenceGradient(m.Value.Replace("[", "[lb]"), light, main, bold));
+            }
+            lastIdx = m.Index + m.Length;
+        }
+
+        if (lastIdx < rawAstText.Length) FlushPlain(rawAstText.Substring(lastIdx));
+        return sb.ToString();
     }
-
     // ========================================================================
     // 整句渐变渲染管线（187 号文档 专题二）
     //
@@ -426,7 +472,6 @@ public static class SvWbTheme
     }
 
     // ---- 通道 B：Label / Button 的 94° 线性渐变材质 ----
-    private static readonly System.Collections.Generic.Dictionary<(Color, Color), ShaderMaterial> _gradMatCache = new();
     private static Shader _textGradShader;
 
     /// <summary>
@@ -440,35 +485,55 @@ public static class SvWbTheme
     /// Material 作用于整个控件树的绘制结果，会把子控件的 COLOR 一起改写，
     /// 实测按钮文字会直接消失（只剩边框）。只对 Label 使用。
     /// </summary>
-    public static void ApplyGradientText(CanvasItem ctrl, Color? mainColor = null)
+    public static void ApplyGradientText(CanvasItem ctrl, Color? mainColor = null, float spanWidth = 240f)
     {
-        if (ctrl == null) return;
-        // 只接受标签：其它控件类型一律不挂，避免破坏可读性。
-        if (ctrl is not Label) return;
+        if (ctrl is not Label lbl) return;
         var pair = mainColor.HasValue ? DeriveGradientPair(mainColor.Value) : GradGold;
-        if (!_gradMatCache.TryGetValue(pair, out var mat))
+
+        // 187 号文档原稿用 UV.x 算渐变比例 —— 那是**错的**：
+        // Godot 里每个字符是独立 Glyph Quad，UV 是该字符在字体图集里的局部坐标，
+        // 结果会变成「每个字自己内部从左到右变色」，完全不是整句渐变。
+        // 正确做法：vertex() 里取控件局部像素坐标 VERTEX.x，fragment() 里除以 span_w。
+        _textGradShader ??= new Shader
         {
-            _textGradShader ??= new Shader
-            {
-                Code = @"shader_type canvas_item;
+            Code = @"shader_type canvas_item;
 uniform vec4 col_light : source_color = vec4(1.0, 0.953, 0.812, 1.0);
 uniform vec4 col_main  : source_color = vec4(0.890, 0.741, 0.388, 1.0);
+uniform float span_w = 240.0;
+varying float v_x;
+void vertex() {
+    v_x = VERTEX.x;
+}
 void fragment() {
     vec4 tex = texture(TEXTURE, UV);
-    float t = clamp(UV.x * 0.85 + UV.y * 0.15, 0.0, 1.0);
+    float t = clamp(v_x / max(1.0, span_w), 0.0, 1.0);
     vec3 grad = mix(col_light.rgb, col_main.rgb, t);
+    // 描边与阴影亮度低，保留原色，避免整块糊掉
     float lum = dot(COLOR.rgb, vec3(0.299, 0.587, 0.114));
-    vec3 final_rgb = lum < 0.15 ? COLOR.rgb : grad;
+    vec3 final_rgb = lum < 0.20 ? COLOR.rgb : grad;
     COLOR = vec4(final_rgb, tex.a * COLOR.a);
 }
 "
-            };
-            mat = new ShaderMaterial { Shader = _textGradShader };
-            mat.SetShaderParameter("col_light", pair.Light);
-            mat.SetShaderParameter("col_main", pair.Main);
-            _gradMatCache[pair] = mat;
-        }
-        ctrl.Material = mat;
+        };
+
+        var mat = new ShaderMaterial { Shader = _textGradShader };
+        mat.SetShaderParameter("col_light", pair.Light);
+        mat.SetShaderParameter("col_main", pair.Main);
+        mat.SetShaderParameter("span_w", Mathf.Max(60f, spanWidth));
+        lbl.Material = mat;
+    }
+
+    /// <summary>
+    /// 标题 / 弹窗头 / 主菜单标题的统一入口。
+    /// 187 号文档 缺陷一 第 2 点：全项目只有 1 处调了 ApplyGradientText，其余全是素色。
+    /// </summary>
+    public static Label StyleLabel(string text, int fontSize, Color? mainColor = null,
+                                   float spanWidth = 240f, bool bold = false)
+    {
+        var lbl = new Label { Text = text };
+        lbl.AddThemeFontSizeOverride("font_size", fontSize);
+        ApplyGradientText(lbl, mainColor, spanWidth);
+        return lbl;
     }
 
     /// <summary>

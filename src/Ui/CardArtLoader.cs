@@ -74,6 +74,25 @@ public static class CardArtLoader
         }
     }
 
+    /// <summary>
+    /// res:// 分支的补救（188 号文档 缺陷三 ②）：
+    /// GD.Load 拿到的是导入后的纹理，未必带 Mipmaps。
+    /// 取回 Image 重新过一遍 CreateHighQualityTexture，保证与文件分支同质。
+    /// </summary>
+    private static Texture2D UpgradeResourceTexture(Texture2D tex)
+    {
+        if (tex == null) return null;
+        try
+        {
+            var img = tex.GetImage();
+            if (img == null || img.IsEmpty()) return tex;
+            var dup = img.Duplicate() as Image;
+            if (dup == null) return tex;
+            return CreateHighQualityTexture(dup) ?? tex;
+        }
+        catch { return tex; }
+    }
+
     private static Texture2D LoadUncached(int cardId)
     {
         try
@@ -91,7 +110,7 @@ public static class CardArtLoader
         try
         {
             string resPath = "res://assets/cards/" + cardId + ".png";
-            if (ResourceLoader.Exists(resPath)) return GD.Load<Texture2D>(resPath);
+            if (ResourceLoader.Exists(resPath)) return UpgradeResourceTexture(GD.Load<Texture2D>(resPath));
         }
         catch { }
 
@@ -139,7 +158,7 @@ public static class CardArtLoader
         try
         {
             string resPath = "res://assets/cards/" + cardId + "_e.png";
-            if (ResourceLoader.Exists(resPath)) return GD.Load<Texture2D>(resPath);
+            if (ResourceLoader.Exists(resPath)) return UpgradeResourceTexture(GD.Load<Texture2D>(resPath));
         }
         catch { }
 

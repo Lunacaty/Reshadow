@@ -430,7 +430,16 @@ public partial class CardVisualWidget : Control
     {
         if (_artTexture != null)
         {
-            DrawTextureRect(_artTexture, r, false);
+            // 等比居中裁切（188 号文档 缺陷三 ①）：
+            // 官图比例与 artRect 并不一致，直接 DrawTextureRect 会宽高比挤压变形。
+            // 按「填满盒子」取最大等比子矩形，纵向偏移 0.35 让头部多留一点。
+            Vector2 ts = _artTexture.GetSize();
+            float boxAspect = r.Size.X / Mathf.Max(1f, r.Size.Y);
+            float texAspect = ts.X / Mathf.Max(1f, ts.Y);
+            Rect2 src = texAspect > boxAspect
+                ? new Rect2((ts.X - ts.Y * boxAspect) * 0.5f, 0f, ts.Y * boxAspect, ts.Y)
+                : new Rect2(0f, (ts.Y - ts.X / boxAspect) * 0.35f, ts.X, ts.X / boxAspect);
+            DrawTextureRectRegion(_artTexture, r, src);
         }
         else
         {
@@ -535,10 +544,11 @@ public partial class CardVisualWidget : Control
         float textX = bannerL + 20f + Math.Max(0f, (availW - textSize.X) * 0.5f);
         float textY = bannerMidY + fontSize * 0.36f;
 
-        DrawString(font, new Vector2(textX + 1f, textY + 1f), displayName,
-                   HorizontalAlignment.Left, availW, fontSize, new Color(0, 0, 0, 0.85f));
-        DrawString(font, new Vector2(textX, textY), displayName,
-                   HorizontalAlignment.Left, availW, fontSize, Colors.White);
+        // 卡名整句渐变（奶白 #FFF3CF -> 鎏金 #E3BD63）。
+        // 这是玩家看得最多的文字，之前一直是素白（188 号文档 缺陷二 ②）。
+        // DrawGradientString 内部已做深色描边，衬在酒红铭牌上依然清晰。
+        SvWbTheme.DrawGradientString(this, font, new Vector2(textX, textY), displayName,
+            fontSize, SvWbTheme.GradGold.Light, SvWbTheme.GradGold.Main);
     }
 
     private void DrawEmeraldCostOrb(Vector2 center, float radius, int cost, Font font, Color numCol)
@@ -679,8 +689,10 @@ public partial class CardVisualWidget : Control
         Rect2 pill = new(center.X - sz.X * 0.5f - 10f, center.Y - 10f, sz.X + 20f, 18f);
         DrawRect(pill, new Color(0.08f, 0.10f, 0.18f, 0.88f));
         DrawRect(pill, new Color("FDE68A"), filled: false, width: 1.2f);
-        DrawString(font, new Vector2(center.X - sz.X * 0.5f, center.Y + 3f),
-                   label, HorizontalAlignment.Left, -1, fs, new Color("FEF08A"));
+        // 卡种铭牌同样走整句渐变（188 号文档 缺陷二 ③）。
+        SvWbTheme.DrawGradientString(this, font,
+            new Vector2(center.X - sz.X * 0.5f, center.Y + 3f), label, fs,
+            new Color("FEF9C3"), new Color("FBBF24"));
     }
 
     private void DrawMechanicBadges(float frameR, float frameT, Font font)

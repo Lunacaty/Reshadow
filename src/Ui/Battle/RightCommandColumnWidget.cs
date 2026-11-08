@@ -82,7 +82,14 @@ public partial class RightCommandColumnWidget : Control
                 myTurn ? new Color("FEF08A") : new Color("FCA5A5"), 2.2f);
 
         string label = myTurn ? "回合结束" : "敌方回合";
-        DrawCentered(font, TurnBtnCenter + new Vector2(0, 8), label, 21, Colors.White);
+        // 回合按钮文字整句渐变：我方金 / 敌方绯红（188 号文档 缺陷二 ①）。
+        {
+            var sz = font.GetStringSize(label, HorizontalAlignment.Left, -1, 21);
+            var pair = myTurn ? SvWbTheme.GradGold : SvWbTheme.GradCrimson;
+            SvWbTheme.DrawGradientString(this, font,
+                new Vector2(TurnBtnCenter.X - sz.X * 0.5f, TurnBtnCenter.Y + 8f),
+                label, 21, pair.Light, pair.Main);
+        }
 
         // 4. 我方能量点
         int bonus = _ctrl.State.Players[0].BonusPp;
@@ -91,8 +98,8 @@ public partial class RightCommandColumnWidget : Control
         int cap = Math.Max(1, Math.Min(12, _ctrl.State.Rules.MaxPpCap));
         DrawTrapezoid(AllyPpRect, 14f, 0f);
 
-        DrawString(font, AllyPpRect.Position + new Vector2(22, 34), "能量点",
-                   HorizontalAlignment.Left, -1, 13, new Color("CBD5E1"));
+        SvWbTheme.DrawGradientString(this, font, AllyPpRect.Position + new Vector2(22, 34),
+            "能量点", 13, SvWbTheme.GradGold.Light, SvWbTheme.GradGold.Main);
         DrawString(font, AllyPpRect.Position + new Vector2(80, 36), myPp.ToString(),
                    HorizontalAlignment.Left, -1, 24, Colors.White);
         DrawString(font, AllyPpRect.Position + new Vector2(112, 34), "/" + myMax,
@@ -133,9 +140,13 @@ public partial class RightCommandColumnWidget : Control
         DrawCircle(dot, 8f, avail ? goldLight : grayDim);
         DrawArc(dot, 8f, 0, Mathf.Tau, 20, avail ? gold : gray, 1.4f);
 
-        DrawString(font, new Vector2(r.Position.X + 32f, r.Position.Y + r.Size.Y * 0.5f + 5f),
-                   "能量点 +1", HorizontalAlignment.Left, -1, 15,
-                   avail ? goldLight : new Color("64748B"));
+        {
+            var exPair = avail ? SvWbTheme.GradGold
+                               : (new Color("94A3B8"), new Color("64748B"));
+            SvWbTheme.DrawGradientString(this, font,
+                new Vector2(r.Position.X + 32f, r.Position.Y + r.Size.Y * 0.5f + 5f),
+                "能量点 +1", 15, exPair.Item1, exPair.Item2);
+        }
     }
 
     private void DrawCentered(Font font, Vector2 c, string t, int size, Color col)
