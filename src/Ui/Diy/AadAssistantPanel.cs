@@ -31,6 +31,9 @@ public sealed partial class AadAssistantPanel : VBoxContainer
     private VBoxContainer _timeline;
     private TextEdit _preview;
     private Label _status;
+    /// <summary>请求进行中的旋转指示（文档要求「异步等待期间显示 Spinner」）。</summary>
+    private TextureRect _spinner;
+    private double _spinT;
     private Button _sendBtn;
     private OptionButton _assetPicker;
     private bool _busy;
@@ -174,6 +177,15 @@ public sealed partial class AadAssistantPanel : VBoxContainer
         };
         row.AddChild(applyBody);
 
+        _spinner = new TextureRect
+        {
+            CustomMinimumSize = new Vector2(18, 18),
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            Visible = false,
+            Texture = MakeSpinnerTexture(),
+        };
+        row.AddChild(_spinner);
+
         _status = new Label { Text = "就绪", SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _status.AddThemeFontSizeOverride("font_size", 11);
         _status.AddThemeColorOverride("font_color", SvWbTheme.TextMuted);
@@ -287,18 +299,51 @@ public sealed partial class AadAssistantPanel : VBoxContainer
         _busy = true;
         _sendBtn.Disabled = true;
         SetStatus("请求中…");
+        if (_spinner != null && IsInstanceValid(_spinner)) _spinner.Visible = true;
 
         var (ok, raw, py, err) = await _sess.SendAsync(CancellationToken.None);
 
         _busy = false;
         if (IsInstanceValid(_sendBtn)) _sendBtn.Disabled = false;
 
+        if (_spinner != null && IsInstanceValid(_spinner)) _spinner.Visible = false;
         if (!ok) { SetStatus("✘ " + err); return; }
 
         _sess.AddMessage("assistant", raw);
         RebuildTimeline();
         if (_preview != null && IsInstanceValid(_preview)) _preview.Text = py;
         SetStatus(string.IsNullOrWhiteSpace(py) ? "⚠ 未从回复里提取到代码" : "✔ 已生成，可编辑后回填");
+    }
+
+    /// <summary>画一个 18x18 的圆环贴图，配 _Process 旋转即成 Spinner。</summary>
+    private static Texture2D MakeSpinnerTexture()
+    {
+        const int n = 18;
+        var img = Image.CreateEmpty(n, n, false, Image.Format.Rgba8);
+        img.Fill(new Color(0, 0, 0, 0));
+        float cx = (n - 1) / 2f, cy = (n - 1) / 2f, r = n / 2f - 1.5f;
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float dx = x - cx, dy = y - cy;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                if (d > r - 1.4f && d < r + 0.4f)
+                {
+                    // 沿圆周做透明度渐隐，旋转时才有「转」的观感。
+                    float ang = (Mathf.Atan2(dy, dx) + Mathf.Pi) / (2f * Mathf.Pi);
+                    float a = 0.15f + 0.85f * ang;
+                    img.SetPixel(x, y, new Color(0.22f, 0.74f, 0.97f, a));
+                }
+            }
+        return ImageTexture.CreateFromImage(img);
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_spinner == null || !IsInstanceValid(_spinner) || !_spinner.Visible) return;
+        _spinT += delta * 6.0;
+        _spinner.PivotOffset = _spinner.Size / 2f;
+        _spinner.Rotation = (float)_spinT;
     }
 
     private void SetStatus(string s)
