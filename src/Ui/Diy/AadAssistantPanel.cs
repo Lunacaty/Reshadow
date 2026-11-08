@@ -96,6 +96,36 @@ public sealed partial class AadAssistantPanel : VBoxContainer
         };
         bar.AddChild(injectBtn);
 
+        // 186 号文档 缺陷 5：资产与会话此前只能靠手改磁盘文件。
+        var newAssetBtn = new Button { Text = "📝 新建资产", CustomMinimumSize = new Vector2(100, 30) };
+        SvWbTheme.StyleButton(newAssetBtn);
+        newAssetBtn.AddThemeFontSizeOverride("font_size", 11);
+        newAssetBtn.Pressed += OpenNewAssetDialog;
+        bar.AddChild(newAssetBtn);
+
+        var openDirBtn = new Button { Text = "📂 资产目录", CustomMinimumSize = new Vector2(100, 30) };
+        SvWbTheme.StyleButton(openDirBtn);
+        openDirBtn.AddThemeFontSizeOverride("font_size", 11);
+        openDirBtn.Pressed += () =>
+        {
+            string dir = System.IO.Path.Combine(_sess.AadRoot(_writableRoot), "prompts");
+            System.IO.Directory.CreateDirectory(dir);
+            OS.ShellOpen(dir);
+        };
+        bar.AddChild(openDirBtn);
+
+        var saveSessBtn = new Button { Text = "💾 保存会话", CustomMinimumSize = new Vector2(100, 30) };
+        SvWbTheme.StyleButton(saveSessBtn);
+        saveSessBtn.AddThemeFontSizeOverride("font_size", 11);
+        saveSessBtn.Pressed += OpenSaveSessionDialog;
+        bar.AddChild(saveSessBtn);
+
+        var loadSessBtn = new Button { Text = "📂 加载会话", CustomMinimumSize = new Vector2(100, 30) };
+        SvWbTheme.StyleButton(loadSessBtn);
+        loadSessBtn.AddThemeFontSizeOverride("font_size", 11);
+        loadSessBtn.Pressed += OpenLoadSessionDialog;
+        bar.AddChild(loadSessBtn);
+
         var clearBtn = new Button { Text = "🗑 清空上下文", CustomMinimumSize = new Vector2(110, 30) };
         SvWbTheme.StyleButton(clearBtn, customAccent: SvWbTheme.StatusDanger);
         clearBtn.AddThemeFontSizeOverride("font_size", 11);
@@ -352,6 +382,116 @@ public sealed partial class AadAssistantPanel : VBoxContainer
     }
 
     // ---------------------------------------------------------------- 配置弹窗
+
+    /// <summary>新建 / 覆盖提示词资产（写入 aad/prompts/&lt;名称&gt;.md）。</summary>
+    private void OpenNewAssetDialog()
+    {
+        var dlg = new AcceptDialog { Title = "新建 / 覆盖提示词资产", Size = new Vector2I(600, 460) };
+        dlg.MaxSize = new Vector2I(640, 640);
+
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 8);
+
+        int sel = _assetPicker != null ? _assetPicker.Selected : -1;
+        var curAsset = (sel >= 0 && sel < _sess.PromptAssets.Count) ? _sess.PromptAssets[sel] : null;
+
+        var nameEdit = new LineEdit
+        {
+            Text = curAsset?.Name ?? "",
+            PlaceholderText = "资产名称（如 01_我的PyAST语法文档）",
+        };
+        box.AddChild(new Label { Text = "文件名（保存在 aad/prompts/<名称>.md）：" });
+        box.AddChild(nameEdit);
+
+        var contentEdit = new TextEdit
+        {
+            Text = curAsset?.Content ?? "",
+            CustomMinimumSize = new Vector2(560, 300),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            WrapMode = TextEdit.LineWrappingMode.Boundary,
+            PlaceholderText = "在此粘贴 PyAST 语法文档、规则说明或 Few-Shot 范例…",
+        };
+        contentEdit.AddThemeFontSizeOverride("font_size", 12);
+        box.AddChild(new Label { Text = "提示词内容：" });
+        box.AddChild(contentEdit);
+
+        dlg.AddChild(box);
+        dlg.Confirmed += () =>
+        {
+            string rawName = (nameEdit.Text ?? "").Trim();
+            if (string.IsNullOrEmpty(rawName)) { SetStatus("✘ 资产名称不能为空"); return; }
+            string safe = string.Join("_", rawName.Split(System.IO.Path.GetInvalidFileNameChars()));
+            string dir = System.IO.Path.Combine(_sess.AadRoot(_writableRoot), "prompts");
+            try
+            {
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(dir, safe + ".md"),
+                    contentEdit.Text ?? "", new System.Text.UTF8Encoding(false));
+                RefreshAssetPicker();
+                SetStatus("✔ 已保存提示词资产：" + safe);
+            }
+            catch (Exception ex) { SetStatus("✘ 保存失败：" + ex.Message); }
+            dlg.QueueFree();
+        };
+        dlg.Canceled += () => dlg.QueueFree();
+        AddChild(dlg);
+        dlg.PopupCentered();
+    }
+
+    /// <summary>把当前上下文时间线存成命名会话。</summary>
+    private void OpenSaveSessionDialog()
+    {
+        var dlg = new AcceptDialog { Title = "保存当前上下文会话", Size = new Vector2I(420, 170) };
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 8);
+        box.AddChild(new Label { Text = "会话名称（保存在 aad/sessions/<名称>.json）：" });
+        var edit = new LineEdit { Text = "default", PlaceholderText = "输入会话名称…" };
+        box.AddChild(edit);
+        dlg.AddChild(box);
+        dlg.Confirmed += () =>
+        {
+            _sess.SaveSession(_writableRoot, edit.Text?.Trim(), out string msg);
+            SetStatus(msg);
+            dlg.QueueFree();
+        };
+        dlg.Canceled += () => dlg.QueueFree();
+        AddChild(dlg);
+        dlg.PopupCentered();
+    }
+
+    /// <summary>从 aad/sessions/*.json 里挑一个会话载入时间线。</summary>
+    private void OpenLoadSessionDialog()
+    {
+        string dir = System.IO.Path.Combine(_sess.AadRoot(_writableRoot), "sessions");
+        System.IO.Directory.CreateDirectory(dir);
+        var files = System.IO.Directory.GetFiles(dir, "*.json")
+                    .Select(System.IO.Path.GetFileNameWithoutExtension)
+                    .OrderBy(x => x, StringComparer.Ordinal).ToList();
+
+        if (files.Count == 0) { SetStatus("暂无已保存的会话"); return; }
+
+        var dlg = new AcceptDialog { Title = "加载上下文会话", Size = new Vector2I(420, 190) };
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 8);
+        box.AddChild(new Label { Text = "选择要载入的会话（会覆盖当前时间线）：" });
+        var picker = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        SvWbTheme.StyleButton(picker);
+        SvWbTheme.StyleOptionPopup(picker);
+        foreach (var f in files) picker.AddItem(f);
+        picker.Selected = 0;
+        box.AddChild(picker);
+        dlg.AddChild(box);
+        dlg.Confirmed += () =>
+        {
+            string chosen = files[Math.Clamp(picker.Selected, 0, files.Count - 1)];
+            if (_sess.LoadSession(_writableRoot, chosen, out string msg)) RebuildTimeline();
+            SetStatus(msg);
+            dlg.QueueFree();
+        };
+        dlg.Canceled += () => dlg.QueueFree();
+        AddChild(dlg);
+        dlg.PopupCentered();
+    }
 
     private void OpenConfigDialog()
     {

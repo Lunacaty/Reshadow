@@ -32,6 +32,8 @@ public partial class DiyWorkshopView : Control
     private VBoxContainer _endpointHost;
     /// <summary>AAD 会话（跨页签切换保留上下文）。</summary>
     private ShadowverseFan.Ui.Bridge.AadSessionController _aadSession;
+    /// <summary>当前 AAD 面板实例（用于避免 OnCardUpdated 把它销毁重建）。</summary>
+    private AadAssistantPanel _aadPanel;
     private bool _aadInitialized;
     /// <summary>积木工作台实例。复用而非每次重建：它内部保存着当前能力域与选中积木。</summary>
     private BlockTreeEditorWidget _blockEditor;
@@ -553,8 +555,19 @@ public partial class DiyWorkshopView : Control
             return;
         }
 
+        // AAD 面板同样不能重建（186 号文档 缺陷 6）：
+        // 点「⚡编译整卡 / 仅应用效果块」→ CompileFromXxx → OnCardUpdated
+        // → RefreshAll → RefreshEndpoint，会把面板连同预览框里的代码一起清空。
+        if (_active == DiyEndpointKind.AiAssistant
+            && _aadPanel != null && IsInstanceValid(_aadPanel)
+            && _aadPanel.GetParent() == _endpointHost)
+        {
+            return;
+        }
+
         foreach (var c in _endpointHost.GetChildren()) c.QueueFree();
         _blockEditor = null;
+        _aadPanel = null;
 
         switch (_active)
         {
@@ -699,6 +712,7 @@ public partial class DiyWorkshopView : Control
         var panel = new AadAssistantPanel();
         panel.Setup(_ctrl, _aadSession, writableRoot);
         _endpointHost.AddChild(panel);
+        _aadPanel = panel;
     }
 
     private void BuildFormEndpoint()

@@ -275,23 +275,9 @@ public partial class PackAndPoolManagerView : Control
         ruleTitle.AddThemeColorOverride("font_color", SvWbTheme.AccentPurple);
         ruleBar.AddChild(ruleTitle);
 
-        // 卡池切换：允许自由选择要查看/编辑哪个赛制卡池，
-        // 而不是写死只让第一个可编辑、其余只读跳过。
-        _poolPicker = new OptionButton { CustomMinimumSize = new Vector2(200, 32) };
-        SvWbTheme.StyleButton(_poolPicker);
-        SvWbTheme.StyleOptionPopup(_poolPicker);
-        _poolPicker.ItemSelected += idx =>
-        {
-            var keys = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).ToList();
-            int k = (int)idx;
-            if (k < 0 || k >= keys.Count) return;
-            _selectedPoolId = keys[k];
-            RefreshRules();
-            RefreshNamedDecks();
-            RefreshPoolClans();
-            RefreshPoolCounters();
-        };
-        ruleBar.AddChild(_poolPicker);
+        // 卡池下拉框已删除：切池统一由左栏卡池列表负责
+        // （186 号文档 缺陷 1：右栏留一个重复下拉框会让玩家以为有两处入口，
+        //  而且它漏调 RefreshPacks，切池后中栏勾选态不跟着变）。
 
         // 167 专项二：卡池整合包导出 / 导入。分享自制赛制时，
         // 只发 .pool.json 对方会因缺卡包直接建池失败。
@@ -352,28 +338,8 @@ public partial class PackAndPoolManagerView : Control
         };
         ruleBar.AddChild(importBtn);
 
-        var newPoolBtn = new Button { Text = "➕ 新建卡池", CustomMinimumSize = new Vector2(96, 32) };
-        SvWbTheme.StyleButton(newPoolBtn, isPrimary: true, customAccent: SvWbTheme.AccentPurple);
-        newPoolBtn.AddThemeFontSizeOverride("font_size", 11);
-        newPoolBtn.Pressed += OpenNewPoolDialog;
-        ruleBar.AddChild(newPoolBtn);
+        // 新建 / 删除卡池按钮已移至左栏卡池列表顶部。
 
-        var delPoolBtn = new Button { Text = "🗑 删除卡池", CustomMinimumSize = new Vector2(96, 32) };
-        SvWbTheme.StyleButton(delPoolBtn, customAccent: SvWbTheme.StatusDanger);
-        delPoolBtn.AddThemeFontSizeOverride("font_size", 11);
-        delPoolBtn.Pressed += () =>
-        {
-            if (string.IsNullOrEmpty(_selectedPoolId)) { _ruleStatus.Text = "请先选择一个卡池"; return; }
-            _store.DeletePool(_selectedPoolId, out string msg);
-            _ruleStatus.Text = msg;
-            _selectedPoolId = null;
-            BuildPoolPicker();
-            RefreshRules();
-            RefreshNamedDecks();
-            RefreshPoolClans();
-            RefreshPoolCounters();
-        };
-        ruleBar.AddChild(delPoolBtn);
 
         _saveRulesBtn = new Button { Text = "💾 保存卡池规则", CustomMinimumSize = new Vector2(150, 32) };
         SvWbTheme.StyleButton(_saveRulesBtn, isPrimary: true, customAccent: SvWbTheme.AccentGold);
@@ -458,8 +424,14 @@ public partial class PackAndPoolManagerView : Control
 
         _namedDeckList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _namedDeckList.AddThemeConstantOverride("separation", 2);
-        var ndScroll = new ScrollContainer { CustomMinimumSize = new Vector2(0, 110) };
-        ndScroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+        // SizeFlagsVertical 必填：只给 CustomMinimumSize 的话，
+        // 页签切过来时列表只有 110px 高，下面一大片全空着（186 号文档 缺陷 3）。
+        var ndScroll = new ScrollContainer
+        {
+            CustomMinimumSize = new Vector2(0, 110),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
         SvWbTheme.StyleScroll(ndScroll);
         ndScroll.AddChild(_namedDeckList);
         page1.AddChild(ndScroll);
@@ -514,8 +486,13 @@ public partial class PackAndPoolManagerView : Control
 
         _poolCounterList = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _poolCounterList.AddThemeConstantOverride("separation", 2);
-        var ctrScroll = new ScrollContainer { CustomMinimumSize = new Vector2(0, 90) };
-        ctrScroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+        // 同 ndScroll：必须占满全高。
+        var ctrScroll = new ScrollContainer
+        {
+            CustomMinimumSize = new Vector2(0, 90),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        };
         SvWbTheme.StyleScroll(ctrScroll);
         ctrScroll.AddChild(_poolCounterList);
         page2.AddChild(ctrScroll);
@@ -1243,6 +1220,78 @@ public partial class PackAndPoolManagerView : Control
     /// 重建会丢掉玩家正在编辑、尚未落盘的内容。
     /// </summary>
     /// <summary>
+    /// 切换卡池并**全量刷新**所有依赖它的区域（185/186 号文档）。
+    ///
+    /// 早先左栏点击只调了 RefreshRules()，于是：
+    ///   · 中栏卡包行的归属勾选框还停在上一个卡池的状态；
+    ///   · 右栏「具名牌组 / 卡池计数器」显示的全是旧池数据。
+    /// 凡是依赖 _selectedPoolId 的区域，都必须在这里一次性刷完。
+    /// </summary>
+    private void SelectPoolAndRefreshAll(string poolId)
+    {
+        _selectedPoolId = poolId;
+        RefreshPacks();
+        RefreshRules();
+        RefreshNamedDecks();
+        RefreshPoolClans();
+        RefreshPoolCounters();
+    }
+
+    /// <summary>
+    /// 把某个卡包在当前卡池中的启用状态设为 enable，并落盘。
+    ///
+    /// 186 号文档 缺陷 2 的两个致命点：
+    ///   1. 早先从 _enabledPackChecks 字典收集勾选项 —— 取消勾选时字典里
+    ///      那条仍是 true，chosen 照样包含它，**根本取消不掉**；
+    ///   2. 闭包里捕获的 cfg 在每次 SavePoolConfigFull 后因 ReloadCatalogAndPools
+    ///      变成野引用，继续用它写盘会丢数据。
+    /// 因此这里每次都以 _selectedPoolId 重新取**最新**配置，
+    /// 并在落盘时显式带上 PoolClans / LeaderCounters —— 漏传会把
+    /// 玩家自定义的开放职业与主战者计数器整段清空。
+    /// </summary>
+    private void TogglePackInSelectedPool(string packId, bool enable)
+    {
+        if (string.IsNullOrEmpty(packId)) return;
+        if (string.IsNullOrEmpty(_selectedPoolId))
+        {
+            _ruleStatus.Text = "请先选中一个卡池";
+            return;
+        }
+        if (!_store.PoolConfigs.TryGetValue(_selectedPoolId, out var latestCfg)) return;
+
+        var chosen = new HashSet<string>(latestCfg.EnabledPackIds ?? new List<string>(),
+                                         StringComparer.OrdinalIgnoreCase);
+        if (enable) chosen.Add(packId);
+        else chosen.Remove(packId);
+
+        // 原生绑定包永远保留，否则卡池会失去自己的底座。
+        foreach (var kv in _store.Catalog.Packs)
+            if (kv.Value != null && curIsNative(kv.Value, latestCfg))
+                chosen.Add(kv.Key);
+
+        if (chosen.Count == 0)
+        {
+            _ruleStatus.Text = "✘ 至少要启用一个卡包";
+            RefreshPacks();
+            BuildEnabledPacksSection();
+            return;
+        }
+
+        bool ok = _store.SavePoolConfigFull(
+            latestCfg.PoolId, latestCfg.Name, chosen.ToList(),
+            latestCfg.Rules, latestCfg.NamedDecks, out string msg,
+            latestCfg.PoolClans, latestCfg.LeaderCounters);
+
+        _ruleStatus.Text = msg;
+        if (ok) SelectPoolAndRefreshAll(latestCfg.PoolId);
+        else { RefreshPacks(); BuildEnabledPacksSection(); }
+
+        static bool curIsNative(ShadowverseFan.KernelV3.Packs.CardPackDef pack,
+                                ShadowverseFan.KernelV3.Packs.CardPoolConfig cfg)
+            => string.Equals(pack.NativePoolId, cfg.PoolId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// 重填左栏卡池列表。点选即切换当前编辑目标（三栏主从的「主」）。
     /// </summary>
     private void RefreshPoolList()
@@ -1264,7 +1313,7 @@ public partial class PackAndPoolManagerView : Control
                 TooltipText = "启用卡包：" + string.Join(", ", cfg?.EnabledPackIds ?? new List<string>()),
             };
             string pid = poolId;
-            btn.Pressed += () => { _selectedPoolId = pid; RefreshRules(); };
+            btn.Pressed += () => SelectPoolAndRefreshAll(pid);
             SvWbTheme.StyleButton(btn, isPrimary: selected, customAccent: SvWbTheme.AccentGold);
             btn.AddThemeFontSizeOverride("font_size", 12);
             _poolListBox.AddChild(btn);
@@ -1331,24 +1380,8 @@ public partial class PackAndPoolManagerView : Control
             cb.AddThemeFontSizeOverride("font_size", 12);
 
             // 勾选即时存盘，不再需要「应用」按钮。
-            cb.Toggled += pressed =>
-            {
-                var chosen = new List<string>();
-                foreach (var kv2 in _enabledPackChecks)
-                    if (kv2.Value != null && IsInstanceValid(kv2.Value) && kv2.Value.ButtonPressed)
-                        chosen.Add(kv2.Key);
-                if (chosen.Count == 0)
-                {
-                    _ruleStatus.Text = "至少要启用一个卡包";
-                    if (IsInstanceValid(cb)) cb.ButtonPressed = true;
-                    return;
-                }
-                bool ok = _store.SavePoolConfigFull(cfg.PoolId, cfg.Name, chosen,
-                    cfg.Rules, cfg.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>(),
-                    out string msg);
-                _ruleStatus.Text = msg;
-                if (ok) RefreshRules();
-            };
+            // 与中栏共用同一套逻辑（186 号文档 缺陷 2）。
+            cb.Toggled += pressed => { if (!isNative) TogglePackInSelectedPool(pid, pressed); };
 
             _enabledPackChecks[pid] = cb;
             list.AddChild(cb);
@@ -1365,12 +1398,21 @@ public partial class PackAndPoolManagerView : Control
     /// 这里把内容包进固定高度的 ScrollContainer，并钳死窗口上限。
     /// </summary>
     private static ScrollContainer WrapDialogContent(AcceptDialog dlg, Control content,
-                                                     int maxW = 560, int maxH = 320)
+                                                     int maxW = 560, int maxH = 260)
     {
-        dlg.MaxSize = new Vector2I(maxW, maxH + 72);   // +72 给标题栏与按钮行
+        // 186 号文档 缺陷 4：
+        // 早先 maxH=320 且 MaxSize=maxH+72=392，而 AcceptDialog 自己的
+        // 标题栏 + 内容边距 + OK 按钮通常要 80px 以上，高内容（计数器规则弹窗
+        // 里有 6 个输入框 + 150px 的 AstCodeEdit）会把原生 OK 按钮挤出底边。
+        //
+        // 现在：内容区限高 260、滚到底即可；窗口上限 640 保证不超 720p，
+        // 同时留足按钮空间。scroll 必须 ExpandFill，否则会被内容顶开。
+        dlg.Size = new Vector2I(maxW, Math.Min(maxH + 90, 620));
+        dlg.MaxSize = new Vector2I(maxW, 640);
         var scroll = new ScrollContainer
         {
-            CustomMinimumSize = new Vector2(maxW - 32, maxH),
+            CustomMinimumSize = new Vector2(maxW - 32, Math.Min(maxH, 260)),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
         SvWbTheme.StyleScroll(scroll);
@@ -1547,23 +1589,10 @@ public partial class PackAndPoolManagerView : Control
                     ? "未选中卡池"
                     : (isNative ? "原生绑定卡包，不可从本卡池移除" : "勾选以将此卡包纳入当前卡池（即时生效）"),
             };
-            toggle.Toggled += pressed =>
-            {
-                if (curPool == null) return;
-                var chosen = new List<string>();
-                foreach (var e in _enabledPackChecks)
-                    if (e.Value != null && IsInstanceValid(e.Value) && e.Value.ButtonPressed) chosen.Add(e.Key);
-                if (isNative) chosen.Add(pid);
-                else if (pressed) chosen.Add(pid);
-                chosen = chosen.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                if (chosen.Count == 0) { _ruleStatus.Text = "至少要启用一个卡包"; RefreshPacks(); return; }
-                bool ok = _store.SavePoolConfigFull(curPool.PoolId, curPool.Name, chosen,
-                    curPool.Rules,
-                    curPool.NamedDecks ?? new List<ShadowverseFan.KernelV3.Packs.NamedDeckRawDef>(),
-                    out string m);
-                _ruleStatus.Text = m;
-                if (ok) RefreshRules();
-            };
+            // 统一走 TogglePackInSelectedPool：
+            // 它以 _selectedPoolId 现取最新配置，支持**取消勾选**，
+            // 并显式带上 PoolClans / LeaderCounters（否则会抹空职业与计数器）。
+            toggle.Toggled += pressed => { if (!isNative) TogglePackInSelectedPool(pid, pressed); };
             row.AddChild(toggle);
 
             var btn = new Button

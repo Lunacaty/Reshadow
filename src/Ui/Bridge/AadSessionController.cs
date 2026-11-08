@@ -217,18 +217,34 @@ public sealed class AadSessionController
         catch (Exception ex) { msg = "配置读取失败：" + ex.Message; return false; }
     }
 
-    /// <summary>加载 aad/prompts/*.md 作为提示词资产。</summary>
+    /// <summary>
+    /// 加载 aad/prompts/*.md 作为提示词资产。
+    ///
+    /// 186 号文档 缺陷 5：目录不存在或为空时 UI 永远显示「无提示词资产」、
+    /// 下拉框还被禁用 —— 玩家得自己先去资源管理器建目录。
+    /// 现在目录不存在就创建，为空就落盘一份内置语法规范，开箱可用。
+    /// </summary>
     public int LoadPromptAssets(string writableRoot, out string msg)
     {
         PromptAssets.Clear();
         string dir = Path.Combine(AadRoot(writableRoot), "prompts");
-        if (!Directory.Exists(dir)) { msg = "尚无提示词资产目录"; return 0; }
         try
         {
-            foreach (var f in Directory.GetFiles(dir, "*.*")
-                                       .Where(f => f.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
-                                                || f.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
-                                       .OrderBy(f => f, StringComparer.Ordinal))
+            Directory.CreateDirectory(dir);
+            var files = Directory.GetFiles(dir, "*.*")
+                                  .Where(f => f.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
+                                           || f.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                                  .OrderBy(f => f, StringComparer.Ordinal).ToList();
+
+            // 空目录：写一份内置规范，避免下拉框永远是空。
+            if (files.Count == 0)
+            {
+                string sample = Path.Combine(dir, "00_内置PyAST语法规范.md");
+                File.WriteAllText(sample, DefaultSystemPrompt(), new UTF8Encoding(false));
+                files.Add(sample);
+            }
+
+            foreach (var f in files)
             {
                 PromptAssets.Add(new PromptAsset
                 {
