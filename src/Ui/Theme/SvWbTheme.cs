@@ -557,12 +557,18 @@ void fragment() {
             _                          => 0f,
         };
 
-        var mat = new ShaderMaterial { Shader = _textGradShader };
+        // 复用已有材质：Resized 会频繁触发（窗口拖动、文本变化），
+        // 每次都 new ShaderMaterial 会持续泄漏 RID。只覆盖参数即可。
+        var mat = lbl.Material as ShaderMaterial;
+        if (mat == null || mat.Shader != _textGradShader)
+        {
+            mat = new ShaderMaterial { Shader = _textGradShader };
+            lbl.Material = mat;
+        }
         mat.SetShaderParameter("col_light", pair.Light);
         mat.SetShaderParameter("col_main", pair.Main);
         mat.SetShaderParameter("start_x", startX);
         mat.SetShaderParameter("span_w", actualSpan);
-        lbl.Material = mat;
     }
 
     // ---- 189 号文档 问题 3：全局自动渐变挂载器 ----
@@ -608,21 +614,32 @@ void fragment() {
     private static void BindAutoGradient(Label lbl)
     {
         if (lbl == null || !GodotObject.IsInstanceValid(lbl)) return;
+        // 只在外层防一次重复绑定。
         if (lbl.Material is ShaderMaterial) return;
+
+        // 190 号文档 问题 2 的两个致命点：
+        //
+        // ① 原色必须在覆盖成 White **之前**锁进闭包。
+        //    早先在 RefreshMat 里现读 font_color，而第一次进来就已经被洗成纯白，
+        //    第二次重算时读到的就是白色 —— 所有彩色标题（青/紫/红）全被洗成默认金。
+        //
+        // ② RefreshMat 内部**绝不能**再判 `lbl.Material is ShaderMaterial`。
+        //    首次执行时容器布局还没跑完，lbl.Size.X == 0，算出 start_x = 0；
+        //    一帧后布局完成触发 Resized，若在此短路就直接退出，
+        //    start_x 永远停在 0 —— 居中标题的渐变起点依然是错的。
+        Color? originalMainCol = lbl.HasThemeColorOverride("font_color")
+            ? lbl.GetThemeColor("font_color")
+            : null;
+
+        // 基础顶点色必须是纯白，否则 COLOR 乘算会把浅主色压暗；
+        // 描边仍由 font_outline_color 控制，不受影响。
+        lbl.AddThemeColorOverride("font_color", Colors.White);
 
         void RefreshMat()
         {
             if (!GodotObject.IsInstanceValid(lbl)) return;
-            if (lbl.Material is ShaderMaterial) return;
-
-            Color? mainCol = lbl.HasThemeColorOverride("font_color")
-                ? lbl.GetThemeColor("font_color")
-                : null;
-
-            // 基础顶点色必须是纯白，否则 COLOR 乘算会把浅主色压暗；
-            // 描边仍由 font_outline_color 控制，不受影响。
-            lbl.AddThemeColorOverride("font_color", Colors.White);
-            ApplyGradientText(lbl, mainCol);
+            // 每次 Resized / 文本变化都重算 start_x 与 span_w，不得短路。
+            ApplyGradientText(lbl, originalMainCol);
         }
 
         RefreshMat();

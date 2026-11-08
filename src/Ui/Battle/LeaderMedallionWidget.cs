@@ -169,8 +169,10 @@ public partial class LeaderMedallionWidget : Control
         string initial = SvWbTheme.ClanDisplayZh(Leader.Def.Clan.IsValid ? Leader.Def.Clan.Name : null);
         if (initial.Length > 1) initial = initial.Substring(0, 1);
         var isz = font.GetStringSize(initial, HorizontalAlignment.Left, -1, 30);
-        DrawString(font, new Vector2(c.X - isz.X * 0.5f, c.Y + 10f), initial,
-                   HorizontalAlignment.Left, -1, 30, Colors.White);
+        // 职业汉字纹章整句渐变（190 号文档 问题 3 ③）。
+        SvWbTheme.DrawGradientString(this, font,
+            new Vector2(c.X - isz.X * 0.5f, c.Y + 10f), initial,
+            30, SvWbTheme.GradGold.Light, SvWbTheme.GradGold.Main);
 
         // 生命红盾（右侧，垂直位置同样跟随翻转）
         Vector2 shield = new(FrameR - 4f, FlipY(t + 46f));
@@ -288,9 +290,12 @@ public partial class LeaderMedallionWidget : Control
         }
 
         var sz = font.GetStringSize(label, HorizontalAlignment.Left, -1, 9);
-        DrawString(font, new Vector2(c.X - sz.X * 0.5f, c.Y + OrbRadius + 12f), label,
-                   HorizontalAlignment.Left, -1, 9,
-                   usable ? new Color("FDE68A") : new Color("64748B"));
+        // EP / SEP 标签：可用时走金色渐变，不可用时走灰阶渐变。
+        var orbPair = usable ? SvWbTheme.GradGold
+                             : (new Color("CBD5E1"), new Color("64748B"));
+        SvWbTheme.DrawGradientString(this, font,
+            new Vector2(c.X - sz.X * 0.5f, c.Y + OrbRadius + 12f), label,
+            9, orbPair.Item1, orbPair.Item2);
     }
 
     public override void _GuiInput(InputEvent @event)

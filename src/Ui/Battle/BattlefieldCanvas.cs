@@ -248,8 +248,10 @@ public partial class BattlefieldCanvas : Control
             string full = DeckEditorViewModel.DisplayName(ent.Def);
             string nm = full.Length > 0 ? full.Substring(0, 1) : "?";
             Vector2 tw = font.GetStringSize(nm, HorizontalAlignment.Left, -1, 15);
-            DrawString(font, new Vector2(c.X - tw.X * 0.5f, c.Y + 6f),
-                       nm, HorizontalAlignment.Left, -1, 15, Colors.White);
+            // 纹章汉字首字渐变（190 号文档 问题 3 ②）。
+            SvWbTheme.DrawGradientString(this, font,
+                new Vector2(c.X - tw.X * 0.5f, c.Y + 6f), nm,
+                15, SvWbTheme.GradGold.Light, SvWbTheme.GradGold.Main);
 
             // 右下角数值角标：吟唱倒计时或信仰值
             int badgeVal = 0;
@@ -307,8 +309,9 @@ public partial class BattlefieldCanvas : Control
             ? $"\U0001F0CF {Controller.Hand(playerId).Count}   \U0001F4E6 {deck}   \U0001FAA6 {grave}"
             : $"\u2746 {crest}   \U0001F4E6 {deck}   \U0001FAA6 {grave}";
 
-        DrawString(font, r.Position + new Vector2(10f, 23f), txt,
-                   HorizontalAlignment.Left, -1, 13, new Color("E2E8F0"));
+        // 计数栏整句渐变（190 号文档 问题 3 ①）。
+        SvWbTheme.DrawGradientString(this, font, r.Position + new Vector2(10f, 23f), txt,
+            13, SvWbTheme.GradGold.Light, SvWbTheme.GradGold.Main);
     }
 
     private void DrawEnemyHandBacks(int count, Vector2 origin, Font font)
