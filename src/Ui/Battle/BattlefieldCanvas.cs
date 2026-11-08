@@ -322,9 +322,16 @@ public partial class BattlefieldCanvas : Control
         int grave = Controller.State.Players[playerId].Cemetery.Count;
         int crest = Controller.Crests(playerId).Count;
 
-        string txt = showHand
-            ? $"\U0001F0CF {Controller.Hand(playerId).Count}   \U0001F4E6 {deck}   \U0001FAA6 {grave}"
-            : $"\u2746 {crest}   \U0001F4E6 {deck}   \U0001FAA6 {grave}";
+        // 193 号文档 问题 1：不再用 Emoji 图标。
+        //
+        // 📦(U+1F4E6) / 🪦(U+1FAA6) / 🃏(U+1F0CF) 是 BMP 之外的 4 字节字符，
+        // 在 UTF-16 里占两个 char。早先 DrawGradientString 按 text[i] 逐 char 切分，
+        // 把代理对劈成两半传给 Godot，任何字体都判为非法码元 → 画成两个「」。
+        // 即使不劈开，FallbackFont 在部分平台也没有 🪦 的字形。
+        // 改用简中标签，字形 100% 存在，语义还更清楚。
+        int firstVal = showHand ? Controller.Hand(playerId).Count : crest;
+        string firstLabel = showHand ? "手牌" : "纹章";
+        string txt = $"{firstLabel} {firstVal}   牌库 {deck}   墓场 {grave}";
 
         // 计数栏整句渐变（190 号文档 问题 3 ①）。
         SvWbTheme.DrawGradientString(this, font, r.Position + new Vector2(10f, 23f), txt,

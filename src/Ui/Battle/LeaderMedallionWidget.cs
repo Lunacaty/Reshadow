@@ -14,7 +14,14 @@ namespace ShadowverseFan.Ui.Battle;
 /// </summary>
 public partial class LeaderMedallionWidget : Control
 {
-    public RuntimeEntity Leader { get; private set; }
+    /// <summary>
+    /// 主战者实例，**实时**从控制器读取。
+    ///
+    /// 193 号文档 BUG1 断链 A：早先只在 Setup() 里赋值一次，缓存了开局那个对象。
+    /// 客机 ApplyRemoteSnapshot 会重建实体，UI 却仍指向旧对象 ——
+    /// 于是主战者血量永远显示 20。改成动态属性后引用永不过期。
+    /// </summary>
+    public RuntimeEntity Leader => _ctrl?.Leader(_playerId);
     public bool IsEnemy { get; private set; }
 
     public event Action OnLeaderClicked;
@@ -74,7 +81,7 @@ public partial class LeaderMedallionWidget : Control
         _ctrl = ctrl;
         _playerId = playerId;
         IsEnemy = isEnemy;
-        Leader = ctrl.Leader(playerId);
+        // 不再缓存 Leader 引用（见 Leader 属性注释）。
 
         CustomMinimumSize = new Vector2(240, 150);
         Size = new Vector2(240, 150);

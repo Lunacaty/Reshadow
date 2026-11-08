@@ -130,7 +130,7 @@ public partial class BattleScreenRoot : Control
         _store = store;
         _myDeck = mine;
         _foeDeck = foe;
-        _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
+        _ctrl = new BattleSessionController(store, mine, foe, seed: 0,
                                             startInMulligan: true, firstPlayer: firstPlayer);
         BoardUnitWidget.CurrentController = _ctrl;
 
@@ -157,12 +157,21 @@ public partial class BattleScreenRoot : Control
 
         // firstPlayer 是本地视角（0=我方先手，1=敌方先手）；权威端下发的
         // ResolvedFirstPlayer 用服务端座位号，客机换算由调用方负责，这里原样传入。
-        _ctrl = new BattleSessionController(store, mine, foe, seed: 20260101,
+        _ctrl = new BattleSessionController(store, mine, foe, seed: 0,
                                             startInMulligan: false, firstPlayer: firstPlayer);
         _ctrl.IsPvpMatch = true;
         _ctrl.RemoteClient = client;
         BoardUnitWidget.CurrentController = _ctrl;
-        _lastEventIdx = _ctrl.State.EventLog.Count;
+
+        // 193 号文档 BUG1 清单 3：清空本地假开局的残留事件，游标归零。
+        //
+        // 早先这里把游标设成 Count，而 ApplyRemoteSnapshot 收到首包时又
+        // Clear 了 EventLog —— 两边一对冲，游标指向了不存在的位置，
+        // 攻击时的陈年 OnDamaged 事件会诈尸重放，血量凭空 +1。
+        // 现在统一在开局清空，快照侧不再 Clear。
+        _ctrl.State.EventLog.Clear();
+        _ctrl.State.BattleLogs.Clear();
+        _lastEventIdx = 0;
 
         BuildUi();
         Rebuild();

@@ -141,7 +141,14 @@ public sealed class RuntimeEntity
     /// </summary>
     public List<List<EntityRef>> LastChooseRefs { get; } = new();
 
-    public int EntityId { get; init; }
+    /// <summary>
+    /// 实体号。
+    ///
+    /// 193 号文档 BUG1：必须是 set 而非 init ——
+    /// 客机收到首个快照时要**原位对齐**房主端的真实 EntityId，
+    /// 否则主战者受伤飘字与瞄准高亮都因 EntityId 对不上而失效。
+    /// </summary>
+    public int EntityId { get; set; }
     public int EntrySerial { get; set; }
     public Ast.CardDef Def { get; set; }
     /// <summary>绝对玩家编号（0 = 先手，1 = 后手）。</summary>

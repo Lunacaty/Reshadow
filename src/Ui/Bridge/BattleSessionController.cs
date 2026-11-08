@@ -106,11 +106,18 @@ public sealed class BattleSessionController
 
         // 在清空旧的 Board/Hand 之前，拍下上一帧所有存活实体的快照索引，
         // 供后续事件还原（阵亡、打出、被破坏的随从动画不至于丢失主体，176 号文档 一.3）。
-        var prevEntities = State.Players
+        //
+        // 193 号文档 真凶二：这里还必须**保留活体本身**（不只是 Snapshot）。
+        // 客机不跑 CombatResolver，上一帧对象里的 Life 是受击前的值；
+        // 若只留快照，阵亡实体拿去当 DyingProxy 时血量仍是满血，
+        // 再叠加前端 _pendingLifeDelta 就会凭空多加一次伤害值。
+        var prevLiveEntities = State.Players
             .SelectMany(pl => pl.Board.Concat(pl.Hand).Concat(pl.CrestArea)
                                 .Append(pl.Leader).Where(x => x != null))
             .GroupBy(x => x.EntityId)
-            .ToDictionary(g => g.Key, g => EntityRef.From(g.First()));
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var prevEntities = prevLiveEntities.ToDictionary(kv => kv.Key, kv => EntityRef.From(kv.Value));
 
         // ★ 视角归一化：本地 UI 永远以 0 = 我方（屏幕下方）、1 = 敌方（屏幕上方）。
         // 本机在权威端若是 Player 1（客机），则把权威端的 1 映射到本地 0。
@@ -147,8 +154,39 @@ public sealed class BattleSessionController
             for (int i = 0; i < dto.CemeteryCount; i++) p.Cemetery.Add(PlaceholderEntity(localPid, ZoneRef.Cemetery));
             for (int i = 0; i < dto.BanishedCount; i++) p.Banished.Add(PlaceholderEntity(localPid, ZoneRef.Banished));
 
+            // 193 号文档 BUG1 断链 A：主战者必须**原位更新**，不能 new 一个覆盖。
+            //
+            // 早先直接 MaterializeEntity 重建，LeaderMedallionWidget 里缓存的引用
+            // 就指向了开局那个旧对象，血量永远停在 20。
+            // 原位覆写既保住引用，又避免每次快照重建一个主战者实体。
             if (dto.Leader != null)
-                p.Leader = MaterializeEntity(dto.Leader, localPid, ZoneRef.Leader) ?? p.Leader;
+            {
+                if (p.Leader != null && p.Leader.Def != null)
+                {
+                    p.Leader.EntityId = dto.Leader.EntityId;
+                    p.Leader.Life = dto.Leader.Life;
+                    p.Leader.MaxLife = dto.Leader.MaxLife;
+                    p.Leader.Attack = dto.Leader.Attack;
+                    // 关键词与计数器也同步：护盾、狂乱这类状态全挂在上面，
+                    // 只同步血量会让客机看不到这些状态变化。
+                    if (dto.Leader.Keywords != null)
+                    {
+                        p.Leader.Keywords.Clear();
+                        foreach (var kw in dto.Leader.Keywords)
+                            if (!string.IsNullOrEmpty(kw)) p.Leader.Keywords.Add(State.Schema.Keyword(kw));
+                    }
+                    if (dto.Leader.Counters != null)
+                    {
+                        p.Leader.Counters.Clear();
+                        foreach (var kv in dto.Leader.Counters)
+                            if (!string.IsNullOrEmpty(kv.Key)) p.Leader.Counters[State.Schema.Counter(kv.Key)] = kv.Value;
+                    }
+                }
+                else
+                {
+                    p.Leader = MaterializeEntity(dto.Leader, localPid, ZoneRef.Leader) ?? p.Leader;
+                }
+            }
 
             foreach (var e in dto.Board)
             {
@@ -247,6 +285,11 @@ public sealed class BattleSessionController
         {
             if (entityId < 0) return null;
             if (FindLiveRef(entityId) is { } live) return live;
+            // 193 号文档 真凶二：优先从**已同步过伤害**的活体取快照。
+            // 上面那段把 OnDamaged 扣到了 prevLiveEntities 里的旧实体上，
+            // 这里必须读它而不是残留快照，否则 DyingProxy 拿到的还是满血。
+            if (prevLiveEntities.TryGetValue(entityId, out var prevEnt))
+                return EntityRef.From(prevEnt);
             if (prevEntities.TryGetValue(entityId, out var prev)) return prev;
             var def = cardId > 0 ? State.CardDefOf(cardId) : null;
             if (def == null) return null;
@@ -263,12 +306,12 @@ public sealed class BattleSessionController
             });
         }
 
-        // 首包全量事件到达时清空客机本地假开局残留日志与事件（177 号深度走查 3）
-        if (snap.EventStartIndex == 0 && snap.NewEvents != null && snap.NewEvents.Count > 0)
-        {
-            State.EventLog.Clear();
-            State.BattleLogs.Clear();
-        }
+        // 193 号文档 BUG1 清单 3：这里**不再**清空事件日志。
+        //
+        // 清空动作已移到 BootRemote 开局那一刻，与 _lastEventIdx = 0 配套。
+        // 在这个每包都会走的方法里 Clear，会和 UI 侧游标错位：
+        // 游标停在旧长度上，而日志已经变短，后续索引取到的是过期事件 ——
+        // 表现为攻击时陈年 OnDamaged 诈尸、血量凭空 +1。
 
         if (snap.NewEvents != null && snap.NewEvents.Count > 0)
         {
@@ -279,6 +322,28 @@ public sealed class BattleSessionController
                 int rawPid = ne.PlayerId >= 0 ? ne.PlayerId : ne.SubjectPlayerId;
                 int mappedPid = rawPid >= 0 ? MapPid(rawPid) : 0;
                 int subjPid = ne.SubjectPlayerId >= 0 ? MapPid(ne.SubjectPlayerId) : mappedPid;
+
+                // 193 号文档 真凶二：若事件主体在最新快照里已不存在（本次交战阵亡），
+                // 必须把这次的伤害/治疗/身材变化同步到上一帧遗留的旧实体上。
+                //
+                // 否则 DyingProxy 的基础血量仍是受击前的满血，
+                // 前端再叠加 _pendingLifeDelta（+伤害值）就会把血量凭空抬高 ——
+                // 表现就是冲锋撞上去之前，敌方随从血量突然从 2 跳成 5。
+                if (ne.SubjectEntityId >= 0
+                    && FindLiveRef(ne.SubjectEntityId) is null
+                    && prevLiveEntities.TryGetValue(ne.SubjectEntityId, out var deadEnt))
+                {
+                    if (kind == CoreEvent.OnDamaged)
+                        deadEnt.Life -= ne.Amount;
+                    else if (kind == CoreEvent.OnHealed)
+                        deadEnt.Life = Math.Min(deadEnt.MaxLife, deadEnt.Life + ne.Amount);
+                    else if (kind == CoreEvent.OnStatsModified)
+                    {
+                        deadEnt.Attack += ne.Amount;
+                        deadEnt.Life += ne.SecondaryAmount;
+                        deadEnt.MaxLife += ne.SecondaryAmount;
+                    }
+                }
 
                 var subj = ResolveEventRef(ne.SubjectEntityId, ne.SubjectCardId, subjPid, ne.SubjectZone);
                 var obj = ResolveEventRef(ne.ObjectEntityId, 0, 1 - subjPid, "");

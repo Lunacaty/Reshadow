@@ -687,7 +687,24 @@ void fragment() {
 
         for (int i = 0; i < text.Length; i++)
         {
-            string ch = text[i].ToString();
+            // 193 号文档 问题 1：必须把 UTF-16 代理对整体取出。
+            //
+            // C# 的 string 是 UTF-16。BMP 之外的字符（📦 U+1F4E6、🪦 U+1FAA6 等）
+            // 在内存里占两个 char（High + Low surrogate）。
+            // 早先直接 text[i].ToString() 会把一个字符劈成两个孤立的半个代理项，
+            // 传给 Godot 后任何字体都判为非法码元，画出来就是两个「」。
+            string ch;
+            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length
+                && char.IsLowSurrogate(text[i + 1]))
+            {
+                ch = text.Substring(i, 2);
+                i++;
+            }
+            else
+            {
+                ch = text[i].ToString();
+            }
+
             float cw = font.GetStringSize(ch, HorizontalAlignment.Left, -1, fontSize).X;
             float t = Mathf.Clamp((curX + cw * 0.5f) / totalW, 0f, 1f);
             Color col = lightCol.Lerp(mainCol, t);
