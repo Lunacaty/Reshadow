@@ -823,8 +823,11 @@ public static class AstCanonicalPrinter
                     case "ep": return "recover_ep " + mag;
                     case "sep": return "recover_sep " + mag;
                     case "earth_sigil": return "gain_earth_sigil " + mag;
-                    case "clues": return "gain_clues " + mag;
-                    case "shadow": return "gain_shadows " + mag;
+                    // 必须区分正负：早先这里无条件输出 gain_clues，
+                    // 于是「消耗 1 个线索」(Delta=-1) 被打印成 gain_clues 1，
+                    // 卡面显示反了，而且再解析回去就真的变成加 1。
+                    case "clues": return neg ? "spend_clues " + mag : "gain_clues " + mag;
+                    case "shadow": return neg ? "spend_shadows " + mag : "gain_shadows " + mag;
                     case "faith": return neg ? "spend_faith " + mag : "gain_faith " + mag;
                 }
             }

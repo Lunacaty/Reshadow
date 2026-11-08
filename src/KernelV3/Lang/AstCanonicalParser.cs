@@ -829,7 +829,9 @@ public sealed class AstCanonicalParser
             case "recover_sep": return MakeCounter("sep", 1);
             case "gain_earth_sigil": return MakeCounter("earth_sigil", 1);
             case "gain_clues": return MakeCounter("clues", 1);
+            case "spend_clues": return MakeCounter("clues", -1);
             case "gain_shadows": return MakeCounter("shadow", 1);
+            case "spend_shadows": return MakeCounter("shadow", -1);
             case "gain_faith": return MakeCounter("faith", 1);
             case "spend_faith": return MakeCounter("faith", -1);
             case "modify_cost": return ParseModifyCost(CostModOp.Add);
