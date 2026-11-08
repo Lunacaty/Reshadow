@@ -775,9 +775,13 @@ public sealed class PrefixParser
         {
             if (cur.Current.Kind == TokKind.Comma)
             {
-                // 逗号后是数字，或 "and <数字>"，说明是条件内部的枚举逗号，不切分
-                if (cur.Peek(1).Kind == TokKind.Number
-                    || (cur.Peek(1).IsWord("and") && cur.Peek(2).Kind == TokKind.Number))
+                // 复用 TokenCursor.IsNumericListComma，与 AdvanceToClauseBoundary /
+                // ActionParser.ParseMidSentenceIf 共用一个判据。
+                //
+                // 早先这里手写判断只认 "and <数字>"，漏了 "or <数字>"：
+                //   "if you have played a 1, 2, or 3-cost card"
+                // 会在 "2," 处被当成从句结束切段，条件编译失败（183 号文档 隐患3）。
+                if (cur.IsNumericListComma())
                 {
                     buf.Add(cur.Current); cur.Advance(); continue;
                 }
