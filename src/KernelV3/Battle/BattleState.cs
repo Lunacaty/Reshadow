@@ -1044,11 +1044,21 @@ public sealed class BattleState : IVmWorld
             if (spec.MergePolicy == StackMergePolicy.BanishOld) BanishEntity(old);
             else RemoveQuietly(old);
         }
-        if (carried > 0)
-        {
-            fresh.Counters.TryGetValue(key, out int own);
-            fresh.Counters[key] = own + carried;
-        }
+        // 192 号文档 问题 2：护符进场必须自带 1 层。
+        //
+        // 走 PlaceInZone → MergeStackableAmulet 进来的护符（从手牌打出、
+        // 或效果直接 summon），卡面只有 Traits=[土之印/证据]，
+        // InnateCounters 里没有初始值 —— 于是 fresh.Counters[key] 根本没被初始化。
+        // 结果：第一张打出的土之印层数是 0，UI 角标不显示，
+        // 打第二张时 old 读出来也是 0，合并完还是 0，【土之秘术】永远发不动。
+        if (!fresh.Counters.TryGetValue(key, out int own) || own <= 0)
+            own = 1;
+
+        int total = Schema.ClampCounter(key, own + carried);
+        fresh.Counters[key] = total;
+        // 玩家级计数器同步：土之秘术按玩家持有的 earth_sigil 扣除，
+        // 只写实体的那份会让代价检查始终认为「一层都没有」。
+        Players[fresh.PlayerId].Counters[key.Id] = total;
     }
 
     /// <summary>无声移除：不触发谢幕曲、不加墓场（用于合并）。</summary>
@@ -2291,7 +2301,16 @@ public sealed class BattleState : IVmWorld
     /// </summary>
     private static void RestoreOriginalDef(RuntimeEntity e)
     {
-        if (e?.OriginalDef == null) return;
+        if (e == null) return;
+        if (e.OriginalDef == null)
+        {
+            // 192 号文档 1-B：普通形态离场必须清掉上一次生命周期残留的 LastFieldDef。
+            // 否则一张结晶死过一次、又被能力直接拉回战场当随从再死时，
+            // RestoreOriginalDef 因 OriginalDef==null 直接 return，
+            // 于是它作为**随从**死掉却仍用上辈子的结晶谢幕曲。
+            e.LastFieldDef = null;
+            return;
+        }
         e.LastFieldDef = e.Def;
         e.Def = e.OriginalDef;
         e.OriginalDef = null;

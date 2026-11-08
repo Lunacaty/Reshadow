@@ -661,7 +661,13 @@ public sealed partial class CardVm
             bool useLastFieldDef = e.LastFieldDef != null && ev.Subject != null
                 && ev.Subject.Value.EntityId == e.EntityId
                 && (ev.Kind == CoreEvent.OnDestroy || ev.Kind == CoreEvent.OnLeaveField
-                    || ev.Kind == CoreEvent.OnBanish || ev.Kind == CoreEvent.OnDiscard);
+                    || ev.Kind == CoreEvent.OnBanish || ev.Kind == CoreEvent.OnDiscard
+                    // 192 号文档 1-A：吟唱归零也是「以替代形态离场」。
+                    // StepBoardCountdown 先 EmitOrEnqueue(OnCountdownExpire)，
+                    // 紧接着同步 DestroyEntity → RestoreOriginalDef 把 Def 还原成本体；
+                    // 等 VM 出队处理时若不认这个事件，
+                    // 带「吟唱归零时」能力的结晶护符就会去读随从本体而失效。
+                    || ev.Kind == CoreEvent.OnCountdownExpire);
 
             var activeDef = useLastFieldDef ? e.LastFieldDef : e.Def;
             if (activeDef != null)

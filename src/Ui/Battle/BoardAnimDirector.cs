@@ -57,6 +57,15 @@ public sealed class BoardAnimDirector
     private static void ResetKeepLayout(Track t)
     {
         if (t == null) return;
+        // 192 号文档 3-B：动作动画结束时若队列里已经没有别的动画，
+        // 说明此前的槽位重排被 Running.Clear() 误杀了 ——
+        // 此时保留残余 LayoutOffset 会把它永久锁死在旧槽位。
+        bool othersPending = t.Running != null && t.Running.Count > 0;
+        if (!othersPending)
+        {
+            t.Motion = UnitMotion.Idle;
+            return;
+        }
         var keep = t.Motion.LayoutOffset;
         t.Motion = UnitMotion.Idle;
         t.Motion.LayoutOffset = keep;
@@ -247,17 +256,22 @@ public sealed class BoardAnimDirector
     public void PlayEnter(long entityId, float height = 124f)
     {
         var t = TrackOf(entityId);
+        // 192 号文档 3-B：Clear 会杀掉正在跑的槽位重排，
+        // 这里像 PlayEvolve 一样先把残余偏移抓下来，在入场过程中顺滑归零。
+        Vector2 startLayoutOffset = t.Motion.LayoutOffset;
         t.Running.Clear();
 
         Play(entityId, new Anim(0.28f, Ease.OutBack, v =>
         {
             if (_aimingEntity == entityId) return;
+            float lk = Mathf.Clamp(v, 0f, 1f);
+            t.Motion.LayoutOffset = startLayoutOffset * (1f - lk);
             t.Motion.Offset = new Vector2(0f, height * (1f - v));
             t.Motion.Alpha = Mathf.Clamp(v * 2.0f, 0f, 1f);
             t.Motion.Scale = 1f;
         }, () =>
         {
-            if (_aimingEntity != entityId) ResetKeepLayout(t);
+            if (_aimingEntity != entityId) t.Motion = UnitMotion.Idle;
         }));
     }
 

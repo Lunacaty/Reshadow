@@ -50,6 +50,16 @@ public static class PreChoiceInspector
         int savedCombo = state.ReadCounter(card.PlayerId, comboKey);
         bool savedEv = card.IsEvolved, savedSep = card.IsSuperEvolved;
 
+        // 192 号文档 问题 4：进化加成与 evolve_count 也必须在预扫时模拟。
+        //
+        // 只设 IsEvolved 是不够的：像「进化时：选择 1 个生命值不超过本随从攻击力的
+        // 敌方随从」或「若本局已进化至少 N 次」这类能力，
+        // 预扫时攻击力没 +2、evolve_count 没 +1，条件算出 false / 候选为空，
+        // Inspect 直接返回 null → 退化成「先进化，再弹窗选择」。
+        var evoCountKey = state.Schema.Counter("evolve_count");
+        int savedEvoCount = state.ReadCounter(card.PlayerId, evoCountKey);
+        int savedAtk = card.Attack, savedLife = card.Life, savedMaxLife = card.MaxLife;
+
         try
         {
             if (kind == PlayerActionKind.PlayCard)
@@ -64,11 +74,22 @@ public static class PreChoiceInspector
                 state.WriteCounter(card.PlayerId, ppAtPlayKey, synthetic);
                 state.WriteCounter(card.PlayerId, comboKey, savedCombo + 1);
             }
-            else if (kind == PlayerActionKind.Evolve) card.IsEvolved = true;
+            else if (kind == PlayerActionKind.Evolve)
+            {
+                card.IsEvolved = true;
+                card.Attack += state.Rules.EvolveBonusAttack;
+                card.Life += state.Rules.EvolveBonusLife;
+                card.MaxLife += state.Rules.EvolveBonusLife;
+                state.WriteCounter(card.PlayerId, evoCountKey, savedEvoCount + 1);
+            }
             else if (kind == PlayerActionKind.SuperEvolve)
             {
                 card.IsEvolved = true;
                 card.IsSuperEvolved = true;
+                card.Attack += state.Rules.SuperEvolveBonusAttack;
+                card.Life += state.Rules.SuperEvolveBonusLife;
+                card.MaxLife += state.Rules.SuperEvolveBonusLife;
+                state.WriteCounter(card.PlayerId, evoCountKey, savedEvoCount + 1);
             }
 
             var scope = ScopeOf(card);
@@ -135,6 +156,16 @@ public static class PreChoiceInspector
                 // 能力级条件也要用同一个作用域 —— 它可能引用 $selected / $chooseK。
                 if (!EvalCond(state, card, ab.Condition, scope)) continue;
 
+                // 192 号文档 问题 4：预扫同样要过代价检查。
+                // 唤灵/土之秘术/连击不足时运行时整块跳过，
+                // 预选若照常弹窗，玩家选完目标、真进化后却发现什么都没发生。
+                if (!Vm.CostExecutor.CanPay(state, card.PlayerId, card, ab.Costs,
+                                            state.Schema.Counter("pp"),
+                                            state.Schema.Counter("shadow"),
+                                            state.Schema.Counter("earth_sigil"),
+                                            ab.Body))
+                    continue;
+
                 var prompt = Walk(state, card, scope, ab.Body, answers, ref consumed);
                 if (prompt != null) return new Result { Prompt = prompt, Consumed = consumed };
             }
@@ -145,8 +176,12 @@ public static class PreChoiceInspector
         {
             state.Players[card.PlayerId].Counters[ppAtPlayKey.Id] = savedPpAtPlay;
             state.Players[card.PlayerId].Counters[comboKey.Id] = savedCombo;
+            state.Players[card.PlayerId].Counters[evoCountKey.Id] = savedEvoCount;
             card.IsEvolved = savedEv;
             card.IsSuperEvolved = savedSep;
+            card.Attack = savedAtk;
+            card.Life = savedLife;
+            card.MaxLife = savedMaxLife;
         }
     }
 
