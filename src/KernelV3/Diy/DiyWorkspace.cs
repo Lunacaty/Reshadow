@@ -58,7 +58,15 @@ public sealed class DiyWorkspace
     /// </summary>
     public BattleState ResetState()
     {
-        var fresh = new BattleState(seed: 31);
+        // 必须复用工作区的 Schema，**不能** new BattleState(seed:31) 新造一套。
+        //
+        // GameSchema 的兵种 / 职业 / 计数器 id 是按**注册顺序**分配的。
+        // 新造一套 Schema 时顺序不同，同一个「机甲」在编译期是 id=16、
+        // 在运行时是 id=14 —— 编译期写进 HasTraitExpr 的 id 与运行期对不上，
+        // 按兵种筛选的效果会**静默失效**（卡能打出，效果什么都不发生）。
+        //
+        // 规则也一并沿用，否则 ResetState 出来的局面与工作区其余部分不一致。
+        var fresh = new BattleState(Context.Schema, 31, Context.State?.Rules);
         // 内置衍生卡（Fairy / Ominous Artifact 等）必须一起灌：
         // 少了它们，召唤出来的是 CardId 未注册的空壳 —— UnresolvedSpawnCount++，
         // 而现象只是「召唤了 0 个妖精」，看起来像效果没实现。
