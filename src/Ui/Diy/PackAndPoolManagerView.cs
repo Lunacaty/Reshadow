@@ -46,7 +46,6 @@ public partial class PackAndPoolManagerView : Control
     private Button _saveRulesBtn;
     private Label _ruleStatus;
     private string _selectedPoolId;
-    private OptionButton _poolPicker;
     private OptionButton rowPools;
 
     public void Boot(GameSessionStore store)
@@ -1054,21 +1053,6 @@ public partial class PackAndPoolManagerView : Control
 
 
 
-    /// <summary>重建卡池下拉框（新建/删除卡池后调用）。</summary>
-    private void BuildPoolPicker()
-    {
-        if (_poolPicker == null) return;
-        _poolPicker.Clear();
-        var keys = _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal).ToList();
-        for (int i = 0; i < keys.Count; i++)
-        {
-            var cfg = _store.PoolConfigs[keys[i]];
-            _poolPicker.AddItem((string.IsNullOrEmpty(cfg.Name) ? keys[i] : cfg.Name) + " (" + keys[i] + ")", i);
-        }
-        int sel = _selectedPoolId != null ? keys.IndexOf(_selectedPoolId) : -1;
-        if (sel >= 0) _poolPicker.Select(sel);
-        else if (keys.Count > 0 && _selectedPoolId == null) _selectedPoolId = keys[0];
-    }
 
 
 
@@ -1466,13 +1450,9 @@ public partial class PackAndPoolManagerView : Control
             _ruleStatus.Text = msg;
             if (ok)
             {
-                _selectedPoolId = pid;
-                BuildPoolPicker();
-                RefreshRules();
-                RefreshNamedDecks();
-                // 换到新卡池后，右下角的职业与计数器必须跟着换成新池的数据。
-                RefreshPoolClans();
-                RefreshPoolCounters();
+                // 统一走 SelectPoolAndRefreshAll：新建卡池后所有依赖 _selectedPoolId
+                // 的区域（卡包归属、具名牌组、职业、计数器）必须一起刷新。
+                SelectPoolAndRefreshAll(pid);
             }
             dlg.QueueFree();
         };
@@ -1705,21 +1685,6 @@ public partial class PackAndPoolManagerView : Control
         // 卡包归属页签跟随卡池切换重建（勾选状态按当前池重算）。
         BuildEnabledPacksSection();
 
-        // 下拉框：列出全部卡池
-        if (_poolPicker != null)
-        {
-            _poolPicker.Clear();
-            int pi = 0, selIdx = 0;
-            foreach (var k in _store.PoolConfigs.Keys.OrderBy(x => x, StringComparer.Ordinal))
-            {
-                // Clear + AddItem 会把选中项重置到第 0 项，
-                // 不在这里恢复下标，下拉框文字就会永远弹回第一个卡池。
-                if (string.Equals(k, _selectedPoolId, StringComparison.OrdinalIgnoreCase))
-                    selIdx = pi;
-                _poolPicker.AddItem(k, pi++);
-            }
-            _poolPicker.Selected = selIdx;
-        }
 
         if (string.IsNullOrEmpty(_selectedPoolId)
             || !_store.PoolConfigs.ContainsKey(_selectedPoolId))
