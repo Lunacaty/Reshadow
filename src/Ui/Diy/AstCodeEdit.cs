@@ -42,7 +42,9 @@ public partial class AstCodeEdit : CodeEdit
         AutoBraceCompletionEnabled = true;
 
         // 语法高亮
-        SyntaxHighlighter = BuildPyAstHighlighter();
+        // 换成自定义高亮器：内置 CodeHighlighter 只能给整词一个纯色，
+        // 无法做「浅主色 -> 主色」的词内渐变（187 号文档 专题三）。
+        SyntaxHighlighter = new GradientAstHighlighter();
 
         // 原生关键字与符号补全（180 号文档 D5）。
         // Godot CodeEdit 自带补全框，开启后敲 $ 或 : 会自动弹出候选。
@@ -265,4 +267,85 @@ public partial class AstCodeEdit : CodeEdit
         hl.AddColorRegion("\"", "\"", new Color("86EFAC"), false);
         return hl;
     }
+
+/// <summary>
+/// 支持「浅主色 -> 主色」词内线性渐变的全语法高亮器（187 号文档 专题三）。
+///
+/// 内置 CodeHighlighter 只能给一个词一个纯色，做不到逐字符插值。
+/// 这里重写 SyntaxHighlighter._GetLineSyntaxHighlighting，按**列号**逐字符
+/// 写入插值后的颜色 —— 每个关键字、每个槽位、每串字符串都会呈现横向渐变。
+///
+/// 词表同时覆盖 PyAST 规范语法、官方英文 CNL 与中文关键词三大阵营。
+/// </summary>
+public sealed partial class GradientAstHighlighter : SyntaxHighlighter
+{
+    // 七大语法色系（浅主色 -> 主色）
+    private static readonly (Color Light, Color Main) PalTrigger = (new Color("FFF9DB"), new Color("F59E0B"));
+    private static readonly (Color Light, Color Main) PalAction  = (new Color("F3E8FF"), new Color("C084FC"));
+    private static readonly (Color Light, Color Main) PalTarget  = (new Color("E0F7FA"), new Color("06B6D4"));
+    private static readonly (Color Light, Color Main) PalSlot    = (new Color("FFE4E6"), new Color("FB7185"));
+    private static readonly (Color Light, Color Main) PalKeyword = (new Color("DCFCE7"), new Color("10B981"));
+    private static readonly (Color Light, Color Main) PalNumber  = (new Color("FEF08A"), new Color("EAB308"));
+    private static readonly (Color Light, Color Main) PalDefault = (new Color("FFF3CF"), new Color("E3BD63"));
+    private static readonly (Color Light, Color Main) PalComment = (new Color("94A3B8"), new Color("475569"));
+
+    /// <summary>
+    /// 一次扫描匹配全部语法家族。命名组顺序即优先级：
+    /// 注释 > 字符串 > 卡号 > 槽位/前缀 > 触发头 > 动作 > 关键词 > 目标 > 数字。
+    /// </summary>
+    private static readonly Regex TokenRegex = new(
+        @"(?<comment>//.*$)" +
+        @"|(?<str>""[^""]*""|【[^】]+】|《[^》]+》)" +
+        @"|(?<card>#\d+\b)" +
+        @"|(?<slot>\$[a-zA-Z0-9_]+|\b(?:ctr|prop|sum|split|trait|clan):[a-zA-Z0-9_\u4e00-\u9fa5]+)" +
+        @"|(?<trig>\b(?:fanfare|last_words|evolve|super_evolve|strike|clash|engage|aura|turn_start|turn_end|crest|faith|accelerate|crystallize|on_\w+|Fanfare|Last\s+Words|Evolve|Super-Evolve|Strike|Clash|Engage|Activate|Countdown|Necromancy|Earth\s+Rite|Combo|Rally|Overflow|Wrath|Spellboost|Skybound\s+Art|Super\s+Skybound\s+Art|Enhance|Fuse|Reanimate|Invoke)\b:?)" +
+        @"|(?<act>\b(?:card|deck_mod|keywords|deal|draw|restore|summon|add_to_hand|destroy|banish|discard|bounce|buff|set_stats|grant_keyword|remove_keyword|discover|reanimate|gain_crest|if|elif|else|repeat|for_each|modes|option|pay|where|counter|select|transform|invoke_ability|grant_ability|move|give|gain|damage|life|leader|followers?|amulets?|spells?|cards?)\b)" +
+        @"|(?<kw>\b(?:ward|rush|storm|bane|drain|ambush|intimidate|barrier|ignores_ward|free_evolve|free_super_evolve|immune_\w+|cannot_\w+|Ward|Rush|Storm|Bane|Drain|Ambush|Aura|Intimidate|Barrier)\b)" +
+        @"|(?<tgt>\b(?:self|opponent|any|board|hand|deck|cemetery|banished|crest_area|ex_area|All|Choose|Random|First|Last|Distinct|Follower|Spell|Amulet|Crest|Faith|Leader|ThisTurn|Permanent|UntilEndOfOpponentTurn)\b)" +
+        @"|(?<num>[+-]?\d+(?:/[+-]?\d+)?)",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
+    public override Godot.Collections.Dictionary _GetLineSyntaxHighlighting(int line)
+    {
+        var dict = new Godot.Collections.Dictionary();
+        var te = GetTextEdit();
+        if (te == null || line < 0 || line >= te.GetLineCount()) return dict;
+        string text = te.GetLine(line);
+        if (string.IsNullOrEmpty(text)) return dict;
+
+        // 先铺整行默认渐变，保证普通单词也有质感；再按 Token 覆盖专属色系。
+        PaintSpan(dict, 0, text.Length, PalDefault.Light, PalDefault.Main);
+
+        foreach (Match m in TokenRegex.Matches(text))
+        {
+            if (!m.Success || m.Length == 0) continue;
+            var pal = m.Groups["comment"].Success ? PalComment
+                    : m.Groups["str"].Success     ? PalKeyword
+                    : m.Groups["card"].Success    ? PalNumber
+                    : m.Groups["slot"].Success    ? PalSlot
+                    : m.Groups["trig"].Success    ? PalTrigger
+                    : m.Groups["act"].Success     ? PalAction
+                    : m.Groups["kw"].Success      ? PalKeyword
+                    : m.Groups["tgt"].Success     ? PalTarget
+                    : m.Groups["num"].Success     ? PalNumber
+                    : PalDefault;
+            PaintSpan(dict, m.Index, m.Length, pal.Light, pal.Main);
+        }
+        return dict;
+    }
+
+    /// <summary>给 [start, start+len) 的每一列写入插值色，形成词内渐变。</summary>
+    private static void PaintSpan(Godot.Collections.Dictionary dict, int start, int len,
+                                  Color light, Color main)
+    {
+        for (int i = 0; i < len; i++)
+        {
+            float t = len <= 1 ? 0f : (float)i / (len - 1);
+            dict[start + i] = new Godot.Collections.Dictionary
+            {
+                ["color"] = light.Lerp(main, t),
+            };
+        }
+    }
+}
 }

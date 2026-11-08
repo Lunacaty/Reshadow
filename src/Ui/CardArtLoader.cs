@@ -50,6 +50,30 @@ public static class CardArtLoader
         return tex;
     }
 
+    /// <summary>
+    /// 统一的高清纹理构建：Any 立绘在缩放到手牌（88×116）或棋子（84×109）时，
+    /// 若没有 Mipmaps，GPU 只能做基础双线性采样，跨多个纹素必然发虚、边缘起锯齿。
+    /// 生成 Mipmaps 后由硬件做三线性平滑采样（187 号文档 专题一 ①）。
+    /// </summary>
+    private static Texture2D CreateHighQualityTexture(Image img)
+    {
+        if (img == null || img.IsEmpty()) return null;
+        try
+        {
+            if (img.IsCompressed()) img.Decompress();
+            img.Convert(Image.Format.Rgba8);
+            img.GenerateMipmaps();
+            // 注意：这里必须是 ImageTexture.CreateFromImage，
+            // 不能在辅助方法内部再调自己（会无限递归爆栈）。
+            return ImageTexture.CreateFromImage(img);
+        }
+        catch
+        {
+            // 生成 Mipmaps 失败不该让立绘整个消失：退回无 Mipmap 的原图。
+            return ImageTexture.CreateFromImage(img);
+        }
+    }
+
     private static Texture2D LoadUncached(int cardId)
     {
         try
@@ -59,7 +83,7 @@ public static class CardArtLoader
             {
                 var img = Image.LoadFromFile(abs);
                 if (img != null && img.GetWidth() > 0 && img.GetHeight() > 0)
-                    return ImageTexture.CreateFromImage(img);
+                    return CreateHighQualityTexture(img);
             }
         }
         catch { }
@@ -107,7 +131,7 @@ public static class CardArtLoader
             {
                 var img = Image.LoadFromFile(abs);
                 if (img != null && img.GetWidth() > 0 && img.GetHeight() > 0)
-                    return ImageTexture.CreateFromImage(img);
+                    return CreateHighQualityTexture(img);
             }
         }
         catch { }
@@ -212,7 +236,7 @@ public static class CardArtLoader
             {
                 var img = Image.LoadFromFile(path);
                 if (img != null && img.GetWidth() > 0 && img.GetHeight() > 0)
-                    tex = ImageTexture.CreateFromImage(img);
+                    tex = CreateHighQualityTexture(img);
             }
             catch { }
         }

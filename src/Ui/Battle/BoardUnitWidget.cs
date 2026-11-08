@@ -647,6 +647,28 @@ public partial class BoardUnitWidget : Control
             _clippedCache.Remove(key);
     }
 
+    /// <summary>
+    /// 双线性插值采样（187 号文档 专题一 ②）。
+    ///
+    /// 最近邻 GetPixel 在缩小时只取一个纹素，会把原画的高频细节丢掉，
+    /// 表现就是硬边、锯齿与马赛克。四邻域加权平均后边缘才能真正平滑。
+    /// </summary>
+    private static Color SampleBilinear(Image img, float u, float v)
+    {
+        int w = img.GetWidth(), h = img.GetHeight();
+        if (w <= 0 || h <= 0) return new Color(0, 0, 0, 0);
+
+        float x = Mathf.Clamp(u - 0.5f, 0f, w - 1f);
+        float y = Mathf.Clamp(v - 0.5f, 0f, h - 1f);
+        int x0 = (int)x, y0 = (int)y;
+        int x1 = Mathf.Min(x0 + 1, w - 1), y1 = Mathf.Min(y0 + 1, h - 1);
+        float fx = x - x0, fy = y - y0;
+
+        Color c00 = img.GetPixel(x0, y0), c10 = img.GetPixel(x1, y0);
+        Color c01 = img.GetPixel(x0, y1), c11 = img.GetPixel(x1, y1);
+        return c00.Lerp(c10, fx).Lerp(c01.Lerp(c11, fx), fy);
+    }
+
     private static Texture2D GetClippedArt(int cardId, bool isAmulet, bool evolved = false)
     {
         var key = (cardId, isAmulet, evolved);
@@ -670,14 +692,23 @@ public partial class BoardUnitWidget : Control
         var poly = InnerOutline(isAmulet);
         var src = FitSourceRect(tex.GetSize(), art.Size);
 
-        // 目标尺寸就是 art 的尺寸（96 宽棋子的立绘框）。
-        int dstW = Mathf.Max(1, Mathf.RoundToInt(art.Size.X));
-        int dstH = Mathf.Max(1, Mathf.RoundToInt(art.Size.Y));
+        // 3 倍超采样（187 号文档 专题一 ②）：
+        // 早先直接以 art 尺寸（约 84×109）为输出，并用 GetPixel 最近邻取样，
+        // 等于把几百像素的原画硬塞进小图 —— 棋子立绘看起来像马赛克。
+        // 现在按 3 倍生成（252×327）再交给 GPU 缩回逻辑尺寸，配合双线性插值，
+        // 边缘与细节都能保住。
+        const int SS = 3;
+        int logicalW = Mathf.Max(1, Mathf.RoundToInt(art.Size.X));
+        int logicalH = Mathf.Max(1, Mathf.RoundToInt(art.Size.Y));
+        int dstW = logicalW * SS;
+        int dstH = logicalH * SS;
         var outImg = Image.CreateEmpty(dstW, dstH, false, Image.Format.Rgba8);
 
         for (int y = 0; y < dstH; y++)
         {
-            var (left, right) = SpanAt(poly, art.Position.Y + y + 0.5f);
+            // 逻辑坐标：把超采样行号折回控件坐标，多边形跨度仍按逻辑像素算。
+            float logicalY = art.Position.Y + (y + 0.5f) / SS;
+            var (left, right) = SpanAt(poly, logicalY);
             if (right - left <= 0.5f) continue;
 
             // SpanAt 返回的是**控件坐标系**的绝对 X（例如 8..88），
@@ -685,20 +716,21 @@ public partial class BoardUnitWidget : Control
             // 不减掉 art.Position.X，整张立绘就会右移 8px：
             // 右边被裁掉一条、左边留一条透明 —— 表现为棋子和卡框之间有黑边。
             float ox = art.Position.X;
-            int x0 = Mathf.Clamp(Mathf.FloorToInt(left - ox), 0, dstW - 1);
-            int x1 = Mathf.Clamp(Mathf.CeilToInt(right - ox), 0, dstW);
+            int x0 = Mathf.Clamp(Mathf.FloorToInt((left - ox) * SS), 0, dstW - 1);
+            int x1 = Mathf.Clamp(Mathf.CeilToInt((right - ox) * SS), 0, dstW);
             if (x1 <= x0) continue;
 
             for (int x = x0; x < x1; x++)
             {
                 float u = src.Position.X + (x + 0.5f) / dstW * src.Size.X;
                 float v = src.Position.Y + (y + 0.5f) / dstH * src.Size.Y;
-                int px = Mathf.Clamp(Mathf.FloorToInt(u), 0, img.GetWidth() - 1);
-                int py = Mathf.Clamp(Mathf.FloorToInt(v), 0, img.GetHeight() - 1);
-                outImg.SetPixel(x, y, img.GetPixel(px, py));
+                // 双线性插值替代最近邻 GetPixel，消除硬边与锯齿。
+                outImg.SetPixel(x, y, SampleBilinear(img, u, v));
             }
         }
 
+        // 超采样图同样要带 Mipmaps：绘制时缩回 1/3 尺寸，由硬件平滑降采样。
+        try { outImg.GenerateMipmaps(); } catch { }
         var outTex = ImageTexture.CreateFromImage(outImg);
         _clippedCache[key] = outTex;
         return outTex;

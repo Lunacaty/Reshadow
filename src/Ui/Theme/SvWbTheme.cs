@@ -362,19 +362,174 @@ public static class SvWbTheme
             if (string.IsNullOrWhiteSpace(name))
                 return $"[color=#94A3B8]#{cid}[/color]";
 
-            return $"[bgcolor=#1E293B][color=#38BDF8][b]《{name}》[/b][/color]"
+            // 卡名走「冰白 -> 星辉青」整句渐变（187 号文档 专题三 末段），
+            // 与 FormatRichCardText 的《卡名》色对保持一致；
+            // 卡号本身保持暗灰，避免抢视觉焦点。
+            string gradName = WrapSentenceGradient("《" + name + "》",
+                new Color("E0F7FA"), new Color("38BDF8"), bold: true);
+            return "[bgcolor=#1E293B]" + gradName
                  + $"[color=#64748B](#{cid})[/color][/bgcolor]";
         });
     }
 
+    // ========================================================================
+    // 整句渐变渲染管线（187 号文档 专题二）
+    //
+    // 全游戏 55+ 个 UI 文件不可能逐个改色，因此在主题层建三条统一通道：
+    //   通道 A · RichTextLabel  -> WrapSentenceGradient（逐字 [color] 插值）
+    //   通道 B · Label / Button  -> ApplyGradientText（94° 线性渐变 shader）
+    //   通道 C · _Draw() 手绘字  -> DrawGradientString（逐字插值 + 描边）
+    // ========================================================================
+
+    /// <summary>预设渐变色对（浅主色 -> 主色）。</summary>
+    public static readonly (Color Light, Color Main) GradGold    = (new Color("FFF3CF"), new Color("E3BD63"));
+    public static readonly (Color Light, Color Main) GradCyan    = (new Color("E0F7FA"), new Color("00E5FF"));
+    public static readonly (Color Light, Color Main) GradPurple  = (new Color("F3E8FF"), new Color("C084FC"));
+    public static readonly (Color Light, Color Main) GradGreen   = (new Color("DCFCE7"), new Color("34D399"));
+    public static readonly (Color Light, Color Main) GradCrimson = (new Color("FFE4E6"), new Color("F43F5E"));
+
+    /// <summary>
+    /// 按主色推导「浅主色 -> 主色」。
+    /// 浅主色取「向奶白提亮 62%」，保证同色系内的过渡自然。
+    /// 主色本身就是白/浅灰时，退回默认的奶白 -> 鎏金。
+    /// </summary>
+    public static (Color Light, Color Main) DeriveGradientPair(Color mainColor)
+    {
+        if (mainColor.S < 0.12f && mainColor.V > 0.85f) return GradGold;
+        return (mainColor.Lerp(new Color("FFF8E7"), 0.62f), mainColor);
+    }
+
+    /// <summary>
+    /// 通道 A：把整句包装成逐字渐变 BBCode（供 RichTextLabel 使用）。
+    ///
+    /// 以「整个句子」为单位从浅主色线性过渡到主色 —— 这正是需求里那张
+    /// CSS 案例的效果：一个字一个色阶，而不是整块同色。
+    /// 空白与换行原样输出（不被 [color] 包裹），避免行首缩进被染色。
+    /// </summary>
+    public static string WrapSentenceGradient(string sentence, Color lightCol, Color mainCol,
+                                              bool bold = false)
+    {
+        if (string.IsNullOrEmpty(sentence)) return "";
+        var sb = new System.Text.StringBuilder(sentence.Length * 24);
+        if (bold) sb.Append("[b]");
+        int len = sentence.Length;
+        for (int i = 0; i < len; i++)
+        {
+            char ch = sentence[i];
+            if (ch is (char)13 or (char)10 or (char)32) { sb.Append(ch); continue; }
+            float t = len <= 1 ? 0f : (float)i / (len - 1);
+            string hex = lightCol.Lerp(mainCol, t).ToHtml(false);
+            sb.Append("[color=#").Append(hex).Append((char)93).Append(ch).Append("[/color]");
+        }
+        if (bold) sb.Append("[/b]");
+        return sb.ToString();
+    }
+
+    // ---- 通道 B：Label / Button 的 94° 线性渐变材质 ----
+    private static readonly System.Collections.Generic.Dictionary<(Color, Color), ShaderMaterial> _gradMatCache = new();
+    private static Shader _textGradShader;
+
+    /// <summary>
+    /// 通道 B：给普通 Label / Button 挂上「浅主色 -> 主色」渐变材质。
+    /// 按控件 UV 做 94°（近似横向略偏纵）插值，保留低亮度像素（描边）不被染亮。
+    /// </summary>
+    public static void ApplyGradientText(CanvasItem ctrl, Color? mainColor = null)
+    {
+        if (ctrl == null) return;
+        var pair = mainColor.HasValue ? DeriveGradientPair(mainColor.Value) : GradGold;
+        if (!_gradMatCache.TryGetValue(pair, out var mat))
+        {
+            _textGradShader ??= new Shader
+            {
+                Code = @"shader_type canvas_item;
+uniform vec4 col_light : source_color = vec4(1.0, 0.953, 0.812, 1.0);
+uniform vec4 col_main  : source_color = vec4(0.890, 0.741, 0.388, 1.0);
+void fragment() {
+    vec4 tex = texture(TEXTURE, UV);
+    float t = clamp(UV.x * 0.85 + UV.y * 0.15, 0.0, 1.0);
+    vec3 grad = mix(col_light.rgb, col_main.rgb, t);
+    float lum = dot(COLOR.rgb, vec3(0.299, 0.587, 0.114));
+    vec3 final_rgb = lum < 0.15 ? COLOR.rgb : grad;
+    COLOR = vec4(final_rgb, tex.a * COLOR.a);
+}
+"
+            };
+            mat = new ShaderMaterial { Shader = _textGradShader };
+            mat.SetShaderParameter("col_light", pair.Light);
+            mat.SetShaderParameter("col_main", pair.Main);
+            _gradMatCache[pair] = mat;
+        }
+        ctrl.Material = mat;
+    }
+
+    /// <summary>
+    /// 通道 C：_Draw() 里的整句渐变绘制，替代裸 DrawString。
+    /// 逐字按「字符中心 / 整句宽度」取插值位置，并先画深色描边再画亮色字身。
+    /// </summary>
+    public static void DrawGradientString(
+        CanvasItem canvas, Font font, Vector2 pos, string text,
+        int fontSize, Color lightCol, Color mainCol, Color? outlineCol = null)
+    {
+        if (canvas == null || font == null || string.IsNullOrEmpty(text)) return;
+        Color dark = outlineCol ?? new Color(0.05f, 0.03f, 0.01f, 0.90f);
+        float totalW = Mathf.Max(1f, font.GetStringSize(text, HorizontalAlignment.Left, -1, fontSize).X);
+        float curX = 0f;
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            string ch = text[i].ToString();
+            float cw = font.GetStringSize(ch, HorizontalAlignment.Left, -1, fontSize).X;
+            float t = Mathf.Clamp((curX + cw * 0.5f) / totalW, 0f, 1f);
+            Color col = lightCol.Lerp(mainCol, t);
+            Vector2 pp = pos + new Vector2(curX, 0f);
+            canvas.DrawString(font, pp + new Vector2(1.2f, 1.5f), ch, HorizontalAlignment.Left, -1, fontSize, dark);
+            canvas.DrawString(font, pp, ch, HorizontalAlignment.Left, -1, fontSize, col);
+            curX += cw;
+        }
+    }
+
+    /// <summary>
+    /// 卡面文本 -> 富文本 BBCode，**每一段都做整句渐变**（187 号文档 专题二）。
+    ///
+    /// 三种片段各用一套色对：
+    ///   普通描述  ：奶白 #FFF3CF -> 鎏金 #E3BD63（需求里的核心案例）
+    ///   【关键词】：亮金白 #FFFBEB -> 琥珀金 #F59E0B
+    ///   《卡名》  ：冰白 #E0F7FA -> 星辉青 #38BDF8
+    /// 【构筑规则】单独走紫色系。
+    /// </summary>
     public static string FormatRichCardText(string plainZh)
     {
-        if (string.IsNullOrEmpty(plainZh)) return "[color=#64748B]（白板无效果）[/color]";
-        string s = plainZh;
-        s = s.Replace("【构筑规则】", "[color=#C084FC][b]【构筑规则】[/b][/color]");
-        s = Regex.Replace(s, @"【([^】]+)】", "[color=#FBBF24][b]【$1】[/b][/color]");
-        s = Regex.Replace(s, @"《([^》]+)》", "[color=#38BDF8]《$1》[/color]");
-        return s;
+        if (string.IsNullOrEmpty(plainZh))
+            return WrapSentenceGradient("（白板无效果）", new Color("CBD5E1"), new Color("64748B"));
+
+        var lightKeyword = new Color("FFFBEB");
+        var mainKeyword  = new Color("F59E0B");
+        var lightCard    = new Color("E0F7FA");
+        var mainCard     = new Color("38BDF8");
+
+        var lines = plainZh.Split((char)10);
+        var outLines = new System.Collections.Generic.List<string>(lines.Length);
+
+        foreach (var line in lines)
+        {
+            // 切出 【…】、《…》 与普通句子片段，每段独立做浅主色->主色渐变。
+            var tokens = Regex.Split(line, @"(【[^】]+】|《[^》]+》)");
+            var sb = new System.Text.StringBuilder();
+            foreach (var tk in tokens)
+            {
+                if (string.IsNullOrEmpty(tk)) continue;
+                if (tk == "【构筑规则】")
+                    sb.Append(WrapSentenceGradient(tk, GradPurple.Light, GradPurple.Main, bold: true));
+                else if (tk.StartsWith("【") && tk.EndsWith("】"))
+                    sb.Append(WrapSentenceGradient(tk, lightKeyword, mainKeyword, bold: true));
+                else if (tk.StartsWith("《") && tk.EndsWith("》"))
+                    sb.Append(WrapSentenceGradient(tk, lightCard, mainCard, bold: true));
+                else
+                    sb.Append(WrapSentenceGradient(tk, GradGold.Light, GradGold.Main));
+            }
+            outLines.Add(sb.ToString());
+        }
+        return string.Join(((char)10).ToString(), outLines);
     }
 
     /// <summary>

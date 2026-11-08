@@ -22,6 +22,8 @@ window/size/window_width_override=1280
 window/size/window_height_override=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+# 允许高分屏按物理像素渲染：1080p/2K/4K 下不再被强行拉伸成 720p（187 号文档 专题一 ③）
+window/dpi/allow_hidpi=true
 
 [dotnet]
 
@@ -31,3 +33,7 @@ project/assembly_name="ShadowverseFan"
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+# 2D 多重采样抗锯齿：卡框圆角、图标边缘、棋子多边形裁剪不再起锯齿
+anti_aliasing/quality/msaa_2d=2
+# 默认纹理过滤改为 Linear Mipmap：大图缩到手牌/棋子时由硬件做三线性平滑采样
+textures/canvas_textures/default_texture_filter=2
